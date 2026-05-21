@@ -257,12 +257,29 @@ jobs:
           PROJECT_NUMBER=$(gcloud projects describe "$SYSTEM_NAME" --format="value(projectNumber)")
           DEPLOY_SA="deploy-sa@${SYSTEM_NAME}.iam.gserviceaccount.com"
           PRINCIPAL="principalSet://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/github-pool/attribute.repository/edri2or/${SYSTEM_NAME}"
-          gcloud iam service-accounts add-iam-policy-binding "$DEPLOY_SA" \
-            --project="$SYSTEM_NAME" \
-            --role="roles/iam.workloadIdentityUser" \
-            --member="$PRINCIPAL" \
-            --quiet
-          echo "PASS: workloadIdentityUser granted to ${DEPLOY_SA}."
+
+          # service-accounts add-iam-policy-binding can hit PERMISSION_DENIED
+          # right after the SA is created — same eventual-consistency pattern
+          # as project-level IAM, but on the SA resource itself. Retry until
+          # the SA is bindable (typically <60s).
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            if err=$(gcloud iam service-accounts add-iam-policy-binding "$DEPLOY_SA" \
+                 --project="$SYSTEM_NAME" \
+                 --role="roles/iam.workloadIdentityUser" \
+                 --member="$PRINCIPAL" \
+                 --quiet 2>&1); then
+              echo "PASS: workloadIdentityUser granted to ${DEPLOY_SA}."
+              exit 0
+            fi
+            printf '%s\n' "$err" >&2
+            if ! printf '%s' "$err" | grep -qE "PERMISSION_DENIED|does not exist"; then
+              exit 1
+            fi
+            echo "Retry ${i}/10 (sleeping 10s — SA propagation)..." >&2
+            sleep 10
+          done
+          echo "FAIL: workloadIdentityUser binding still denied after 10 attempts" >&2
+          exit 1
 
       - name: Create GitHub repo with auto_init
         env:
