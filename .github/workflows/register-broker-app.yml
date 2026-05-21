@@ -76,6 +76,11 @@ jobs:
           # in a single deploy call — eliminating the race window where the
           # receiver served forms with placeholder URLs because env had not been
           # updated yet.
+          #
+          # NOTE: `gcloud run services describe ... --format='value(status.url)'`
+          # returns the LEGACY URL (*.a.run.app with random hash), not this one.
+          # Both URLs serve the same service. We verify reachability via the
+          # health probe below, not by comparing URLs.
           SERVICE_URL="https://${SERVICE_NAME}-${GCP_PROJECT_NUMBER}.${GCP_REGION}.run.app"
           echo "SERVICE_URL=${SERVICE_URL}" >> "$GITHUB_ENV"
           echo "Predicted SERVICE_URL: ${SERVICE_URL}"
@@ -122,30 +127,17 @@ jobs:
             --set-env-vars="GCP_PROJECT_ID=${GCP_PROJECT},GITHUB_ORG=edri2or,APP_NAME=${APP_NAME},SECRET_PREFIX=${SECRET_PREFIX},APP_PERMISSIONS=${APP_PERMISSIONS_B64},GITHUB_REPO=edri2or/or-factory-master,POLL_TOKEN=${POLL_TOKEN},REDIRECT_URL=${SERVICE_URL}/callback" \
             --quiet
 
-          # Sanity-check: verify the URL Cloud Run actually allocated matches
-          # our prediction. If not, fail loudly so we don't serve a manifest
-          # with the wrong redirect.
-          ACTUAL_URL="$(gcloud run services describe "${SERVICE_NAME}" \
-            --platform=managed --region="${GCP_REGION}" --project="${GCP_PROJECT}" \
-            --format='value(status.url)')"
-
-          if [ "${ACTUAL_URL}" != "${SERVICE_URL}" ]; then
-            echo "::error::Predicted URL (${SERVICE_URL}) does not match actual Cloud Run URL (${ACTUAL_URL})"
-            exit 1
-          fi
-          echo "✅ Cloud Run URL matches prediction: ${SERVICE_URL}"
-
-      - name: Probe health
+      - name: Probe health (verify predicted URL is reachable)
         if: steps.check-secrets.outputs.exists == 'false'
         run: |
           for i in $(seq 1 24); do
             if [ "$(curl -sS -m 8 -o /dev/null -w '%{http_code}' "${SERVICE_URL}/health")" = "200" ]; then
-              echo "✅ Receiver healthy after ${i} attempt(s)"
+              echo "✅ Receiver healthy after ${i} attempt(s) at ${SERVICE_URL}"
               exit 0
             fi
             sleep 5
           done
-          echo "::error::Receiver did not become healthy in 120s"
+          echo "::error::Receiver did not become healthy at ${SERVICE_URL} in 120s"
           exit 1
 
       - name: Operator instructions
