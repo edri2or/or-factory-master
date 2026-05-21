@@ -65,6 +65,20 @@ Railway + Cloudflare deployment is **not yet implemented** as a workflow. When r
 
 `system_name` must satisfy: `^[a-z][a-z0-9-]{4,28}[a-z0-9]$` (6–30 chars total). The same string becomes the GCP project ID and the GitHub repo name.
 
+## Propagation patterns
+
+GCP IAM has *eventual consistency* between policy update and effective permissions. Any `gcloud` call against a resource that was just created (in the same workflow run) can fail with `PERMISSION_DENIED` or `does not exist` for up to ~60s, even though `get-iam-policy` or `describe` already shows the resource/binding.
+
+If you add a new step that touches a fresh resource, wrap it in a retry. Three windows are known and handled:
+
+| Window | Symptom | Where handled |
+|---|---|---|
+| SA → IAM policy member (~5-30s) | `add-iam-policy-binding` says SA "does not exist" | `Grant project-level IAM`, see `_bind` helper |
+| role-grant → effective permission (~30-60s) | API call returns `PERMISSION_DENIED` for a role the principal visibly has | `Create system-level WIF pool and provider`, see `_wif_op` helper |
+| SA → setIamPolicy on the SA resource (~30-60s) | `service-accounts add-iam-policy-binding` says permission denied | `Grant deploy-sa workloadIdentityUser binding` |
+
+Pattern: retry only on the specific error class (`PERMISSION_DENIED`, `does not exist`); surface anything else immediately. 10×10s or 12×10s is typical. See `docs/bootstrap-record.md` for the history of each.
+
 ## Key files
 
 | File | Purpose |
