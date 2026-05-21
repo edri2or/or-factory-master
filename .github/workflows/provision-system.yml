@@ -162,13 +162,28 @@ jobs:
           DEPLOY_SA="deploy-sa@${SYSTEM_NAME}.iam.gserviceaccount.com"
           RUNTIME_SA="runtime-sa@${SYSTEM_NAME}.iam.gserviceaccount.com"
 
+          # add-iam-policy-binding hits an eventual-consistency window right
+          # after service-accounts create — the SA is visible to describe but
+          # not yet to the IAM policy API. Retry up to ~30s.
+          _bind() {
+            local member="$1" role="$2" i
+            for i in 1 2 3 4 5 6; do
+              if gcloud projects add-iam-policy-binding "$SYSTEM_NAME" \
+                   --member="$member" --role="$role" --quiet 2>&1; then
+                return 0
+              fi
+              echo "Retry ${i}/6 for ${member} ${role} (sleeping 5s)..." >&2
+              sleep 5
+            done
+            echo "FAIL: could not bind ${role} to ${member} after 6 attempts" >&2
+            return 1
+          }
+
           for role in roles/run.developer roles/artifactregistry.writer \
                       roles/secretmanager.secretVersionManager; do
-            gcloud projects add-iam-policy-binding "$SYSTEM_NAME" \
-              --member="serviceAccount:${DEPLOY_SA}" --role="$role" --quiet
+            _bind "serviceAccount:${DEPLOY_SA}" "$role"
           done
-          gcloud projects add-iam-policy-binding "$SYSTEM_NAME" \
-            --member="serviceAccount:${RUNTIME_SA}" --role="roles/run.invoker" --quiet
+          _bind "serviceAccount:${RUNTIME_SA}" "roles/run.invoker"
           echo "PASS: project-level IAM granted."
 
       - name: Create system-level WIF pool and provider
