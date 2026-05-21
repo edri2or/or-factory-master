@@ -199,19 +199,54 @@ jobs:
           SYSTEM_NAME: ${{ inputs.system_name }}
         run: |
           set -euo pipefail
-          gcloud iam workload-identity-pools create github-pool \
-            --project="$SYSTEM_NAME" \
-            --location=global \
-            --display-name="GitHub Actions Pool"
 
-          gcloud iam workload-identity-pools providers create-oidc github-provider \
-            --project="$SYSTEM_NAME" \
-            --location=global \
-            --workload-identity-pool=github-pool \
-            --display-name="GitHub Actions Provider" \
-            --issuer-uri="https://token.actions.githubusercontent.com" \
-            --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository,attribute.repository_id=assertion.repository_id,attribute.ref=assertion.ref" \
-            --attribute-condition="assertion.repository_owner=='edri2or' && attribute.repository=='edri2or/${SYSTEM_NAME}' && attribute.ref=='refs/heads/main'"
+          # The workloadIdentityPoolAdmin role was just added to the broker SA
+          # (folder-level inheritance and/or in-workflow self-bind). The IAM
+          # policy update is immediate, but the broker SA's effective
+          # permissions take ~30-60s to propagate before the WIF API will
+          # accept the call. Retry on PERMISSION_DENIED only; surface
+          # ALREADY_EXISTS as a no-op for the second call when the first
+          # already succeeded on a prior partial run.
+          _wif_op() {
+            local desc="$1"; shift
+            local err i
+            for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
+              if err=$("$@" 2>&1); then
+                printf '%s\n' "$err"
+                return 0
+              fi
+              printf '%s\n' "$err" >&2
+              if printf '%s' "$err" | grep -q "ALREADY_EXISTS"; then
+                echo "INFO: $desc already exists — continuing" >&2
+                return 0
+              fi
+              if printf '%s' "$err" | grep -q "PERMISSION_DENIED"; then
+                echo "Retry ${i}/12 for $desc (sleeping 10s — propagation)..." >&2
+                sleep 10
+                continue
+              fi
+              return 1
+            done
+            echo "FAIL: $desc still PERMISSION_DENIED after 12 attempts" >&2
+            return 1
+          }
+
+          _wif_op "create pool" \
+            gcloud iam workload-identity-pools create github-pool \
+              --project="$SYSTEM_NAME" \
+              --location=global \
+              --display-name="GitHub Actions Pool"
+
+          _wif_op "create provider" \
+            gcloud iam workload-identity-pools providers create-oidc github-provider \
+              --project="$SYSTEM_NAME" \
+              --location=global \
+              --workload-identity-pool=github-pool \
+              --display-name="GitHub Actions Provider" \
+              --issuer-uri="https://token.actions.githubusercontent.com" \
+              --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository,attribute.repository_id=assertion.repository_id,attribute.ref=assertion.ref" \
+              --attribute-condition="assertion.repository_owner=='edri2or' && attribute.repository=='edri2or/${SYSTEM_NAME}' && attribute.ref=='refs/heads/main'"
+
           echo "PASS: WIF pool + provider created."
 
       - name: Grant deploy-sa workloadIdentityUser binding
