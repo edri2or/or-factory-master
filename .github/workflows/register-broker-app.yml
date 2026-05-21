@@ -92,10 +92,12 @@ jobs:
         if: steps.check-secrets.outputs.exists == 'false'
         run: |
           # Permissions: broad — broker manages ALL repos in the org.
-          # Repository: administration, contents, actions, secrets, variables,
-          #   workflows, pull_requests (write), metadata (read).
+          # Repository: administration, contents, actions, secrets, workflows,
+          #   pull_requests (write), metadata (read).
           # Organization: administration (write) — required to create new repos.
-          APP_PERMISSIONS_JSON='{"administration":"write","contents":"write","actions":"write","secrets":"write","variables":"write","workflows":"write","pull_requests":"write","metadata":"read","organization_administration":"write"}'
+          # Note: `variables` permission omitted — not supported in Manifest API.
+          # Can be added manually in App settings later if needed.
+          APP_PERMISSIONS_JSON='{"administration":"write","contents":"write","actions":"write","secrets":"write","workflows":"write","pull_requests":"write","metadata":"read","organization_administration":"write"}'
           APP_PERMISSIONS_B64=$(printf '%s' "${APP_PERMISSIONS_JSON}" | base64 -w 0)
 
           gcloud run deploy "${SERVICE_NAME}" \
