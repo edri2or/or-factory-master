@@ -32,17 +32,17 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        uses: actions/checkout@v4
 
       - name: Authenticate to GCP via WIF
         id: auth
-        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed
+        uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ env.WIF_PROVIDER }}
           service_account: ${{ env.BROKER_SA }}
 
       - name: Set up gcloud
-        uses: google-github-actions/setup-gcloud@77e7a554d41e2ee56fc945a52421584943af4e8c
+        uses: google-github-actions/setup-gcloud@v2
 
       - name: Check if App credentials already exist in GCP SM
         id: check-secrets
