@@ -184,6 +184,14 @@ jobs:
             _bind "serviceAccount:${DEPLOY_SA}" "$role"
           done
           _bind "serviceAccount:${RUNTIME_SA}" "roles/run.invoker"
+
+          # roles/owner does not include iam.workloadIdentityPools.* — grant
+          # the broker SA workloadIdentityPoolAdmin on the project so the next
+          # step (Create system-level WIF pool and provider) can succeed even
+          # if the folder-level grant is absent.
+          _bind "serviceAccount:factory-master-broker@or-factory-master-control.iam.gserviceaccount.com" \
+                "roles/iam.workloadIdentityPoolAdmin"
+
           echo "PASS: project-level IAM granted."
 
       - name: Create system-level WIF pool and provider
