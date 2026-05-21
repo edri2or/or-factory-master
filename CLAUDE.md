@@ -58,8 +58,9 @@ The previous factory (`edri2or/factory`) automated everything end-to-end. Failur
 |---|---|---|
 | `register-broker-app.yml` | One-shot, already used | Created the GitHub App. Don't re-run. |
 | `provision-system.yml` | Manual `workflow_dispatch` | Builds GCP + GitHub for a new system. |
+| `templates/system/.github/workflows/deploy-railway-cloudflare.yml` | Manual `workflow_dispatch` in the *system* repo | Deploys n8n on Railway (with Postgres + persistent volume) and creates the Cloudflare CNAME. Pushed into every new system repo by `provision-system.yml`. Idempotent. |
 
-Railway + Cloudflare deployment is **not yet implemented** as a workflow. When required, it will be a separate workflow the user dispatches after `provision-system.yml` succeeds.
+The deploy workflow lives in each system's own repo and is dispatched there by the user after `provision-system.yml` succeeds. It is provisioned, not orchestrated, by the factory.
 
 ## Validation rules
 
@@ -85,6 +86,7 @@ Pattern: retry only on the specific error class (`PERMISSION_DENIED`, `does not 
 |---|---|
 | `skills/*/SKILL.md` | Skill instructions — read the one that matches the task. |
 | `.github/workflows/provision-system.yml` | The one provisioning workflow. |
+| `templates/system/.github/workflows/deploy-railway-cloudflare.yml` | Scaffold workflow pushed into every new system repo. Edits here propagate only to systems provisioned after the edit. |
 | `scripts/copy-generic-secrets.sh` | Copies the 16 generic secrets to a new system's SM. |
 | `scripts/generate-app-token.sh` | Generates an App installation token from the private key. |
 | `src/bootstrap-receiver/` | Receiver code used once to register the App. Reference, not active. |

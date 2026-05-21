@@ -11,30 +11,22 @@ What's working today, what's planned, what's deliberately not planned.
 - `runtime-sa` and `deploy-sa` with project-level IAM
 - `github-pool` / `github-provider` WIF, pinned by CEL to `edri2or/<system_name>` on `refs/heads/main`
 - `deploy-sa` workloadIdentityUser binding for the new repo's WIF principal
-- Private GitHub repo with `auto_init` and a protected `main`
+- Private GitHub repo with `auto_init`, the deploy-workflow scaffold pushed onto `main`, and branch protection on `main`
 - 16 generic secrets copied into the system's Secret Manager
 - 4 repo variables (`GCP_WIF_PROVIDER`, `GCP_DEPLOY_SA`, `GCP_PROJECT_ID`, `SYSTEM_NAME`) set on the new repo
 
-What the system can do with that: any GitHub Actions workflow inside the system repo can authenticate to its own GCP project via WIF, read secrets from its own SM, and deploy to Cloud Run. That's enough to land any standalone service. What it can't do yet: deploy Railway or Cloudflare anything (because there's no workflow for it on the system side).
+`deploy-railway-cloudflare.yml` (lives in each system repo, pushed by `provision-system.yml`) provisions the deploy plane:
 
-## Phase A — Deploy workflow (next)
+- Railway project named after `vars.SYSTEM_NAME`, Postgres service via the official template, n8n service from `n8nio/n8n:1.85.4`, and a persistent volume mounted at `/home/node/.n8n` on the n8n service
+- n8n env vars wired to Postgres via Railway reference syntax (`${{Postgres.PGHOST}}` etc.), plus `N8N_HOST`, `WEBHOOK_URL`, `GENERIC_TIMEZONE`, `N8N_ENCRYPTION_KEY` (generated per-system, persisted to system SM)
+- Custom domain `n8n.<system>.or-infra.com` attached to the n8n service, with the matching Cloudflare CNAME (DNS-only — Railway issues its own LE cert)
+- Railway IDs persisted back to system SM (`railway-project-id`, `railway-n8n-service-id`, `railway-postgres-service-id`) so the workflow is restart-safe
 
-`provision-system.yml` builds the *control plane* of a new system. The deploy plane — Railway project, n8n service, Postgres, Cloudflare DNS — is one more workflow.
+End-to-end: any standalone service can deploy to Cloud Run via the system's `deploy-sa` WIF and SM, AND every system has a one-click n8n on Railway. What's left is the decommission story (Phase B).
 
-**Where it lives:** in the *system* repo, not in `or-factory-master`. The factory provisions it; the system runs it. The scaffold for this workflow is something `provision-system.yml` should push as part of repo creation (`auto_init` + a commit with `.github/workflows/deploy-railway-cloudflare.yml`).
+## Phase A — done (stage 7)
 
-**Inputs:** none (workflow_dispatch). It reads everything from the repo's own variables and from its own SM.
-
-**Outline:**
-- WIF auth as `deploy-sa` (using `vars.GCP_WIF_PROVIDER` + `vars.GCP_DEPLOY_SA`).
-- Read `railway-api-token`, `cloudflare-token-creator`, `cloudflare-zone-id-or-infra` from system SM.
-- Idempotent Railway create: project (named after `vars.SYSTEM_NAME`), Postgres service with persistent volume, n8n service. Use the same GraphQL pattern as the old factory (`/tmp/factory/factory/templates/scaffold/cloud-run-service/.github/workflows/railway-cloudflare-bootstrap.yml` is the reference — ~780 lines, but most of the complexity is monitoring/retry that we don't need here).
-- Idempotent Cloudflare DNS create: `n8n.<system>.or-infra.com` CNAME → Railway public domain.
-- Store the resulting IDs (`RAILWAY_PROJECT_ID`, etc.) back into system SM so the workflow is restart-safe.
-
-**Effort estimate:** 1-2 sessions. Most of it is translating the old factory's GraphQL boilerplate into a workflow that doesn't try to monitor itself.
-
-**Dependencies:** none beyond what `provision-system.yml` already provides.
+The deploy plane workflow landed in stage 7. See `templates/system/.github/workflows/deploy-railway-cloudflare.yml` for the workflow and the "Push deploy workflow scaffold to system repo" step in `provision-system.yml` for the delivery mechanism.
 
 ## Phase B — Decommission workflow
 

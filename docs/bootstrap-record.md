@@ -14,6 +14,7 @@ The bootstrap had 6 stages, defined upfront and worked through in order. Stages 
 | 4 | GitHub App `factory-master-broker` registered via Cloud Run receiver, installed org-wide, 3 App credentials stored in SM | done | App ID 3800903, install ID 134450329. |
 | 5 | Repo content: `CLAUDE.md`, 3 skills, `provision-system.yml`, helper scripts | PR #1 | This is what an agent reads first. |
 | 6 | First end-to-end provision run | PRs #2-#5 + `v2-test-6` | All 15 workflow steps succeeded with no manual intervention on the final run. |
+| 7 | Deploy plane: `templates/system/.github/workflows/deploy-railway-cloudflare.yml` + push step in `provision-system.yml` | PR #7 | Idempotent Railway (project + Postgres + n8n + volume) + Cloudflare CNAME. n8n encryption key generated per-system on first deploy. |
 
 ## What went wrong on the way to a clean run
 
