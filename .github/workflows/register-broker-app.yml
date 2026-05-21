@@ -27,6 +27,7 @@ jobs:
 
     env:
       GCP_PROJECT: "or-factory-master-control"
+      GCP_PROJECT_NUMBER: "140345952904"
       BROKER_SA: "factory-master-broker@or-factory-master-control.iam.gserviceaccount.com"
       GCP_REGION: "me-west1"
       SERVICE_NAME: "factory-master-broker-receiver"
@@ -64,10 +65,21 @@ jobs:
             echo "Missing credentials (id=$have_id key=$have_key install=$have_install) — proceeding."
           fi
 
-      - name: Generate poll token
-        id: gen-token
+      - name: Compute predictable Cloud Run URL + generate poll token
+        id: precompute
         if: steps.check-secrets.outputs.exists == 'false'
         run: |
+          # Cloud Run gives services a predictable region-domain URL based on
+          # service name + project number, available the moment the service is created:
+          #   https://<service-name>-<project-number>.<region>.run.app
+          # Computing this BEFORE deploy lets us bake REDIRECT_URL into env vars
+          # in a single deploy call — eliminating the race window where the
+          # receiver served forms with placeholder URLs because env had not been
+          # updated yet.
+          SERVICE_URL="https://${SERVICE_NAME}-${GCP_PROJECT_NUMBER}.${GCP_REGION}.run.app"
+          echo "SERVICE_URL=${SERVICE_URL}" >> "$GITHUB_ENV"
+          echo "Predicted SERVICE_URL: ${SERVICE_URL}"
+
           POLL_TOKEN=$(openssl rand -hex 32)
           echo "POLL_TOKEN=${POLL_TOKEN}" >> "$GITHUB_ENV"
           echo "::add-mask::${POLL_TOKEN}"
@@ -88,7 +100,7 @@ jobs:
           docker build -t "${IMAGE}" src/bootstrap-receiver/
           docker push "${IMAGE}"
 
-      - name: Deploy Cloud Run receiver
+      - name: Deploy Cloud Run receiver (single shot with REDIRECT_URL baked in)
         if: steps.check-secrets.outputs.exists == 'false'
         run: |
           # Permissions: broad — broker manages ALL repos in the org.
@@ -96,7 +108,6 @@ jobs:
           #   pull_requests (write), metadata (read).
           # Organization: administration (write) — required to create new repos.
           # Note: `variables` permission omitted — not supported in Manifest API.
-          # Can be added manually in App settings later if needed.
           APP_PERMISSIONS_JSON='{"administration":"write","contents":"write","actions":"write","secrets":"write","workflows":"write","pull_requests":"write","metadata":"read","organization_administration":"write"}'
           APP_PERMISSIONS_B64=$(printf '%s' "${APP_PERMISSIONS_JSON}" | base64 -w 0)
 
@@ -108,20 +119,21 @@ jobs:
             --allow-unauthenticated \
             --service-account="${BROKER_SA}" \
             --max-instances=1 \
-            --set-env-vars="GCP_PROJECT_ID=${GCP_PROJECT},GITHUB_ORG=edri2or,APP_NAME=${APP_NAME},SECRET_PREFIX=${SECRET_PREFIX},APP_PERMISSIONS=${APP_PERMISSIONS_B64},GITHUB_REPO=edri2or/or-factory-master,POLL_TOKEN=${POLL_TOKEN}" \
+            --set-env-vars="GCP_PROJECT_ID=${GCP_PROJECT},GITHUB_ORG=edri2or,APP_NAME=${APP_NAME},SECRET_PREFIX=${SECRET_PREFIX},APP_PERMISSIONS=${APP_PERMISSIONS_B64},GITHUB_REPO=edri2or/or-factory-master,POLL_TOKEN=${POLL_TOKEN},REDIRECT_URL=${SERVICE_URL}/callback" \
             --quiet
 
-          SERVICE_URL="$(gcloud run services describe "${SERVICE_NAME}" \
+          # Sanity-check: verify the URL Cloud Run actually allocated matches
+          # our prediction. If not, fail loudly so we don't serve a manifest
+          # with the wrong redirect.
+          ACTUAL_URL="$(gcloud run services describe "${SERVICE_NAME}" \
             --platform=managed --region="${GCP_REGION}" --project="${GCP_PROJECT}" \
             --format='value(status.url)')"
-          echo "SERVICE_URL=${SERVICE_URL}" >> "$GITHUB_ENV"
 
-          gcloud run services update "${SERVICE_NAME}" \
-            --platform=managed \
-            --region="${GCP_REGION}" \
-            --project="${GCP_PROJECT}" \
-            --update-env-vars="REDIRECT_URL=${SERVICE_URL}/callback" \
-            --quiet
+          if [ "${ACTUAL_URL}" != "${SERVICE_URL}" ]; then
+            echo "::error::Predicted URL (${SERVICE_URL}) does not match actual Cloud Run URL (${ACTUAL_URL})"
+            exit 1
+          fi
+          echo "✅ Cloud Run URL matches prediction: ${SERVICE_URL}"
 
       - name: Probe health
         if: steps.check-secrets.outputs.exists == 'false'
