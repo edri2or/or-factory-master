@@ -3,6 +3,10 @@ name: Register Broker App
 # Registers the factory-master-broker GitHub App via Cloud Run receiver.
 # Operator action: 2 browser clicks after the URL appears in Step Summary.
 #
+# Prerequisites (one-time, done in Cloud Shell during initial setup):
+#   gcloud services enable artifactregistry.googleapis.com run.googleapis.com \
+#     --project=or-factory-master-control
+#
 # After completion, credentials are stored in GCP Secret Manager:
 #   factory-master-broker-app-id
 #   factory-master-broker-app-private-key
@@ -67,14 +71,6 @@ jobs:
           POLL_TOKEN=$(openssl rand -hex 32)
           echo "POLL_TOKEN=${POLL_TOKEN}" >> "$GITHUB_ENV"
           echo "::add-mask::${POLL_TOKEN}"
-
-      - name: Enable APIs (artifactregistry + run)
-        if: steps.check-secrets.outputs.exists == 'false'
-        run: |
-          gcloud services enable \
-            artifactregistry.googleapis.com \
-            run.googleapis.com \
-            --project="${GCP_PROJECT}"
 
       - name: Build and push receiver image
         if: steps.check-secrets.outputs.exists == 'false'
