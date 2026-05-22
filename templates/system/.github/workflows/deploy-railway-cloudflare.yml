@@ -149,11 +149,33 @@ jobs:
           echo "INFO: using workspace: $WORKSPACE_ID"
 
           # ===== Project: find or create =====
+          # Try workspace-scoped lookup first — top-level projects() may only
+          # return the token's personal-workspace projects, which would miss
+          # ones we create in the edri2or org workspace. Fall back to the
+          # top-level query if the workspace-scoped one isn't supported or
+          # returns empty.
           echo "=== Railway: find-or-create project '${SYSTEM_NAME}' ==="
-          resp=$(_gql 'query { projects(first:100) { edges { node { id name } } } }')
+          PROJECT_ID_RW=""
+
+          # 1. Workspace-scoped (suppress stderr; if Workspace lacks
+          # `projects`, this fails silently and we fall back).
+          resp=$(_gql 'query($wid: String!) { workspace(id: $wid) { projects { edges { node { id name } } } } }' \
+            "$(jq -cn --arg wid "$WORKSPACE_ID" '{wid: $wid}')" 2>/dev/null || echo '{}')
+          ws_count=$(printf '%s' "$resp" | jq '(.data.workspace.projects.edges // []) | length' 2>/dev/null || echo 0)
+          echo "DEBUG: workspace($WORKSPACE_ID).projects returned $ws_count projects"
           PROJECT_ID_RW=$(printf '%s' "$resp" | jq -r --arg n "$SYSTEM_NAME" \
-            '.data.projects.edges | map(select(.node.name==$n)) | .[0].node.id // ""')
-          if [ -n "$PROJECT_ID_RW" ]; then
+            '(.data.workspace.projects.edges // []) | map(select(.node.name==$n)) | .[0].node.id // ""' 2>/dev/null || echo "")
+
+          # 2. Top-level fallback
+          if [ -z "$PROJECT_ID_RW" ] || [ "$PROJECT_ID_RW" = "null" ]; then
+            resp=$(_gql 'query { projects(first:100) { edges { node { id name } } } }' 2>/dev/null || echo '{}')
+            tl_count=$(printf '%s' "$resp" | jq '(.data.projects.edges // []) | length' 2>/dev/null || echo 0)
+            echo "DEBUG: top-level projects(first:100) returned $tl_count projects"
+            PROJECT_ID_RW=$(printf '%s' "$resp" | jq -r --arg n "$SYSTEM_NAME" \
+              '(.data.projects.edges // []) | map(select(.node.name==$n)) | .[0].node.id // ""' 2>/dev/null || echo "")
+          fi
+
+          if [ -n "$PROJECT_ID_RW" ] && [ "$PROJECT_ID_RW" != "null" ]; then
             echo "INFO: project exists: $PROJECT_ID_RW"
           else
             resp=$(_gql 'mutation($input: ProjectCreateInput!) { projectCreate(input: $input) { id } }' \
