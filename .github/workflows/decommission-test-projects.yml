@@ -1,0 +1,90 @@
+name: Delete test GCP projects (tactical cleanup)
+
+# One-off tool for clearing quota: soft-deletes a comma-separated list of
+# GCP projects via the broker SA. Hard guard: project ids must match the
+# `(factory-test-|v2-test-|or-test-)` test-system patterns. Refuses the
+# control project, the old factory's control project, and anything else.
+#
+# Auth: WIF as factory-master-broker. The broker has
+# roles/resourcemanager.projectDeleter on the systems folder
+# (123180924297), so this works only for projects under that folder.
+
+on:
+  workflow_dispatch:
+    inputs:
+      system_names:
+        description: "Comma-separated list of GCP project IDs to soft-delete (e.g. factory-test-7,factory-test-8). 30-day grace period before permanent deletion."
+        required: true
+        type: string
+
+permissions: {}
+
+jobs:
+  decom:
+    name: Soft-delete projects
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Validate inputs (safety gate)
+        env:
+          SYSTEM_NAMES: ${{ inputs.system_names }}
+        run: |
+          set -euo pipefail
+          if [ -z "$SYSTEM_NAMES" ]; then
+            echo "FAIL: system_names is empty" >&2; exit 1
+          fi
+          IFS=',' read -ra NAMES <<< "$SYSTEM_NAMES"
+          for raw in "${NAMES[@]}"; do
+            name="${raw// /}"  # strip whitespace
+            [ -n "$name" ] || continue
+            # Only test patterns allowed.
+            if ! [[ "$name" =~ ^(factory-test-|v2-test-|or-test-)[a-z0-9-]+$ ]]; then
+              echo "FAIL: '$name' does not match an allowed test pattern (factory-test-*, v2-test-*, or-test-*)" >&2
+              exit 1
+            fi
+            # Hard guards against the two control projects.
+            case "$name" in
+              or-factory-master-control|factory-control-9piybr)
+                echo "FAIL: refusing to delete control project '$name'" >&2; exit 1 ;;
+            esac
+          done
+          echo "PASS: all names match a test pattern"
+
+      - name: Authenticate to GCP via WIF
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed  # v2.1.13
+        with:
+          workload_identity_provider: "projects/140345952904/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
+          service_account: "factory-master-broker@or-factory-master-control.iam.gserviceaccount.com"
+
+      - name: Soft-delete each project
+        env:
+          SYSTEM_NAMES: ${{ inputs.system_names }}
+        run: |
+          set -euo pipefail
+          IFS=',' read -ra NAMES <<< "$SYSTEM_NAMES"
+          deleted=0
+          skipped=0
+          for raw in "${NAMES[@]}"; do
+            name="${raw// /}"
+            [ -n "$name" ] || continue
+            if ! gcloud projects describe "$name" >/dev/null 2>&1; then
+              echo "INFO: $name does not exist (already deleted or never existed) — skipping"
+              skipped=$((skipped + 1))
+              continue
+            fi
+            if gcloud projects delete "$name" --quiet 2>&1; then
+              echo "PASS: $name soft-deleted (30-day grace period)"
+              deleted=$((deleted + 1))
+            else
+              echo "FAIL: could not delete $name" >&2
+              exit 1
+            fi
+          done
+          echo ""
+          echo "=== Summary ==="
+          echo "deleted: $deleted"
+          echo "skipped: $skipped"
