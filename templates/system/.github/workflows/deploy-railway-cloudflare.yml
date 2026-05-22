@@ -561,6 +561,32 @@ jobs:
           fi
           # trap fires here to revoke the token.
 
+      - name: Wait for Railway TLS cert
+        env:
+          SYSTEM_NAME: ${{ vars.SYSTEM_NAME }}
+        run: |
+          set -euo pipefail
+          # Observational, non-blocking: Railway issues a Let's Encrypt cert
+          # for the custom domain only after its periodic DNS check passes.
+          # This step polls the TLS handshake from outside and reports when
+          # the cert CN matches our domain. Times out with a warning (not a
+          # failure) so deploys don't block on Railway's async issuance.
+          DOMAIN="n8n.${SYSTEM_NAME}.or-infra.com"
+          echo "=== Polling TLS cert on https://${DOMAIN} (up to 5min) ==="
+          for i in $(seq 1 30); do
+            cn=$(echo | timeout 5 openssl s_client \
+                   -connect "${DOMAIN}:443" -servername "${DOMAIN}" 2>/dev/null \
+                 | openssl x509 -noout -subject 2>/dev/null \
+                 | sed -n 's|.*CN *= *\([^,]*\).*|\1|p')
+            if [ "$cn" = "${DOMAIN}" ]; then
+              echo "PASS: Railway issued cert for ${DOMAIN} after $((i*10))s"
+              exit 0
+            fi
+            echo "[poll $i/30] CN=${cn:-<no cert>}; sleeping 10s..."
+            sleep 10
+          done
+          echo "::warning::Railway did not issue cert for ${DOMAIN} within 5min. Cert issuance can continue async — check the Railway dashboard for verification status, and retry the URL in a few minutes."
+
       - name: Persist Railway IDs to system SM
         env:
           PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
