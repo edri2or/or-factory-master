@@ -136,12 +136,13 @@ jobs:
 
           # ===== Workspace: required by projectCreate when token sees >1 =====
           # Railway requires an explicit workspaceId on projectCreate when the
-          # token has access to multiple workspaces. Pick the "edri2or"
-          # workspace by name; fall back to the first workspace returned.
+          # token has access to multiple workspaces. me.workspaces is a plain
+          # list of Workspace (not a Connection), so no edges/node wrapping.
+          # Pick the "edri2or" workspace by name; fall back to the first one.
           echo "=== Railway: resolve workspace id ==="
-          resp=$(_gql 'query { me { workspaces { edges { node { id name } } } } }')
+          resp=$(_gql 'query { me { workspaces { id name } } }')
           WORKSPACE_ID=$(printf '%s' "$resp" | jq -r \
-            '.data.me.workspaces.edges | map(.node)
+            '.data.me.workspaces
              | ((map(select(.name=="edri2or")) | .[0].id) // .[0].id // "")')
           [ -n "$WORKSPACE_ID" ] && [ "$WORKSPACE_ID" != "null" ] \
             || { echo "FAIL: no Railway workspace visible to this token; resp=$resp" >&2; exit 1; }
