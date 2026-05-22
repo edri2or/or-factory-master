@@ -171,7 +171,7 @@ app.get('/oauth/authorize', (req: Request, res: Response) => {
 </head>
 <body>
   <h2>factory-actions-mcp</h2>
-  <p>Authorize Claude to access GitHub Actions for <strong>edri2or/factory</strong>.</p>
+  <p>Authorize Claude to access GitHub Actions for <strong>edri2or/or-factory-master</strong>.</p>
   <form method="POST" action="/oauth/authorize">
     <input type="hidden" name="redirect_uri"           value="${esc(q['redirect_uri'] ?? '')}">
     <input type="hidden" name="state"                  value="${esc(q['state'] ?? '')}">

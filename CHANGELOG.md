@@ -1,5 +1,12 @@
 # Changelog
 
+## Stage 11 — MCP visibility + cosmetic followups
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | feature | Add `.github/workflows/tail-mcp-logs.yml` — manual-dispatch workflow that reads recent Cloud Logging entries for the `factory-master-actions-mcp` Cloud Run service and writes them to the job summary. Lets the agent diagnose OAuth / RPC issues against the new MCP without operator dashboard access (the operator now hits this via `gh` dispatch instead of running `gcloud logging read` in Cloud Shell). Logs only contain method/path/status/ms (per `services/mcp-server/src/index.ts:80-88`), so step-summary publication doesn't leak secrets. Accepts `lines` (1-500, default 40) and `severity` (DEFAULT/INFO/WARNING/ERROR) inputs. |
+| TBD | fix | Cosmetic: the OAuth authorize HTML page in `services/mcp-server/src/index.ts:174` was carried over verbatim from `edri2or/factory` and still labelled the consent prompt "Authorize Claude to access GitHub Actions for **edri2or/factory**". Update to `edri2or/or-factory-master`. Operator hits this page during the 1-time OAuth setup of the MCP in Claude Code. |
+
 ## Stage 10 — MCP migration (Railway visibility expansion)
 
 | PR | Type | Summary |

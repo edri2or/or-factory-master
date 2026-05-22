@@ -1,0 +1,101 @@
+name: Tail MCP Server Logs
+
+# Read recent Cloud Logging entries for the factory-master-actions-mcp
+# Cloud Run service in or-factory-master-control. Useful for diagnosing
+# OAuth flow / RPC issues against the MCP without operator dashboard
+# access — the agent dispatches this workflow and reads results from the
+# job summary.
+#
+# Safety: the MCP only logs request method + path + status code
+# (services/mcp-server/src/index.ts:80-88). Bodies, secrets, bearer
+# tokens, and admin-secret form-field values are NOT logged. So
+# publishing the output to a workflow summary doesn't leak secrets.
+
+on:
+  workflow_dispatch:
+    inputs:
+      lines:
+        description: "Max log entries to return (1-500, default 40)"
+        required: false
+        type: string
+        default: "40"
+      severity:
+        description: "Minimum log severity (DEFAULT/INFO/WARNING/ERROR). Defaults to DEFAULT (all entries)."
+        required: false
+        type: string
+        default: "DEFAULT"
+
+permissions: {}
+
+jobs:
+  tail:
+    name: Read MCP Cloud Run logs
+    runs-on: ubuntu-latest
+    environment: production
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      id-token: write
+
+    env:
+      GCP_PROJECT: "or-factory-master-control"
+      SERVICE: "factory-master-actions-mcp"
+      BROKER_SA: "factory-master-broker@or-factory-master-control.iam.gserviceaccount.com"
+      WIF_PROVIDER: "projects/140345952904/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
+
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - name: Authenticate to GCP via WIF
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed  # v2.1.13
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.BROKER_SA }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db  # v3.0.1
+
+      - name: Validate inputs
+        env:
+          LINES: ${{ inputs.lines }}
+          SEVERITY: ${{ inputs.severity }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$LINES" =~ ^[0-9]+$ ]] || [ "$LINES" -lt 1 ] || [ "$LINES" -gt 500 ]; then
+            echo "FAIL: lines must be an integer 1-500 (got: $LINES)" >&2
+            exit 1
+          fi
+          case "$SEVERITY" in
+            DEFAULT|INFO|WARNING|ERROR) ;;
+            *) echo "FAIL: severity must be DEFAULT, INFO, WARNING, or ERROR (got: $SEVERITY)" >&2; exit 1 ;;
+          esac
+
+      - name: Fetch logs + write to step summary
+        env:
+          LINES: ${{ inputs.lines }}
+          SEVERITY: ${{ inputs.severity }}
+        run: |
+          set -euo pipefail
+          FILTER='resource.type="cloud_run_revision" AND resource.labels.service_name="'"${SERVICE}"'"'
+          if [ "${SEVERITY}" != "DEFAULT" ]; then
+            FILTER="${FILTER} AND severity>=${SEVERITY}"
+          fi
+
+          echo "## MCP logs — \`${SERVICE}\` in \`${GCP_PROJECT}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Lines requested: ${LINES} • Min severity: ${SEVERITY} • Fetched at: $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          # --format yields one line per entry: ISO timestamp + textPayload.
+          # The MCP only logs path + status + ms (see index.ts:80-88), so
+          # no secrets are exposed in textPayload. --order=desc puts newest
+          # first so the most recent activity is at the top of the summary.
+          gcloud logging read "${FILTER}" \
+            --project="${GCP_PROJECT}" \
+            --limit="${LINES}" \
+            --order=desc \
+            --format='value(timestamp,textPayload)' \
+            >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Cloud Logging filter: \`${FILTER}\`" >> "$GITHUB_STEP_SUMMARY"
