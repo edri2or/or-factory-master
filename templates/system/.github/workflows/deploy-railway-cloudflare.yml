@@ -248,7 +248,7 @@ jobs:
             if [ -z "$PG_ID" ] || [ "$PG_ID" = "null" ]; then
               resp=$(_gql 'mutation($input: ServiceCreateInput!) { serviceCreate(input: $input) { id } }' \
                 "$(jq -cn --arg pid "$PROJECT_ID_RW" \
-                  '{input: {projectId: $pid, name: "Postgres", source: {image: "postgres:16-alpine"}}}')")
+                  '{input: {projectId: $pid, name: "Postgres", source: {image: "ghcr.io/railwayapp-templates/postgres-ssl:17"}}}')")
               PG_ID=$(printf '%s' "$resp" | jq -r '.data.serviceCreate.id' 2>/dev/null || echo "")
               [ -n "$PG_ID" ] && [ "$PG_ID" != "null" ] \
                 || { echo "FAIL: Postgres serviceCreate returned no id; resp=$resp" >&2; exit 1; }
@@ -269,21 +269,36 @@ jobs:
             echo "PASS: railway-postgres-service-id persisted to SM."
           fi
 
-          # ===== Postgres volume =====
-          echo "=== Railway: find-or-create postgres-data volume on Postgres ==="
-          resp=$(_gql 'query($id: String!) { project(id: $id) { volumes { edges { node { id name } } } } }' \
-            "$(jq -cn --arg id "$PROJECT_ID_RW" '{id: $id}')")
-          PG_VOLUME_ID=$(printf '%s' "$resp" | jq -r '.data.project.volumes.edges | map(select(.node.name=="postgres-data")) | .[0].node.id // ""')
+          # ===== Postgres volume: SM-first, find, then create =====
+          # Same pattern as project/service ids — volume find by name in
+          # Railway returns 0 with this token's scope, so SM is the source
+          # of truth.
+          echo "=== Railway: postgres-data volume (SM-first lookup) ==="
+          PG_VOLUME_ID=$(gcloud secrets versions access latest \
+            --secret=railway-postgres-volume-id --project="$PROJECT_ID" 2>/dev/null || echo "")
           if [ -n "$PG_VOLUME_ID" ] && [ "$PG_VOLUME_ID" != "null" ]; then
-            echo "INFO: volume 'postgres-data' exists: $PG_VOLUME_ID"
+            echo "INFO: reusing postgres-data volume_id from SM: $PG_VOLUME_ID"
           else
-            resp=$(_gql 'mutation($input: VolumeCreateInput!) { volumeCreate(input: $input) { id } }' \
-              "$(jq -cn --arg pid "$PROJECT_ID_RW" --arg sid "$PG_ID" \
-                '{input: {projectId: $pid, serviceId: $sid, mountPath: "/var/lib/postgresql/data"}}')")
-            PG_VOLUME_ID=$(printf '%s' "$resp" | jq -r '.data.volumeCreate.id')
-            [ -n "$PG_VOLUME_ID" ] && [ "$PG_VOLUME_ID" != "null" ] \
-              || { echo "FAIL: Postgres volumeCreate returned no id; resp=$resp" >&2; exit 1; }
-            echo "PASS: postgres-data volume created and attached: $PG_VOLUME_ID"
+            resp=$(_gql 'query($id: String!) { project(id: $id) { volumes { edges { node { id name } } } } }' \
+              "$(jq -cn --arg id "$PROJECT_ID_RW" '{id: $id}')" 2>/dev/null || echo '{}')
+            PG_VOLUME_ID=$(printf '%s' "$resp" | jq -r \
+              '(.data.project.volumes.edges // []) | map(select(.node.name=="postgres-data")) | .[0].node.id // ""' 2>/dev/null || echo "")
+
+            if [ -z "$PG_VOLUME_ID" ] || [ "$PG_VOLUME_ID" = "null" ]; then
+              resp=$(_gql 'mutation($input: VolumeCreateInput!) { volumeCreate(input: $input) { id } }' \
+                "$(jq -cn --arg pid "$PROJECT_ID_RW" --arg sid "$PG_ID" \
+                  '{input: {projectId: $pid, serviceId: $sid, mountPath: "/var/lib/postgresql/data"}}')")
+              PG_VOLUME_ID=$(printf '%s' "$resp" | jq -r '.data.volumeCreate.id' 2>/dev/null || echo "")
+              [ -n "$PG_VOLUME_ID" ] && [ "$PG_VOLUME_ID" != "null" ] \
+                || { echo "FAIL: Postgres volumeCreate returned no id; resp=$resp" >&2; exit 1; }
+              echo "PASS: postgres-data volume created and attached: $PG_VOLUME_ID"
+            else
+              echo "INFO: postgres-data volume found in project: $PG_VOLUME_ID"
+            fi
+
+            printf '%s' "$PG_VOLUME_ID" | gcloud secrets versions add railway-postgres-volume-id \
+              --project="$PROJECT_ID" --data-file=- --quiet
+            echo "PASS: railway-postgres-volume-id persisted to SM."
           fi
 
           # ===== n8n service: SM-first, find, then create =====
@@ -315,21 +330,33 @@ jobs:
             echo "PASS: railway-n8n-service-id persisted to SM."
           fi
 
-          # ===== n8n volume =====
-          echo "=== Railway: find-or-create n8n-data volume on n8n service ==="
-          resp=$(_gql 'query($id: String!) { project(id: $id) { volumes { edges { node { id name } } } } }' \
-            "$(jq -cn --arg id "$PROJECT_ID_RW" '{id: $id}')")
-          VOLUME_ID=$(printf '%s' "$resp" | jq -r '.data.project.volumes.edges | map(select(.node.name=="n8n-data")) | .[0].node.id // ""')
+          # ===== n8n volume: SM-first, find, then create =====
+          echo "=== Railway: n8n-data volume (SM-first lookup) ==="
+          VOLUME_ID=$(gcloud secrets versions access latest \
+            --secret=railway-n8n-volume-id --project="$PROJECT_ID" 2>/dev/null || echo "")
           if [ -n "$VOLUME_ID" ] && [ "$VOLUME_ID" != "null" ]; then
-            echo "INFO: volume 'n8n-data' exists: $VOLUME_ID"
+            echo "INFO: reusing n8n-data volume_id from SM: $VOLUME_ID"
           else
-            resp=$(_gql 'mutation($input: VolumeCreateInput!) { volumeCreate(input: $input) { id } }' \
-              "$(jq -cn --arg pid "$PROJECT_ID_RW" --arg sid "$N8N_ID" \
-                '{input: {projectId: $pid, serviceId: $sid, mountPath: "/home/node/.n8n"}}')")
-            VOLUME_ID=$(printf '%s' "$resp" | jq -r '.data.volumeCreate.id')
-            [ -n "$VOLUME_ID" ] && [ "$VOLUME_ID" != "null" ] \
-              || { echo "FAIL: volumeCreate returned no id; resp=$resp" >&2; exit 1; }
-            echo "PASS: n8n-data volume created and attached: $VOLUME_ID"
+            resp=$(_gql 'query($id: String!) { project(id: $id) { volumes { edges { node { id name } } } } }' \
+              "$(jq -cn --arg id "$PROJECT_ID_RW" '{id: $id}')" 2>/dev/null || echo '{}')
+            VOLUME_ID=$(printf '%s' "$resp" | jq -r \
+              '(.data.project.volumes.edges // []) | map(select(.node.name=="n8n-data")) | .[0].node.id // ""' 2>/dev/null || echo "")
+
+            if [ -z "$VOLUME_ID" ] || [ "$VOLUME_ID" = "null" ]; then
+              resp=$(_gql 'mutation($input: VolumeCreateInput!) { volumeCreate(input: $input) { id } }' \
+                "$(jq -cn --arg pid "$PROJECT_ID_RW" --arg sid "$N8N_ID" \
+                  '{input: {projectId: $pid, serviceId: $sid, mountPath: "/home/node/.n8n"}}')")
+              VOLUME_ID=$(printf '%s' "$resp" | jq -r '.data.volumeCreate.id' 2>/dev/null || echo "")
+              [ -n "$VOLUME_ID" ] && [ "$VOLUME_ID" != "null" ] \
+                || { echo "FAIL: n8n volumeCreate returned no id; resp=$resp" >&2; exit 1; }
+              echo "PASS: n8n-data volume created and attached: $VOLUME_ID"
+            else
+              echo "INFO: n8n-data volume found in project: $VOLUME_ID"
+            fi
+
+            printf '%s' "$VOLUME_ID" | gcloud secrets versions add railway-n8n-volume-id \
+              --project="$PROJECT_ID" --data-file=- --quiet
+            echo "PASS: railway-n8n-volume-id persisted to SM."
           fi
 
           # ===== n8n env vars: upsert =====
@@ -348,7 +375,9 @@ jobs:
           _upsert "$N8N_ID" DB_POSTGRESDB_USER     "${DLR}{{Postgres.POSTGRES_USER}}"
           _upsert "$N8N_ID" DB_POSTGRESDB_PASSWORD "${DLR}{{Postgres.POSTGRES_PASSWORD}}"
           _upsert "$N8N_ID" DB_POSTGRESDB_SCHEMA   public
-          _upsert "$N8N_ID" N8N_HOST               "$DOMAIN"
+          # N8N_HOST is the BIND address (Express listen interface), not the
+          # public hostname. WEBHOOK_URL carries the public domain.
+          _upsert "$N8N_ID" N8N_HOST               "0.0.0.0"
           _upsert "$N8N_ID" N8N_PROTOCOL           https
           _upsert "$N8N_ID" N8N_PORT               5678
           _upsert "$N8N_ID" PORT                   5678

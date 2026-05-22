@@ -382,6 +382,8 @@ jobs:
             railway-project-id
             railway-n8n-service-id
             railway-postgres-service-id
+            railway-postgres-volume-id
+            railway-n8n-volume-id
           )
           RUNTIME_SA="runtime-sa@${SYSTEM_NAME}.iam.gserviceaccount.com"
           DEPLOY_SA="deploy-sa@${SYSTEM_NAME}.iam.gserviceaccount.com"
