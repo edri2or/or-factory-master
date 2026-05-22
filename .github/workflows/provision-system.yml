@@ -369,9 +369,13 @@ jobs:
           SYSTEM_NAME: ${{ inputs.system_name }}
         run: |
           set -euo pipefail
-          # The deploy workflow needs to write four runtime-only secrets:
-          # n8n-encryption-key (generated per-system on first deploy) and the
-          # three Railway-id pointers (project, n8n service, Postgres service).
+          # The deploy workflow needs to write runtime-only secrets that
+          # deploy-sa cannot create on its own:
+          #   - n8n-encryption-key (generated per-system on first deploy)
+          #   - n8n-owner-email + n8n-owner-password (consumed by n8n's
+          #     /rest/owner/setup; the workflow auto-creates the n8n admin
+          #     account on first deploy)
+          #   - railway-* pointers persisted from Railway's API responses
           # deploy-sa has roles/secretmanager.secretVersionManager at project
           # level — that includes versions.add but NOT secrets.create. Create
           # the shells here, as the broker SA (which has roles/owner), so the
@@ -379,6 +383,8 @@ jobs:
           # role.
           RUNTIME_SHELLS=(
             n8n-encryption-key
+            n8n-owner-email
+            n8n-owner-password
             railway-project-id
             railway-n8n-service-id
             railway-postgres-service-id
