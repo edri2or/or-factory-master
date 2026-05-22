@@ -364,6 +364,57 @@ jobs:
           set -euo pipefail
           bash scripts/copy-generic-secrets.sh "$SYSTEM_NAME"
 
+      - name: Pre-create runtime secret shells
+        env:
+          SYSTEM_NAME: ${{ inputs.system_name }}
+        run: |
+          set -euo pipefail
+          # The deploy workflow needs to write four runtime-only secrets:
+          # n8n-encryption-key (generated per-system on first deploy) and the
+          # three Railway-id pointers (project, n8n service, Postgres service).
+          # deploy-sa has roles/secretmanager.secretVersionManager at project
+          # level — that includes versions.add but NOT secrets.create. Create
+          # the shells here, as the broker SA (which has roles/owner), so the
+          # deploy workflow can just add versions without needing a broader
+          # role.
+          RUNTIME_SHELLS=(
+            n8n-encryption-key
+            railway-project-id
+            railway-n8n-service-id
+            railway-postgres-service-id
+          )
+          RUNTIME_SA="runtime-sa@${SYSTEM_NAME}.iam.gserviceaccount.com"
+          DEPLOY_SA="deploy-sa@${SYSTEM_NAME}.iam.gserviceaccount.com"
+
+          for secret in "${RUNTIME_SHELLS[@]}"; do
+            if ! gcloud secrets describe "$secret" --project="$SYSTEM_NAME" >/dev/null 2>&1; then
+              gcloud secrets create "$secret" \
+                --project="$SYSTEM_NAME" \
+                --replication-policy=automatic \
+                --labels="managed-by=or-factory-master,system=${SYSTEM_NAME},runtime-shell=true" \
+                --quiet
+              echo "PASS: shell created: $secret"
+            else
+              echo "INFO: $secret already exists"
+            fi
+
+            # runtime-sa needs read access; deploy-sa already has
+            # secretVersionManager project-wide, but grant per-secret accessor
+            # too so the deploy workflow's `versions access latest` works
+            # regardless of whether the project-level grant has propagated.
+            gcloud secrets add-iam-policy-binding "$secret" \
+              --project="$SYSTEM_NAME" \
+              --role="roles/secretmanager.secretAccessor" \
+              --member="serviceAccount:${RUNTIME_SA}" \
+              --quiet >/dev/null
+            gcloud secrets add-iam-policy-binding "$secret" \
+              --project="$SYSTEM_NAME" \
+              --role="roles/secretmanager.secretAccessor" \
+              --member="serviceAccount:${DEPLOY_SA}" \
+              --quiet >/dev/null
+          done
+          echo "PASS: all ${#RUNTIME_SHELLS[@]} runtime secret shells ready."
+
       - name: Set repo variables
         env:
           SYSTEM_NAME: ${{ inputs.system_name }}
