@@ -135,7 +135,7 @@ jobs:
             printf '%s' "$resp"
           }
 
-          DOMAIN="n8n.${SYSTEM_NAME}.or-infra.com"
+          DOMAIN="n8n-${SYSTEM_NAME}.or-infra.com"
 
           # ===== Workspace: required by projectCreate when token sees >1 =====
           # Railway requires an explicit workspaceId on projectCreate when the
@@ -399,13 +399,14 @@ jobs:
           echo "PASS: n8n env vars set (15 vars in parallel)."
 
           # ===== Custom domain on n8n service =====
-          # Railway returns multiple dnsRecords for multi-level subdomains:
-          # a CNAME for routing AND a TXT (_railway-verify.<host>) for
-          # ownership verification. Until BOTH are present in Cloudflare,
-          # Railway will not issue a Let's Encrypt cert and the host serves
-          # the *.up.railway.app wildcard cert (which trips CERT_COMMON_NAME_INVALID
-          # in the browser). Capture the full list and let the Cloudflare
-          # step upsert every record Railway requires.
+          # We use a single-level subdomain ("n8n-<system>.or-infra.com")
+          # because Railway no longer surfaces the _railway-verify TXT for
+          # multi-level subdomains via the API, and without it Railway never
+          # issues the LE cert and the host serves the *.up.railway.app
+          # wildcard (CERT_COMMON_NAME_INVALID in the browser). Single-level
+          # subdomains only need the CNAME — Railway issues the cert as soon
+          # as it sees the DNS in place. The dnsRecords loop below is kept
+          # generic to write every record Railway lists.
           echo "=== Railway: find-or-create custom domain ${DOMAIN} ==="
           resp=$(_gql 'query($id: String!) {
               service(id: $id) {
@@ -436,20 +437,6 @@ jobs:
              | .[0].node.domains.customDomains
              | map(select(.domain==$d))
              | .[0].status.dnsRecords // []')
-
-          # Railway only returns the verification TXT record in customDomainCreate's
-          # response (and in subsequent queries' status.dnsRecords) when that record
-          # is missing from DNS. Older systems were created without our writing the
-          # TXT to Cloudflare, so the find-existing query returns just the CNAME and
-          # Railway never issued the LE cert. Detect this stuck state and recreate.
-          if [ -n "$CUSTOM_DOMAIN_ID" ] \
-             && [ "$(printf '%s' "$DNS_RECORDS_JSON" | jq 'length')" -lt 2 ]; then
-            echo "WARN: existing customDomain $CUSTOM_DOMAIN_ID has $(printf '%s' "$DNS_RECORDS_JSON" | jq 'length') dnsRecords (expected ≥2 with CNAME + verify TXT). Deleting and recreating to surface the verification record."
-            _gql 'mutation($id: String!) { customDomainDelete(id: $id) }' \
-              "$(jq -cn --arg id "$CUSTOM_DOMAIN_ID" '{id: $id}')" >/dev/null
-            CUSTOM_DOMAIN_ID=""
-            DNS_RECORDS_JSON="[]"
-          fi
 
           if [ -n "$CUSTOM_DOMAIN_ID" ]; then
             echo "INFO: custom domain $DOMAIN exists on Railway."
@@ -575,9 +562,8 @@ jobs:
             # (CNAME / TXT). Strip the enum prefix.
             CF_TYPE="${RECTYPE#DNS_RECORD_TYPE_}"
 
-            # Railway's hostlabel is RELATIVE to the zone (e.g. "n8n.factory-test-12"
-            # for the CNAME, "_railway-verify.n8n.factory-test-12" for the TXT).
-            # Append the zone name to get the FQDN for Cloudflare.
+            # Railway's hostlabel is RELATIVE to the zone (e.g. "n8n-factory-test-12"
+            # for the CNAME). Append the zone name to get the FQDN for Cloudflare.
             case "$HOSTLABEL" in
               *.or-infra.com|or-infra.com) CF_NAME="$HOSTLABEL" ;;
               *) CF_NAME="${HOSTLABEL}.or-infra.com" ;;
@@ -627,7 +613,7 @@ jobs:
           # This step polls the TLS handshake from outside and reports when
           # the cert CN matches our domain. Times out with a warning (not a
           # failure) so deploys don't block on Railway's async issuance.
-          DOMAIN="n8n.${SYSTEM_NAME}.or-infra.com"
+          DOMAIN="n8n-${SYSTEM_NAME}.or-infra.com"
           echo "=== Polling TLS cert on https://${DOMAIN} (up to 5min) ==="
           for i in $(seq 1 30); do
             cn=$(echo | timeout 5 openssl s_client \
