@@ -423,6 +423,13 @@ jobs:
             }' \
             "$(jq -cn --arg id "$N8N_ID" '{id: $id}')")
 
+          CUSTOM_DOMAIN_ID=$(printf '%s' "$resp" | jq -r --arg eid "$ENV_ID" --arg d "$DOMAIN" \
+            '.data.service.serviceInstances.edges
+             | map(select(.node.environmentId==$eid))
+             | .[0].node.domains.customDomains
+             | map(select(.domain==$d))
+             | .[0].id // ""')
+
           DNS_RECORDS_JSON=$(printf '%s' "$resp" | jq -c --arg eid "$ENV_ID" --arg d "$DOMAIN" \
             '.data.service.serviceInstances.edges
              | map(select(.node.environmentId==$eid))
@@ -430,7 +437,21 @@ jobs:
              | map(select(.domain==$d))
              | .[0].status.dnsRecords // []')
 
-          if [ "$(printf '%s' "$DNS_RECORDS_JSON" | jq 'length')" -gt 0 ]; then
+          # Railway only returns the verification TXT record in customDomainCreate's
+          # response (and in subsequent queries' status.dnsRecords) when that record
+          # is missing from DNS. Older systems were created without our writing the
+          # TXT to Cloudflare, so the find-existing query returns just the CNAME and
+          # Railway never issued the LE cert. Detect this stuck state and recreate.
+          if [ -n "$CUSTOM_DOMAIN_ID" ] \
+             && [ "$(printf '%s' "$DNS_RECORDS_JSON" | jq 'length')" -lt 2 ]; then
+            echo "WARN: existing customDomain $CUSTOM_DOMAIN_ID has $(printf '%s' "$DNS_RECORDS_JSON" | jq 'length') dnsRecords (expected ≥2 with CNAME + verify TXT). Deleting and recreating to surface the verification record."
+            _gql 'mutation($id: String!) { customDomainDelete(id: $id) }' \
+              "$(jq -cn --arg id "$CUSTOM_DOMAIN_ID" '{id: $id}')" >/dev/null
+            CUSTOM_DOMAIN_ID=""
+            DNS_RECORDS_JSON="[]"
+          fi
+
+          if [ -n "$CUSTOM_DOMAIN_ID" ]; then
             echo "INFO: custom domain $DOMAIN exists on Railway."
           else
             # CustomDomainCreateInput required fields (confirmed via __type
@@ -452,9 +473,10 @@ jobs:
           echo "Railway-required DNS records for ${DOMAIN}:"
           printf '%s' "$DNS_RECORDS_JSON" | jq -r '.[] | "  - \(.recordType) \(.hostlabel) -> \(.requiredValue)"'
 
-          # Derive CNAME_TARGET for the Summary step.
+          # Derive CNAME_TARGET for the Summary step. recordType is enum-prefixed:
+          # DNS_RECORD_TYPE_CNAME / DNS_RECORD_TYPE_TXT.
           CNAME_TARGET=$(printf '%s' "$DNS_RECORDS_JSON" | jq -r \
-            'map(select(.recordType=="CNAME")) | .[0].requiredValue // ""')
+            'map(select(.recordType=="DNS_RECORD_TYPE_CNAME")) | .[0].requiredValue // ""')
 
           # Persist for the next steps
           {
