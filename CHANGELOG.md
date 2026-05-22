@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 7 — fixes (cont.)
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | fix | Revert Postgres env-vars-before-volumeCreate from PR #28. That reorder hung Postgres in `DEPLOYING` on factory-test-16 (same symptom as factory-test-9/10/11 earlier in the session). Restore `edri2or/factory`'s verbatim order: serviceCreate → volumeCreate → env vars. |
+
 ## CI / process
 
 | PR | Type | Summary |
