@@ -233,6 +233,61 @@ jobs:
             echo "_This job polls for up to 10 minutes._"
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Notify operator via Telegram
+        id: notify-telegram
+        if: steps.check-secrets.outputs.exists == 'false'
+        env:
+          SYSTEM_NAME: ${{ inputs.system_name }}
+        run: |
+          {
+          set -euo pipefail
+
+          TG_TOKEN=$(gcloud secrets versions access latest \
+            --secret=telegram-bot-token \
+            --project="${GCP_PROJECT}")
+          echo "::add-mask::${TG_TOKEN}"
+
+          TG_CHAT_ID=$(gcloud secrets versions access latest \
+            --secret=telegram-chat-id \
+            --project="${GCP_PROJECT}")
+          echo "::add-mask::${TG_CHAT_ID}"
+
+          DEADLINE=$(date -u -d '+10 minutes' +'%H:%M UTC')
+          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+
+          TEXT="<b>Factory: GitHub App registration needed</b>
+
+          System: <code>${SYSTEM_NAME}</code>
+          Org: edri2or
+          Deadline: ${DEADLINE} (~10 min)
+
+          Tap to register (2 clicks on GitHub):
+          ${SERVICE_URL}
+
+          1. Click \"Create GitHub App\"
+          2. Click \"Install\" → \"Only select repositories\", tick <code>edri2or/${SYSTEM_NAME}</code>
+
+          Run: ${RUN_URL}"
+
+          PAYLOAD=$(jq -n \
+            --arg chat "${TG_CHAT_ID}" \
+            --arg text "${TEXT}" \
+            '{chat_id: $chat, text: $text, parse_mode: "HTML", disable_web_page_preview: true}')
+
+          HTTP_CODE=$(curl -sS -o /tmp/tg-resp.json -w '%{http_code}' \
+            -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
+            -H "Content-Type: application/json" \
+            --data "${PAYLOAD}")
+
+          if [ "$HTTP_CODE" -ne 200 ]; then
+            echo "::error::Telegram sendMessage failed HTTP $HTTP_CODE"
+            jq -r '.description // "no description"' /tmp/tg-resp.json | head -5
+            exit 1
+          fi
+          echo "PASS: Telegram notification sent (HTTP $HTTP_CODE)"
+          } 2>&1 | tee /tmp/notify-telegram.log
+          exit "${PIPESTATUS[0]}"
+
       - name: Poll for App credentials (up to 10 min)
         if: steps.check-secrets.outputs.exists == 'false'
         run: |
