@@ -174,37 +174,66 @@ jobs:
             || { echo "FAIL: production environment not found on project $PROJECT_ID_RW" >&2; exit 1; }
           echo "INFO: production environment id: $ENV_ID"
 
-          # ===== Postgres: find or templateDeploy =====
-          echo "=== Railway: find-or-create Postgres service ==="
-          _find_pg() {
-            local r
-            r=$(_gql 'query($id: String!) { project(id: $id) { services { edges { node { id name } } } } }' \
-              "$(jq -cn --arg id "$PROJECT_ID_RW" '{id: $id}')")
-            printf '%s' "$r" | jq -r '.data.project.services.edges | map(select(.node.name=="Postgres")) | .[0].node.id // ""'
+          # ===== Generic env-var upsert helper =====
+          # Takes an explicit service id so we can set env vars on both
+          # Postgres and n8n services.
+          _upsert() {
+            local sid="$1" name="$2" value="$3"
+            _gql 'mutation($input: VariableUpsertInput!) { variableUpsert(input: $input) }' \
+              "$(jq -cn --arg pid "$PROJECT_ID_RW" --arg eid "$ENV_ID" --arg sid "$sid" \
+                --arg n "$name" --arg v "$value" \
+                '{input: {projectId: $pid, environmentId: $eid, serviceId: $sid, name: $n, value: $v}}')" \
+              > /dev/null
+            echo "  PASS: $name"
           }
-          PG_ID=$(_find_pg)
+
+          # ===== Postgres: find-or-create manually =====
+          # templateDeploy("postgres") returned a generic "Problem processing
+          # request". Use serviceCreate with the postgres image directly +
+          # set POSTGRES_USER/DB/PASSWORD/PGDATA ourselves. Deterministic and
+          # avoids depending on Railway's template runtime.
+          echo "=== Railway: find-or-create Postgres service ==="
+          resp=$(_gql 'query($id: String!) { project(id: $id) { services { edges { node { id name } } } } }' \
+            "$(jq -cn --arg id "$PROJECT_ID_RW" '{id: $id}')")
+          PG_ID=$(printf '%s' "$resp" | jq -r '.data.project.services.edges | map(select(.node.name=="Postgres")) | .[0].node.id // ""')
           if [ -n "$PG_ID" ] && [ "$PG_ID" != "null" ]; then
             echo "INFO: Postgres service exists: $PG_ID"
           else
-            echo "Deploying Railway Postgres template..."
-            resp=$(_gql 'mutation($input: TemplateDeployInput!) { templateDeploy(input: $input) { workflowId } }' \
-              "$(jq -cn --arg pid "$PROJECT_ID_RW" --arg eid "$ENV_ID" \
-                '{input: {projectId: $pid, environmentId: $eid, templateCode: "postgres"}}')")
-            WORKFLOW=$(printf '%s' "$resp" | jq -r '.data.templateDeploy.workflowId // ""')
-            echo "INFO: templateDeploy workflowId: ${WORKFLOW:-unknown}"
-
-            # Poll the project's services until 'Postgres' appears (max 5 min).
-            for i in $(seq 1 30); do
-              PG_ID=$(_find_pg)
-              if [ -n "$PG_ID" ] && [ "$PG_ID" != "null" ]; then
-                echo "PASS: Postgres service appeared after ${i}0s: $PG_ID"
-                break
-              fi
-              echo "INFO: waiting for Postgres service (attempt $i/30, sleep 10s)..."
-              sleep 10
-            done
+            resp=$(_gql 'mutation($input: ServiceCreateInput!) { serviceCreate(input: $input) { id } }' \
+              "$(jq -cn --arg pid "$PROJECT_ID_RW" \
+                '{input: {projectId: $pid, name: "Postgres", source: {image: "postgres:16-alpine"}}}')")
+            PG_ID=$(printf '%s' "$resp" | jq -r '.data.serviceCreate.id')
             [ -n "$PG_ID" ] && [ "$PG_ID" != "null" ] \
-              || { echo "FAIL: Postgres service did not appear within 5 min" >&2; exit 1; }
+              || { echo "FAIL: Postgres serviceCreate returned no id; resp=$resp" >&2; exit 1; }
+            echo "PASS: Postgres service created: $PG_ID"
+
+            # First-time env vars on Postgres. Password is random per system,
+            # never re-rotated by the workflow — Railway stores it on the
+            # service and exposes it via the Postgres.POSTGRES_PASSWORD
+            # reference for n8n's connection string.
+            POSTGRES_PASSWORD=$(openssl rand -hex 24)
+            echo "::add-mask::${POSTGRES_PASSWORD}"
+            _upsert "$PG_ID" POSTGRES_USER     postgres
+            _upsert "$PG_ID" POSTGRES_DB       railway
+            _upsert "$PG_ID" POSTGRES_PASSWORD "$POSTGRES_PASSWORD"
+            _upsert "$PG_ID" PGDATA            /var/lib/postgresql/data/pgdata
+          fi
+
+          # ===== Postgres volume =====
+          echo "=== Railway: find-or-create postgres-data volume on Postgres ==="
+          resp=$(_gql 'query($id: String!) { project(id: $id) { volumes { edges { node { id name } } } } }' \
+            "$(jq -cn --arg id "$PROJECT_ID_RW" '{id: $id}')")
+          PG_VOLUME_ID=$(printf '%s' "$resp" | jq -r '.data.project.volumes.edges | map(select(.node.name=="postgres-data")) | .[0].node.id // ""')
+          if [ -n "$PG_VOLUME_ID" ] && [ "$PG_VOLUME_ID" != "null" ]; then
+            echo "INFO: volume 'postgres-data' exists: $PG_VOLUME_ID"
+          else
+            resp=$(_gql 'mutation($input: VolumeCreateInput!) { volumeCreate(input: $input) { id } }' \
+              "$(jq -cn --arg pid "$PROJECT_ID_RW" --arg sid "$PG_ID" \
+                '{input: {projectId: $pid, serviceId: $sid, mountPath: "/var/lib/postgresql/data"}}')")
+            PG_VOLUME_ID=$(printf '%s' "$resp" | jq -r '.data.volumeCreate.id')
+            [ -n "$PG_VOLUME_ID" ] && [ "$PG_VOLUME_ID" != "null" ] \
+              || { echo "FAIL: Postgres volumeCreate returned no id; resp=$resp" >&2; exit 1; }
+            echo "PASS: postgres-data volume created and attached: $PG_VOLUME_ID"
           fi
 
           # ===== n8n service: find or create from image =====
@@ -224,7 +253,7 @@ jobs:
             echo "PASS: n8n service created: $N8N_ID"
           fi
 
-          # ===== Volume: find or create+attach to n8n =====
+          # ===== n8n volume =====
           echo "=== Railway: find-or-create n8n-data volume on n8n service ==="
           resp=$(_gql 'query($id: String!) { project(id: $id) { volumes { edges { node { id name } } } } }' \
             "$(jq -cn --arg id "$PROJECT_ID_RW" '{id: $id}')")
@@ -243,38 +272,28 @@ jobs:
 
           # ===== n8n env vars: upsert =====
           # DB_* values use Railway reference syntax — resolved at container
-          # start from the Postgres service's auto-generated env. Restart-safe
-          # across credential rotations.
+          # start from the Postgres service's env we just set. Restart-safe.
           echo "=== Railway: upsert n8n env vars ==="
-          _upsert() {
-            local name="$1" value="$2"
-            _gql 'mutation($input: VariableUpsertInput!) { variableUpsert(input: $input) }' \
-              "$(jq -cn --arg pid "$PROJECT_ID_RW" --arg eid "$ENV_ID" --arg sid "$N8N_ID" \
-                --arg n "$name" --arg v "$value" \
-                '{input: {projectId: $pid, environmentId: $eid, serviceId: $sid, name: $n, value: $v}}')" \
-              > /dev/null
-            echo "  PASS: $name"
-          }
-
           # GitHub Actions parses the dollar-double-brace expression syntax at
           # YAML load time and will reject the workflow if it sees Railway's
           # reference syntax verbatim. Assemble the prefix at bash runtime so
           # that sequence never appears literally in this YAML source.
           DLR='$'
-          _upsert DB_TYPE postgresdb
-          _upsert DB_POSTGRESDB_HOST     "${DLR}{{Postgres.PGHOST}}"
-          _upsert DB_POSTGRESDB_PORT     "${DLR}{{Postgres.PGPORT}}"
-          _upsert DB_POSTGRESDB_DATABASE "${DLR}{{Postgres.PGDATABASE}}"
-          _upsert DB_POSTGRESDB_USER     "${DLR}{{Postgres.PGUSER}}"
-          _upsert DB_POSTGRESDB_PASSWORD "${DLR}{{Postgres.PGPASSWORD}}"
-          _upsert DB_POSTGRESDB_SCHEMA   public
-          _upsert N8N_HOST               "$DOMAIN"
-          _upsert N8N_PROTOCOL           https
-          _upsert N8N_PORT               5678
-          _upsert WEBHOOK_URL            "https://${DOMAIN}"
-          _upsert GENERIC_TIMEZONE       "$TIMEZONE"
-          _upsert N8N_ENCRYPTION_KEY     "$N8N_KEY"
-          _upsert N8N_RUNNERS_ENABLED    true
+          _upsert "$N8N_ID" DB_TYPE                postgresdb
+          _upsert "$N8N_ID" DB_POSTGRESDB_HOST     "${DLR}{{Postgres.RAILWAY_PRIVATE_DOMAIN}}"
+          _upsert "$N8N_ID" DB_POSTGRESDB_PORT     5432
+          _upsert "$N8N_ID" DB_POSTGRESDB_DATABASE "${DLR}{{Postgres.POSTGRES_DB}}"
+          _upsert "$N8N_ID" DB_POSTGRESDB_USER     "${DLR}{{Postgres.POSTGRES_USER}}"
+          _upsert "$N8N_ID" DB_POSTGRESDB_PASSWORD "${DLR}{{Postgres.POSTGRES_PASSWORD}}"
+          _upsert "$N8N_ID" DB_POSTGRESDB_SCHEMA   public
+          _upsert "$N8N_ID" N8N_HOST               "$DOMAIN"
+          _upsert "$N8N_ID" N8N_PROTOCOL           https
+          _upsert "$N8N_ID" N8N_PORT               5678
+          _upsert "$N8N_ID" PORT                   5678
+          _upsert "$N8N_ID" WEBHOOK_URL            "https://${DOMAIN}"
+          _upsert "$N8N_ID" GENERIC_TIMEZONE       "$TIMEZONE"
+          _upsert "$N8N_ID" N8N_ENCRYPTION_KEY     "$N8N_KEY"
+          _upsert "$N8N_ID" N8N_RUNNERS_ENABLED    true
 
           # ===== Custom domain on n8n service =====
           # Railway issues its own LE cert against the CNAME target it returns;
