@@ -103,6 +103,7 @@ jobs:
 
       - name: Provision Railway (project + Postgres + n8n + volume + env vars + domain)
         env:
+          PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
           SYSTEM_NAME: ${{ vars.SYSTEM_NAME }}
         run: |
           set -euo pipefail
