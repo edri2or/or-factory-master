@@ -81,20 +81,17 @@ jobs:
           SYSTEM_NAME: ${{ vars.SYSTEM_NAME }}
         run: |
           set -euo pipefail
+          # The shell is pre-created by provision-system.yml's
+          # "Pre-create runtime secret shells" step. This step only adds
+          # a version on first run, or reads the existing version on later
+          # runs.
           SECRET="n8n-encryption-key"
 
           if N8N_KEY=$(gcloud secrets versions access latest \
                        --secret="$SECRET" --project="$PROJECT_ID" 2>/dev/null) \
              && [ -n "$N8N_KEY" ]; then
-            echo "INFO: $SECRET already present in $PROJECT_ID — reusing existing key."
+            echo "INFO: $SECRET already has a version — reusing existing key."
           else
-            if ! gcloud secrets describe "$SECRET" --project="$PROJECT_ID" >/dev/null 2>&1; then
-              gcloud secrets create "$SECRET" --project="$PROJECT_ID" \
-                --replication-policy=automatic \
-                --labels="managed-by=or-factory-master,system=${SYSTEM_NAME}" \
-                --quiet
-              echo "PASS: $SECRET shell created in $PROJECT_ID."
-            fi
             N8N_KEY=$(openssl rand -hex 32)
             printf '%s' "$N8N_KEY" | gcloud secrets versions add "$SECRET" \
               --project="$PROJECT_ID" --data-file=- --quiet
@@ -372,12 +369,7 @@ jobs:
               echo "WARN: $secret mismatch — SM has '$existing', Railway returned '$want'. NOT overwriting; surface and continue." >&2
               return 0
             fi
-            if ! gcloud secrets describe "$secret" --project="$PROJECT_ID" >/dev/null 2>&1; then
-              gcloud secrets create "$secret" --project="$PROJECT_ID" \
-                --replication-policy=automatic \
-                --labels="managed-by=or-factory-master,system=${SYSTEM_NAME}" \
-                --quiet
-            fi
+            # Shell pre-created by provision-system.yml — only add a version here.
             printf '%s' "$want" | gcloud secrets versions add "$secret" \
               --project="$PROJECT_ID" --data-file=- --quiet
             echo "PASS: $secret = ${want}"
