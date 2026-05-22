@@ -966,14 +966,39 @@ jobs:
           WF_NAME="factory-master: n8n ready notifier"
           CRED_NAME="Telegram Bot (factory-master)"
 
-          # 1. Read Telegram secrets from the system's SM. Both are guaranteed
-          #    present by scripts/copy-generic-secrets.sh.
+          # 1. Read the per-system Telegram bot from the system's SM. These are
+          #    DIFFERENT from the factory-admin bot used by register-system-app.yml
+          #    (telegram-bot-token / telegram-chat-id, copied from factory SM by
+          #    copy-generic-secrets.sh). The operator manually populates these
+          #    per-system secrets — provision-system.yml only pre-creates empty
+          #    shells. If either is still empty when deploy runs, we skip the
+          #    notifier creation entirely with a clear warning so the operator
+          #    can fix and redeploy without a hard failure here.
           TG_TOKEN=$(gcloud secrets versions access latest \
-            --secret=telegram-bot-token --project="$PROJECT_ID" 2>/dev/null) || true
+            --secret=n8n-telegram-bot-token --project="$PROJECT_ID" 2>/dev/null) || true
           TG_CHAT_ID=$(gcloud secrets versions access latest \
-            --secret=telegram-chat-id --project="$PROJECT_ID" 2>/dev/null) || true
-          [ -n "$TG_TOKEN" ]  || { echo "FAIL: telegram-bot-token missing/empty in $PROJECT_ID SM" >&2; exit 1; }
-          [ -n "$TG_CHAT_ID" ] || { echo "FAIL: telegram-chat-id missing/empty in $PROJECT_ID SM" >&2; exit 1; }
+            --secret=n8n-telegram-chat-id --project="$PROJECT_ID" 2>/dev/null) || true
+          if [ -z "$TG_TOKEN" ] || [ -z "$TG_CHAT_ID" ]; then
+            MISSING=""
+            [ -z "$TG_TOKEN" ]  && MISSING="${MISSING} n8n-telegram-bot-token"
+            [ -z "$TG_CHAT_ID" ] && MISSING="${MISSING} n8n-telegram-chat-id"
+            {
+              echo "## ⚠️  n8n notifier workflow skipped"
+              echo ""
+              echo "The deploy workflow can auto-create an in-n8n workflow that pings the system's dedicated Telegram bot once n8n is live, but the per-system bot secrets in \`${PROJECT_ID}\` SM are still empty:"
+              echo ""
+              echo "Missing/empty:${MISSING}"
+              echo ""
+              echo "To enable, add real values to those secrets in the system's GCP Secret Manager and redispatch this workflow:"
+              echo ""
+              echo '```'
+              echo "gcloud secrets versions add n8n-telegram-bot-token --project=${PROJECT_ID} --data-file=-  # paste BotFather token, then Ctrl-D"
+              echo "gcloud secrets versions add n8n-telegram-chat-id   --project=${PROJECT_ID} --data-file=-  # paste chat/group id, then Ctrl-D"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "WARN: skipping notifier — n8n-telegram-* secrets empty in $PROJECT_ID SM (see job summary)"
+            exit 0
+          fi
           echo "::add-mask::${TG_TOKEN}"
           echo "::add-mask::${TG_CHAT_ID}"
 

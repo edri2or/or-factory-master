@@ -390,6 +390,8 @@ jobs:
             railway-postgres-service-id
             railway-postgres-volume-id
             railway-n8n-volume-id
+            n8n-telegram-bot-token
+            n8n-telegram-chat-id
           )
           RUNTIME_SA="runtime-sa@${SYSTEM_NAME}.iam.gserviceaccount.com"
           DEPLOY_SA="deploy-sa@${SYSTEM_NAME}.iam.gserviceaccount.com"
