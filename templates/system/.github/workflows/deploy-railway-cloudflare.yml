@@ -399,11 +399,14 @@ jobs:
           echo "PASS: n8n env vars set (15 vars in parallel)."
 
           # ===== Custom domain on n8n service =====
-          # Railway issues its own LE cert against the CNAME target it returns;
-          # Cloudflare must NOT proxy the record (otherwise cert validation fails).
+          # Railway returns multiple dnsRecords for multi-level subdomains:
+          # a CNAME for routing AND a TXT (_railway-verify.<host>) for
+          # ownership verification. Until BOTH are present in Cloudflare,
+          # Railway will not issue a Let's Encrypt cert and the host serves
+          # the *.up.railway.app wildcard cert (which trips CERT_COMMON_NAME_INVALID
+          # in the browser). Capture the full list and let the Cloudflare
+          # step upsert every record Railway requires.
           echo "=== Railway: find-or-create custom domain ${DOMAIN} ==="
-          # DNSRecords type fields: hostlabel + recordType + requiredValue
-          # (Railway renamed these from the earlier `type`/`value`).
           resp=$(_gql 'query($id: String!) {
               service(id: $id) {
                 serviceInstances {
@@ -420,31 +423,38 @@ jobs:
             }' \
             "$(jq -cn --arg id "$N8N_ID" '{id: $id}')")
 
-          CNAME_TARGET=$(printf '%s' "$resp" | jq -r --arg eid "$ENV_ID" --arg d "$DOMAIN" \
+          DNS_RECORDS_JSON=$(printf '%s' "$resp" | jq -c --arg eid "$ENV_ID" --arg d "$DOMAIN" \
             '.data.service.serviceInstances.edges
              | map(select(.node.environmentId==$eid))
              | .[0].node.domains.customDomains
              | map(select(.domain==$d))
-             | .[0].status.dnsRecords[0].requiredValue // ""')
+             | .[0].status.dnsRecords // []')
 
-          if [ -n "$CNAME_TARGET" ] && [ "$CNAME_TARGET" != "null" ]; then
-            echo "INFO: custom domain $DOMAIN exists → CNAME target: $CNAME_TARGET"
+          if [ "$(printf '%s' "$DNS_RECORDS_JSON" | jq 'length')" -gt 0 ]; then
+            echo "INFO: custom domain $DOMAIN exists on Railway."
           else
             # CustomDomainCreateInput required fields (confirmed via __type
             # introspection on PR #14's run): domain, environmentId,
             # projectId, serviceId. targetPort is optional.
             resp=$(_gql 'mutation($input: CustomDomainCreateInput!) {
                 customDomainCreate(input: $input) {
-                  id status { dnsRecords { recordType requiredValue } }
+                  id status { dnsRecords { hostlabel recordType requiredValue } }
                 }
               }' \
               "$(jq -cn --arg pid "$PROJECT_ID_RW" --arg eid "$ENV_ID" --arg sid "$N8N_ID" --arg d "$DOMAIN" \
                 '{input: {projectId: $pid, environmentId: $eid, serviceId: $sid, domain: $d, targetPort: 5678}}')")
-            CNAME_TARGET=$(printf '%s' "$resp" | jq -r '.data.customDomainCreate.status.dnsRecords[0].requiredValue // ""')
-            [ -n "$CNAME_TARGET" ] && [ "$CNAME_TARGET" != "null" ] \
-              || { echo "FAIL: customDomainCreate returned no CNAME target; resp=$resp" >&2; exit 1; }
-            echo "PASS: custom domain created → CNAME target: $CNAME_TARGET"
+            DNS_RECORDS_JSON=$(printf '%s' "$resp" | jq -c '.data.customDomainCreate.status.dnsRecords // []')
+            [ "$(printf '%s' "$DNS_RECORDS_JSON" | jq 'length')" -gt 0 ] \
+              || { echo "FAIL: customDomainCreate returned no dnsRecords; resp=$resp" >&2; exit 1; }
+            echo "PASS: custom domain created."
           fi
+
+          echo "Railway-required DNS records for ${DOMAIN}:"
+          printf '%s' "$DNS_RECORDS_JSON" | jq -r '.[] | "  - \(.recordType) \(.hostlabel) -> \(.requiredValue)"'
+
+          # Derive CNAME_TARGET for the Summary step.
+          CNAME_TARGET=$(printf '%s' "$DNS_RECORDS_JSON" | jq -r \
+            'map(select(.recordType=="CNAME")) | .[0].requiredValue // ""')
 
           # Persist for the next steps
           {
@@ -454,6 +464,7 @@ jobs:
             echo "N8N_ID=${N8N_ID}"
             echo "VOLUME_ID=${VOLUME_ID}"
             echo "CNAME_TARGET=${CNAME_TARGET}"
+            echo "DNS_RECORDS_JSON=${DNS_RECORDS_JSON}"
             echo "DOMAIN=${DOMAIN}"
           } >> "$GITHUB_ENV"
 
@@ -525,40 +536,59 @@ jobs:
           }
           trap revoke_token EXIT
 
-          resp=$(curl -sS \
-            "${CF_API}/zones/${CF_ZONE_ID}/dns_records?type=CNAME&name=${DOMAIN}" \
-            -H "Authorization: Bearer ${DNS_TOKEN}")
-          ok=$(printf '%s' "$resp" | jq -r '.success')
-          [ "$ok" = "true" ] || { echo "FAIL: cloudflare list: $resp" >&2; exit 1; }
+          # 3. Idempotent upsert of every record Railway requires.
+          # For multi-level subdomains, Railway returns BOTH a CNAME (routing)
+          # and a TXT (_railway-verify.<host>, ownership). Both must exist in
+          # Cloudflare or Railway will not issue the per-domain LE cert and
+          # the host keeps serving *.up.railway.app (CERT_COMMON_NAME_INVALID).
+          # ttl:1 = "automatic". proxied:false because Railway terminates TLS;
+          # CF proxying would break LE validation (cert chain).
+          while read -r record; do
+            HOSTLABEL=$(printf '%s' "$record" | jq -r '.hostlabel')
+            RECTYPE=$(printf '%s' "$record" | jq -r '.recordType')
+            REQVAL=$(printf '%s' "$record" | jq -r '.requiredValue')
 
-          REC_ID=$(printf '%s' "$resp" | jq -r '.result[0].id // ""')
-          REC_CONTENT=$(printf '%s' "$resp" | jq -r '.result[0].content // ""')
+            # Railway's hostlabel for CNAME is the FQDN of the custom domain;
+            # for TXT it's "_railway-verify.<custom-domain>". Both end with
+            # the zone name. Defensive: if hostlabel is unexpectedly relative,
+            # append the zone.
+            case "$HOSTLABEL" in
+              *.or-infra.com|or-infra.com) CF_NAME="$HOSTLABEL" ;;
+              *) CF_NAME="${HOSTLABEL}.or-infra.com" ;;
+            esac
 
-          # Use ttl:1 (Cloudflare "automatic") + proxied:false. Railway issues
-          # its own LE cert against the CNAME target; proxying breaks cert
-          # validation.
-          BODY=$(jq -cn --arg name "$DOMAIN" --arg content "$CNAME_TARGET" \
-            '{type:"CNAME", name:$name, content:$content, ttl:1, proxied:false, comment:"managed-by=or-factory-master"}')
-
-          if [ -z "$REC_ID" ]; then
-            resp=$(curl -sS -X POST "${CF_API}/zones/${CF_ZONE_ID}/dns_records" \
-              -H "Authorization: Bearer ${DNS_TOKEN}" \
-              -H "Content-Type: application/json" \
-              -d "$BODY")
+            resp=$(curl -sS \
+              "${CF_API}/zones/${CF_ZONE_ID}/dns_records?type=${RECTYPE}&name=${CF_NAME}" \
+              -H "Authorization: Bearer ${DNS_TOKEN}")
             ok=$(printf '%s' "$resp" | jq -r '.success')
-            [ "$ok" = "true" ] || { echo "FAIL: cloudflare create: $resp" >&2; exit 1; }
-            echo "PASS: Cloudflare CNAME created: ${DOMAIN} -> ${CNAME_TARGET}"
-          elif [ "$REC_CONTENT" != "$CNAME_TARGET" ]; then
-            resp=$(curl -sS -X PUT "${CF_API}/zones/${CF_ZONE_ID}/dns_records/${REC_ID}" \
-              -H "Authorization: Bearer ${DNS_TOKEN}" \
-              -H "Content-Type: application/json" \
-              -d "$BODY")
-            ok=$(printf '%s' "$resp" | jq -r '.success')
-            [ "$ok" = "true" ] || { echo "FAIL: cloudflare update: $resp" >&2; exit 1; }
-            echo "PASS: Cloudflare CNAME updated: ${DOMAIN} -> ${CNAME_TARGET} (was -> ${REC_CONTENT})"
-          else
-            echo "INFO: Cloudflare CNAME unchanged: ${DOMAIN} -> ${CNAME_TARGET}"
-          fi
+            [ "$ok" = "true" ] || { echo "FAIL: cloudflare list $CF_NAME ($RECTYPE): $resp" >&2; exit 1; }
+
+            REC_ID=$(printf '%s' "$resp" | jq -r '.result[0].id // ""')
+            REC_CONTENT=$(printf '%s' "$resp" | jq -r '.result[0].content // ""')
+
+            BODY=$(jq -cn --arg name "$CF_NAME" --arg content "$REQVAL" --arg type "$RECTYPE" \
+              '{type:$type, name:$name, content:$content, ttl:1, proxied:false, comment:"managed-by=or-factory-master"}')
+
+            if [ -z "$REC_ID" ]; then
+              resp=$(curl -sS -X POST "${CF_API}/zones/${CF_ZONE_ID}/dns_records" \
+                -H "Authorization: Bearer ${DNS_TOKEN}" \
+                -H "Content-Type: application/json" \
+                -d "$BODY")
+              ok=$(printf '%s' "$resp" | jq -r '.success')
+              [ "$ok" = "true" ] || { echo "FAIL: cloudflare create $CF_NAME ($RECTYPE): $resp" >&2; exit 1; }
+              echo "PASS: CF $RECTYPE created: $CF_NAME -> $REQVAL"
+            elif [ "$REC_CONTENT" != "$REQVAL" ]; then
+              resp=$(curl -sS -X PUT "${CF_API}/zones/${CF_ZONE_ID}/dns_records/${REC_ID}" \
+                -H "Authorization: Bearer ${DNS_TOKEN}" \
+                -H "Content-Type: application/json" \
+                -d "$BODY")
+              ok=$(printf '%s' "$resp" | jq -r '.success')
+              [ "$ok" = "true" ] || { echo "FAIL: cloudflare update $CF_NAME ($RECTYPE): $resp" >&2; exit 1; }
+              echo "PASS: CF $RECTYPE updated: $CF_NAME -> $REQVAL (was $REC_CONTENT)"
+            else
+              echo "INFO: CF $RECTYPE unchanged: $CF_NAME -> $REQVAL"
+            fi
+          done < <(printf '%s' "$DNS_RECORDS_JSON" | jq -c '.[]')
           # trap fires here to revoke the token.
 
       - name: Wait for Railway TLS cert
