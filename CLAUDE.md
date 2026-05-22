@@ -57,8 +57,10 @@ The previous factory (`edri2or/factory`) automated everything end-to-end. Failur
 | Workflow | Trigger | Action |
 |---|---|---|
 | `register-broker-app.yml` | One-shot, already used | Created the GitHub App. Don't re-run. |
-| `provision-system.yml` | Manual `workflow_dispatch` | Builds GCP + GitHub for a new system. |
-| `templates/system/.github/workflows/deploy-railway-cloudflare.yml` | Manual `workflow_dispatch` in the *system* repo | Deploys n8n on Railway (with Postgres + persistent volume) and creates the Cloudflare CNAME. Pushed into every new system repo by `provision-system.yml`. Idempotent. |
+| `provision-system.yml` | Manual `workflow_dispatch` | Builds GCP + GitHub for a new system. Pre-creates SM shells incl. `n8n-owner-email` and `n8n-owner-password`. |
+| `templates/system/.github/workflows/deploy-railway-cloudflare.yml` | Manual `workflow_dispatch` in the *system* repo | Deploys n8n 1.121.0 on Railway (Postgres + persistent volume), creates Cloudflare CNAME + `_railway-verify` TXT (DNS-only), waits for Railway to issue the LE cert (retriggers via `customDomainDelete` + recreate if `verified=false`), then POSTs `/rest/owner/setup` so the URL lands on the n8n login screen. Pushed into every new system repo by `provision-system.yml`. Idempotent. |
+| `changelog-check.yml` | `push: main` + `pull_request: main` | Fails any diff that changes `.sh` / `.json` / `.yml` / `.yaml` without updating `CHANGELOG.md`, and any `CHANGELOG.md` over 20 KB. |
+| `decommission-test-projects.yml` | Manual `workflow_dispatch` | One-off cleanup of `factory-test-*` / `v2-test-*` GCP projects via the broker SA. Hard-guards against the control project. |
 
 The deploy workflow lives in each system's own repo and is dispatched there by the user after `provision-system.yml` succeeds. It is provisioned, not orchestrated, by the factory.
 
@@ -77,6 +79,7 @@ If you add a new step that touches a fresh resource, wrap it in a retry. Three w
 | SA → IAM policy member (~5-30s) | `add-iam-policy-binding` says SA "does not exist" | `Grant project-level IAM`, see `_bind` helper |
 | role-grant → effective permission (~30-60s) | API call returns `PERMISSION_DENIED` for a role the principal visibly has | `Create system-level WIF pool and provider`, see `_wif_op` helper |
 | SA → setIamPolicy on the SA resource (~30-60s) | `service-accounts add-iam-policy-binding` says permission denied | `Grant deploy-sa workloadIdentityUser binding` |
+| Railway scheduler throttle (no clear timeout) | Postgres `serviceCreate` stuck in `DEPLOYING` indefinitely with **zero container logs** | Out-of-band: delete stale Railway projects via `projectDelete` GraphQL mutation. Confirmed today on factory-test-{16,17} after ~15 fresh projects in one workspace within a day; cleared by deleting 11 stale ones; factory-test-18 then deployed cleanly. Not handled in the workflow — surface as a "this isn't a code bug, free Railway quota" warning to the user. |
 
 Pattern: retry only on the specific error class (`PERMISSION_DENIED`, `does not exist`); surface anything else immediately. 10×10s or 12×10s is typical. See `docs/bootstrap-record.md` for the history of each.
 
@@ -89,6 +92,9 @@ Pattern: retry only on the specific error class (`PERMISSION_DENIED`, `does not 
 | `templates/system/.github/workflows/deploy-railway-cloudflare.yml` | Scaffold workflow pushed into every new system repo. Edits here propagate only to systems provisioned after the edit. |
 | `scripts/copy-generic-secrets.sh` | Copies the 16 generic secrets to a new system's SM. |
 | `scripts/generate-app-token.sh` | Generates an App installation token from the private key. |
+| `scripts/lib.sh` | Shared helpers sourced by check scripts (`get_code_files`). |
+| `scripts/check-changelog-updated.sh` | CI guard: fails if code changed without a `CHANGELOG.md` entry. |
+| `scripts/check-changelog-size.sh` | CI guard: fails if `CHANGELOG.md` exceeds 20 KB. |
 | `src/bootstrap-receiver/` | Receiver code used once to register the App. Reference, not active. |
 
 ## MCP

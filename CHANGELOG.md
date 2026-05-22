@@ -1,16 +1,17 @@
 # Changelog
 
-## Stage 7 — fixes (cont.)
+## Stage 7 — deploy-plane stabilization (today)
 
 | PR | Type | Summary |
 |---|---|---|
-| TBD | fix | Revert Postgres env-vars-before-volumeCreate from PR #28. That reorder hung Postgres in `DEPLOYING` on factory-test-16 (same symptom as factory-test-9/10/11 earlier in the session). Restore `edri2or/factory`'s verbatim order: serviceCreate → volumeCreate → env vars. |
+| TBD | docs | Refresh `README.md`, `docs/roadmap.md`, `CLAUDE.md`, `CHANGELOG.md`, `skills/build-system/SKILL.md` to match today's merged code: single-level subdomain, n8n 1.121.0, auto owner-setup, TXT verification record, customDomain recreate-on-unverified, Railway throttle gotcha. |
+| [#30](https://github.com/edri2or/or-factory-master/pull/30) | fix | Revert Postgres env-vars-before-volumeCreate from PR #28. That reorder hung Postgres in `DEPLOYING` on factory-test-16 (same symptom as factory-test-9/10/11 earlier in the session). Restore `edri2or/factory`'s verbatim order: serviceCreate → volumeCreate → env vars. |
+| [#29](https://github.com/edri2or/or-factory-master/pull/29) | ci | Add `Changelog Check` workflow (mirrors `edri2or/factory`'s gate): fails any push to `main` / PR whose `.sh` / `.json` / `.yml` / `.yaml` diff is missing a `CHANGELOG.md` update, and enforces a 20KB cap on `CHANGELOG.md`. Backed by `scripts/check-changelog-updated.sh`, `scripts/check-changelog-size.sh`, `scripts/lib.sh`. |
+| [#28](https://github.com/edri2or/or-factory-master/pull/28) | fix | Bump n8n image to `n8nio/n8n:1.121.0` (patches CVE-2026-21858 "Ni8mare", CVSS 10.0 unauthenticated RCE; vulnerable range 1.65-1.120.4). Originally also reordered Postgres env-vars-before-volumeCreate; that part reverted in PR #30. |
+| [#27](https://github.com/edri2or/or-factory-master/pull/27) | feat | Auto-create the n8n owner account after first deploy: extend "Resolve or generate n8n encryption key" step to also resolve/generate `n8n-owner-email` (defaults to `admin@<system>.or-infra.com`, idempotent) and `n8n-owner-password` (fresh per-run, `Aa1!<32 hex>`). Add new "Set up n8n owner account" step that POSTs to `/rest/owner/setup` with name derived from `SYSTEM_NAME`. Two new SM shells pre-created in `provision-system.yml`. |
+| [#26](https://github.com/edri2or/or-factory-master/pull/26) | fix | End-to-end provision + LE-cert n8n on a custom domain. Loop over Railway's full `dnsRecords` (CNAME + verify TXT, both required by Cloudflare); strip `DNS_RECORD_TYPE_` enum prefix Railway returns; switch host to single-level `n8n-<system>.or-infra.com`; write `_railway-verify` TXT from `status.verificationToken`; force `customDomainDelete` + `customDomainCreate` when `verified=false` so Railway re-runs its DNS check and issues the LE cert; new "Wait for Railway TLS cert" step polls until the per-host cert is live (or warns on timeout). |
 
-## CI / process
-
-| PR | Type | Summary |
-|---|---|---|
-| TBD | ci | Add `Changelog Check` workflow (mirrors `edri2or/factory`'s gate): fails any push to `main` / PR whose `.sh` / `.json` / `.yml` / `.yaml` diff is missing a `CHANGELOG.md` update, and enforces a 20KB cap on `CHANGELOG.md`. Backed by `scripts/check-changelog-updated.sh`, `scripts/check-changelog-size.sh`, `scripts/lib.sh`. |
+End-to-end clean run today: `factory-test-18` from `provision-system.yml` → `deploy-railway-cloudflare.yml` → `https://n8n-factory-test-18.or-infra.com` lands on the n8n login screen with a valid LE cert and the owner account already created, no manual intervention.
 
 ## Stage 7 — deploy plane (Phase A)
 
@@ -18,7 +19,7 @@
 |---|---|---|
 | [#7](https://github.com/edri2or/or-factory-master/pull/7) | feature | Add `templates/system/.github/workflows/deploy-railway-cloudflare.yml` (n8n + Postgres + persistent volume + custom domain + Cloudflare CNAME, idempotent). Add "Push deploy workflow scaffold to system repo" step to `provision-system.yml`. Update `CLAUDE.md`, `docs/roadmap.md`, `docs/external-state.md`, `docs/bootstrap-record.md`. |
 
-End-to-end after this stage: `provision-system.yml` creates a system AND ships its deploy workflow; the user dispatches `deploy-railway-cloudflare.yml` in the system repo to stand up n8n at `https://n8n.<system>.or-infra.com`.
+End-to-end after this stage: `provision-system.yml` creates a system AND ships its deploy workflow; the user dispatches `deploy-railway-cloudflare.yml` in the system repo. Further follow-up fixes landed today (see PRs #26-#30 above) so the URL actually lands on a working n8n login screen.
 
 ## Stage 6 — first end-to-end provision
 

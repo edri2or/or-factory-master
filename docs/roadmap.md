@@ -17,16 +17,18 @@ What's working today, what's planned, what's deliberately not planned.
 
 `deploy-railway-cloudflare.yml` (lives in each system repo, pushed by `provision-system.yml`) provisions the deploy plane:
 
-- Railway project named after `vars.SYSTEM_NAME`, Postgres service via the official template, n8n service from `n8nio/n8n:1.85.4`, and a persistent volume mounted at `/home/node/.n8n` on the n8n service
-- n8n env vars wired to Postgres via Railway reference syntax (`${{Postgres.PGHOST}}` etc.), plus `N8N_HOST`, `WEBHOOK_URL`, `GENERIC_TIMEZONE`, `N8N_ENCRYPTION_KEY` (generated per-system, persisted to system SM)
-- Custom domain `n8n.<system>.or-infra.com` attached to the n8n service, with the matching Cloudflare CNAME (DNS-only — Railway issues its own LE cert)
-- Railway IDs persisted back to system SM (`railway-project-id`, `railway-n8n-service-id`, `railway-postgres-service-id`) so the workflow is restart-safe
+- Railway project named after `vars.SYSTEM_NAME`, Postgres service via `ghcr.io/railwayapp-templates/postgres-ssl:17` with a persistent volume mounted at `/var/lib/postgresql/data`, and an n8n service from `n8nio/n8n:1.121.0` (1.85.4 originally; bumped to patch CVE-2026-21858 "Ni8mare" unauthenticated-RCE)
+- n8n env vars wired to Postgres via Railway reference syntax (`${{Postgres.POSTGRES_*}}`, `${{Postgres.RAILWAY_PRIVATE_DOMAIN}}`), plus `N8N_HOST`, `WEBHOOK_URL`, `GENERIC_TIMEZONE`, `N8N_ENCRYPTION_KEY` (generated per-system, persisted to system SM)
+- Custom domain `n8n-<system>.or-infra.com` (single-level subdomain — multi-level needs the Railway verify TXT, which Railway's API doesn't reliably surface), with the matching Cloudflare CNAME **and** `_railway-verify.n8n-<system>.or-infra.com` TXT record populated from `status.verificationToken` (DNS-only; Railway issues the LE cert)
+- After writing both DNS records, if Railway's `status.verified` is still `false`, the workflow calls `customDomainDelete` + `customDomainCreate` to retrigger the DNS check (Railway only verifies at create time; the `verificationToken` is stable across recreate so the TXT we wrote is still valid). The CNAME target changes on recreate, so the workflow PUTs the updated content into the existing CF record.
+- After Railway issues the LE cert, the workflow POSTs to n8n's `/rest/owner/setup` to create the admin user from `n8n-owner-email` (defaults to `admin@<system>.or-infra.com`) + `n8n-owner-password` (fresh-per-run `Aa1!<32 hex>`, both persisted to GCP SM)
+- Railway IDs persisted back to system SM (`railway-project-id`, `railway-n8n-service-id`, `railway-postgres-service-id`, `railway-postgres-volume-id`) so the workflow is restart-safe
 
-End-to-end: any standalone service can deploy to Cloud Run via the system's `deploy-sa` WIF and SM, AND every system has a one-click n8n on Railway. What's left is the decommission story (Phase B).
+End-to-end: any standalone service can deploy to Cloud Run via the system's `deploy-sa` WIF and SM, AND every system gets `https://n8n-<system>.or-infra.com` landing on the n8n login screen (not the owner-setup form). What's left is the decommission story (Phase B).
 
-## Phase A — done (stage 7)
+## Phase A — done (stage 7 + today's stabilization)
 
-The deploy plane workflow landed in stage 7. See `templates/system/.github/workflows/deploy-railway-cloudflare.yml` for the workflow and the "Push deploy workflow scaffold to system repo" step in `provision-system.yml` for the delivery mechanism.
+The deploy plane workflow landed in stage 7 ([#7](https://github.com/edri2or/or-factory-master/pull/7)); today's session shipped the follow-ups that make it actually work end-to-end without intervention: [#26](https://github.com/edri2or/or-factory-master/pull/26) (TXT verify + recreate-on-unverified + single-level subdomain + TLS-wait), [#27](https://github.com/edri2or/or-factory-master/pull/27) (auto owner-setup), [#28](https://github.com/edri2or/or-factory-master/pull/28) (n8n 1.121.0 CVE patch), [#29](https://github.com/edri2or/or-factory-master/pull/29) (CHANGELOG CI gate), [#30](https://github.com/edri2or/or-factory-master/pull/30) (revert Postgres env-vars-before-volume reorder from #28 that hung Postgres in `DEPLOYING`). Validated end-to-end on `factory-test-18`.
 
 ## Phase B — Decommission workflow
 
