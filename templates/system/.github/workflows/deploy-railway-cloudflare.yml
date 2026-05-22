@@ -109,7 +109,14 @@ jobs:
 
           # GraphQL helper: posts a query/mutation, fails on .errors[].
           _gql() {
-            local query="$1" variables="${2:-{}}"
+            local query="$1"
+            # Bash brace-counting in ${param:-default} mis-handles a literal
+            # {} default — when $2 is set, the closing brace of the parameter
+            # expansion is consumed by the default's first }, leaving a stray
+            # } that gets appended to $2 (breaking the JSON). Use explicit
+            # if/else instead.
+            local variables="${2:-}"
+            [ -n "$variables" ] || variables='{}'
             local body resp
             body=$(jq -cn --arg q "$query" --argjson v "$variables" \
               '{query: $q, variables: $v}')
