@@ -233,13 +233,22 @@ jobs:
           }
 
           # ===== Postgres: SM-first, find, then create =====
+          # Mirrors edri2or/factory's order verbatim:
+          #   1. serviceCreate
+          #   2. attach volume (with environmentId — required to bind the
+          #      volume to the production service-instance; without it,
+          #      Postgres hangs in DEPLOYING because PGDATA path isn't mounted)
+          #   3. configure env vars in parallel (matches old factory's
+          #      `& pids+=($!)` pattern — sequential upserts each trigger a
+          #      separate Railway redeploy, causing thrash; parallel batches
+          #      changes into a single redeploy with the final state)
           echo "=== Railway: Postgres service (SM-first lookup) ==="
           PG_ID=$(gcloud secrets versions access latest \
             --secret=railway-postgres-service-id --project="$PROJECT_ID" 2>/dev/null || echo "")
+          PG_FIRST_TIME=false
           if [ -n "$PG_ID" ] && [ "$PG_ID" != "null" ]; then
             echo "INFO: reusing Postgres service_id from SM: $PG_ID"
           else
-            # Find within the project (services are queryable on the project we own)
             resp=$(_gql 'query($id: String!) { project(id: $id) { services { edges { node { id name } } } } }' \
               "$(jq -cn --arg id "$PROJECT_ID_RW" '{id: $id}')" 2>/dev/null || echo '{}')
             PG_ID=$(printf '%s' "$resp" | jq -r \
@@ -253,13 +262,7 @@ jobs:
               [ -n "$PG_ID" ] && [ "$PG_ID" != "null" ] \
                 || { echo "FAIL: Postgres serviceCreate returned no id; resp=$resp" >&2; exit 1; }
               echo "PASS: Postgres service created: $PG_ID"
-
-              POSTGRES_PASSWORD=$(openssl rand -hex 24)
-              echo "::add-mask::${POSTGRES_PASSWORD}"
-              _upsert "$PG_ID" POSTGRES_USER     postgres
-              _upsert "$PG_ID" POSTGRES_DB       railway
-              _upsert "$PG_ID" POSTGRES_PASSWORD "$POSTGRES_PASSWORD"
-              _upsert "$PG_ID" PGDATA            /var/lib/postgresql/data/pgdata
+              PG_FIRST_TIME=true
             else
               echo "INFO: Postgres service found in project: $PG_ID"
             fi
@@ -270,9 +273,6 @@ jobs:
           fi
 
           # ===== Postgres volume: SM-first, find, then create =====
-          # Same pattern as project/service ids — volume find by name in
-          # Railway returns 0 with this token's scope, so SM is the source
-          # of truth.
           echo "=== Railway: postgres-data volume (SM-first lookup) ==="
           PG_VOLUME_ID=$(gcloud secrets versions access latest \
             --secret=railway-postgres-volume-id --project="$PROJECT_ID" 2>/dev/null || echo "")
@@ -285,9 +285,11 @@ jobs:
               '(.data.project.volumes.edges // []) | map(select(.node.name=="postgres-data")) | .[0].node.id // ""' 2>/dev/null || echo "")
 
             if [ -z "$PG_VOLUME_ID" ] || [ "$PG_VOLUME_ID" = "null" ]; then
+              # environmentId is REQUIRED — without it the volume isn't
+              # bound to the production service-instance and Postgres hangs.
               resp=$(_gql 'mutation($input: VolumeCreateInput!) { volumeCreate(input: $input) { id } }' \
-                "$(jq -cn --arg pid "$PROJECT_ID_RW" --arg sid "$PG_ID" \
-                  '{input: {projectId: $pid, serviceId: $sid, mountPath: "/var/lib/postgresql/data"}}')")
+                "$(jq -cn --arg pid "$PROJECT_ID_RW" --arg sid "$PG_ID" --arg eid "$ENV_ID" \
+                  '{input: {projectId: $pid, serviceId: $sid, environmentId: $eid, mountPath: "/var/lib/postgresql/data"}}')")
               PG_VOLUME_ID=$(printf '%s' "$resp" | jq -r '.data.volumeCreate.id' 2>/dev/null || echo "")
               [ -n "$PG_VOLUME_ID" ] && [ "$PG_VOLUME_ID" != "null" ] \
                 || { echo "FAIL: Postgres volumeCreate returned no id; resp=$resp" >&2; exit 1; }
@@ -299,6 +301,20 @@ jobs:
             printf '%s' "$PG_VOLUME_ID" | gcloud secrets versions add railway-postgres-volume-id \
               --project="$PROJECT_ID" --data-file=- --quiet
             echo "PASS: railway-postgres-volume-id persisted to SM."
+          fi
+
+          # ===== Postgres env vars (only on first create, in parallel) =====
+          if [ "$PG_FIRST_TIME" = "true" ]; then
+            echo "=== Railway: Postgres env vars (parallel upsert) ==="
+            POSTGRES_PASSWORD=$(openssl rand -hex 24)
+            echo "::add-mask::${POSTGRES_PASSWORD}"
+            pg_pids=()
+            _upsert "$PG_ID" POSTGRES_USER     postgres & pg_pids+=($!)
+            _upsert "$PG_ID" POSTGRES_DB       railway & pg_pids+=($!)
+            _upsert "$PG_ID" POSTGRES_PASSWORD "$POSTGRES_PASSWORD" & pg_pids+=($!)
+            _upsert "$PG_ID" PGDATA            /var/lib/postgresql/data/pgdata & pg_pids+=($!)
+            for pid in "${pg_pids[@]}"; do wait "$pid" || { echo "FAIL: a Postgres env var upsert failed" >&2; exit 1; }; done
+            echo "PASS: Postgres env vars set."
           fi
 
           # ===== n8n service: SM-first, find, then create =====
@@ -348,23 +364,30 @@ jobs:
           # reference syntax verbatim. Assemble the prefix at bash runtime so
           # that sequence never appears literally in this YAML source.
           DLR='$'
-          _upsert "$N8N_ID" DB_TYPE                postgresdb
-          _upsert "$N8N_ID" DB_POSTGRESDB_HOST     "${DLR}{{Postgres.RAILWAY_PRIVATE_DOMAIN}}"
-          _upsert "$N8N_ID" DB_POSTGRESDB_PORT     5432
-          _upsert "$N8N_ID" DB_POSTGRESDB_DATABASE "${DLR}{{Postgres.POSTGRES_DB}}"
-          _upsert "$N8N_ID" DB_POSTGRESDB_USER     "${DLR}{{Postgres.POSTGRES_USER}}"
-          _upsert "$N8N_ID" DB_POSTGRESDB_PASSWORD "${DLR}{{Postgres.POSTGRES_PASSWORD}}"
-          _upsert "$N8N_ID" DB_POSTGRESDB_SCHEMA   public
-          # N8N_HOST is the BIND address (Express listen interface), not the
-          # public hostname. WEBHOOK_URL carries the public domain.
-          _upsert "$N8N_ID" N8N_HOST               "0.0.0.0"
-          _upsert "$N8N_ID" N8N_PROTOCOL           https
-          _upsert "$N8N_ID" N8N_PORT               5678
-          _upsert "$N8N_ID" PORT                   5678
-          _upsert "$N8N_ID" WEBHOOK_URL            "https://${DOMAIN}"
-          _upsert "$N8N_ID" GENERIC_TIMEZONE       "$TIMEZONE"
-          _upsert "$N8N_ID" N8N_ENCRYPTION_KEY     "$N8N_KEY"
-          _upsert "$N8N_ID" N8N_RUNNERS_ENABLED    true
+          # Parallel upserts (matches edri2or/factory): each upsert in
+          # series triggers its own Railway redeploy, so 14 sequential
+          # = 14 redeploys. Batching with `&` + wait lands a single
+          # redeploy with the final state.
+          # N8N_HOST is the BIND address (Express listen interface), not
+          # the public hostname. WEBHOOK_URL carries the public domain.
+          n8n_pids=()
+          _upsert "$N8N_ID" DB_TYPE                postgresdb & n8n_pids+=($!)
+          _upsert "$N8N_ID" DB_POSTGRESDB_HOST     "${DLR}{{Postgres.RAILWAY_PRIVATE_DOMAIN}}" & n8n_pids+=($!)
+          _upsert "$N8N_ID" DB_POSTGRESDB_PORT     5432 & n8n_pids+=($!)
+          _upsert "$N8N_ID" DB_POSTGRESDB_DATABASE "${DLR}{{Postgres.POSTGRES_DB}}" & n8n_pids+=($!)
+          _upsert "$N8N_ID" DB_POSTGRESDB_USER     "${DLR}{{Postgres.POSTGRES_USER}}" & n8n_pids+=($!)
+          _upsert "$N8N_ID" DB_POSTGRESDB_PASSWORD "${DLR}{{Postgres.POSTGRES_PASSWORD}}" & n8n_pids+=($!)
+          _upsert "$N8N_ID" DB_POSTGRESDB_SCHEMA   public & n8n_pids+=($!)
+          _upsert "$N8N_ID" N8N_HOST               "0.0.0.0" & n8n_pids+=($!)
+          _upsert "$N8N_ID" N8N_PROTOCOL           https & n8n_pids+=($!)
+          _upsert "$N8N_ID" N8N_PORT               5678 & n8n_pids+=($!)
+          _upsert "$N8N_ID" PORT                   5678 & n8n_pids+=($!)
+          _upsert "$N8N_ID" WEBHOOK_URL            "https://${DOMAIN}" & n8n_pids+=($!)
+          _upsert "$N8N_ID" GENERIC_TIMEZONE       "$TIMEZONE" & n8n_pids+=($!)
+          _upsert "$N8N_ID" N8N_ENCRYPTION_KEY     "$N8N_KEY" & n8n_pids+=($!)
+          _upsert "$N8N_ID" N8N_RUNNERS_ENABLED    true & n8n_pids+=($!)
+          for pid in "${n8n_pids[@]}"; do wait "$pid" || { echo "FAIL: an n8n env var upsert failed" >&2; exit 1; }; done
+          echo "PASS: n8n env vars set (15 vars in parallel)."
 
           # ===== Custom domain on n8n service =====
           # Railway issues its own LE cert against the CNAME target it returns;
