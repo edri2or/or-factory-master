@@ -237,12 +237,17 @@ jobs:
             echo "  PASS: $name"
           }
 
+          # GitHub Actions parses the dollar-double-brace expression syntax at
+          # YAML load time and will reject the workflow if it sees Railway's
+          # reference syntax verbatim. Assemble the prefix at bash runtime so
+          # that sequence never appears literally in this YAML source.
+          DLR='$'
           _upsert DB_TYPE postgresdb
-          _upsert DB_POSTGRESDB_HOST     '${{Postgres.PGHOST}}'
-          _upsert DB_POSTGRESDB_PORT     '${{Postgres.PGPORT}}'
-          _upsert DB_POSTGRESDB_DATABASE '${{Postgres.PGDATABASE}}'
-          _upsert DB_POSTGRESDB_USER     '${{Postgres.PGUSER}}'
-          _upsert DB_POSTGRESDB_PASSWORD '${{Postgres.PGPASSWORD}}'
+          _upsert DB_POSTGRESDB_HOST     "${DLR}{{Postgres.PGHOST}}"
+          _upsert DB_POSTGRESDB_PORT     "${DLR}{{Postgres.PGPORT}}"
+          _upsert DB_POSTGRESDB_DATABASE "${DLR}{{Postgres.PGDATABASE}}"
+          _upsert DB_POSTGRESDB_USER     "${DLR}{{Postgres.PGUSER}}"
+          _upsert DB_POSTGRESDB_PASSWORD "${DLR}{{Postgres.PGPASSWORD}}"
           _upsert DB_POSTGRESDB_SCHEMA   public
           _upsert N8N_HOST               "$DOMAIN"
           _upsert N8N_PROTOCOL           https
