@@ -490,6 +490,8 @@ jobs:
             echo "VOLUME_ID=${VOLUME_ID}"
             echo "CNAME_TARGET=${CNAME_TARGET}"
             echo "DNS_RECORDS_JSON=${DNS_RECORDS_JSON}"
+            echo "CUSTOM_DOMAIN_ID=${CUSTOM_DOMAIN_ID}"
+            echo "CUSTOM_DOMAIN_VERIFIED=$(printf '%s' "$STATUS_JSON" | jq -r '.status.verified // false')"
             echo "DOMAIN=${DOMAIN}"
           } >> "$GITHUB_ENV"
 
@@ -617,6 +619,64 @@ jobs:
               echo "INFO: CF $CF_TYPE unchanged: $CF_NAME -> $REQVAL"
             fi
           done < <(printf '%s' "$DNS_RECORDS_JSON" | jq -c '.[]')
+
+          # Force Railway re-verification if customDomain isn't yet verified.
+          # Railway only runs its DNS check at customDomainCreate time; if the
+          # verification TXT wasn't in DNS during the first create (which is
+          # always the case on a fresh deploy, since we read the token from
+          # the create response), Railway never rechecks and the LE cert is
+          # never issued. The verificationToken is stable across delete/recreate
+          # for the same (service, domain) pair, so the TXT we just wrote to
+          # Cloudflare stays valid. Delete + recreate triggers Railway's DNS
+          # check, which now succeeds (CNAME + TXT both present), flipping
+          # verified to true and starting LE cert issuance.
+          if [ "${CUSTOM_DOMAIN_VERIFIED:-false}" != "true" ] && [ -n "${CUSTOM_DOMAIN_ID:-}" ]; then
+            echo "=== Railway: customDomain.verified=false — forcing re-verify via delete+recreate ==="
+            _rgql() {
+              curl -sS -X POST "$RAILWAY_GQL" \
+                -H "Authorization: Bearer ${RAILWAY_TOKEN}" \
+                -H "Content-Type: application/json" \
+                -d "$(jq -cn --arg q "$1" --argjson v "$2" '{query:$q,variables:$v}')"
+            }
+            _rgql 'mutation($id:String!){customDomainDelete(id:$id)}' \
+              "$(jq -cn --arg id "$CUSTOM_DOMAIN_ID" '{id:$id}')" >/dev/null
+            sleep 5
+            resp=$(_rgql 'mutation($i:CustomDomainCreateInput!){
+                customDomainCreate(input:$i){
+                  id status {
+                    dnsRecords { hostlabel recordType requiredValue }
+                    verificationDnsHost verificationToken verified
+                    certificateStatusDetailed certificateErrorMessage
+                  }
+                }
+              }' \
+              "$(jq -cn --arg pid "$PROJECT_ID_RW" --arg eid "$ENV_ID" --arg sid "$N8N_ID" --arg d "$DOMAIN" \
+                '{i:{projectId:$pid,environmentId:$eid,serviceId:$sid,domain:$d,targetPort:5678}}')")
+            NEW_STATUS=$(printf '%s' "$resp" | jq -c '.data.customDomainCreate // {}')
+            NEW_VERIFIED=$(printf '%s' "$NEW_STATUS" | jq -r '.status.verified // false')
+            NEW_CNAME_TARGET=$(printf '%s' "$NEW_STATUS" | jq -r \
+              '.status.dnsRecords // [] | map(select(.recordType=="DNS_RECORD_TYPE_CNAME")) | .[0].requiredValue // ""')
+            echo "After recreate: verified=$NEW_VERIFIED cnameTarget=$NEW_CNAME_TARGET"
+
+            # The CNAME target generally changes on recreate — update CF.
+            if [ -n "$NEW_CNAME_TARGET" ] && [ "$NEW_CNAME_TARGET" != "$CNAME_TARGET" ]; then
+              resp=$(curl -sS \
+                "${CF_API}/zones/${CF_ZONE_ID}/dns_records?type=CNAME&name=${DOMAIN}" \
+                -H "Authorization: Bearer ${DNS_TOKEN}")
+              REC_ID=$(printf '%s' "$resp" | jq -r '.result[0].id // ""')
+              if [ -n "$REC_ID" ]; then
+                BODY=$(jq -cn --arg name "$DOMAIN" --arg content "$NEW_CNAME_TARGET" \
+                  '{type:"CNAME", name:$name, content:$content, ttl:1, proxied:false, comment:"managed-by=or-factory-master"}')
+                resp=$(curl -sS -X PUT "${CF_API}/zones/${CF_ZONE_ID}/dns_records/${REC_ID}" \
+                  -H "Authorization: Bearer ${DNS_TOKEN}" \
+                  -H "Content-Type: application/json" \
+                  -d "$BODY")
+                ok=$(printf '%s' "$resp" | jq -r '.success')
+                [ "$ok" = "true" ] || { echo "FAIL: cloudflare update CNAME after recreate: $resp" >&2; exit 1; }
+                echo "PASS: CF CNAME repointed: ${DOMAIN} -> ${NEW_CNAME_TARGET} (was ${CNAME_TARGET})"
+              fi
+            fi
+          fi
           # trap fires here to revoke the token.
 
       - name: Wait for Railway TLS cert
