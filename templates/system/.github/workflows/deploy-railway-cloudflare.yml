@@ -20,7 +20,13 @@ on:
 permissions: {}
 
 env:
-  N8N_IMAGE: n8nio/n8n:1.85.4
+  # n8n 1.85.4 is in the vulnerable range for CVE-2026-21858 ("Ni8mare",
+  # CVSS 10.0, unauthenticated RCE via webhooks, fixed in 1.121.0).
+  # Pin to the minimum patched 1.x — bump further only after validating
+  # that newer 1.x / 2.x releases don't break the owner-setup flow we
+  # automated, the Postgres template our Provision Railway step uses,
+  # or the env-var contract n8n expects (DB_POSTGRESDB_*, N8N_*).
+  N8N_IMAGE: n8nio/n8n:1.121.0
   RAILWAY_GQL: https://backboard.railway.com/graphql/v2
   CF_API: https://api.cloudflare.com/client/v4
   TIMEZONE: Asia/Jerusalem
@@ -302,7 +308,42 @@ jobs:
             echo "PASS: railway-postgres-service-id persisted to SM."
           fi
 
+          # ===== Postgres env vars FIRST, BEFORE volume mount =====
+          # Order matters: volumeCreate triggers Postgres's first deploy.
+          # If POSTGRES_DB is not yet set when the postgres-ssl entrypoint
+          # runs its initdb against the (empty) PGDATA, the database that
+          # gets created is the entrypoint's fallback ("postgres"), not
+          # "railway". On every subsequent restart the entrypoint sees a
+          # populated PGDATA and logs "PostgreSQL Database directory
+          # appears to contain a database; Skipping initialization", so
+          # the "railway" DB is never created and n8n loops on
+          # `database "railway" does not exist`. Upserting the env vars
+          # before volumeCreate guarantees they're in place for the
+          # first init.
+          if [ "$PG_FIRST_TIME" = "true" ]; then
+            echo "=== Railway: Postgres env vars (parallel upsert, BEFORE volume) ==="
+            POSTGRES_PASSWORD=$(openssl rand -hex 24)
+            echo "::add-mask::${POSTGRES_PASSWORD}"
+            # DATABASE_URL uses Railway runtime reference syntax for the
+            # password + private-domain values. Assemble the prefix with
+            # bash so the dollar-double-brace sequence never appears
+            # verbatim in this YAML source (GitHub Actions would parse it
+            # as an expression and reject the workflow at load time).
+            # Matches edri2or/factory's 5th Postgres env var.
+            DLR='$'
+            DATABASE_URL="postgresql://postgres:${DLR}{{POSTGRES_PASSWORD}}@${DLR}{{RAILWAY_PRIVATE_DOMAIN}}:5432/railway"
+            pg_pids=()
+            _upsert "$PG_ID" POSTGRES_USER     postgres & pg_pids+=($!)
+            _upsert "$PG_ID" POSTGRES_DB       railway & pg_pids+=($!)
+            _upsert "$PG_ID" POSTGRES_PASSWORD "$POSTGRES_PASSWORD" & pg_pids+=($!)
+            _upsert "$PG_ID" PGDATA            /var/lib/postgresql/data/pgdata & pg_pids+=($!)
+            _upsert "$PG_ID" DATABASE_URL      "$DATABASE_URL" & pg_pids+=($!)
+            for pid in "${pg_pids[@]}"; do wait "$pid" || { echo "FAIL: a Postgres env var upsert failed" >&2; exit 1; }; done
+            echo "PASS: Postgres env vars set (5 vars in parallel)."
+          fi
+
           # ===== Postgres volume: SM-first, find, then create =====
+          # Must run AFTER the env vars above — see comment there.
           echo "=== Railway: postgres-data volume (SM-first lookup) ==="
           PG_VOLUME_ID=$(gcloud secrets versions access latest \
             --secret=railway-postgres-volume-id --project="$PROJECT_ID" 2>/dev/null || echo "")
@@ -331,29 +372,6 @@ jobs:
             printf '%s' "$PG_VOLUME_ID" | gcloud secrets versions add railway-postgres-volume-id \
               --project="$PROJECT_ID" --data-file=- --quiet
             echo "PASS: railway-postgres-volume-id persisted to SM."
-          fi
-
-          # ===== Postgres env vars (only on first create, in parallel) =====
-          if [ "$PG_FIRST_TIME" = "true" ]; then
-            echo "=== Railway: Postgres env vars (parallel upsert) ==="
-            POSTGRES_PASSWORD=$(openssl rand -hex 24)
-            echo "::add-mask::${POSTGRES_PASSWORD}"
-            # DATABASE_URL uses Railway runtime reference syntax for the
-            # password + private-domain values. Assemble the prefix with
-            # bash so the dollar-double-brace sequence never appears
-            # verbatim in this YAML source (GitHub Actions would parse it
-            # as an expression and reject the workflow at load time).
-            # Matches edri2or/factory's 5th Postgres env var.
-            DLR='$'
-            DATABASE_URL="postgresql://postgres:${DLR}{{POSTGRES_PASSWORD}}@${DLR}{{RAILWAY_PRIVATE_DOMAIN}}:5432/railway"
-            pg_pids=()
-            _upsert "$PG_ID" POSTGRES_USER     postgres & pg_pids+=($!)
-            _upsert "$PG_ID" POSTGRES_DB       railway & pg_pids+=($!)
-            _upsert "$PG_ID" POSTGRES_PASSWORD "$POSTGRES_PASSWORD" & pg_pids+=($!)
-            _upsert "$PG_ID" PGDATA            /var/lib/postgresql/data/pgdata & pg_pids+=($!)
-            _upsert "$PG_ID" DATABASE_URL      "$DATABASE_URL" & pg_pids+=($!)
-            for pid in "${pg_pids[@]}"; do wait "$pid" || { echo "FAIL: a Postgres env var upsert failed" >&2; exit 1; }; done
-            echo "PASS: Postgres env vars set (5 vars in parallel)."
           fi
 
           # ===== n8n service: SM-first, find, then create =====
