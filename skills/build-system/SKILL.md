@@ -48,6 +48,17 @@ After the run completes successfully:
 - Does not open or close GitHub Issues.
 - Does not re-run on failure without explicit user approval.
 
+## Handoff to the user (post-provision)
+
+After `provision-system.yml` succeeds, point the user at:
+
+1. Dispatch `deploy-railway-cloudflare.yml` in `edri2or/<system_name>` (Actions tab → manual `workflow_dispatch` on `main`). The workflow auto-runs Postgres + n8n + Cloudflare + LE cert + owner-setup.
+2. The URL is **`https://n8n-<system_name>.or-infra.com`** (single-level subdomain — multi-level doesn't get an LE cert through Railway's customDomain).
+3. Owner credentials:
+   - email: `admin@<system_name>.or-infra.com`
+   - password: `gcloud secrets versions access latest --secret=n8n-owner-password --project=<system_name>`
+4. If the deploy hangs on Postgres `DEPLOYING` with zero container logs, that's the Railway account-throttle gotcha documented in `CLAUDE.md` (delete stale Railway projects via `projectDelete` and re-dispatch — it's not a code bug).
+
 ## Abort conditions
 
 - Validation fails on `system_name`.

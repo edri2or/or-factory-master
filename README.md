@@ -21,6 +21,10 @@ Manual dispatch only. From the Actions tab:
 
 What you get: a fresh GCP project, two SAs with WIF, a private GitHub repo with protected `main`, 16 generic secrets, and 4 repo variables. The system can authenticate to its own GCP project from any workflow inside it.
 
+## After provisioning
+
+The provision workflow ends by pushing `deploy-railway-cloudflare.yml` into the new system repo. Dispatching that workflow stands up Postgres + n8n on Railway, attaches `n8n-<system>.or-infra.com` (Cloudflare CNAME + `_railway-verify` TXT, DNS-only — Railway issues the LE cert), and auto-creates the n8n owner account so the first browser visit lands on the login screen. Credentials: email is `admin@<system>.or-infra.com`; password is `gcloud secrets versions access latest --secret=n8n-owner-password --project=<system>`.
+
 ## Repository layout
 
 ```
@@ -38,8 +42,15 @@ skills/
 .github/workflows/
   register-broker-app.yml                # one-shot; created the broker App
   provision-system.yml                   # the one provisioning workflow
+  changelog-check.yml                    # PR/push gate (CHANGELOG.md updated, <20KB)
+  decommission-test-projects.yml         # one-off cleanup of factory-test-* GCP projects
+templates/system/.github/workflows/
+  deploy-railway-cloudflare.yml          # pushed into every system repo by provision
 scripts/
   copy-generic-secrets.sh                # called by provision-system.yml
   generate-app-token.sh                  # mints App installation tokens
+  lib.sh                                 # shared helpers (get_code_files)
+  check-changelog-updated.sh             # used by changelog-check.yml
+  check-changelog-size.sh                # used by changelog-check.yml
 src/bootstrap-receiver/                  # reference; ran once in stage 4
 ```
