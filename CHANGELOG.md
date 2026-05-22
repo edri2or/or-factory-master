@@ -1,5 +1,11 @@
 # Changelog
 
+## CI / process
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | ci | Add `Changelog Check` workflow (mirrors `edri2or/factory`'s gate): fails any push to `main` / PR whose `.sh` / `.json` / `.yml` / `.yaml` diff is missing a `CHANGELOG.md` update, and enforces a 20KB cap on `CHANGELOG.md`. Backed by `scripts/check-changelog-updated.sh`, `scripts/check-changelog-size.sh`, `scripts/lib.sh`. |
+
 ## Stage 7 — deploy plane (Phase A)
 
 | PR | Type | Summary |
