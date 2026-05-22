@@ -1,5 +1,14 @@
 # Changelog
 
+## Stage 9 — deploy-plane race + owner-setup masking
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | fix | Eliminate the Postgres init race in `templates/system/.github/workflows/deploy-railway-cloudflare.yml`. Railway's `serviceCreate` starts Postgres BEFORE our env-var upsert lands, so the first `initdb` runs with default env (creates db `postgres`); the volume then mounts and Postgres logs `PostgreSQL Database directory appears to contain a database; Skipping initialization` on every restart, silently ignoring `POSTGRES_DB=railway`. n8n configured against the absent `railway` db crash-loops with `FATAL: database "railway" does not exist`. factory-test-18 won the race yesterday, factory-test-19 lost it today. Fix: use `postgres` (the image's race-proof default db name) everywhere — `POSTGRES_DB`, the `DATABASE_URL` suffix, and n8n's `DB_POSTGRESDB_DATABASE` (now a literal `postgres` instead of the `${{Postgres.POSTGRES_DB}}` Railway reference). |
+| TBD | fix | Make `Set up n8n owner account` fail fast when n8n isn't actually serving. The old `curl -sS … \|\| echo '{}'` swallowed 403/5xx bodies as `{}`, defaulted `showSetupOnFirstLoad` to `false`, and the step `exit 0`d with `INFO: n8n owner already set up — skipping` — masking a crash-looping n8n (the masking that hid factory-test-19's broken state from the workflow summary). New code captures the HTTP status, fails the step with the response body if not 200, then parses the flag from the saved JSON. |
+
+Template edits propagate only to newly-provisioned systems (per CLAUDE.md). Existing systems (or-test-50, or-test-51, factory-test-18, factory-test-19) keep their pre-fix workflows frozen in their repos.
+
 ## Stage 8 — per-system GitHub App
 
 | PR | Type | Summary |
