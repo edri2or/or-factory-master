@@ -299,6 +299,8 @@ jobs:
           # Railway issues its own LE cert against the CNAME target it returns;
           # Cloudflare must NOT proxy the record (otherwise cert validation fails).
           echo "=== Railway: find-or-create custom domain ${DOMAIN} ==="
+          # DNSRecords type fields: hostlabel + recordType + requiredValue
+          # (Railway renamed these from the earlier `type`/`value`).
           resp=$(_gql 'query($id: String!) {
               service(id: $id) {
                 serviceInstances {
@@ -306,7 +308,7 @@ jobs:
                     node {
                       environmentId
                       domains {
-                        customDomains { id domain status { dnsRecords { hostlabel type value } } }
+                        customDomains { id domain status { dnsRecords { hostlabel recordType requiredValue } } }
                       }
                     }
                   }
@@ -320,19 +322,19 @@ jobs:
              | map(select(.node.environmentId==$eid))
              | .[0].node.domains.customDomains
              | map(select(.domain==$d))
-             | .[0].status.dnsRecords[0].value // ""')
+             | .[0].status.dnsRecords[0].requiredValue // ""')
 
           if [ -n "$CNAME_TARGET" ] && [ "$CNAME_TARGET" != "null" ]; then
             echo "INFO: custom domain $DOMAIN exists → CNAME target: $CNAME_TARGET"
           else
             resp=$(_gql 'mutation($input: CustomDomainCreateInput!) {
                 customDomainCreate(input: $input) {
-                  id status { dnsRecords { type value } }
+                  id status { dnsRecords { recordType requiredValue } }
                 }
               }' \
               "$(jq -cn --arg eid "$ENV_ID" --arg sid "$N8N_ID" --arg d "$DOMAIN" \
                 '{input: {environmentId: $eid, serviceId: $sid, domain: $d}}')")
-            CNAME_TARGET=$(printf '%s' "$resp" | jq -r '.data.customDomainCreate.status.dnsRecords[0].value // ""')
+            CNAME_TARGET=$(printf '%s' "$resp" | jq -r '.data.customDomainCreate.status.dnsRecords[0].requiredValue // ""')
             [ -n "$CNAME_TARGET" ] && [ "$CNAME_TARGET" != "null" ] \
               || { echo "FAIL: customDomainCreate returned no CNAME target; resp=$resp" >&2; exit 1; }
             echo "PASS: custom domain created → CNAME target: $CNAME_TARGET"
