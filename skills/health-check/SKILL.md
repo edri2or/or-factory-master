@@ -20,6 +20,16 @@ Report the current state of the factory and all systems it manages. **Read-only.
    - `verify_cloudflare_system <system>` — DNS records if any
    - `verify_mcp_server <system>` — only if the system runs an MCP server
 
+   For deep Railway diagnostics (custom-domain verification, certificate state, env vars, volumes, deployment history), the typed tools below cover the common cases without leaving the agent:
+
+   - `inspect_railway_service_direct` — latest deployment + serviceDomains + customDomains (incl. `verified`, `verificationDnsHost`, `verificationToken`, `certificateStatusDetailed`, `certificateErrorMessage`, `dnsRecords`). Use this whenever you suspect a 403 "Host not in allowlist" — `customDomains[*].status.verified` and `certificateStatusDetailed` tell you whether Railway has finished DNS validation + cert issuance.
+   - `list_railway_service_variables` — env-var names (values redacted by default; pass `reveal=true` only when actively debugging).
+   - `list_railway_service_volumes` — volume id/name/mountPath/sizeMB.
+   - `list_railway_deployments` — recent N deployments per service.
+   - `railway_graphql_read` — read-only passthrough; use only when no typed tool covers the field. Mutations are server-side rejected.
+
+   Never ask the user to look in the Railway dashboard.
+
 3. **Report format** — produce a markdown table:
 
    ```

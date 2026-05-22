@@ -1,0 +1,308 @@
+name: Deploy MCP Server (Cloud Run)
+
+# Builds and deploys the factory-master-actions MCP server to Cloud Run in
+# or-factory-master-control. Idempotent: creates runtime SA + secret bindings
+# on first run, mints MCP_ADMIN_SECRET / BEARER_SIGNING_KEY if missing,
+# rebuilds the image, deploys with the same env vars. Manual dispatch only —
+# the agent does not auto-redeploy.
+#
+# After the first successful run, the operator must update the MCP server
+# config in Claude Code (the toolbox `mcp_url`) to the URL printed in the
+# job summary. This is a one-time action.
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-mcp-server
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  deploy:
+    name: Build, push, and deploy to Cloud Run
+    runs-on: ubuntu-latest
+    environment: production
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      id-token: write
+
+    env:
+      GCP_PROJECT: "or-factory-master-control"
+      GCP_PROJECT_NUMBER: "140345952904"
+      GCP_REGION: "me-west1"
+      AR_REPO: "bootstrap-images"
+      SERVICE: "factory-master-actions-mcp"
+      RUNTIME_SA_NAME: "factory-master-actions-mcp-runtime"
+      BROKER_SA: "factory-master-broker@or-factory-master-control.iam.gserviceaccount.com"
+      WIF_PROVIDER: "projects/140345952904/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
+
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - name: Authenticate to GCP via WIF
+        id: wif-auth
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed  # v2.1.13
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.BROKER_SA }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db  # v3.0.1
+
+      - name: Enable required APIs
+        run: |
+          set -euo pipefail
+          # Idempotent: subsequent runs are no-ops once enabled.
+          gcloud services enable \
+            run.googleapis.com \
+            artifactregistry.googleapis.com \
+            secretmanager.googleapis.com \
+            iam.googleapis.com \
+            iamcredentials.googleapis.com \
+            cloudresourcemanager.googleapis.com \
+            --project="${GCP_PROJECT}"
+
+      - name: Ensure runtime SA exists
+        id: runtime-sa
+        run: |
+          set -euo pipefail
+          RUNTIME_SA_EMAIL="${RUNTIME_SA_NAME}@${GCP_PROJECT}.iam.gserviceaccount.com"
+          if gcloud iam service-accounts describe "${RUNTIME_SA_EMAIL}" \
+               --project="${GCP_PROJECT}" >/dev/null 2>&1; then
+            echo "INFO: runtime SA already exists: ${RUNTIME_SA_EMAIL}"
+          else
+            gcloud iam service-accounts create "${RUNTIME_SA_NAME}" \
+              --project="${GCP_PROJECT}" \
+              --display-name="factory-master-actions MCP runtime" \
+              --description="Runtime identity for the factory-master-actions MCP server (read-only Railway + GCP + Cloudflare introspection)."
+            echo "PASS: runtime SA created: ${RUNTIME_SA_EMAIL}"
+          fi
+          echo "RUNTIME_SA_EMAIL=${RUNTIME_SA_EMAIL}" >> "$GITHUB_ENV"
+
+      - name: Ensure MCP_ADMIN_SECRET exists (mint if missing)
+        run: |
+          set -euo pipefail
+          # describe is the source of truth — never silently re-mint, which
+          # would break live MCP sessions that hold issued bearers.
+          if gcloud secrets describe "mcp-server-admin-secret" \
+               --project="${GCP_PROJECT}" >/dev/null 2>&1; then
+            echo "INFO: mcp-server-admin-secret exists; reusing."
+          else
+            openssl rand -hex 32 | gcloud secrets create "mcp-server-admin-secret" \
+              --project="${GCP_PROJECT}" \
+              --replication-policy=automatic \
+              --labels="owner=factory-master,purpose=mcp-admin" \
+              --data-file=-
+            echo "PASS: mcp-server-admin-secret minted."
+          fi
+
+      - name: Ensure BEARER_SIGNING_KEY exists (mint if missing)
+        run: |
+          set -euo pipefail
+          if gcloud secrets describe "mcp-server-bearer-signing-key" \
+               --project="${GCP_PROJECT}" >/dev/null 2>&1; then
+            echo "INFO: mcp-server-bearer-signing-key exists; reusing."
+          else
+            openssl rand -hex 32 | gcloud secrets create "mcp-server-bearer-signing-key" \
+              --project="${GCP_PROJECT}" \
+              --replication-policy=automatic \
+              --labels="owner=factory-master,purpose=mcp-bearer-signing" \
+              --data-file=-
+            echo "PASS: mcp-server-bearer-signing-key minted."
+          fi
+
+      - name: Grant runtime SA secretAccessor on all mounted secrets
+        run: |
+          set -euo pipefail
+          # Each of these secrets is mounted by Cloud Run via --set-secrets
+          # below. Without secretAccessor, Cloud Run startup fails with
+          # PERMISSION_DENIED on secret materialization. Idempotent.
+          RUNTIME_SECRETS=(
+            "mcp-server-admin-secret"
+            "mcp-server-bearer-signing-key"
+            "factory-master-broker-app-id"
+            "factory-master-broker-app-private-key"
+            "factory-master-broker-app-installation-id"
+            "railway-api-token"
+            "cloudflare-token-creator"
+            "cloudflare-zone-id-or-infra"
+            "cloudflare-zones-read-token"
+          )
+          for SECRET in "${RUNTIME_SECRETS[@]}"; do
+            gcloud secrets add-iam-policy-binding "${SECRET}" \
+              --project="${GCP_PROJECT}" \
+              --member="serviceAccount:${RUNTIME_SA_EMAIL}" \
+              --role="roles/secretmanager.secretAccessor" \
+              --condition=None \
+              --quiet >/dev/null
+            echo "PASS: secretAccessor on ${SECRET}"
+          done
+
+      - name: Grant runtime SA project-level read on control project
+        run: |
+          set -euo pipefail
+          # Enables list_secret_metadata, list_artifact_registry_images,
+          # list_iam_bindings, tail_cloud_run_logs, inspect_cloud_run against
+          # or-factory-master-control itself. Broker SA has roles/owner on the
+          # control project (Stage 2 of bootstrap-record), which includes
+          # projects.setIamPolicy — so these grants land successfully (vs. the
+          # best-effort warnings in the old factory's bootstrap script).
+          for ROLE in \
+              roles/run.viewer \
+              roles/secretmanager.viewer \
+              roles/logging.viewer \
+              roles/artifactregistry.reader \
+              roles/iam.securityReviewer; do
+            gcloud projects add-iam-policy-binding "${GCP_PROJECT}" \
+              --member="serviceAccount:${RUNTIME_SA_EMAIL}" \
+              --role="${ROLE}" \
+              --condition=None \
+              --quiet >/dev/null
+            echo "PASS: ${ROLE} on ${GCP_PROJECT}"
+          done
+
+      - name: Grant broker SA actAs on runtime SA (for Cloud Run deploy)
+        run: |
+          set -euo pipefail
+          # Cloud Run deploy attaches the runtime SA to the service; the
+          # caller (broker SA) needs iam.serviceAccountUser on the runtime SA
+          # for that attach to succeed. Idempotent.
+          gcloud iam service-accounts add-iam-policy-binding "${RUNTIME_SA_EMAIL}" \
+            --project="${GCP_PROJECT}" \
+            --member="serviceAccount:${BROKER_SA}" \
+            --role="roles/iam.serviceAccountUser" \
+            --condition=None \
+            --quiet >/dev/null
+          echo "PASS: broker SA can actAs ${RUNTIME_SA_EMAIL}"
+
+      - name: Ensure Artifact Registry repo exists
+        run: |
+          set -euo pipefail
+          # bootstrap-images was created by register-broker-app.yml; the
+          # describe is the source of truth.
+          if gcloud artifacts repositories describe "${AR_REPO}" \
+               --location="${GCP_REGION}" \
+               --project="${GCP_PROJECT}" >/dev/null 2>&1; then
+            echo "INFO: AR repo ${AR_REPO} exists in ${GCP_REGION}"
+          else
+            gcloud artifacts repositories create "${AR_REPO}" \
+              --repository-format=docker \
+              --location="${GCP_REGION}" \
+              --project="${GCP_PROJECT}" \
+              --description="Factory-master container images (mcp-server + receivers)" \
+              --labels="owner=factory-master,purpose=bootstrap-images" \
+              --quiet
+            echo "PASS: AR repo created"
+          fi
+
+      - name: Build and push image
+        id: image
+        run: |
+          set -euo pipefail
+          IMAGE="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT}/${AR_REPO}/${SERVICE}:${GITHUB_SHA}"
+          gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
+          docker build -t "${IMAGE}" services/mcp-server/
+          docker push "${IMAGE}"
+          echo "image=${IMAGE}" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy to Cloud Run
+        id: deploy
+        run: |
+          set -euo pipefail
+          # PUBLIC_BASE_URL emitted in the MCP server's /.well-known OAuth
+          # metadata; without it BASE_URL defaults to localhost. Reuse the
+          # existing status.url on re-deploys so issuer stays stable across
+          # revisions. First deploy: fall back to the predictable region URL.
+          PUBLIC_BASE_URL=$(gcloud run services describe "${SERVICE}" \
+            --region="${GCP_REGION}" --project="${GCP_PROJECT}" \
+            --format='value(status.url)' 2>/dev/null || echo "")
+          [ -n "${PUBLIC_BASE_URL}" ] || PUBLIC_BASE_URL="https://${SERVICE}-${GCP_PROJECT_NUMBER}.${GCP_REGION}.run.app"
+          echo "PUBLIC_BASE_URL=${PUBLIC_BASE_URL}"
+
+          # IAM propagation for the actAs binding can take up to 5 minutes
+          # (per Google docs); retry with back-off on actAs permission errors.
+          deploy_once() {
+            gcloud run deploy "${SERVICE}" \
+              --image="${{ steps.image.outputs.image }}" \
+              --region="${GCP_REGION}" \
+              --project="${GCP_PROJECT}" \
+              --service-account="${RUNTIME_SA_EMAIL}" \
+              --allow-unauthenticated \
+              --min-instances=0 \
+              --max-instances=3 \
+              --memory=512Mi \
+              --cpu=1 \
+              --port=3000 \
+              --timeout=300 \
+              --set-env-vars="PUBLIC_BASE_URL=${PUBLIC_BASE_URL}" \
+              --set-secrets="MCP_ADMIN_SECRET=mcp-server-admin-secret:latest,BEARER_SIGNING_KEY=mcp-server-bearer-signing-key:latest,GITHUB_APP_ID=factory-master-broker-app-id:latest,GITHUB_APP_PRIVATE_KEY=factory-master-broker-app-private-key:latest,GITHUB_APP_INSTALLATION_ID=factory-master-broker-app-installation-id:latest,RAILWAY_API_TOKEN=railway-api-token:latest,CLOUDFLARE_API_TOKEN=cloudflare-token-creator:latest,CLOUDFLARE_ZONE_ID=cloudflare-zone-id-or-infra:latest,CLOUDFLARE_ZONES_READ_TOKEN=cloudflare-zones-read-token:latest" \
+              --labels="owner=factory-master,purpose=mcp-server" \
+              --quiet 2>&1
+          }
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            OUTPUT=$(deploy_once) && { echo "${OUTPUT}"; break; }
+            echo "${OUTPUT}"
+            if echo "${OUTPUT}" | grep -q "iam.serviceaccounts.actAs"; then
+              if [ "${i}" = "10" ]; then
+                echo "::error::actAs binding still not propagated after 10 attempts (~5 min)"
+                exit 1
+              fi
+              echo "Attempt ${i}/10 hit actAs-propagation race; sleeping 30s and retrying..."
+              sleep 30
+              continue
+            fi
+            echo "::error::Cloud Run deploy failed with non-retryable error"
+            exit 1
+          done
+          URL=$(gcloud run services describe "${SERVICE}" \
+            --region="${GCP_REGION}" --project="${GCP_PROJECT}" \
+            --format='value(status.url)')
+          echo "url=${URL}" >> "$GITHUB_OUTPUT"
+          echo "Deployed at: ${URL}"
+
+      - name: Wait for /health to return 200
+        run: |
+          set -euo pipefail
+          LEGACY_URL="${{ steps.deploy.outputs.url }}"
+          REGION_URL="https://${SERVICE}-${GCP_PROJECT_NUMBER}.${GCP_REGION}.run.app"
+          echo "Probing /health on both URLs (60 attempts × 10s = up to 10 min)"
+          for i in $(seq 1 60); do
+            for URL in "${REGION_URL}" "${LEGACY_URL}"; do
+              CODE=$(curl -s -o /tmp/health.body -w '%{http_code}' --max-time 10 "${URL}/health" || echo "000")
+              if [ "${CODE}" = "200" ]; then
+                echo "PASS: ${URL}/health returned 200 after ${i} attempt(s)"
+                exit 0
+              fi
+            done
+            sleep 10
+          done
+          echo "::error::Service did not return 200 on /health within 10 minutes"
+          exit 1
+
+      - name: Summary
+        if: success()
+        run: |
+          set -euo pipefail
+          {
+            echo "## ✅ factory-master-actions-mcp deployed"
+            echo ""
+            echo "| Resource | Value |"
+            echo "|---|---|"
+            echo "| Cloud Run service | \`${SERVICE}\` in \`${GCP_PROJECT}\` (\`${GCP_REGION}\`) |"
+            echo "| Region URL (stable) | \`https://${SERVICE}-${GCP_PROJECT_NUMBER}.${GCP_REGION}.run.app\` |"
+            echo "| Legacy URL | \`${{ steps.deploy.outputs.url }}\` |"
+            echo "| Runtime SA | \`${RUNTIME_SA_EMAIL}\` |"
+            echo "| Image | \`${{ steps.image.outputs.image }}\` |"
+            echo ""
+            echo "### Operator action — one-time"
+            echo ""
+            echo "Update the MCP server URL in Claude Code (claude.ai/code → settings → MCP servers)"
+            echo "for the \`5b6e937f-...\` toolbox server. New \`mcp_url\` is the **Region URL** above."
+            echo ""
+            echo "After updating, re-open the agent session — the new tools (incl. \`inspect_railway_service_full_direct\`,"
+            echo "\`list_railway_service_variables\`, \`list_railway_service_volumes\`, \`list_railway_deployments\`,"
+            echo "\`railway_graphql_read\`) become available and the old \`domains: []\` bug is fixed."
+          } >> "$GITHUB_STEP_SUMMARY"

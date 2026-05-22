@@ -1,0 +1,102 @@
+import jwt from 'jsonwebtoken';
+
+const OWNER = 'edri2or';
+const REPO = 'factory';
+
+const APP_ID = process.env.GITHUB_APP_ID;
+const APP_INSTALLATION_ID = process.env.GITHUB_APP_INSTALLATION_ID;
+const RAW_KEY = process.env.GITHUB_APP_PRIVATE_KEY;
+
+if (!APP_ID || !APP_INSTALLATION_ID || !RAW_KEY) {
+  throw new Error('GITHUB_APP_ID, GITHUB_APP_INSTALLATION_ID, GITHUB_APP_PRIVATE_KEY are required');
+}
+
+// Railway stores multi-line secrets with literal \n — restore newlines
+const PRIVATE_KEY = RAW_KEY.replace(/\\n/g, '\n');
+
+interface CachedToken {
+  token: string;
+  expiresAt: number;
+}
+
+let cached: CachedToken | null = null;
+
+function makeJwt(): string {
+  const now = Math.floor(Date.now() / 1000);
+  return jwt.sign({ iat: now - 60, exp: now + 540, iss: APP_ID }, PRIVATE_KEY, { algorithm: 'RS256' });
+}
+
+async function installationToken(): Promise<string> {
+  const bufferMs = 5 * 60 * 1000;
+  if (cached && cached.expiresAt - Date.now() > bufferMs) return cached.token;
+
+  const resp = await fetch(
+    `https://api.github.com/app/installations/${APP_INSTALLATION_ID}/access_tokens`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${makeJwt()}`,
+        Accept: 'application/vnd.github+json',
+        'X-GitHub-Api-Version': '2022-11-28',
+      },
+    },
+  );
+
+  if (!resp.ok) throw new Error(`Installation token fetch failed: ${resp.status}`);
+  const data = (await resp.json()) as { token: string; expires_at: string };
+  cached = { token: data.token, expiresAt: new Date(data.expires_at).getTime() };
+  return cached.token;
+}
+
+async function ghFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  const token = await installationToken();
+  return fetch(`https://api.github.com/repos/${OWNER}/${REPO}${path}`, {
+    ...init,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/vnd.github+json',
+      'X-GitHub-Api-Version': '2022-11-28',
+      'Content-Type': 'application/json',
+      ...(init.headers ?? {}),
+    },
+  });
+}
+
+export async function apiGet(path: string): Promise<unknown> {
+  const resp = await ghFetch(path);
+  if (!resp.ok) throw new Error(`GitHub GET ${path} → ${resp.status}: ${await resp.text()}`);
+  return resp.json();
+}
+
+export async function getRepoFile(path: string, ref: string = 'main'): Promise<string> {
+  const resp = await ghFetch(`/contents/${path}?ref=${encodeURIComponent(ref)}`);
+  if (!resp.ok) throw new Error(`GitHub getRepoFile ${path}@${ref} → ${resp.status}`);
+  const data = (await resp.json()) as { content: string; encoding: string };
+  if (data.encoding !== 'base64') throw new Error(`Unexpected encoding ${data.encoding}`);
+  return Buffer.from(data.content, 'base64').toString('utf8');
+}
+
+// Cross-repo GET. Used by verify_github_system to inspect generated repos
+// (edri2or/<systemName>). Requires the App installation to cover those repos.
+export async function apiGetRepo(owner: string, repo: string, path: string): Promise<unknown> {
+  const token = await installationToken();
+  const resp = await fetch(`https://api.github.com/repos/${owner}/${repo}${path}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/vnd.github+json',
+      'X-GitHub-Api-Version': '2022-11-28',
+    },
+  });
+  if (!resp.ok) {
+    throw new Error(`GitHub GET ${owner}/${repo}${path} → ${resp.status}`);
+  }
+  return resp.json();
+}
+
+export async function fetchJobLogs(jobId: string): Promise<string> {
+  const resp = await ghFetch(`/actions/jobs/${jobId}/logs`, { redirect: 'follow' });
+  if (!resp.ok) throw new Error(`Job logs fetch failed: ${resp.status}`);
+  const text = await resp.text();
+  const MAX = 50 * 1024;
+  return text.length > MAX ? `${text.slice(0, MAX)}\n[... truncated at 50 KB ...]` : text;
+}
