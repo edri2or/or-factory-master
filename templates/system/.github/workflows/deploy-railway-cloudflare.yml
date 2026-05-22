@@ -472,7 +472,7 @@ jobs:
         env:
           SYSTEM_NAME: ${{ vars.SYSTEM_NAME }}
         run: |
-          set -euo pipefail
+          set -euxo pipefail
           # CF_TOKEN_CREATOR is a token-MANAGEMENT token (User:API Tokens:Edit
           # only). It cannot do DNS edits directly — calls return code 10000
           # "Authentication error" because it lacks Zone:DNS:Edit.
@@ -548,25 +548,29 @@ jobs:
             RECTYPE=$(printf '%s' "$record" | jq -r '.recordType')
             REQVAL=$(printf '%s' "$record" | jq -r '.requiredValue')
 
-            # Railway's hostlabel for CNAME is the FQDN of the custom domain;
-            # for TXT it's "_railway-verify.<custom-domain>". Both end with
-            # the zone name. Defensive: if hostlabel is unexpectedly relative,
-            # append the zone.
+            # Railway's recordType is an enum: DNS_RECORD_TYPE_CNAME /
+            # DNS_RECORD_TYPE_TXT / etc. Cloudflare expects the bare type
+            # (CNAME / TXT). Strip the enum prefix.
+            CF_TYPE="${RECTYPE#DNS_RECORD_TYPE_}"
+
+            # Railway's hostlabel is RELATIVE to the zone (e.g. "n8n.factory-test-12"
+            # for the CNAME, "_railway-verify.n8n.factory-test-12" for the TXT).
+            # Append the zone name to get the FQDN for Cloudflare.
             case "$HOSTLABEL" in
               *.or-infra.com|or-infra.com) CF_NAME="$HOSTLABEL" ;;
               *) CF_NAME="${HOSTLABEL}.or-infra.com" ;;
             esac
 
             resp=$(curl -sS \
-              "${CF_API}/zones/${CF_ZONE_ID}/dns_records?type=${RECTYPE}&name=${CF_NAME}" \
+              "${CF_API}/zones/${CF_ZONE_ID}/dns_records?type=${CF_TYPE}&name=${CF_NAME}" \
               -H "Authorization: Bearer ${DNS_TOKEN}")
             ok=$(printf '%s' "$resp" | jq -r '.success')
-            [ "$ok" = "true" ] || { echo "FAIL: cloudflare list $CF_NAME ($RECTYPE): $resp" >&2; exit 1; }
+            [ "$ok" = "true" ] || { echo "FAIL: cloudflare list $CF_NAME ($CF_TYPE): $resp" >&2; exit 1; }
 
             REC_ID=$(printf '%s' "$resp" | jq -r '.result[0].id // ""')
             REC_CONTENT=$(printf '%s' "$resp" | jq -r '.result[0].content // ""')
 
-            BODY=$(jq -cn --arg name "$CF_NAME" --arg content "$REQVAL" --arg type "$RECTYPE" \
+            BODY=$(jq -cn --arg name "$CF_NAME" --arg content "$REQVAL" --arg type "$CF_TYPE" \
               '{type:$type, name:$name, content:$content, ttl:1, proxied:false, comment:"managed-by=or-factory-master"}')
 
             if [ -z "$REC_ID" ]; then
@@ -575,18 +579,18 @@ jobs:
                 -H "Content-Type: application/json" \
                 -d "$BODY")
               ok=$(printf '%s' "$resp" | jq -r '.success')
-              [ "$ok" = "true" ] || { echo "FAIL: cloudflare create $CF_NAME ($RECTYPE): $resp" >&2; exit 1; }
-              echo "PASS: CF $RECTYPE created: $CF_NAME -> $REQVAL"
+              [ "$ok" = "true" ] || { echo "FAIL: cloudflare create $CF_NAME ($CF_TYPE): $resp" >&2; exit 1; }
+              echo "PASS: CF $CF_TYPE created: $CF_NAME -> $REQVAL"
             elif [ "$REC_CONTENT" != "$REQVAL" ]; then
               resp=$(curl -sS -X PUT "${CF_API}/zones/${CF_ZONE_ID}/dns_records/${REC_ID}" \
                 -H "Authorization: Bearer ${DNS_TOKEN}" \
                 -H "Content-Type: application/json" \
                 -d "$BODY")
               ok=$(printf '%s' "$resp" | jq -r '.success')
-              [ "$ok" = "true" ] || { echo "FAIL: cloudflare update $CF_NAME ($RECTYPE): $resp" >&2; exit 1; }
-              echo "PASS: CF $RECTYPE updated: $CF_NAME -> $REQVAL (was $REC_CONTENT)"
+              [ "$ok" = "true" ] || { echo "FAIL: cloudflare update $CF_NAME ($CF_TYPE): $resp" >&2; exit 1; }
+              echo "PASS: CF $CF_TYPE updated: $CF_NAME -> $REQVAL (was $REC_CONTENT)"
             else
-              echo "INFO: CF $RECTYPE unchanged: $CF_NAME -> $REQVAL"
+              echo "INFO: CF $CF_TYPE unchanged: $CF_NAME -> $REQVAL"
             fi
           done < <(printf '%s' "$DNS_RECORDS_JSON" | jq -c '.[]')
           # trap fires here to revoke the token.
