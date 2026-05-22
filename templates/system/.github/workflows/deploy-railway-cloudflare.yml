@@ -398,35 +398,15 @@ jobs:
           for pid in "${n8n_pids[@]}"; do wait "$pid" || { echo "FAIL: an n8n env var upsert failed" >&2; exit 1; }; done
           echo "PASS: n8n env vars set (15 vars in parallel)."
 
-          # ===== DEBUG: introspect Railway CustomDomain schema =====
-          echo "=== Railway: introspecting CustomDomain* schema ==="
-          resp=$(_gql 'query {
-              cs: __type(name: "CustomDomainStatus") {
-                fields { name type { name kind ofType { name kind } } }
-              }
-              cd: __type(name: "CustomDomain") {
-                fields { name type { name kind ofType { name kind } } }
-              }
-              mutations: __type(name: "Mutation") {
-                fields(includeDeprecated: false) { name }
-              }
-            }' '{}')
-          echo "CustomDomain fields:"
-          printf '%s' "$resp" | jq -r '.data.cd.fields[]? | "  \(.name): \(.type.kind) \(.type.name // .type.ofType.name // "?")"'
-          echo "CustomDomainStatus fields:"
-          printf '%s' "$resp" | jq -r '.data.cs.fields[]? | "  \(.name): \(.type.kind) \(.type.name // .type.ofType.name // "?")"'
-          echo "customDomain-related mutations:"
-          printf '%s' "$resp" | jq -r '.data.mutations.fields[]? | select(.name | test("[Cc]ustom[Dd]omain")) | "  \(.name)"'
-
           # ===== Custom domain on n8n service =====
-          # We use a single-level subdomain ("n8n-<system>.or-infra.com")
-          # because Railway no longer surfaces the _railway-verify TXT for
-          # multi-level subdomains via the API, and without it Railway never
-          # issues the LE cert and the host serves the *.up.railway.app
-          # wildcard (CERT_COMMON_NAME_INVALID in the browser). Single-level
-          # subdomains only need the CNAME — Railway issues the cert as soon
-          # as it sees the DNS in place. The dnsRecords loop below is kept
-          # generic to write every record Railway lists.
+          # Railway's status.dnsRecords only contains the routing CNAME;
+          # the ownership-verification TXT lives on separate fields
+          # (status.verificationDnsHost + status.verificationToken).
+          # Until that TXT is in Cloudflare, Railway will not issue the
+          # per-domain LE cert and the host serves the *.up.railway.app
+          # wildcard (CERT_COMMON_NAME_INVALID in the browser). Combine
+          # both into DNS_RECORDS_JSON so the Cloudflare loop publishes
+          # everything Railway requires.
           echo "=== Railway: find-or-create custom domain ${DOMAIN} ==="
           resp=$(_gql 'query($id: String!) {
               service(id: $id) {
@@ -435,7 +415,7 @@ jobs:
                     node {
                       environmentId
                       domains {
-                        customDomains { id domain status { dnsRecords { hostlabel recordType requiredValue } } }
+                        customDomains { id domain status { dnsRecords { hostlabel recordType requiredValue } verificationDnsHost verificationToken verified certificateStatusDetailed certificateErrorMessage } }
                       }
                     }
                   }
@@ -444,38 +424,54 @@ jobs:
             }' \
             "$(jq -cn --arg id "$N8N_ID" '{id: $id}')")
 
-          CUSTOM_DOMAIN_ID=$(printf '%s' "$resp" | jq -r --arg eid "$ENV_ID" --arg d "$DOMAIN" \
+          # Extract the full status (dnsRecords + verification fields).
+          STATUS_JSON=$(printf '%s' "$resp" | jq -c --arg eid "$ENV_ID" --arg d "$DOMAIN" \
             '.data.service.serviceInstances.edges
              | map(select(.node.environmentId==$eid))
              | .[0].node.domains.customDomains
              | map(select(.domain==$d))
-             | .[0].id // ""')
-
-          DNS_RECORDS_JSON=$(printf '%s' "$resp" | jq -c --arg eid "$ENV_ID" --arg d "$DOMAIN" \
-            '.data.service.serviceInstances.edges
-             | map(select(.node.environmentId==$eid))
-             | .[0].node.domains.customDomains
-             | map(select(.domain==$d))
-             | .[0].status.dnsRecords // []')
+             | .[0] // {}')
+          CUSTOM_DOMAIN_ID=$(printf '%s' "$STATUS_JSON" | jq -r '.id // ""')
 
           if [ -n "$CUSTOM_DOMAIN_ID" ]; then
-            echo "INFO: custom domain $DOMAIN exists on Railway."
+            echo "INFO: custom domain $DOMAIN exists on Railway (id=$CUSTOM_DOMAIN_ID)."
           else
             # CustomDomainCreateInput required fields (confirmed via __type
             # introspection on PR #14's run): domain, environmentId,
             # projectId, serviceId. targetPort is optional.
             resp=$(_gql 'mutation($input: CustomDomainCreateInput!) {
                 customDomainCreate(input: $input) {
-                  id status { dnsRecords { hostlabel recordType requiredValue } }
+                  id status { dnsRecords { hostlabel recordType requiredValue } verificationDnsHost verificationToken verified certificateStatusDetailed certificateErrorMessage }
                 }
               }' \
               "$(jq -cn --arg pid "$PROJECT_ID_RW" --arg eid "$ENV_ID" --arg sid "$N8N_ID" --arg d "$DOMAIN" \
                 '{input: {projectId: $pid, environmentId: $eid, serviceId: $sid, domain: $d, targetPort: 5678}}')")
-            DNS_RECORDS_JSON=$(printf '%s' "$resp" | jq -c '.data.customDomainCreate.status.dnsRecords // []')
-            [ "$(printf '%s' "$DNS_RECORDS_JSON" | jq 'length')" -gt 0 ] \
-              || { echo "FAIL: customDomainCreate returned no dnsRecords; resp=$resp" >&2; exit 1; }
-            echo "PASS: custom domain created."
+            STATUS_JSON=$(printf '%s' "$resp" | jq -c '.data.customDomainCreate // {}')
+            CUSTOM_DOMAIN_ID=$(printf '%s' "$STATUS_JSON" | jq -r '.id // ""')
+            [ -n "$CUSTOM_DOMAIN_ID" ] \
+              || { echo "FAIL: customDomainCreate returned no id; resp=$resp" >&2; exit 1; }
+            echo "PASS: custom domain created (id=$CUSTOM_DOMAIN_ID)."
           fi
+
+          # Surface the verification state for visibility.
+          echo "Railway customDomain status:"
+          printf '%s' "$STATUS_JSON" | jq '.status | {verified, verificationDnsHost, verificationToken, certificateStatusDetailed, certificateErrorMessage}'
+
+          # Build the DNS records we need to publish in Cloudflare.
+          # = the dnsRecords array Railway returns (the CNAME)
+          # + a synthetic TXT record built from verificationDnsHost + verificationToken
+          #   if Railway is asking for ownership verification.
+          DNS_RECORDS_JSON=$(printf '%s' "$STATUS_JSON" | jq -c '
+            (.status.dnsRecords // [])
+            + (if (.status.verificationDnsHost // "") != "" and (.status.verificationToken // "") != ""
+               then [{
+                 hostlabel:     .status.verificationDnsHost,
+                 recordType:    "DNS_RECORD_TYPE_TXT",
+                 requiredValue: (.status.verificationToken
+                                  | if startswith("railway-verify=") then . else "railway-verify=" + . end)
+               }]
+               else []
+               end)')
 
           echo "Railway-required DNS records for ${DOMAIN}:"
           printf '%s' "$DNS_RECORDS_JSON" | jq -r '.[] | "  - \(.recordType) \(.hostlabel) -> \(.requiredValue)"'
