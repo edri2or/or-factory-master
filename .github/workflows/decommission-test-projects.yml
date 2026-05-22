@@ -68,23 +68,35 @@ jobs:
           IFS=',' read -ra NAMES <<< "$SYSTEM_NAMES"
           deleted=0
           skipped=0
+          inactive=0
           for raw in "${NAMES[@]}"; do
             name="${raw// /}"
             [ -n "$name" ] || continue
-            if ! gcloud projects describe "$name" >/dev/null 2>&1; then
-              echo "INFO: $name does not exist (already deleted or never existed) — skipping"
-              skipped=$((skipped + 1))
-              continue
-            fi
-            if gcloud projects delete "$name" --quiet 2>&1; then
-              echo "PASS: $name soft-deleted (30-day grace period)"
-              deleted=$((deleted + 1))
-            else
-              echo "FAIL: could not delete $name" >&2
-              exit 1
-            fi
+            # Query lifecycle state. Possible: ACTIVE, DELETE_REQUESTED,
+            # DELETE_IN_PROGRESS. Only ACTIVE is deletable.
+            state=$(gcloud projects describe "$name" --format="value(lifecycleState)" 2>/dev/null || echo "")
+            case "$state" in
+              "")
+                echo "INFO: $name does not exist — skipping"
+                skipped=$((skipped + 1)) ;;
+              ACTIVE)
+                if gcloud projects delete "$name" --quiet 2>&1; then
+                  echo "PASS: $name soft-deleted (30-day grace period)"
+                  deleted=$((deleted + 1))
+                else
+                  echo "FAIL: could not delete $name" >&2
+                  exit 1
+                fi ;;
+              DELETE_REQUESTED|DELETE_IN_PROGRESS)
+                echo "INFO: $name already in $state — skipping (already in grace period)"
+                inactive=$((inactive + 1)) ;;
+              *)
+                echo "FAIL: unexpected lifecycleState '$state' for $name" >&2
+                exit 1 ;;
+            esac
           done
           echo ""
           echo "=== Summary ==="
-          echo "deleted: $deleted"
-          echo "skipped: $skipped"
+          echo "deleted (this run) : $deleted"
+          echo "already inactive   : $inactive"
+          echo "did not exist      : $skipped"
