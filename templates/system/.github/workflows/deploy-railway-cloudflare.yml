@@ -330,34 +330,14 @@ jobs:
             echo "PASS: railway-n8n-service-id persisted to SM."
           fi
 
-          # ===== n8n volume: SM-first, find, then create =====
-          echo "=== Railway: n8n-data volume (SM-first lookup) ==="
-          VOLUME_ID=$(gcloud secrets versions access latest \
-            --secret=railway-n8n-volume-id --project="$PROJECT_ID" 2>/dev/null || echo "")
-          if [ -n "$VOLUME_ID" ] && [ "$VOLUME_ID" != "null" ]; then
-            echo "INFO: reusing n8n-data volume_id from SM: $VOLUME_ID"
-          else
-            resp=$(_gql 'query($id: String!) { project(id: $id) { volumes { edges { node { id name } } } } }' \
-              "$(jq -cn --arg id "$PROJECT_ID_RW" '{id: $id}')" 2>/dev/null || echo '{}')
-            VOLUME_ID=$(printf '%s' "$resp" | jq -r \
-              '(.data.project.volumes.edges // []) | map(select(.node.name=="n8n-data")) | .[0].node.id // ""' 2>/dev/null || echo "")
-
-            if [ -z "$VOLUME_ID" ] || [ "$VOLUME_ID" = "null" ]; then
-              resp=$(_gql 'mutation($input: VolumeCreateInput!) { volumeCreate(input: $input) { id } }' \
-                "$(jq -cn --arg pid "$PROJECT_ID_RW" --arg sid "$N8N_ID" \
-                  '{input: {projectId: $pid, serviceId: $sid, mountPath: "/home/node/.n8n"}}')")
-              VOLUME_ID=$(printf '%s' "$resp" | jq -r '.data.volumeCreate.id' 2>/dev/null || echo "")
-              [ -n "$VOLUME_ID" ] && [ "$VOLUME_ID" != "null" ] \
-                || { echo "FAIL: n8n volumeCreate returned no id; resp=$resp" >&2; exit 1; }
-              echo "PASS: n8n-data volume created and attached: $VOLUME_ID"
-            else
-              echo "INFO: n8n-data volume found in project: $VOLUME_ID"
-            fi
-
-            printf '%s' "$VOLUME_ID" | gcloud secrets versions add railway-n8n-volume-id \
-              --project="$PROJECT_ID" --data-file=- --quiet
-            echo "PASS: railway-n8n-volume-id persisted to SM."
-          fi
+          # No n8n-data volume: n8n's official Docker image runs as user
+          # `node` (uid 1000), but Railway volumes mount as root. Attaching
+          # a volume to /home/node/.n8n causes EACCES on n8n's runtime
+          # config file. The old factory (edri2or/factory) deliberately
+          # skips n8n's volume — all persistent state (workflows,
+          # credentials) lives in Postgres, which IS volume-backed. n8n's
+          # local user folder is ephemeral and fine to reset on redeploy.
+          VOLUME_ID=""
 
           # ===== n8n env vars: upsert =====
           # DB_* values use Railway reference syntax — resolved at container
@@ -589,7 +569,6 @@ jobs:
             echo "| Postgres service | \`${PG_ID}\` |"
             echo "| n8n service | \`${N8N_ID}\` |"
             echo "| n8n image | \`${N8N_IMAGE}\` |"
-            echo "| n8n volume | \`${VOLUME_ID}\` (mounted at /home/node/.n8n) |"
             echo "| Custom domain | \`${DOMAIN}\` |"
             echo "| CNAME target | \`${CNAME_TARGET}\` |"
             echo ""
