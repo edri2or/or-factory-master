@@ -57,21 +57,23 @@ jobs:
           [ -n "$RAILWAY_TOKEN" ] || { echo "FAIL: railway-api-token missing or empty in $PROJECT_ID SM" >&2; exit 1; }
           echo "::add-mask::${RAILWAY_TOKEN}"
 
-          CF_TOKEN=$(_sm_read "cloudflare-token-creator")
-          [ -n "$CF_TOKEN" ] || { echo "FAIL: cloudflare-token-creator missing or empty in $PROJECT_ID SM" >&2; exit 1; }
-          echo "::add-mask::${CF_TOKEN}"
+          CF_TOKEN_CREATOR=$(_sm_read "cloudflare-token-creator")
+          [ -n "$CF_TOKEN_CREATOR" ] || { echo "FAIL: cloudflare-token-creator missing or empty in $PROJECT_ID SM" >&2; exit 1; }
+          echo "::add-mask::${CF_TOKEN_CREATOR}"
 
           CF_ZONE_ID=$(_sm_read "cloudflare-zone-id-or-infra")
           [ -n "$CF_ZONE_ID" ] || { echo "FAIL: cloudflare-zone-id-or-infra missing or empty in $PROJECT_ID SM" >&2; exit 1; }
 
-          resp=$(curl -sS -H "Authorization: Bearer ${CF_TOKEN}" "${CF_API}/user/tokens/verify")
+          # Verify the creator token is alive (we'll use it to mint a child
+          # DNS token in the Configure Cloudflare DNS step).
+          resp=$(curl -sS -H "Authorization: Bearer ${CF_TOKEN_CREATOR}" "${CF_API}/user/tokens/verify")
           ok=$(printf '%s' "$resp" | jq -r '.success')
           [ "$ok" = "true" ] || { echo "FAIL: cloudflare token /user/tokens/verify: $resp" >&2; exit 1; }
-          echo "PASS: cloudflare token verified."
+          echo "PASS: cloudflare token-creator verified (will mint scoped DNS token at DNS step)."
 
           {
             echo "RAILWAY_TOKEN=${RAILWAY_TOKEN}"
-            echo "CF_TOKEN=${CF_TOKEN}"
+            echo "CF_TOKEN_CREATOR=${CF_TOKEN_CREATOR}"
             echo "CF_ZONE_ID=${CF_ZONE_ID}"
           } >> "$GITHUB_ENV"
 
@@ -415,47 +417,105 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Configure Cloudflare DNS
+        env:
+          SYSTEM_NAME: ${{ vars.SYSTEM_NAME }}
         run: |
           set -euo pipefail
+          # CF_TOKEN_CREATOR is a token-MANAGEMENT token (User:API Tokens:Edit
+          # only). It cannot do DNS edits directly — calls return code 10000
+          # "Authentication error" because it lacks Zone:DNS:Edit.
+          #
+          # Pattern (matches edri2or/factory's working flow): use the creator
+          # to MINT a short-lived (1h) scoped DNS-only token, use that for
+          # the actual DNS write, then revoke it. Cloudflare permission group
+          # 4755a26eedb94da69e1066d98aa820be == "Zone:DNS:Edit".
 
-          _cf() {
-            local method="$1" path="$2" data="${3:-}"
-            if [ -n "$data" ]; then
-              curl -sS -X "$method" \
-                -H "Authorization: Bearer ${CF_TOKEN}" \
-                -H "Content-Type: application/json" \
-                "${CF_API}${path}" \
-                -d "$data"
-            else
-              curl -sS -X "$method" \
-                -H "Authorization: Bearer ${CF_TOKEN}" \
-                "${CF_API}${path}"
+          TOKEN_NAME="bootstrap-n8n-${SYSTEM_NAME}"
+
+          # 1. Clean up any stale tokens with this name from prior failed runs.
+          # Cloudflare has a 50-token limit on the account, so leaked tokens
+          # accumulate quickly without this. Stale tokens with the same name
+          # are safe to delete — they're all minted by this workflow.
+          echo "Cleaning up any stale ${TOKEN_NAME} tokens..."
+          STALE_TOKENS=$(curl -sS \
+            "${CF_API}/user/tokens" \
+            -H "Authorization: Bearer ${CF_TOKEN_CREATOR}" \
+            | jq -r --arg n "$TOKEN_NAME" '.result[]? | select(.name == $n) | .id')
+          for stale_id in $STALE_TOKENS; do
+            curl -sS -X DELETE "${CF_API}/user/tokens/$stale_id" \
+              -H "Authorization: Bearer ${CF_TOKEN_CREATOR}" > /dev/null \
+              && echo "  deleted stale token $stale_id" \
+              || echo "::warning::could not delete stale token $stale_id"
+          done
+
+          # 2. Mint a fresh DNS:Edit token scoped to this zone, 1h expiry.
+          EXPIRES=$(date -u -d '+1 hour' +%Y-%m-%dT%H:%M:%SZ)
+          echo "Minting scoped Cloudflare DNS token (expires ${EXPIRES})..."
+          TOKEN_RESP=$(curl -sS -X POST "${CF_API}/user/tokens" \
+            -H "Authorization: Bearer ${CF_TOKEN_CREATOR}" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -cn \
+              --arg name "$TOKEN_NAME" \
+              --arg zone "$CF_ZONE_ID" \
+              --arg exp "$EXPIRES" \
+              '{name:$name,policies:[{effect:"allow",resources:{("com.cloudflare.api.account.zone."+$zone):"*"},permission_groups:[{id:"4755a26eedb94da69e1066d98aa820be"}]}],expires_on:$exp}')")
+          DNS_TOKEN=$(printf '%s' "$TOKEN_RESP" | jq -r '.result.value // empty')
+          DNS_TOKEN_ID=$(printf '%s' "$TOKEN_RESP" | jq -r '.result.id // empty')
+          if [ -z "$DNS_TOKEN" ] || [ "$DNS_TOKEN" = "null" ]; then
+            echo "FAIL: could not mint scoped Cloudflare DNS token" >&2
+            printf '%s' "$TOKEN_RESP" | jq '{success, errors, messages}' >&2
+            exit 1
+          fi
+          echo "::add-mask::${DNS_TOKEN}"
+          echo "PASS: DNS token minted (id=${DNS_TOKEN_ID})"
+
+          # 3. Idempotent CNAME create/update using the scoped token.
+          # Trap to revoke the token on script exit (success or failure).
+          revoke_token() {
+            if [ -n "${DNS_TOKEN_ID:-}" ]; then
+              curl -sS -X DELETE "${CF_API}/user/tokens/${DNS_TOKEN_ID}" \
+                -H "Authorization: Bearer ${CF_TOKEN_CREATOR}" > /dev/null 2>&1 \
+                && echo "Scoped DNS token revoked." \
+                || echo "::warning::could not revoke DNS token ${DNS_TOKEN_ID} (will auto-expire in 1h)"
             fi
           }
+          trap revoke_token EXIT
 
-          resp=$(_cf GET "/zones/${CF_ZONE_ID}/dns_records?type=CNAME&name=${DOMAIN}")
+          resp=$(curl -sS \
+            "${CF_API}/zones/${CF_ZONE_ID}/dns_records?type=CNAME&name=${DOMAIN}" \
+            -H "Authorization: Bearer ${DNS_TOKEN}")
           ok=$(printf '%s' "$resp" | jq -r '.success')
           [ "$ok" = "true" ] || { echo "FAIL: cloudflare list: $resp" >&2; exit 1; }
 
           REC_ID=$(printf '%s' "$resp" | jq -r '.result[0].id // ""')
           REC_CONTENT=$(printf '%s' "$resp" | jq -r '.result[0].content // ""')
 
+          # Use ttl:1 (Cloudflare "automatic") + proxied:false. Railway issues
+          # its own LE cert against the CNAME target; proxying breaks cert
+          # validation.
           BODY=$(jq -cn --arg name "$DOMAIN" --arg content "$CNAME_TARGET" \
-            '{type:"CNAME", name:$name, content:$content, ttl:60, proxied:false, comment:"managed-by=or-factory-master"}')
+            '{type:"CNAME", name:$name, content:$content, ttl:1, proxied:false, comment:"managed-by=or-factory-master"}')
 
           if [ -z "$REC_ID" ]; then
-            resp=$(_cf POST "/zones/${CF_ZONE_ID}/dns_records" "$BODY")
+            resp=$(curl -sS -X POST "${CF_API}/zones/${CF_ZONE_ID}/dns_records" \
+              -H "Authorization: Bearer ${DNS_TOKEN}" \
+              -H "Content-Type: application/json" \
+              -d "$BODY")
             ok=$(printf '%s' "$resp" | jq -r '.success')
             [ "$ok" = "true" ] || { echo "FAIL: cloudflare create: $resp" >&2; exit 1; }
             echo "PASS: Cloudflare CNAME created: ${DOMAIN} -> ${CNAME_TARGET}"
           elif [ "$REC_CONTENT" != "$CNAME_TARGET" ]; then
-            resp=$(_cf PUT "/zones/${CF_ZONE_ID}/dns_records/${REC_ID}" "$BODY")
+            resp=$(curl -sS -X PUT "${CF_API}/zones/${CF_ZONE_ID}/dns_records/${REC_ID}" \
+              -H "Authorization: Bearer ${DNS_TOKEN}" \
+              -H "Content-Type: application/json" \
+              -d "$BODY")
             ok=$(printf '%s' "$resp" | jq -r '.success')
             [ "$ok" = "true" ] || { echo "FAIL: cloudflare update: $resp" >&2; exit 1; }
             echo "PASS: Cloudflare CNAME updated: ${DOMAIN} -> ${CNAME_TARGET} (was -> ${REC_CONTENT})"
           else
             echo "INFO: Cloudflare CNAME unchanged: ${DOMAIN} -> ${CNAME_TARGET}"
           fi
+          # trap fires here to revoke the token.
 
       - name: Persist Railway IDs to system SM
         env:
