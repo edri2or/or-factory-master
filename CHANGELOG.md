@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 8 — per-system GitHub App
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | feature | Add `.github/workflows/register-system-app.yml` + `skills/register-system-app/SKILL.md` for per-system GitHub Apps (ADR-012 pattern from `edri2or/factory`, adapted to the master factory's manual model). Mirrors `register-broker-app.yml`: deploys Cloud Run receiver into `or-factory-master-control`, reuses the existing `bootstrap-images/receiver:latest` image (built once by the broker workflow, persists in Artifact Registry after teardown). Per-system App name `<system_name>-app`; narrow permissions (`contents:write`, `metadata:read`, `actions:write`, `workflows:write`, `secrets:write`) — no `administration`, no `organization_administration`, no `pull_requests`. Operator picks "Only select repositories" on click 2; workflow verifies via the new App's own `GET /installation/repositories` that `total_count==1` and the single repo matches the system name (no PAT-based PATCH narrowing — the only API path would need an App owner user OAuth token). Writes `github-app-{id,private-key,installation-id}` to the system project's SM, grants `secretAccessor` to deploy-sa and runtime-sa, sets `APP_ID` + `APP_INSTALLATION_ID` as Actions repo variables on the system repo. Idempotent (short-circuits if `github-app-private-key` + `github-app-installation-id` already in system SM). Service `system-app-receiver-<system_name>` is torn down with `if: always()`. |
+
 ## Stage 7 — deploy-plane stabilization (today)
 
 | PR | Type | Summary |

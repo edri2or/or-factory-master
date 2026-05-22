@@ -49,6 +49,7 @@ The previous factory (`edri2or/factory`) automated everything end-to-end. Failur
 | Skill | Purpose |
 |---|---|
 | `build-system` | Provision a new system (GCP + GitHub + secrets). Single workflow, manual dispatch. |
+| `register-system-app` | Register the per-system GitHub App after `build-system`. 2-click manual dispatch, scoped to one repo. |
 | `decommission-system` | Tear down a system (archive repo, soft-delete project). Requires written approval. |
 | `health-check` | Read-only status report of factory + all managed systems. |
 
@@ -58,6 +59,7 @@ The previous factory (`edri2or/factory`) automated everything end-to-end. Failur
 |---|---|---|
 | `register-broker-app.yml` | One-shot, already used | Created the GitHub App. Don't re-run. |
 | `provision-system.yml` | Manual `workflow_dispatch` | Builds GCP + GitHub for a new system. Pre-creates SM shells incl. `n8n-owner-email` and `n8n-owner-password`. |
+| `register-system-app.yml` | Manual `workflow_dispatch` (after `provision-system.yml`, before deploy) | Registers a per-system GitHub App via Cloud Run receiver. Narrow permissions (`contents`, `metadata`, `actions`, `workflows`, `secrets`); operator picks "Only select repositories" on click 2, the workflow verifies scope. Writes `github-app-{id,private-key,installation-id}` to the system's SM and `APP_ID` / `APP_INSTALLATION_ID` repo vars on the system repo. Idempotent. |
 | `templates/system/.github/workflows/deploy-railway-cloudflare.yml` | Manual `workflow_dispatch` in the *system* repo | Deploys n8n 1.121.0 on Railway (Postgres + persistent volume), creates Cloudflare CNAME + `_railway-verify` TXT (DNS-only), waits for Railway to issue the LE cert (retriggers via `customDomainDelete` + recreate if `verified=false`), then POSTs `/rest/owner/setup` so the URL lands on the n8n login screen. Pushed into every new system repo by `provision-system.yml`. Idempotent. |
 | `changelog-check.yml` | `push: main` + `pull_request: main` | Fails any diff that changes `.sh` / `.json` / `.yml` / `.yaml` without updating `CHANGELOG.md`, and any `CHANGELOG.md` over 20 KB. |
 | `decommission-test-projects.yml` | Manual `workflow_dispatch` | One-off cleanup of `factory-test-*` / `v2-test-*` GCP projects via the broker SA. Hard-guards against the control project. |
