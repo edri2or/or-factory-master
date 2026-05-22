@@ -149,11 +149,33 @@ jobs:
           echo "INFO: using workspace: $WORKSPACE_ID"
 
           # ===== Project: find or create =====
+          # Try workspace-scoped lookup first — top-level projects() may only
+          # return the token's personal-workspace projects, which would miss
+          # ones we create in the edri2or org workspace. Fall back to the
+          # top-level query if the workspace-scoped one isn't supported or
+          # returns empty.
           echo "=== Railway: find-or-create project '${SYSTEM_NAME}' ==="
-          resp=$(_gql 'query { projects(first:100) { edges { node { id name } } } }')
+          PROJECT_ID_RW=""
+
+          # 1. Workspace-scoped (suppress stderr; if Workspace lacks
+          # `projects`, this fails silently and we fall back).
+          resp=$(_gql 'query($wid: String!) { workspace(id: $wid) { projects { edges { node { id name } } } } }' \
+            "$(jq -cn --arg wid "$WORKSPACE_ID" '{wid: $wid}')" 2>/dev/null || echo '{}')
+          ws_count=$(printf '%s' "$resp" | jq '(.data.workspace.projects.edges // []) | length' 2>/dev/null || echo 0)
+          echo "DEBUG: workspace($WORKSPACE_ID).projects returned $ws_count projects"
           PROJECT_ID_RW=$(printf '%s' "$resp" | jq -r --arg n "$SYSTEM_NAME" \
-            '.data.projects.edges | map(select(.node.name==$n)) | .[0].node.id // ""')
-          if [ -n "$PROJECT_ID_RW" ]; then
+            '(.data.workspace.projects.edges // []) | map(select(.node.name==$n)) | .[0].node.id // ""' 2>/dev/null || echo "")
+
+          # 2. Top-level fallback
+          if [ -z "$PROJECT_ID_RW" ] || [ "$PROJECT_ID_RW" = "null" ]; then
+            resp=$(_gql 'query { projects(first:100) { edges { node { id name } } } }' 2>/dev/null || echo '{}')
+            tl_count=$(printf '%s' "$resp" | jq '(.data.projects.edges // []) | length' 2>/dev/null || echo 0)
+            echo "DEBUG: top-level projects(first:100) returned $tl_count projects"
+            PROJECT_ID_RW=$(printf '%s' "$resp" | jq -r --arg n "$SYSTEM_NAME" \
+              '(.data.projects.edges // []) | map(select(.node.name==$n)) | .[0].node.id // ""' 2>/dev/null || echo "")
+          fi
+
+          if [ -n "$PROJECT_ID_RW" ] && [ "$PROJECT_ID_RW" != "null" ]; then
             echo "INFO: project exists: $PROJECT_ID_RW"
           else
             resp=$(_gql 'mutation($input: ProjectCreateInput!) { projectCreate(input: $input) { id } }' \
@@ -327,19 +349,16 @@ jobs:
           if [ -n "$CNAME_TARGET" ] && [ "$CNAME_TARGET" != "null" ]; then
             echo "INFO: custom domain $DOMAIN exists → CNAME target: $CNAME_TARGET"
           else
-            # Debug: log the CustomDomainCreateInput shape from introspection
-            # so we know which fields Railway expects on this run.
-            INTRO=$(_gql 'query { __type(name: "CustomDomainCreateInput") { inputFields { name type { name kind ofType { name kind } } } } }' || true)
-            echo "DEBUG: CustomDomainCreateInput fields:"
-            printf '%s' "$INTRO" | jq -r '.data.__type.inputFields[]? | "  - \(.name): \(.type.name // .type.ofType.name) (\(.type.kind))"' || true
-
+            # CustomDomainCreateInput required fields (confirmed via __type
+            # introspection on PR #14's run): domain, environmentId,
+            # projectId, serviceId. targetPort is optional.
             resp=$(_gql 'mutation($input: CustomDomainCreateInput!) {
                 customDomainCreate(input: $input) {
                   id status { dnsRecords { recordType requiredValue } }
                 }
               }' \
-              "$(jq -cn --arg eid "$ENV_ID" --arg sid "$N8N_ID" --arg d "$DOMAIN" \
-                '{input: {environmentId: $eid, serviceId: $sid, domain: $d, targetPort: 5678}}')")
+              "$(jq -cn --arg pid "$PROJECT_ID_RW" --arg eid "$ENV_ID" --arg sid "$N8N_ID" --arg d "$DOMAIN" \
+                '{input: {projectId: $pid, environmentId: $eid, serviceId: $sid, domain: $d, targetPort: 5678}}')")
             CNAME_TARGET=$(printf '%s' "$resp" | jq -r '.data.customDomainCreate.status.dnsRecords[0].requiredValue // ""')
             [ -n "$CNAME_TARGET" ] && [ "$CNAME_TARGET" != "null" ] \
               || { echo "FAIL: customDomainCreate returned no CNAME target; resp=$resp" >&2; exit 1; }
