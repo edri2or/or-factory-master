@@ -1,5 +1,13 @@
 # Changelog
 
+## Stage 7 — deploy plane (Phase A)
+
+| PR | Type | Summary |
+|---|---|---|
+| [#7](https://github.com/edri2or/or-factory-master/pull/7) | feature | Add `templates/system/.github/workflows/deploy-railway-cloudflare.yml` (n8n + Postgres + persistent volume + custom domain + Cloudflare CNAME, idempotent). Add "Push deploy workflow scaffold to system repo" step to `provision-system.yml`. Update `CLAUDE.md`, `docs/roadmap.md`, `docs/external-state.md`, `docs/bootstrap-record.md`. |
+
+End-to-end after this stage: `provision-system.yml` creates a system AND ships its deploy workflow; the user dispatches `deploy-railway-cloudflare.yml` in the system repo to stand up n8n at `https://n8n.<system>.or-infra.com`.
+
 ## Stage 6 — first end-to-end provision
 
 | PR | Type | Summary |

@@ -1,0 +1,410 @@
+name: Deploy n8n on Railway + Cloudflare DNS
+
+# Lives in every system repo; pushed by or-factory-master's provision-system.yml.
+# Manual dispatch only. Creates/updates a Railway project (Postgres + n8n +
+# persistent volume), sets n8n env vars, attaches a custom domain, and
+# configures the matching Cloudflare CNAME. Idempotent: every step finds
+# existing resources by name before creating.
+#
+# Reads from this repo's variables (set by the factory):
+#   GCP_WIF_PROVIDER, GCP_DEPLOY_SA, GCP_PROJECT_ID, SYSTEM_NAME
+# Reads from its own GCP Secret Manager:
+#   railway-api-token, cloudflare-token-creator, cloudflare-zone-id-or-infra
+# Generates/persists in its own SM on first run:
+#   n8n-encryption-key, railway-project-id, railway-n8n-service-id,
+#   railway-postgres-service-id
+
+on:
+  workflow_dispatch: {}
+
+permissions: {}
+
+env:
+  N8N_IMAGE: n8nio/n8n:1.85.4
+  RAILWAY_GQL: https://backboard.railway.com/graphql/v2
+  CF_API: https://api.cloudflare.com/client/v4
+  TIMEZONE: Asia/Jerusalem
+
+jobs:
+  deploy:
+    name: Deploy n8n
+    runs-on: ubuntu-latest
+    # WIF CEL pins ref=refs/heads/main; running off other branches will fail to auth.
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      id-token: write   # WIF OIDC token
+
+    steps:
+      - name: Authenticate to GCP via WIF
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed  # v2.1.13
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SA }}
+
+      - name: Read API tokens from system SM
+        env:
+          PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+
+          _sm_read() {
+            local name="$1"
+            gcloud secrets versions access latest \
+              --secret="$name" --project="$PROJECT_ID" 2>/dev/null
+          }
+
+          RAILWAY_TOKEN=$(_sm_read "railway-api-token")
+          [ -n "$RAILWAY_TOKEN" ] || { echo "FAIL: railway-api-token missing or empty in $PROJECT_ID SM" >&2; exit 1; }
+          echo "::add-mask::${RAILWAY_TOKEN}"
+
+          CF_TOKEN=$(_sm_read "cloudflare-token-creator")
+          [ -n "$CF_TOKEN" ] || { echo "FAIL: cloudflare-token-creator missing or empty in $PROJECT_ID SM" >&2; exit 1; }
+          echo "::add-mask::${CF_TOKEN}"
+
+          CF_ZONE_ID=$(_sm_read "cloudflare-zone-id-or-infra")
+          [ -n "$CF_ZONE_ID" ] || { echo "FAIL: cloudflare-zone-id-or-infra missing or empty in $PROJECT_ID SM" >&2; exit 1; }
+
+          resp=$(curl -sS -H "Authorization: Bearer ${CF_TOKEN}" "${CF_API}/user/tokens/verify")
+          ok=$(printf '%s' "$resp" | jq -r '.success')
+          [ "$ok" = "true" ] || { echo "FAIL: cloudflare token /user/tokens/verify: $resp" >&2; exit 1; }
+          echo "PASS: cloudflare token verified."
+
+          {
+            echo "RAILWAY_TOKEN=${RAILWAY_TOKEN}"
+            echo "CF_TOKEN=${CF_TOKEN}"
+            echo "CF_ZONE_ID=${CF_ZONE_ID}"
+          } >> "$GITHUB_ENV"
+
+      - name: Resolve or generate n8n encryption key
+        env:
+          PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          SYSTEM_NAME: ${{ vars.SYSTEM_NAME }}
+        run: |
+          set -euo pipefail
+          SECRET="n8n-encryption-key"
+
+          if N8N_KEY=$(gcloud secrets versions access latest \
+                       --secret="$SECRET" --project="$PROJECT_ID" 2>/dev/null) \
+             && [ -n "$N8N_KEY" ]; then
+            echo "INFO: $SECRET already present in $PROJECT_ID — reusing existing key."
+          else
+            if ! gcloud secrets describe "$SECRET" --project="$PROJECT_ID" >/dev/null 2>&1; then
+              gcloud secrets create "$SECRET" --project="$PROJECT_ID" \
+                --replication-policy=automatic \
+                --labels="managed-by=or-factory-master,system=${SYSTEM_NAME}" \
+                --quiet
+              echo "PASS: $SECRET shell created in $PROJECT_ID."
+            fi
+            N8N_KEY=$(openssl rand -hex 32)
+            printf '%s' "$N8N_KEY" | gcloud secrets versions add "$SECRET" \
+              --project="$PROJECT_ID" --data-file=- --quiet
+            echo "PASS: generated 32-byte $SECRET and stored new version."
+          fi
+
+          echo "::add-mask::${N8N_KEY}"
+          echo "N8N_KEY=${N8N_KEY}" >> "$GITHUB_ENV"
+
+      - name: Provision Railway (project + Postgres + n8n + volume + env vars + domain)
+        env:
+          SYSTEM_NAME: ${{ vars.SYSTEM_NAME }}
+        run: |
+          set -euo pipefail
+
+          # GraphQL helper: posts a query/mutation, fails on .errors[].
+          _gql() {
+            local query="$1" variables="${2:-{}}"
+            local body resp
+            body=$(jq -cn --arg q "$query" --argjson v "$variables" \
+              '{query: $q, variables: $v}')
+            resp=$(curl -sS -X POST "$RAILWAY_GQL" \
+              -H "Authorization: Bearer ${RAILWAY_TOKEN}" \
+              -H "Content-Type: application/json" \
+              -d "$body")
+            if printf '%s' "$resp" | jq -e '.errors' >/dev/null 2>&1; then
+              echo "FAIL: Railway GraphQL errors:" >&2
+              printf '%s\n' "$resp" | jq -r '.errors[] | "  - " + .message' >&2
+              return 1
+            fi
+            printf '%s' "$resp"
+          }
+
+          DOMAIN="n8n.${SYSTEM_NAME}.or-infra.com"
+
+          # ===== Project: find or create =====
+          echo "=== Railway: find-or-create project '${SYSTEM_NAME}' ==="
+          resp=$(_gql 'query { projects(first:100) { edges { node { id name } } } }')
+          PROJECT_ID_RW=$(printf '%s' "$resp" | jq -r --arg n "$SYSTEM_NAME" \
+            '.data.projects.edges | map(select(.node.name==$n)) | .[0].node.id // ""')
+          if [ -n "$PROJECT_ID_RW" ]; then
+            echo "INFO: project exists: $PROJECT_ID_RW"
+          else
+            resp=$(_gql 'mutation($input: ProjectCreateInput!) { projectCreate(input: $input) { id } }' \
+              "$(jq -cn --arg name "$SYSTEM_NAME" '{input: {name: $name, defaultEnvironmentName: "production"}}')")
+            PROJECT_ID_RW=$(printf '%s' "$resp" | jq -r '.data.projectCreate.id')
+            [ -n "$PROJECT_ID_RW" ] && [ "$PROJECT_ID_RW" != "null" ] \
+              || { echo "FAIL: projectCreate returned no id; resp=$resp" >&2; exit 1; }
+            echo "PASS: project created: $PROJECT_ID_RW"
+          fi
+
+          # ===== Production environment id =====
+          resp=$(_gql 'query($id: String!) { project(id: $id) { environments { edges { node { id name } } } } }' \
+            "$(jq -cn --arg id "$PROJECT_ID_RW" '{id: $id}')")
+          ENV_ID=$(printf '%s' "$resp" | jq -r \
+            '.data.project.environments.edges | map(select(.node.name=="production")) | .[0].node.id // ""')
+          [ -n "$ENV_ID" ] && [ "$ENV_ID" != "null" ] \
+            || { echo "FAIL: production environment not found on project $PROJECT_ID_RW" >&2; exit 1; }
+          echo "INFO: production environment id: $ENV_ID"
+
+          # ===== Postgres: find or templateDeploy =====
+          echo "=== Railway: find-or-create Postgres service ==="
+          _find_pg() {
+            local r
+            r=$(_gql 'query($id: String!) { project(id: $id) { services { edges { node { id name } } } } }' \
+              "$(jq -cn --arg id "$PROJECT_ID_RW" '{id: $id}')")
+            printf '%s' "$r" | jq -r '.data.project.services.edges | map(select(.node.name=="Postgres")) | .[0].node.id // ""'
+          }
+          PG_ID=$(_find_pg)
+          if [ -n "$PG_ID" ] && [ "$PG_ID" != "null" ]; then
+            echo "INFO: Postgres service exists: $PG_ID"
+          else
+            echo "Deploying Railway Postgres template..."
+            resp=$(_gql 'mutation($input: TemplateDeployInput!) { templateDeploy(input: $input) { workflowId } }' \
+              "$(jq -cn --arg pid "$PROJECT_ID_RW" --arg eid "$ENV_ID" \
+                '{input: {projectId: $pid, environmentId: $eid, templateCode: "postgres"}}')")
+            WORKFLOW=$(printf '%s' "$resp" | jq -r '.data.templateDeploy.workflowId // ""')
+            echo "INFO: templateDeploy workflowId: ${WORKFLOW:-unknown}"
+
+            # Poll the project's services until 'Postgres' appears (max 5 min).
+            for i in $(seq 1 30); do
+              PG_ID=$(_find_pg)
+              if [ -n "$PG_ID" ] && [ "$PG_ID" != "null" ]; then
+                echo "PASS: Postgres service appeared after ${i}0s: $PG_ID"
+                break
+              fi
+              echo "INFO: waiting for Postgres service (attempt $i/30, sleep 10s)..."
+              sleep 10
+            done
+            [ -n "$PG_ID" ] && [ "$PG_ID" != "null" ] \
+              || { echo "FAIL: Postgres service did not appear within 5 min" >&2; exit 1; }
+          fi
+
+          # ===== n8n service: find or create from image =====
+          echo "=== Railway: find-or-create n8n service ==="
+          resp=$(_gql 'query($id: String!) { project(id: $id) { services { edges { node { id name } } } } }' \
+            "$(jq -cn --arg id "$PROJECT_ID_RW" '{id: $id}')")
+          N8N_ID=$(printf '%s' "$resp" | jq -r '.data.project.services.edges | map(select(.node.name=="n8n")) | .[0].node.id // ""')
+          if [ -n "$N8N_ID" ] && [ "$N8N_ID" != "null" ]; then
+            echo "INFO: n8n service exists: $N8N_ID"
+          else
+            resp=$(_gql 'mutation($input: ServiceCreateInput!) { serviceCreate(input: $input) { id } }' \
+              "$(jq -cn --arg pid "$PROJECT_ID_RW" --arg img "$N8N_IMAGE" \
+                '{input: {projectId: $pid, name: "n8n", source: {image: $img}}}')")
+            N8N_ID=$(printf '%s' "$resp" | jq -r '.data.serviceCreate.id')
+            [ -n "$N8N_ID" ] && [ "$N8N_ID" != "null" ] \
+              || { echo "FAIL: serviceCreate returned no id; resp=$resp" >&2; exit 1; }
+            echo "PASS: n8n service created: $N8N_ID"
+          fi
+
+          # ===== Volume: find or create+attach to n8n =====
+          echo "=== Railway: find-or-create n8n-data volume on n8n service ==="
+          resp=$(_gql 'query($id: String!) { project(id: $id) { volumes { edges { node { id name } } } } }' \
+            "$(jq -cn --arg id "$PROJECT_ID_RW" '{id: $id}')")
+          VOLUME_ID=$(printf '%s' "$resp" | jq -r '.data.project.volumes.edges | map(select(.node.name=="n8n-data")) | .[0].node.id // ""')
+          if [ -n "$VOLUME_ID" ] && [ "$VOLUME_ID" != "null" ]; then
+            echo "INFO: volume 'n8n-data' exists: $VOLUME_ID"
+          else
+            resp=$(_gql 'mutation($input: VolumeCreateInput!) { volumeCreate(input: $input) { id } }' \
+              "$(jq -cn --arg pid "$PROJECT_ID_RW" --arg sid "$N8N_ID" \
+                '{input: {projectId: $pid, serviceId: $sid, mountPath: "/home/node/.n8n"}}')")
+            VOLUME_ID=$(printf '%s' "$resp" | jq -r '.data.volumeCreate.id')
+            [ -n "$VOLUME_ID" ] && [ "$VOLUME_ID" != "null" ] \
+              || { echo "FAIL: volumeCreate returned no id; resp=$resp" >&2; exit 1; }
+            echo "PASS: n8n-data volume created and attached: $VOLUME_ID"
+          fi
+
+          # ===== n8n env vars: upsert =====
+          # DB_* values use Railway reference syntax — resolved at container
+          # start from the Postgres service's auto-generated env. Restart-safe
+          # across credential rotations.
+          echo "=== Railway: upsert n8n env vars ==="
+          _upsert() {
+            local name="$1" value="$2"
+            _gql 'mutation($input: VariableUpsertInput!) { variableUpsert(input: $input) }' \
+              "$(jq -cn --arg pid "$PROJECT_ID_RW" --arg eid "$ENV_ID" --arg sid "$N8N_ID" \
+                --arg n "$name" --arg v "$value" \
+                '{input: {projectId: $pid, environmentId: $eid, serviceId: $sid, name: $n, value: $v}}')" \
+              > /dev/null
+            echo "  PASS: $name"
+          }
+
+          # GitHub Actions parses the dollar-double-brace expression syntax at
+          # YAML load time and will reject the workflow if it sees Railway's
+          # reference syntax verbatim. Assemble the prefix at bash runtime so
+          # that sequence never appears literally in this YAML source.
+          DLR='$'
+          _upsert DB_TYPE postgresdb
+          _upsert DB_POSTGRESDB_HOST     "${DLR}{{Postgres.PGHOST}}"
+          _upsert DB_POSTGRESDB_PORT     "${DLR}{{Postgres.PGPORT}}"
+          _upsert DB_POSTGRESDB_DATABASE "${DLR}{{Postgres.PGDATABASE}}"
+          _upsert DB_POSTGRESDB_USER     "${DLR}{{Postgres.PGUSER}}"
+          _upsert DB_POSTGRESDB_PASSWORD "${DLR}{{Postgres.PGPASSWORD}}"
+          _upsert DB_POSTGRESDB_SCHEMA   public
+          _upsert N8N_HOST               "$DOMAIN"
+          _upsert N8N_PROTOCOL           https
+          _upsert N8N_PORT               5678
+          _upsert WEBHOOK_URL            "https://${DOMAIN}"
+          _upsert GENERIC_TIMEZONE       "$TIMEZONE"
+          _upsert N8N_ENCRYPTION_KEY     "$N8N_KEY"
+          _upsert N8N_RUNNERS_ENABLED    true
+
+          # ===== Custom domain on n8n service =====
+          # Railway issues its own LE cert against the CNAME target it returns;
+          # Cloudflare must NOT proxy the record (otherwise cert validation fails).
+          echo "=== Railway: find-or-create custom domain ${DOMAIN} ==="
+          resp=$(_gql 'query($id: String!) {
+              service(id: $id) {
+                serviceInstances {
+                  edges {
+                    node {
+                      environmentId
+                      domains {
+                        customDomains { id domain status { dnsRecords { hostlabel type value } } }
+                      }
+                    }
+                  }
+                }
+              }
+            }' \
+            "$(jq -cn --arg id "$N8N_ID" '{id: $id}')")
+
+          CNAME_TARGET=$(printf '%s' "$resp" | jq -r --arg eid "$ENV_ID" --arg d "$DOMAIN" \
+            '.data.service.serviceInstances.edges
+             | map(select(.node.environmentId==$eid))
+             | .[0].node.domains.customDomains
+             | map(select(.domain==$d))
+             | .[0].status.dnsRecords[0].value // ""')
+
+          if [ -n "$CNAME_TARGET" ] && [ "$CNAME_TARGET" != "null" ]; then
+            echo "INFO: custom domain $DOMAIN exists → CNAME target: $CNAME_TARGET"
+          else
+            resp=$(_gql 'mutation($input: CustomDomainCreateInput!) {
+                customDomainCreate(input: $input) {
+                  id status { dnsRecords { type value } }
+                }
+              }' \
+              "$(jq -cn --arg eid "$ENV_ID" --arg sid "$N8N_ID" --arg d "$DOMAIN" \
+                '{input: {environmentId: $eid, serviceId: $sid, domain: $d}}')")
+            CNAME_TARGET=$(printf '%s' "$resp" | jq -r '.data.customDomainCreate.status.dnsRecords[0].value // ""')
+            [ -n "$CNAME_TARGET" ] && [ "$CNAME_TARGET" != "null" ] \
+              || { echo "FAIL: customDomainCreate returned no CNAME target; resp=$resp" >&2; exit 1; }
+            echo "PASS: custom domain created → CNAME target: $CNAME_TARGET"
+          fi
+
+          # Persist for the next steps
+          {
+            echo "PROJECT_ID_RW=${PROJECT_ID_RW}"
+            echo "ENV_ID=${ENV_ID}"
+            echo "PG_ID=${PG_ID}"
+            echo "N8N_ID=${N8N_ID}"
+            echo "VOLUME_ID=${VOLUME_ID}"
+            echo "CNAME_TARGET=${CNAME_TARGET}"
+            echo "DOMAIN=${DOMAIN}"
+          } >> "$GITHUB_ENV"
+
+      - name: Configure Cloudflare DNS
+        run: |
+          set -euo pipefail
+
+          _cf() {
+            local method="$1" path="$2" data="${3:-}"
+            if [ -n "$data" ]; then
+              curl -sS -X "$method" \
+                -H "Authorization: Bearer ${CF_TOKEN}" \
+                -H "Content-Type: application/json" \
+                "${CF_API}${path}" \
+                -d "$data"
+            else
+              curl -sS -X "$method" \
+                -H "Authorization: Bearer ${CF_TOKEN}" \
+                "${CF_API}${path}"
+            fi
+          }
+
+          resp=$(_cf GET "/zones/${CF_ZONE_ID}/dns_records?type=CNAME&name=${DOMAIN}")
+          ok=$(printf '%s' "$resp" | jq -r '.success')
+          [ "$ok" = "true" ] || { echo "FAIL: cloudflare list: $resp" >&2; exit 1; }
+
+          REC_ID=$(printf '%s' "$resp" | jq -r '.result[0].id // ""')
+          REC_CONTENT=$(printf '%s' "$resp" | jq -r '.result[0].content // ""')
+
+          BODY=$(jq -cn --arg name "$DOMAIN" --arg content "$CNAME_TARGET" \
+            '{type:"CNAME", name:$name, content:$content, ttl:60, proxied:false, comment:"managed-by=or-factory-master"}')
+
+          if [ -z "$REC_ID" ]; then
+            resp=$(_cf POST "/zones/${CF_ZONE_ID}/dns_records" "$BODY")
+            ok=$(printf '%s' "$resp" | jq -r '.success')
+            [ "$ok" = "true" ] || { echo "FAIL: cloudflare create: $resp" >&2; exit 1; }
+            echo "PASS: Cloudflare CNAME created: ${DOMAIN} -> ${CNAME_TARGET}"
+          elif [ "$REC_CONTENT" != "$CNAME_TARGET" ]; then
+            resp=$(_cf PUT "/zones/${CF_ZONE_ID}/dns_records/${REC_ID}" "$BODY")
+            ok=$(printf '%s' "$resp" | jq -r '.success')
+            [ "$ok" = "true" ] || { echo "FAIL: cloudflare update: $resp" >&2; exit 1; }
+            echo "PASS: Cloudflare CNAME updated: ${DOMAIN} -> ${CNAME_TARGET} (was -> ${REC_CONTENT})"
+          else
+            echo "INFO: Cloudflare CNAME unchanged: ${DOMAIN} -> ${CNAME_TARGET}"
+          fi
+
+      - name: Persist Railway IDs to system SM
+        env:
+          PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          SYSTEM_NAME: ${{ vars.SYSTEM_NAME }}
+        run: |
+          set -euo pipefail
+
+          _persist_id() {
+            local secret="$1" want="$2" existing
+            if existing=$(gcloud secrets versions access latest \
+                         --secret="$secret" --project="$PROJECT_ID" 2>/dev/null); then
+              if [ "$existing" = "$want" ]; then
+                echo "INFO: $secret unchanged (${want})"
+                return 0
+              fi
+              echo "WARN: $secret mismatch — SM has '$existing', Railway returned '$want'. NOT overwriting; surface and continue." >&2
+              return 0
+            fi
+            if ! gcloud secrets describe "$secret" --project="$PROJECT_ID" >/dev/null 2>&1; then
+              gcloud secrets create "$secret" --project="$PROJECT_ID" \
+                --replication-policy=automatic \
+                --labels="managed-by=or-factory-master,system=${SYSTEM_NAME}" \
+                --quiet
+            fi
+            printf '%s' "$want" | gcloud secrets versions add "$secret" \
+              --project="$PROJECT_ID" --data-file=- --quiet
+            echo "PASS: $secret = ${want}"
+          }
+
+          _persist_id "railway-project-id"           "$PROJECT_ID_RW"
+          _persist_id "railway-n8n-service-id"       "$N8N_ID"
+          _persist_id "railway-postgres-service-id"  "$PG_ID"
+
+      - name: Summary
+        env:
+          SYSTEM_NAME: ${{ vars.SYSTEM_NAME }}
+        run: |
+          set -euo pipefail
+          {
+            echo "## Deployed: \`${SYSTEM_NAME}\`"
+            echo ""
+            echo "| Resource | Value |"
+            echo "|---|---|"
+            echo "| Railway project | \`${PROJECT_ID_RW}\` |"
+            echo "| Production env | \`${ENV_ID}\` |"
+            echo "| Postgres service | \`${PG_ID}\` |"
+            echo "| n8n service | \`${N8N_ID}\` |"
+            echo "| n8n image | \`${N8N_IMAGE}\` |"
+            echo "| n8n volume | \`${VOLUME_ID}\` (mounted at /home/node/.n8n) |"
+            echo "| Custom domain | \`${DOMAIN}\` |"
+            echo "| CNAME target | \`${CNAME_TARGET}\` |"
+            echo ""
+            echo "**DEPLOY COMPLETE.** Visit https://${DOMAIN} — first load opens n8n owner-account setup. Allow 1-3 min after first run for Let's Encrypt cert."
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -150,6 +150,23 @@ Three buckets:
 2. **Generic API keys (16, copied to every system project)** — `anthropic-api-key`, `openai-api-key`, `openrouter-management-key`, `perplexity-api-key`, `opencode-api-key`, `deepseek-api-key`, `google-api-key`, `linear-api-key`, `linear-team-id`, `stripe-api-key`, `telegram-chat-id`, `telegram-bot-token`, `railway-api-token`, `cloudflare-token-creator`, `cloudflare-account-id`, `cloudflare-zone-id-or-infra`. Copied by `scripts/copy-generic-secrets.sh` during `provision-system.yml`.
 3. **Anything else** — currently nothing. The `EXCLUDE` regex in the copy script is narrow on purpose (`^factory-master-broker-app-(id|private-key|installation-id)$`); any new secret added to control SM will be copied to every system unless the regex is updated.
 
+### Cloudflare API token scopes (`cloudflare-token-creator`)
+
+The token stored as `cloudflare-token-creator` in control SM (and copied to every system SM) is consumed by the deploy workflow to manage one CNAME per system on `or-infra.com`. It must have, on the `or-infra.com` zone:
+
+- `Zone:Zone:Read`
+- `Zone:DNS:Edit`
+
+Verify:
+
+```bash
+TOKEN=$(gcloud secrets versions access latest --secret=cloudflare-token-creator --project=or-factory-master-control)
+curl -sS -H "Authorization: Bearer ${TOKEN}" \
+  https://api.cloudflare.com/client/v4/user/tokens/verify | jq '.success, .result.status'
+```
+
+The deploy workflow calls `/user/tokens/verify` up-front and fails fast if the token is invalid or revoked. Scope changes happen in the Cloudflare dashboard (Profile → API Tokens); the token value in SM stays the same.
+
 ## Recovery checklist
 
 If you ever need to rebuild this factory from scratch, do these in order:
