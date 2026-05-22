@@ -1,5 +1,15 @@
 # Changelog
 
+## Stage 12 — deploy-plane N8N_HOST correctness
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | fix | Set `N8N_HOST` to the system FQDN (`$DOMAIN`) instead of `0.0.0.0` in `templates/system/.github/workflows/deploy-railway-cloudflare.yml:432-442`, and correct the surrounding comment. The original comment claimed `N8N_HOST is the BIND address (Express listen interface), not the public hostname` — wrong in n8n 1.x: `N8N_HOST` carries the public hostname used by URL generation and the `Editor is now accessible via …` startup log line; the bind interface is controlled by `N8N_LISTEN_ADDRESS` (default `::`, which already covers IPv4+IPv6 and is what every existing system actually binds on — visible in the deployment log as `n8n ready on ::, port 5678`). The bug surfaced during factory-test-20 diagnosis with the new MCP's `inspect_railway_service_direct`: `customDomain` was verified, cert was `COMPLETE`, but the operator-facing log read `Editor is now accessible via: https://0.0.0.0`, which falsely suggested the host config was broken when in fact `WEBHOOK_URL=https://${DOMAIN}` and Railway's edge routing made the system fully functional. Cosmetic-only for existing systems (factory-test-18/19/20 keep `0.0.0.0` in their frozen workflow copies — `WEBHOOK_URL` overrides actual URL generation), but new systems will now ship with the right value from first deploy and the comment will no longer mislead the next reader. |
+
+Template edits propagate only to newly-provisioned systems (per CLAUDE.md). Existing systems keep their pre-fix workflows.
+
+Out of scope: backfilling `N8N_HOST` on factory-test-18/19 (factory-test-20 was already corrected manually in the previous session); deferred until those systems are otherwise redeployed.
+
 ## Stage 11 — MCP visibility + cosmetic followups
 
 | PR | Type | Summary |
