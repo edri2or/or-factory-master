@@ -308,10 +308,12 @@ jobs:
             echo "=== Railway: Postgres env vars (parallel upsert) ==="
             POSTGRES_PASSWORD=$(openssl rand -hex 24)
             echo "::add-mask::${POSTGRES_PASSWORD}"
-            # DATABASE_URL uses Railway runtime reference syntax — assemble
-            # with bash so the literal ${{ never appears in the YAML
-            # (would trigger GitHub Actions expression parsing). Matches
-            # edri2or/factory's 5th Postgres env var verbatim.
+            # DATABASE_URL uses Railway runtime reference syntax for the
+            # password + private-domain values. Assemble the prefix with
+            # bash so the dollar-double-brace sequence never appears
+            # verbatim in this YAML source (GitHub Actions would parse it
+            # as an expression and reject the workflow at load time).
+            # Matches edri2or/factory's 5th Postgres env var.
             DLR='$'
             DATABASE_URL="postgresql://postgres:${DLR}{{POSTGRES_PASSWORD}}@${DLR}{{RAILWAY_PRIVATE_DOMAIN}}:5432/railway"
             pg_pids=()
