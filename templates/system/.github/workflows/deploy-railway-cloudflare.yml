@@ -733,33 +733,163 @@ jobs:
           fi
           # trap fires here to revoke the token.
 
-      - name: Wait for Railway TLS cert
+      - name: Wait for Railway TLS cert (retry-with-recreate)
         env:
           SYSTEM_NAME: ${{ vars.SYSTEM_NAME }}
         run: |
-          # Observational, non-blocking: Railway issues a Let's Encrypt cert
-          # for the custom domain only after its periodic DNS check passes.
-          # This step polls the TLS handshake from outside and reports when
-          # the cert CN matches our domain. Tolerates transient TLS / DNS
-          # failures (no pipefail) and exits 0 with a warning on timeout, so
-          # deploys don't block on Railway's async issuance.
-          set -eu  # deliberately NOT pipefail — allow openssl/sed errors
+          # Railway issues the per-domain LE cert only after its verification
+          # job runs against the customDomain. Sometimes Railway loses that
+          # first verification attempt — observed on factory-test-20 and
+          # factory-test-21: customDomain sat in verified=false for 9+ idle
+          # minutes with no progress; a fresh customDomainDelete + Create
+          # unstuck it within seconds. Wall-clock time alone does not unstick;
+          # the recreate does.
+          #
+          # Strategy: 2 attempts × 5-min TLS-handshake poll, with one
+          # customDomain recreate + CF CNAME repoint between attempts.
+          # Total wall-clock cap ~10 min.
+          #
+          # Blocking on overall timeout (exit 1) — the downstream
+          # `Set up n8n owner account` step curls the FQDN over HTTPS and
+          # fail-fasts on HTTP != 200 (Stage 9), so we must not let a missing
+          # cert leak into that step.
+          set -eu  # deliberately NOT pipefail — allow openssl/sed transients
           DOMAIN="n8n-${SYSTEM_NAME}.or-infra.com"
-          echo "=== Polling TLS cert on https://${DOMAIN} (up to 5min) ==="
-          for i in $(seq 1 30); do
-            cn=$(echo | timeout 5 openssl s_client \
+
+          _rgql() {
+            curl -sS -X POST "$RAILWAY_GQL" \
+              -H "Authorization: Bearer ${RAILWAY_TOKEN}" \
+              -H "Content-Type: application/json" \
+              -d "$(jq -cn --arg q "$1" --argjson v "$2" '{query:$q,variables:$v}')"
+          }
+
+          _probe_tls_cn() {
+            # Prints the cert CN, or empty on any TLS / DNS error.
+            echo | timeout 5 openssl s_client \
                    -connect "${DOMAIN}:443" -servername "${DOMAIN}" 2>/dev/null \
-                 | openssl x509 -noout -subject 2>/dev/null \
-                 | sed -n 's|.*CN *= *\([^,]*\).*|\1|p' \
-                 || true)
-            if [ "${cn:-}" = "${DOMAIN}" ]; then
-              echo "PASS: Railway issued cert for ${DOMAIN} after $((i*10))s"
-              exit 0
+              | openssl x509 -noout -subject 2>/dev/null \
+              | sed -n 's|.*CN *= *\([^,]*\).*|\1|p' \
+              || true
+          }
+
+          _recreate_custom_domain() {
+            # customDomainDelete + customDomainCreate. Updates CUSTOM_DOMAIN_ID
+            # in env. Prints the new CNAME target on stdout (status to stderr).
+            echo "  customDomainDelete id=${CUSTOM_DOMAIN_ID}" >&2
+            _rgql 'mutation($id:String!){customDomainDelete(id:$id)}' \
+              "$(jq -cn --arg id "$CUSTOM_DOMAIN_ID" '{id:$id}')" >/dev/null
+            sleep 5
+            local resp new_status new_id new_target
+            resp=$(_rgql 'mutation($i:CustomDomainCreateInput!){
+                customDomainCreate(input:$i){
+                  id status {
+                    dnsRecords { hostlabel recordType requiredValue }
+                    verified
+                  }
+                }
+              }' \
+              "$(jq -cn --arg pid "$PROJECT_ID_RW" --arg eid "$ENV_ID" --arg sid "$N8N_ID" --arg d "$DOMAIN" \
+                '{i:{projectId:$pid,environmentId:$eid,serviceId:$sid,domain:$d,targetPort:5678}}')")
+            new_status=$(printf '%s' "$resp" | jq -c '.data.customDomainCreate // {}')
+            new_id=$(printf '%s' "$new_status" | jq -r '.id // ""')
+            new_target=$(printf '%s' "$new_status" | jq -r \
+              '.status.dnsRecords // [] | map(select(.recordType=="DNS_RECORD_TYPE_CNAME")) | .[0].requiredValue // ""')
+            if [ -z "$new_id" ] || [ -z "$new_target" ]; then
+              echo "::error::customDomain recreate returned no id/target. resp=${resp}" >&2
+              exit 1
             fi
-            echo "[poll $i/30] CN=${cn:-<no cert>}; sleeping 10s..."
-            sleep 10
+            CUSTOM_DOMAIN_ID="$new_id"
+            echo "  customDomainCreate -> id=${new_id} cname=${new_target}" >&2
+            printf '%s' "$new_target"
+          }
+
+          _cf_repoint_cname() {
+            # $1 = new CNAME target. Mints a 1h scoped DNS:Edit token, updates
+            # the CNAME, revokes the token. The earlier `Configure Cloudflare
+            # DNS` step revoked its own token via trap, so we mint a fresh one.
+            local new_target="$1"
+            local token_name="bootstrap-n8n-${SYSTEM_NAME}-retry"
+            # Reap any leftover retry-token from a prior run of this step.
+            local existing tid
+            existing=$(curl -sS "${CF_API}/user/tokens" \
+              -H "Authorization: Bearer ${CF_TOKEN_CREATOR}" \
+              | jq -r --arg n "$token_name" '.result[]? | select(.name==$n) | .id')
+            for tid in $existing; do
+              curl -sS -X DELETE "${CF_API}/user/tokens/${tid}" \
+                -H "Authorization: Bearer ${CF_TOKEN_CREATOR}" >/dev/null 2>&1 || true
+            done
+
+            local expires resp dns_token dns_token_id
+            expires=$(date -u -d '+1 hour' +%Y-%m-%dT%H:%M:%SZ)
+            resp=$(curl -sS -X POST "${CF_API}/user/tokens" \
+              -H "Authorization: Bearer ${CF_TOKEN_CREATOR}" \
+              -H "Content-Type: application/json" \
+              -d "$(jq -cn --arg name "$token_name" --arg zone "$CF_ZONE_ID" --arg exp "$expires" \
+                '{name:$name,policies:[{effect:"allow",resources:{("com.cloudflare.api.account.zone."+$zone):"*"},permission_groups:[{id:"4755a26eedb94da69e1066d98aa820be"}]}],expires_on:$exp}')")
+            dns_token=$(printf '%s' "$resp" | jq -r '.result.value // empty')
+            dns_token_id=$(printf '%s' "$resp" | jq -r '.result.id // empty')
+            if [ -z "$dns_token" ] || [ "$dns_token" = "null" ]; then
+              echo "::error::could not mint scoped CF token for retry. resp=${resp}" >&2
+              return 1
+            fi
+            echo "::add-mask::${dns_token}"
+
+            local lookup rec_id rec_content
+            lookup=$(curl -sS \
+              "${CF_API}/zones/${CF_ZONE_ID}/dns_records?type=CNAME&name=${DOMAIN}" \
+              -H "Authorization: Bearer ${dns_token}")
+            rec_id=$(printf '%s' "$lookup" | jq -r '.result[0].id // ""')
+            rec_content=$(printf '%s' "$lookup" | jq -r '.result[0].content // ""')
+
+            if [ -z "$rec_id" ]; then
+              echo "::error::CF CNAME record for ${DOMAIN} not found during retry" >&2
+            elif [ "$rec_content" = "$new_target" ]; then
+              echo "  CF CNAME unchanged (${DOMAIN} -> ${new_target})"
+            else
+              local body put_resp put_ok
+              body=$(jq -cn --arg name "$DOMAIN" --arg content "$new_target" \
+                '{type:"CNAME", name:$name, content:$content, ttl:1, proxied:false, comment:"managed-by=or-factory-master"}')
+              put_resp=$(curl -sS -X PUT "${CF_API}/zones/${CF_ZONE_ID}/dns_records/${rec_id}" \
+                -H "Authorization: Bearer ${dns_token}" \
+                -H "Content-Type: application/json" \
+                -d "$body")
+              put_ok=$(printf '%s' "$put_resp" | jq -r '.success')
+              if [ "$put_ok" != "true" ]; then
+                echo "::error::CF CNAME update failed. resp=${put_resp}" >&2
+              else
+                echo "  CF CNAME repointed: ${DOMAIN} -> ${new_target} (was ${rec_content})"
+              fi
+            fi
+
+            curl -sS -X DELETE "${CF_API}/user/tokens/${dns_token_id}" \
+              -H "Authorization: Bearer ${CF_TOKEN_CREATOR}" >/dev/null 2>&1 || true
+          }
+
+          ATTEMPTS=2
+          POLLS_PER_ATTEMPT=30   # × 10s = 5 min per attempt
+          for attempt in $(seq 1 $ATTEMPTS); do
+            echo "=== TLS poll attempt ${attempt}/${ATTEMPTS} on https://${DOMAIN} (up to 5min) ==="
+            for i in $(seq 1 $POLLS_PER_ATTEMPT); do
+              cn=$(_probe_tls_cn)
+              if [ "${cn:-}" = "${DOMAIN}" ]; then
+                echo "PASS: Railway issued cert for ${DOMAIN} (attempt=${attempt} poll=${i})"
+                exit 0
+              fi
+              echo "[attempt ${attempt} poll ${i}/${POLLS_PER_ATTEMPT}] CN=${cn:-<no cert>}; sleeping 10s..."
+              sleep 10
+            done
+            if [ "$attempt" -lt "$ATTEMPTS" ]; then
+              echo "::notice::Attempt ${attempt} timed out after 5 min. Recreating customDomain to enqueue a fresh Railway verification..."
+              new_target=$(_recreate_custom_domain)
+              _cf_repoint_cname "$new_target" || echo "::warning::CF repoint had issues; continuing to next poll"
+            fi
           done
-          echo "::warning::Railway did not issue cert for ${DOMAIN} within 5min. Cert issuance can continue async — check the Railway dashboard for verification status, and retry the URL in a few minutes."
+
+          echo "::error::Railway did not issue cert for ${DOMAIN} after ${ATTEMPTS} attempts (~10 min)."
+          echo "::error::This is usually the Railway scheduler throttle — too many stale projects in the workspace."
+          echo "::error::Recovery: delete stale Railway projects via projectDelete, then re-dispatch this workflow."
+          echo "::error::See CLAUDE.md propagation-patterns table, 'Railway scheduler throttle' row."
+          exit 1
 
       - name: Set up n8n owner account
         env:
