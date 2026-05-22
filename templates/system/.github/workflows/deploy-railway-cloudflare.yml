@@ -398,6 +398,26 @@ jobs:
           for pid in "${n8n_pids[@]}"; do wait "$pid" || { echo "FAIL: an n8n env var upsert failed" >&2; exit 1; }; done
           echo "PASS: n8n env vars set (15 vars in parallel)."
 
+          # ===== DEBUG: introspect Railway CustomDomain schema =====
+          echo "=== Railway: introspecting CustomDomain* schema ==="
+          resp=$(_gql 'query {
+              cs: __type(name: "CustomDomainStatus") {
+                fields { name type { name kind ofType { name kind } } }
+              }
+              cd: __type(name: "CustomDomain") {
+                fields { name type { name kind ofType { name kind } } }
+              }
+              mutations: __type(name: "Mutation") {
+                fields(includeDeprecated: false) { name }
+              }
+            }' '{}')
+          echo "CustomDomain fields:"
+          printf '%s' "$resp" | jq -r '.data.cd.fields[]? | "  \(.name): \(.type.kind) \(.type.name // .type.ofType.name // "?")"'
+          echo "CustomDomainStatus fields:"
+          printf '%s' "$resp" | jq -r '.data.cs.fields[]? | "  \(.name): \(.type.kind) \(.type.name // .type.ofType.name // "?")"'
+          echo "customDomain-related mutations:"
+          printf '%s' "$resp" | jq -r '.data.mutations.fields[]? | select(.name | test("[Cc]ustom[Dd]omain")) | "  \(.name)"'
+
           # ===== Custom domain on n8n service =====
           # We use a single-level subdomain ("n8n-<system>.or-infra.com")
           # because Railway no longer surfaces the _railway-verify TXT for
