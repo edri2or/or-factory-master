@@ -327,13 +327,19 @@ jobs:
           if [ -n "$CNAME_TARGET" ] && [ "$CNAME_TARGET" != "null" ]; then
             echo "INFO: custom domain $DOMAIN exists → CNAME target: $CNAME_TARGET"
           else
+            # Debug: log the CustomDomainCreateInput shape from introspection
+            # so we know which fields Railway expects on this run.
+            INTRO=$(_gql 'query { __type(name: "CustomDomainCreateInput") { inputFields { name type { name kind ofType { name kind } } } } }' || true)
+            echo "DEBUG: CustomDomainCreateInput fields:"
+            printf '%s' "$INTRO" | jq -r '.data.__type.inputFields[]? | "  - \(.name): \(.type.name // .type.ofType.name) (\(.type.kind))"' || true
+
             resp=$(_gql 'mutation($input: CustomDomainCreateInput!) {
                 customDomainCreate(input: $input) {
                   id status { dnsRecords { recordType requiredValue } }
                 }
               }' \
               "$(jq -cn --arg eid "$ENV_ID" --arg sid "$N8N_ID" --arg d "$DOMAIN" \
-                '{input: {environmentId: $eid, serviceId: $sid, domain: $d}}')")
+                '{input: {environmentId: $eid, serviceId: $sid, domain: $d, targetPort: 5678}}')")
             CNAME_TARGET=$(printf '%s' "$resp" | jq -r '.data.customDomainCreate.status.dnsRecords[0].requiredValue // ""')
             [ -n "$CNAME_TARGET" ] && [ "$CNAME_TARGET" != "null" ] \
               || { echo "FAIL: customDomainCreate returned no CNAME target; resp=$resp" >&2; exit 1; }
