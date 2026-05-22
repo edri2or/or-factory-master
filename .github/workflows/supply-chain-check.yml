@@ -1,0 +1,35 @@
+name: Supply Chain Check
+
+# Mirrors edri2or/factory's supply-chain gate. Four bash greps over
+# .github/workflows/*.yml that catch the highest-impact regressions:
+# unpinned third-party actions, blanket `permissions: write-all`,
+# `pull_request_target` triggers, and PR-triggered workflows requesting
+# `id-token: write` (WIF token exposable from fork PRs).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  supply-chain:
+    name: Supply chain gates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - name: Actions pinned to SHA
+        run: bash scripts/check-actions-pinned.sh
+
+      - name: No write-all permissions
+        run: bash scripts/check-workflow-permissions.sh
+
+      - name: No pull_request_target trigger
+        run: bash scripts/check-no-pull-request-target.sh
+
+      - name: No id-token:write in pull_request workflows
+        run: bash scripts/check-no-privileged-pr-workflows.sh
