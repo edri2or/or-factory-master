@@ -355,12 +355,22 @@ jobs:
             # bash so the dollar-double-brace sequence never appears
             # verbatim in this YAML source (GitHub Actions would parse it
             # as an expression and reject the workflow at load time).
-            # Matches edri2or/factory's 5th Postgres env var.
+            #
+            # DB name is `postgres` (the image's default when POSTGRES_DB is
+            # unset), NOT a custom name. Railway's serviceCreate starts the
+            # Postgres container BEFORE our env-var upsert lands, so initdb
+            # runs with default env and creates db `postgres`. A subsequent
+            # restart with POSTGRES_DB=<something-else> hits "PostgreSQL
+            # Database directory appears to contain a database; Skipping
+            # initialization" and silently ignores the new name → n8n then
+            # crash-loops with `FATAL: database "..." does not exist` (seen
+            # on factory-test-19). Using `postgres` is race-proof because it
+            # matches what initdb creates regardless of when env vars land.
             DLR='$'
-            DATABASE_URL="postgresql://postgres:${DLR}{{POSTGRES_PASSWORD}}@${DLR}{{RAILWAY_PRIVATE_DOMAIN}}:5432/railway"
+            DATABASE_URL="postgresql://postgres:${DLR}{{POSTGRES_PASSWORD}}@${DLR}{{RAILWAY_PRIVATE_DOMAIN}}:5432/postgres"
             pg_pids=()
             _upsert "$PG_ID" POSTGRES_USER     postgres & pg_pids+=($!)
-            _upsert "$PG_ID" POSTGRES_DB       railway & pg_pids+=($!)
+            _upsert "$PG_ID" POSTGRES_DB       postgres & pg_pids+=($!)
             _upsert "$PG_ID" POSTGRES_PASSWORD "$POSTGRES_PASSWORD" & pg_pids+=($!)
             _upsert "$PG_ID" PGDATA            /var/lib/postgresql/data/pgdata & pg_pids+=($!)
             _upsert "$PG_ID" DATABASE_URL      "$DATABASE_URL" & pg_pids+=($!)
@@ -425,7 +435,7 @@ jobs:
           _upsert "$N8N_ID" DB_TYPE                postgresdb & n8n_pids+=($!)
           _upsert "$N8N_ID" DB_POSTGRESDB_HOST     "${DLR}{{Postgres.RAILWAY_PRIVATE_DOMAIN}}" & n8n_pids+=($!)
           _upsert "$N8N_ID" DB_POSTGRESDB_PORT     5432 & n8n_pids+=($!)
-          _upsert "$N8N_ID" DB_POSTGRESDB_DATABASE "${DLR}{{Postgres.POSTGRES_DB}}" & n8n_pids+=($!)
+          _upsert "$N8N_ID" DB_POSTGRESDB_DATABASE postgres & n8n_pids+=($!)
           _upsert "$N8N_ID" DB_POSTGRESDB_USER     "${DLR}{{Postgres.POSTGRES_USER}}" & n8n_pids+=($!)
           _upsert "$N8N_ID" DB_POSTGRESDB_PASSWORD "${DLR}{{Postgres.POSTGRES_PASSWORD}}" & n8n_pids+=($!)
           _upsert "$N8N_ID" DB_POSTGRESDB_SCHEMA   public & n8n_pids+=($!)
@@ -770,10 +780,19 @@ jobs:
           fi
 
           BASE="https://n8n-${SYSTEM_NAME}.or-infra.com"
-          SETTINGS=$(curl -sS --max-time 10 "$BASE/rest/settings" || echo '{}')
-          NEEDS=$(printf '%s' "$SETTINGS" | jq -r \
-            '.data.userManagement.showSetupOnFirstLoad
-             // .userManagement.showSetupOnFirstLoad // false')
+          # Fail fast if n8n is not actually serving — a previous version
+          # of this step used `curl … || echo '{}'`, which let 403/5xx
+          # bodies parse as no-flag-present and silently exit 0, masking
+          # crash-looping n8n (seen on factory-test-19 with HTTP 403
+          # "Host not in allowlist" while Postgres was in a bad state).
+          HTTP=$(curl -sS -o /tmp/n8n-settings.json -w '%{http_code}' --max-time 10 "$BASE/rest/settings" || echo "000")
+          if [ "$HTTP" != "200" ]; then
+            echo "FAIL: GET $BASE/rest/settings returned HTTP $HTTP — n8n not reachable" >&2
+            head -c 400 /tmp/n8n-settings.json 2>/dev/null >&2 || true; echo >&2
+            exit 1
+          fi
+          NEEDS=$(jq -r '.data.userManagement.showSetupOnFirstLoad
+                        // .userManagement.showSetupOnFirstLoad // false' /tmp/n8n-settings.json)
           echo "showSetupOnFirstLoad=$NEEDS"
 
           if [ "$NEEDS" != "true" ]; then
