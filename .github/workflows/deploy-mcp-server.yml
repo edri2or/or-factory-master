@@ -35,7 +35,10 @@ jobs:
       GCP_REGION: "me-west1"
       AR_REPO: "bootstrap-images"
       SERVICE: "factory-master-actions-mcp"
-      RUNTIME_SA_NAME: "factory-master-actions-mcp-runtime"
+      # GCP service-account IDs are capped at 30 chars — this is the
+      # longest meaningful name that fits (25 chars), distinct from the
+      # old factory's `factory-actions-mcp-runtime-sa` (29 chars).
+      RUNTIME_SA_NAME: "factory-master-mcp-runtime"
       BROKER_SA: "factory-master-broker@or-factory-master-control.iam.gserviceaccount.com"
       WIF_PROVIDER: "projects/140345952904/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
 
