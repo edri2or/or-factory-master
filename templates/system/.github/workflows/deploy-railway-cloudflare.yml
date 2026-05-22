@@ -134,6 +134,19 @@ jobs:
 
           DOMAIN="n8n.${SYSTEM_NAME}.or-infra.com"
 
+          # ===== Workspace: required by projectCreate when token sees >1 =====
+          # Railway requires an explicit workspaceId on projectCreate when the
+          # token has access to multiple workspaces. Pick the "edri2or"
+          # workspace by name; fall back to the first workspace returned.
+          echo "=== Railway: resolve workspace id ==="
+          resp=$(_gql 'query { me { workspaces { edges { node { id name } } } } }')
+          WORKSPACE_ID=$(printf '%s' "$resp" | jq -r \
+            '.data.me.workspaces.edges | map(.node)
+             | ((map(select(.name=="edri2or")) | .[0].id) // .[0].id // "")')
+          [ -n "$WORKSPACE_ID" ] && [ "$WORKSPACE_ID" != "null" ] \
+            || { echo "FAIL: no Railway workspace visible to this token; resp=$resp" >&2; exit 1; }
+          echo "INFO: using workspace: $WORKSPACE_ID"
+
           # ===== Project: find or create =====
           echo "=== Railway: find-or-create project '${SYSTEM_NAME}' ==="
           resp=$(_gql 'query { projects(first:100) { edges { node { id name } } } }')
@@ -143,7 +156,8 @@ jobs:
             echo "INFO: project exists: $PROJECT_ID_RW"
           else
             resp=$(_gql 'mutation($input: ProjectCreateInput!) { projectCreate(input: $input) { id } }' \
-              "$(jq -cn --arg name "$SYSTEM_NAME" '{input: {name: $name, defaultEnvironmentName: "production"}}')")
+              "$(jq -cn --arg name "$SYSTEM_NAME" --arg ws "$WORKSPACE_ID" \
+                '{input: {name: $name, defaultEnvironmentName: "production", workspaceId: $ws}}')")
             PROJECT_ID_RW=$(printf '%s' "$resp" | jq -r '.data.projectCreate.id')
             [ -n "$PROJECT_ID_RW" ] && [ "$PROJECT_ID_RW" != "null" ] \
               || { echo "FAIL: projectCreate returned no id; resp=$resp" >&2; exit 1; }
