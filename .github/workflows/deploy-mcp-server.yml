@@ -114,6 +114,33 @@ jobs:
             echo "PASS: mcp-server-bearer-signing-key minted."
           fi
 
+      - name: Ensure cloudflare-zones-read-token exists (placeholder if missing)
+        run: |
+          set -euo pipefail
+          # ADR 171 in the old factory introduced cloudflare-zones-read-token
+          # for verify_cloudflare_system; that secret was not part of the 16
+          # generic-secrets copy in Stage 3 of our bootstrap-record, so it's
+          # absent from or-factory-master-control SM. Mount-time would fail
+          # with `Secret ... was not found` (seen in run 26304465192). Mirror
+          # the old factory's bootstrap-mcp-runtime-sa.sh placeholder pattern:
+          # create with the literal value `__NOT_CONFIGURED__` so the mount
+          # resolves; the MCP's verify_cloudflare_system detects the
+          # placeholder and returns a structured `token_not_configured`
+          # error until the operator overwrites with a real token.
+          if gcloud secrets describe "cloudflare-zones-read-token" \
+               --project="${GCP_PROJECT}" >/dev/null 2>&1; then
+            echo "INFO: cloudflare-zones-read-token exists; reusing."
+          else
+            gcloud secrets create "cloudflare-zones-read-token" \
+              --project="${GCP_PROJECT}" \
+              --replication-policy=automatic \
+              --labels="owner=factory-master,purpose=cloudflare-zones-read"
+            printf '__NOT_CONFIGURED__' | gcloud secrets versions add "cloudflare-zones-read-token" \
+              --project="${GCP_PROJECT}" \
+              --data-file=-
+            echo "PASS: cloudflare-zones-read-token created with placeholder value."
+          fi
+
       # No "Grant runtime SA secretAccessor / project-level read / actAs"
       # steps — broker SA is the runtime SA (see env-block note), and the
       # broker already has access to every secret it mounts (it created them
