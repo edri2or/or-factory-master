@@ -429,8 +429,10 @@ jobs:
           # series triggers its own Railway redeploy, so 14 sequential
           # = 14 redeploys. Batching with `&` + wait lands a single
           # redeploy with the final state.
-          # N8N_HOST is the BIND address (Express listen interface), not
-          # the public hostname. WEBHOOK_URL carries the public domain.
+          # N8N_HOST carries the public hostname (used by n8n for the
+          # "Editor accessible via" startup log + URL generation). The
+          # bind interface is N8N_LISTEN_ADDRESS (default '::', covers
+          # IPv4+IPv6) — not set here.
           n8n_pids=()
           _upsert "$N8N_ID" DB_TYPE                postgresdb & n8n_pids+=($!)
           _upsert "$N8N_ID" DB_POSTGRESDB_HOST     "${DLR}{{Postgres.RAILWAY_PRIVATE_DOMAIN}}" & n8n_pids+=($!)
@@ -439,7 +441,7 @@ jobs:
           _upsert "$N8N_ID" DB_POSTGRESDB_USER     "${DLR}{{Postgres.POSTGRES_USER}}" & n8n_pids+=($!)
           _upsert "$N8N_ID" DB_POSTGRESDB_PASSWORD "${DLR}{{Postgres.POSTGRES_PASSWORD}}" & n8n_pids+=($!)
           _upsert "$N8N_ID" DB_POSTGRESDB_SCHEMA   public & n8n_pids+=($!)
-          _upsert "$N8N_ID" N8N_HOST               "0.0.0.0" & n8n_pids+=($!)
+          _upsert "$N8N_ID" N8N_HOST               "$DOMAIN" & n8n_pids+=($!)
           _upsert "$N8N_ID" N8N_PROTOCOL           https & n8n_pids+=($!)
           _upsert "$N8N_ID" N8N_PORT               5678 & n8n_pids+=($!)
           _upsert "$N8N_ID" PORT                   5678 & n8n_pids+=($!)
