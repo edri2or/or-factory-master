@@ -52,18 +52,13 @@ jobs:
       - name: Set up gcloud
         uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db  # v3.0.1
 
-      - name: Enable required APIs
-        run: |
-          set -euo pipefail
-          # Idempotent: subsequent runs are no-ops once enabled.
-          gcloud services enable \
-            run.googleapis.com \
-            artifactregistry.googleapis.com \
-            secretmanager.googleapis.com \
-            iam.googleapis.com \
-            iamcredentials.googleapis.com \
-            cloudresourcemanager.googleapis.com \
-            --project="${GCP_PROJECT}"
+      # APIs already enabled in or-factory-master-control from Stage 1 of
+      # bootstrap-record (run, artifactregistry, secretmanager, iam,
+      # iamcredentials, cloudresourcemanager). The broker SA lacks
+      # serviceusage.serviceUsageAdmin (the role needed to call
+      # `gcloud services enable`), so we don't try — register-broker-app.yml
+      # and provision-system.yml use these APIs directly without a
+      # precondition enable step.
 
       - name: Ensure runtime SA exists
         id: runtime-sa
