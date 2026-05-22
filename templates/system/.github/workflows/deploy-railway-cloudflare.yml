@@ -947,6 +947,252 @@ jobs:
           fi
           echo "PASS: n8n owner created (email=${N8N_OWNER_EMAIL}, name=${FIRSTNAME} ${LASTNAME})"
 
+      - name: Create "n8n is ready" Telegram notifier workflow
+        env:
+          PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          SYSTEM_NAME: ${{ vars.SYSTEM_NAME }}
+        run: |
+          set -euo pipefail
+          # On first deploy only, drop a tiny working n8n workflow into the
+          # freshly provisioned n8n: Webhook → Telegram node that pings the
+          # operator that n8n is up. Confirms end-to-end health (login,
+          # credentials, workflows, webhook listener, outbound HTTPS to
+          # api.telegram.org) and leaves an example workflow for the operator
+          # to clone. Uses n8n's internal /rest/* API + cookie session for
+          # consistency with the owner-setup step right above — no API-key
+          # minting needed. Idempotent: if our named workflow already exists,
+          # exits cleanly without sending a second Telegram on redeploy.
+          BASE="https://n8n-${SYSTEM_NAME}.or-infra.com"
+          WF_NAME="factory-master: n8n ready notifier"
+          CRED_NAME="Telegram Bot (factory-master)"
+
+          # 1. Read the per-system Telegram bot from the system's SM. These are
+          #    DIFFERENT from the factory-admin bot used by register-system-app.yml
+          #    (telegram-bot-token / telegram-chat-id, copied from factory SM by
+          #    copy-generic-secrets.sh). The operator manually populates these
+          #    per-system secrets — provision-system.yml only pre-creates empty
+          #    shells. If either is still empty when deploy runs, we skip the
+          #    notifier creation entirely with a clear warning so the operator
+          #    can fix and redeploy without a hard failure here.
+          TG_TOKEN=$(gcloud secrets versions access latest \
+            --secret=n8n-telegram-bot-token --project="$PROJECT_ID" 2>/dev/null) || true
+          TG_CHAT_ID=$(gcloud secrets versions access latest \
+            --secret=n8n-telegram-chat-id --project="$PROJECT_ID" 2>/dev/null) || true
+          if [ -z "$TG_TOKEN" ] || [ -z "$TG_CHAT_ID" ]; then
+            MISSING=""
+            [ -z "$TG_TOKEN" ]  && MISSING="${MISSING} n8n-telegram-bot-token"
+            [ -z "$TG_CHAT_ID" ] && MISSING="${MISSING} n8n-telegram-chat-id"
+            {
+              echo "## ⚠️  n8n notifier workflow skipped"
+              echo ""
+              echo "The deploy workflow can auto-create an in-n8n workflow that pings the system's dedicated Telegram bot once n8n is live, but the per-system bot secrets in \`${PROJECT_ID}\` SM are still empty:"
+              echo ""
+              echo "Missing/empty:${MISSING}"
+              echo ""
+              echo "To enable, add real values to those secrets in the system's GCP Secret Manager and redispatch this workflow:"
+              echo ""
+              echo '```'
+              echo "gcloud secrets versions add n8n-telegram-bot-token --project=${PROJECT_ID} --data-file=-  # paste BotFather token, then Ctrl-D"
+              echo "gcloud secrets versions add n8n-telegram-chat-id   --project=${PROJECT_ID} --data-file=-  # paste chat/group id, then Ctrl-D"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "WARN: skipping notifier — n8n-telegram-* secrets empty in $PROJECT_ID SM (see job summary)"
+            exit 0
+          fi
+          echo "::add-mask::${TG_TOKEN}"
+          echo "::add-mask::${TG_CHAT_ID}"
+
+          # 2. Login to n8n as the owner. n8n stores the session as the
+          #    'n8n-auth' JWT cookie; we capture it for subsequent calls.
+          #    n8n 1.x's /rest/login accepts the field as `emailOrLdapLoginId`;
+          #    fall back to `email` for older release lines just in case the
+          #    pinned image is bumped without re-checking this contract.
+          COOKIE_JAR=$(mktemp)
+          trap 'rm -f "$COOKIE_JAR" /tmp/n8n-login.json /tmp/n8n-wfs.json /tmp/n8n-cred.json /tmp/n8n-wf.json /tmp/n8n-activate.json /tmp/n8n-hook.json' EXIT
+          _login() {
+            local field="$1"
+            curl -sS -o /tmp/n8n-login.json -w '%{http_code}' --max-time 15 \
+              -c "$COOKIE_JAR" \
+              -X POST "$BASE/rest/login" \
+              -H "Content-Type: application/json" \
+              -d "$(jq -cn --arg f "$field" --arg e "$N8N_OWNER_EMAIL" --arg p "$N8N_OWNER_PASSWORD" \
+                    '{($f):$e, password:$p}')" \
+              || echo "000"
+          }
+          HTTP=$(_login "emailOrLdapLoginId")
+          if [ "$HTTP" != "200" ]; then
+            HTTP=$(_login "email")
+          fi
+          if [ "$HTTP" != "200" ]; then
+            echo "FAIL: POST $BASE/rest/login HTTP $HTTP" >&2
+            head -c 400 /tmp/n8n-login.json >&2 || true; echo >&2
+            exit 1
+          fi
+          echo "PASS: n8n owner login → session cookie captured."
+
+          # 3. Idempotency: if our notifier workflow already exists from a
+          #    prior deploy, exit without touching anything. This is what
+          #    keeps Telegram from re-firing on every redeploy.
+          HTTP=$(curl -sS -o /tmp/n8n-wfs.json -w '%{http_code}' --max-time 15 \
+            -b "$COOKIE_JAR" "$BASE/rest/workflows")
+          if [ "$HTTP" != "200" ]; then
+            echo "FAIL: GET $BASE/rest/workflows HTTP $HTTP" >&2
+            head -c 400 /tmp/n8n-wfs.json >&2 || true; echo >&2
+            exit 1
+          fi
+          EXISTING=$(jq -r --arg n "$WF_NAME" \
+            '[(.data // .) | .[]? | select(.name==$n)] | length' /tmp/n8n-wfs.json)
+          if [ "$EXISTING" -gt 0 ]; then
+            echo "INFO: notifier workflow already exists — skipping (no Telegram spam on redeploy)"
+            exit 0
+          fi
+
+          # 4. Create the Telegram credential. Field name `accessToken` and
+          #    credential type id `telegramApi` per the n8n source:
+          #    packages/nodes-base/credentials/TelegramApi.credentials.ts.
+          CRED_BODY=$(jq -cn --arg n "$CRED_NAME" --arg t "$TG_TOKEN" '{
+            name:$n,
+            type:"telegramApi",
+            data:{ accessToken:$t }
+          }')
+          HTTP=$(curl -sS -o /tmp/n8n-cred.json -w '%{http_code}' --max-time 15 \
+            -b "$COOKIE_JAR" \
+            -X POST "$BASE/rest/credentials" \
+            -H "Content-Type: application/json" \
+            -d "$CRED_BODY")
+          if [ "$HTTP" != "200" ] && [ "$HTTP" != "201" ]; then
+            echo "FAIL: POST $BASE/rest/credentials HTTP $HTTP" >&2
+            head -c 400 /tmp/n8n-cred.json >&2 || true; echo >&2
+            exit 1
+          fi
+          CRED_ID=$(jq -r '.data.id // .id' /tmp/n8n-cred.json)
+          [ -n "$CRED_ID" ] && [ "$CRED_ID" != "null" ] || {
+            echo "FAIL: could not extract credential id from /rest/credentials response" >&2
+            head -c 400 /tmp/n8n-cred.json >&2 || true; echo >&2
+            exit 1
+          }
+          echo "PASS: telegramApi credential created (id=${CRED_ID})."
+
+          # 5. Build the workflow JSON: Webhook (POST) → Telegram sendMessage.
+          #    The webhook UUID is used both as the URL path and as the
+          #    per-node webhookId — n8n UI does the same.
+          WEBHOOK_PATH=$(cat /proc/sys/kernel/random/uuid)
+          WEBHOOK_NODE_ID=$(cat /proc/sys/kernel/random/uuid)
+          TELEGRAM_NODE_ID=$(cat /proc/sys/kernel/random/uuid)
+          MSG_TEXT=$(printf '🎉 n8n מוכן: %s\nURL: https://n8n-%s.or-infra.com\nLogin: %s' \
+            "$SYSTEM_NAME" "$SYSTEM_NAME" "$N8N_OWNER_EMAIL")
+
+          WF_BODY=$(jq -cn \
+            --arg name      "$WF_NAME" \
+            --arg whId      "$WEBHOOK_NODE_ID" \
+            --arg whPath    "$WEBHOOK_PATH" \
+            --arg tgId      "$TELEGRAM_NODE_ID" \
+            --arg chat      "$TG_CHAT_ID" \
+            --arg text      "$MSG_TEXT" \
+            --arg credId    "$CRED_ID" \
+            --arg credName  "$CRED_NAME" \
+            '{
+              name: $name,
+              nodes: [
+                {
+                  id: $whId,
+                  name: "Webhook",
+                  type: "n8n-nodes-base.webhook",
+                  typeVersion: 2,
+                  position: [240, 300],
+                  webhookId: $whPath,
+                  parameters: {
+                    httpMethod: "POST",
+                    path: $whPath,
+                    responseMode: "lastNode",
+                    options: {}
+                  }
+                },
+                {
+                  id: $tgId,
+                  name: "Send Telegram",
+                  type: "n8n-nodes-base.telegram",
+                  typeVersion: 1.2,
+                  position: [460, 300],
+                  parameters: {
+                    resource: "message",
+                    operation: "sendMessage",
+                    chatId: $chat,
+                    text: $text,
+                    additionalFields: { appendAttribution: false }
+                  },
+                  credentials: {
+                    telegramApi: { id: $credId, name: $credName }
+                  }
+                }
+              ],
+              connections: {
+                Webhook: {
+                  main: [
+                    [ { node: "Send Telegram", type: "main", index: 0 } ]
+                  ]
+                }
+              },
+              settings: {}
+            }')
+
+          HTTP=$(curl -sS -o /tmp/n8n-wf.json -w '%{http_code}' --max-time 15 \
+            -b "$COOKIE_JAR" \
+            -X POST "$BASE/rest/workflows" \
+            -H "Content-Type: application/json" \
+            -d "$WF_BODY")
+          if [ "$HTTP" != "200" ] && [ "$HTTP" != "201" ]; then
+            echo "FAIL: POST $BASE/rest/workflows HTTP $HTTP" >&2
+            head -c 400 /tmp/n8n-wf.json >&2 || true; echo >&2
+            exit 1
+          fi
+          WF_ID=$(jq -r '.data.id // .id' /tmp/n8n-wf.json)
+          [ -n "$WF_ID" ] && [ "$WF_ID" != "null" ] || {
+            echo "FAIL: could not extract workflow id from /rest/workflows response" >&2
+            head -c 400 /tmp/n8n-wf.json >&2 || true; echo >&2
+            exit 1
+          }
+          echo "PASS: workflow created (id=${WF_ID}, name='${WF_NAME}')."
+
+          # 6. Activate. Inactive workflows only respond on /webhook-test/<path>;
+          #    we want the production /webhook/<path> URL. n8n's internal API
+          #    uses POST /rest/workflows/:id/activate; modern versions also
+          #    accept PATCH /rest/workflows/:id with {active:true}. Try the
+          #    dedicated endpoint first, fall back to PATCH.
+          HTTP=$(curl -sS -o /tmp/n8n-activate.json -w '%{http_code}' --max-time 15 \
+            -b "$COOKIE_JAR" \
+            -X POST "$BASE/rest/workflows/${WF_ID}/activate")
+          if [ "$HTTP" != "200" ] && [ "$HTTP" != "204" ]; then
+            HTTP=$(curl -sS -o /tmp/n8n-activate.json -w '%{http_code}' --max-time 15 \
+              -b "$COOKIE_JAR" \
+              -X PATCH "$BASE/rest/workflows/${WF_ID}" \
+              -H "Content-Type: application/json" \
+              -d '{"active":true}')
+          fi
+          if [ "$HTTP" != "200" ] && [ "$HTTP" != "204" ]; then
+            echo "FAIL: workflow activation HTTP $HTTP" >&2
+            head -c 400 /tmp/n8n-activate.json >&2 || true; echo >&2
+            exit 1
+          fi
+          echo "PASS: workflow activated (webhook live at /webhook/${WEBHOOK_PATH})."
+
+          # 7. Trigger the webhook once. responseMode=lastNode means the
+          #    HTTP response only comes back after the Telegram node finishes,
+          #    so a 200 here is positive confirmation that the message was
+          #    accepted by api.telegram.org.
+          sleep 2  # let n8n register the webhook route after activation
+          HTTP=$(curl -sS -o /tmp/n8n-hook.json -w '%{http_code}' --max-time 30 \
+            -X POST "$BASE/webhook/${WEBHOOK_PATH}")
+          if [ "$HTTP" != "200" ]; then
+            echo "FAIL: webhook fire HTTP $HTTP" >&2
+            head -c 400 /tmp/n8n-hook.json >&2 || true; echo >&2
+            exit 1
+          fi
+          echo "PASS: Telegram 'n8n מוכן' notification fired for ${SYSTEM_NAME}."
+
+          # 8. Best-effort logout. Non-fatal.
+          curl -sS -o /dev/null -b "$COOKIE_JAR" -X POST "$BASE/rest/logout" || true
+
       - name: Persist Railway IDs to system SM
         env:
           PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
