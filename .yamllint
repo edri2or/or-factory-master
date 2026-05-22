@@ -1,0 +1,5 @@
+extends: relaxed
+rules:
+  # Workflows are full of long jq expressions, GraphQL queries, and shell
+  # one-liners. Line-length warnings drown the actually-useful checks.
+  line-length: disable
