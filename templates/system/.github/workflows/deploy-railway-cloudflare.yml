@@ -77,31 +77,61 @@ jobs:
             echo "CF_ZONE_ID=${CF_ZONE_ID}"
           } >> "$GITHUB_ENV"
 
-      - name: Resolve or generate n8n encryption key
+      - name: Resolve or generate n8n encryption key + owner credentials
         env:
           PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
           SYSTEM_NAME: ${{ vars.SYSTEM_NAME }}
         run: |
           set -euo pipefail
-          # The shell is pre-created by provision-system.yml's
-          # "Pre-create runtime secret shells" step. This step only adds
-          # a version on first run, or reads the existing version on later
-          # runs.
-          SECRET="n8n-encryption-key"
+          # All three shells are pre-created by provision-system.yml's
+          # "Pre-create runtime secret shells" step. This step adds a version
+          # on first run (or for owner-password, every run — see below) and
+          # reads the existing version on later runs for the idempotent ones.
 
+          # n8n-encryption-key: idempotent. Rotating it breaks every n8n
+          # credential the user has stored, so never regenerate once set.
           if N8N_KEY=$(gcloud secrets versions access latest \
-                       --secret="$SECRET" --project="$PROJECT_ID" 2>/dev/null) \
+                       --secret="n8n-encryption-key" --project="$PROJECT_ID" 2>/dev/null) \
              && [ -n "$N8N_KEY" ]; then
-            echo "INFO: $SECRET already has a version — reusing existing key."
+            echo "INFO: n8n-encryption-key already has a version — reusing existing key."
           else
             N8N_KEY=$(openssl rand -hex 32)
-            printf '%s' "$N8N_KEY" | gcloud secrets versions add "$SECRET" \
+            printf '%s' "$N8N_KEY" | gcloud secrets versions add "n8n-encryption-key" \
               --project="$PROJECT_ID" --data-file=- --quiet
-            echo "PASS: generated 32-byte $SECRET and stored new version."
+            echo "PASS: generated 32-byte n8n-encryption-key and stored new version."
           fi
 
+          # n8n-owner-email: idempotent. The address is a label (not a real
+          # mailbox); never change it once the n8n owner account is created
+          # against it.
+          if N8N_OWNER_EMAIL=$(gcloud secrets versions access latest \
+                              --secret="n8n-owner-email" --project="$PROJECT_ID" 2>/dev/null) \
+             && [ -n "$N8N_OWNER_EMAIL" ]; then
+            echo "INFO: n8n-owner-email already has a version — reusing (${N8N_OWNER_EMAIL})."
+          else
+            N8N_OWNER_EMAIL="admin@${SYSTEM_NAME}.or-infra.com"
+            printf '%s' "$N8N_OWNER_EMAIL" | gcloud secrets versions add "n8n-owner-email" \
+              --project="$PROJECT_ID" --data-file=- --quiet
+            echo "PASS: n8n-owner-email set to ${N8N_OWNER_EMAIL}."
+          fi
+
+          # n8n-owner-password: always add a fresh version. It's only consumed
+          # once at /rest/owner/setup, so there's no historical dependency,
+          # and a fresh version self-heals any prior broken value. The
+          # 'Aa1!' prefix guarantees n8n's password policy is satisfied
+          # (>=8 chars, >=1 digit, >=1 uppercase, >=1 special).
+          N8N_OWNER_PASSWORD="Aa1!$(openssl rand -hex 16)"
+          printf '%s' "$N8N_OWNER_PASSWORD" | gcloud secrets versions add "n8n-owner-password" \
+            --project="$PROJECT_ID" --data-file=- --quiet
+          echo "PASS: fresh n8n-owner-password version stored."
+
           echo "::add-mask::${N8N_KEY}"
-          echo "N8N_KEY=${N8N_KEY}" >> "$GITHUB_ENV"
+          echo "::add-mask::${N8N_OWNER_PASSWORD}"
+          {
+            echo "N8N_KEY=${N8N_KEY}"
+            echo "N8N_OWNER_EMAIL=${N8N_OWNER_EMAIL}"
+            echo "N8N_OWNER_PASSWORD=${N8N_OWNER_PASSWORD}"
+          } >> "$GITHUB_ENV"
 
       - name: Provision Railway (project + Postgres + n8n + volume + env vars + domain)
         env:
@@ -706,6 +736,53 @@ jobs:
             sleep 10
           done
           echo "::warning::Railway did not issue cert for ${DOMAIN} within 5min. Cert issuance can continue async — check the Railway dashboard for verification status, and retry the URL in a few minutes."
+
+      - name: Set up n8n owner account
+        env:
+          SYSTEM_NAME: ${{ vars.SYSTEM_NAME }}
+        run: |
+          set -euo pipefail
+          # Auto-creates n8n's first user (the workspace owner) by POSTing to
+          # /rest/owner/setup. Idempotent: skips when n8n's settings report
+          # that the owner is already configured. Derives the owner's display
+          # name from the system name (e.g. factory-test-13 → first "Factory",
+          # last "Test 13") so each owner is identifiable per system.
+          IFS='-' read -ra PARTS <<< "$SYSTEM_NAME"
+          FIRSTNAME="${PARTS[0]^}"
+          if [ "${#PARTS[@]}" -gt 1 ]; then
+            REST=("${PARTS[@]:1}")
+            for i in "${!REST[@]}"; do REST[$i]="${REST[$i]^}"; done
+            LASTNAME=$(IFS=' '; echo "${REST[*]}")
+          else
+            LASTNAME="System"
+          fi
+
+          BASE="https://n8n-${SYSTEM_NAME}.or-infra.com"
+          SETTINGS=$(curl -sS --max-time 10 "$BASE/rest/settings" || echo '{}')
+          NEEDS=$(printf '%s' "$SETTINGS" | jq -r \
+            '.data.userManagement.showSetupOnFirstLoad
+             // .userManagement.showSetupOnFirstLoad // false')
+          echo "showSetupOnFirstLoad=$NEEDS"
+
+          if [ "$NEEDS" != "true" ]; then
+            echo "INFO: n8n owner already set up — skipping."
+            exit 0
+          fi
+
+          BODY=$(jq -cn \
+            --arg em "$N8N_OWNER_EMAIL" --arg pw "$N8N_OWNER_PASSWORD" \
+            --arg fn "$FIRSTNAME" --arg ln "$LASTNAME" \
+            '{email:$em, firstName:$fn, lastName:$ln, password:$pw, agree:true}')
+          HTTP=$(curl -sS -o /tmp/setup.json -w '%{http_code}' --max-time 15 \
+            -X POST "$BASE/rest/owner/setup" \
+            -H "Content-Type: application/json" \
+            -d "$BODY")
+          if [ "$HTTP" != "200" ]; then
+            echo "FAIL: /rest/owner/setup HTTP $HTTP" >&2
+            cat /tmp/setup.json >&2 || true
+            exit 1
+          fi
+          echo "PASS: n8n owner created (email=${N8N_OWNER_EMAIL}, name=${FIRSTNAME} ${LASTNAME})"
 
       - name: Persist Railway IDs to system SM
         env:
