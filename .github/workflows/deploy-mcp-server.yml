@@ -92,29 +92,39 @@ jobs:
           # preserves the trailing newline `openssl` emits. Cloud Run mounts
           # the raw bytes including \n into MCP_ADMIN_SECRET; the MCP hashes
           # that exact value. When the operator pastes from the SM UI or
-          # `gcloud secrets versions access`, form inputs typically strip the
-          # trailing newline → the pasted hash ≠ the env-var hash → "Invalid
-          # admin secret". Fix:
-          #   (a) on first mint, use `printf '%s'` so the stored value has no
-          #       trailing newline.
-          #   (b) on subsequent runs, if the current latest value still ends
-          #       in newline (legacy mint from before this fix), add a new
-          #       clean version. Idempotent and self-healing.
+          # `gcloud secrets versions access`, form inputs strip the trailing
+          # newline → pasted hash ≠ env-var hash → "Invalid admin secret".
+          # Confirmed empirically: `gcloud secrets versions access | wc -c`
+          # returned 65 for a value minted by `openssl rand -hex 32` (= 64 hex
+          # chars + 0x0A).
+          #
+          # Fix:
+          #   (a) first mint: pipe through `printf '%s'` so stored bytes
+          #       have no trailing newline.
+          #   (b) subsequent runs: compare byte counts of the raw stored
+          #       value vs. the trimmed value — bash $() strips trailing
+          #       newlines from command substitution, so we MUST go through
+          #       a tempfile to see whether the secret itself has a tail.
+          #       If sizes differ, add a clean version.
           if gcloud secrets describe "mcp-server-admin-secret" \
                --project="${GCP_PROJECT}" >/dev/null 2>&1; then
-            current=$(gcloud secrets versions access latest \
-              --secret="mcp-server-admin-secret" --project="${GCP_PROJECT}")
-            trimmed=$(printf '%s' "$current" | tr -d '\r\n')
-            if [ "$current" = "$trimmed" ]; then
-              echo "INFO: mcp-server-admin-secret already clean; reusing."
+            TMP=$(mktemp)
+            # shellcheck disable=SC2064
+            trap "rm -f '${TMP}'" EXIT
+            gcloud secrets versions access latest \
+              --secret="mcp-server-admin-secret" --project="${GCP_PROJECT}" > "${TMP}"
+            raw_size=$(wc -c < "${TMP}")
+            trimmed_size=$(tr -d '\r\n' < "${TMP}" | wc -c)
+            if [ "${raw_size}" -eq "${trimmed_size}" ]; then
+              echo "INFO: mcp-server-admin-secret already clean (${raw_size} bytes); reusing."
             else
-              echo "INFO: mcp-server-admin-secret has trailing whitespace — adding clean version."
-              printf '%s' "$trimmed" | gcloud secrets versions add "mcp-server-admin-secret" \
+              echo "INFO: mcp-server-admin-secret has trailing whitespace (${raw_size} -> ${trimmed_size} bytes) — adding clean version."
+              tr -d '\r\n' < "${TMP}" | gcloud secrets versions add "mcp-server-admin-secret" \
                 --project="${GCP_PROJECT}" --data-file=-
               echo "PASS: clean version added."
             fi
-            # Avoid leaking the secret into shell history / vars.
-            unset current trimmed
+            rm -f "${TMP}"
+            trap - EXIT
           else
             printf '%s' "$(openssl rand -hex 32)" | gcloud secrets create "mcp-server-admin-secret" \
               --project="${GCP_PROJECT}" \
@@ -129,22 +139,27 @@ jobs:
           set -euo pipefail
           # Same trailing-newline self-heal as the admin secret. A dirty
           # signing key wouldn't surface as "Invalid admin secret", but it
-          # would make bearers fail HMAC verification on the very next
-          # signer restart that reads the clean version.
+          # would make bearers fail HMAC verification on the very next signer
+          # restart that reads a clean version.
           if gcloud secrets describe "mcp-server-bearer-signing-key" \
                --project="${GCP_PROJECT}" >/dev/null 2>&1; then
-            current=$(gcloud secrets versions access latest \
-              --secret="mcp-server-bearer-signing-key" --project="${GCP_PROJECT}")
-            trimmed=$(printf '%s' "$current" | tr -d '\r\n')
-            if [ "$current" = "$trimmed" ]; then
-              echo "INFO: mcp-server-bearer-signing-key already clean; reusing."
+            TMP=$(mktemp)
+            # shellcheck disable=SC2064
+            trap "rm -f '${TMP}'" EXIT
+            gcloud secrets versions access latest \
+              --secret="mcp-server-bearer-signing-key" --project="${GCP_PROJECT}" > "${TMP}"
+            raw_size=$(wc -c < "${TMP}")
+            trimmed_size=$(tr -d '\r\n' < "${TMP}" | wc -c)
+            if [ "${raw_size}" -eq "${trimmed_size}" ]; then
+              echo "INFO: mcp-server-bearer-signing-key already clean (${raw_size} bytes); reusing."
             else
-              echo "INFO: mcp-server-bearer-signing-key has trailing whitespace — adding clean version."
-              printf '%s' "$trimmed" | gcloud secrets versions add "mcp-server-bearer-signing-key" \
+              echo "INFO: mcp-server-bearer-signing-key has trailing whitespace (${raw_size} -> ${trimmed_size} bytes) — adding clean version."
+              tr -d '\r\n' < "${TMP}" | gcloud secrets versions add "mcp-server-bearer-signing-key" \
                 --project="${GCP_PROJECT}" --data-file=-
               echo "PASS: clean version added."
             fi
-            unset current trimmed
+            rm -f "${TMP}"
+            trap - EXIT
           else
             printf '%s' "$(openssl rand -hex 32)" | gcloud secrets create "mcp-server-bearer-signing-key" \
               --project="${GCP_PROJECT}" \
