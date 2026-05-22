@@ -63,6 +63,7 @@ The previous factory (`edri2or/factory`) automated everything end-to-end. Failur
 | `templates/system/.github/workflows/deploy-railway-cloudflare.yml` | Manual `workflow_dispatch` in the *system* repo | Deploys n8n 1.121.0 on Railway (Postgres + persistent volume), creates Cloudflare CNAME + `_railway-verify` TXT (DNS-only), waits for Railway to issue the LE cert (retriggers via `customDomainDelete` + recreate if `verified=false`), then POSTs `/rest/owner/setup` so the URL lands on the n8n login screen. Pushed into every new system repo by `provision-system.yml`. Idempotent. |
 | `changelog-check.yml` | `push: main` + `pull_request: main` | Fails any diff that changes `.sh` / `.json` / `.yml` / `.yaml` without updating `CHANGELOG.md`, and any `CHANGELOG.md` over 20 KB. |
 | `decommission-test-projects.yml` | Manual `workflow_dispatch` | One-off cleanup of `factory-test-*` / `v2-test-*` GCP projects via the broker SA. Hard-guards against the control project. |
+| `deploy-mcp-server.yml` | Manual `workflow_dispatch` | Builds + deploys the `factory-master-actions-mcp` Cloud Run service in `or-factory-master-control`. Creates a dedicated runtime SA, mints `mcp-server-{admin-secret,bearer-signing-key}` if missing, grants the runtime SA `secretAccessor` on the 9 mounted secrets + project-level read roles. Idempotent. After first deploy, operator updates the MCP server URL in Claude Code to the printed Region URL. |
 
 The deploy workflow lives in each system's own repo and is dispatched there by the user after `provision-system.yml` succeeds. It is provisioned, not orchestrated, by the factory.
 
@@ -102,3 +103,15 @@ Pattern: retry only on the specific error class (`PERMISSION_DENIED`, `does not 
 ## MCP
 
 The MCP server `5b6e937f-c064-4cfd-88c4-ef93df38fa87` provides read-only inspection tools (`verify_*_system`, `list_all_systems_inventory`, `inspect_*`, `tail_*_logs`, etc.). The GitHub MCP (`mcp__github__*`) is scoped to `edri2or/or-factory-master` only. Use these to verify; do not call any write tool against another repo from this session.
+
+The MCP server's source lives in `services/mcp-server/` and is deployed to Cloud Run in `or-factory-master-control` via `deploy-mcp-server.yml`. Railway visibility tools (extended beyond the old factory's set):
+
+| Tool | Returns |
+|---|---|
+| `inspect_railway_service` / `inspect_railway_service_direct` | latest deployment + serviceDomains **+ customDomains** with `verified`, `verificationDnsHost`, `verificationToken`, `certificateStatusDetailed`, `certificateErrorMessage`, `dnsRecords` |
+| `list_railway_service_variables` | env-var NAMES (values redacted unless `reveal=true`) |
+| `list_railway_service_volumes` | volume id, name, mountPath, sizeMB |
+| `list_railway_deployments` | recent deployment history (id/status/createdAt) |
+| `railway_graphql_read` | read-only passthrough — any `query { … }` document, mutations refused server-side. Forward-compatible escape hatch for any future Railway schema field. |
+
+The forward path: deprecate the old factory's MCP service in `factory-control-9piybr` once the new one is verified.
