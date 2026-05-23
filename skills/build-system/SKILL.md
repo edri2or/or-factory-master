@@ -22,14 +22,13 @@ Before doing anything:
 
 ## Dispatch
 
-1. Open the workflow run via GitHub UI URL: `https://github.com/edri2or/or-factory-master/actions/workflows/provision-system.yml`.
-2. The user dispatches `provision-system.yml` with input `system_name=<name>` on branch `main`.
-3. **Do not dispatch via API yourself.** This is an explicit-action step — the user is the one who clicks the button. You watch.
+1. Confirm cost/scope with the user before provisioning real infra — "I'm about to create GCP project `<name>`, GitHub repo `edri2or/<name>`, and copy 16 secrets. OK to proceed?" — unless they've opted into autonomy.
+2. Dispatch via the `dispatch_workflow` MCP tool: `workflow_id=provision-system.yml`, `inputs={system_name:<name>}`, `ref=main`. It triggers the run as the org-wide broker App (no PAT) and returns the `run_id` + `run_url`.
 
 ## Watch
 
 While the run is in flight:
-1. Get the run ID — `mcp__github__list_pull_requests` or list_workflow_runs filtered to this workflow.
+1. Use the `run_id` returned by `dispatch_workflow` (or `list_workflow_runs` filtered to this workflow).
 2. Poll `mcp__5b6e937f-c064-4cfd-88c4-ef93df38fa87__get_workflow_run` every ~30s, OR ask the user to share a URL once finished.
 3. If the run fails, read the failed step's log via `mcp__5b6e937f-c064-4cfd-88c4-ef93df38fa87__read_github_actions_run_logs`. Report what failed, why, and a proposed fix. Do not re-dispatch automatically.
 
@@ -50,9 +49,9 @@ After the run completes successfully:
 
 ## Handoff to the user (post-provision)
 
-After `provision-system.yml` succeeds, point the user at:
+After `provision-system.yml` succeeds:
 
-1. Dispatch `deploy-railway-cloudflare.yml` in `edri2or/<system_name>` (Actions tab → manual `workflow_dispatch` on `main`). The workflow auto-runs Postgres + n8n + Cloudflare + LE cert + owner-setup.
+1. Dispatch `deploy-railway-cloudflare.yml` via the `dispatch_workflow` MCP tool (`repo=<system_name>`, `workflow_id=deploy-railway-cloudflare.yml`, `ref=main`) once the user is ready. The workflow auto-runs Postgres + n8n + Cloudflare + LE cert + owner-setup.
 2. The URL is **`https://n8n-<system_name>.or-infra.com`** (single-level subdomain — multi-level doesn't get an LE cert through Railway's customDomain).
 3. Owner credentials:
    - email: `admin@<system_name>.or-infra.com`
