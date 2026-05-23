@@ -12,7 +12,7 @@ The previous factory (`edri2or/factory`) automated everything end-to-end. Failur
 
 1. **Match the user's request to a skill.** The skills below describe the supported flows.
 2. **Pre-flight checks first.** Before any dispatch, verify the inputs and the absence/presence of collisions via read-only MCP tools.
-3. **Ask before dispatching.** The user clicks the dispatch button. The agent does not auto-dispatch workflows.
+3. **Dispatch via the `dispatch_workflow` MCP tool.** The agent triggers the allowlisted lifecycle workflows itself (`provision-system.yml`, `register-system-app.yml`, `deploy-railway-cloudflare.yml`) — no operator button-click, no env-var PAT. Confirm cost/scope with the user before a fresh provision/deploy unless they've opted into autonomy. `decommission-system.yml` is NOT dispatchable by the tool (destructive — written approval required).
 4. **Watch the run.** Poll the workflow run. Read failed step logs directly. Report what failed.
 5. **Verify outputs.** After success, call the relevant `verify_*` MCP tool to confirm the real state matches the expected state.
 6. **Stop at the boundary.** Each skill ends at a clear handoff point. Ask the user what's next; don't chain.
@@ -21,7 +21,7 @@ The previous factory (`edri2or/factory`) automated everything end-to-end. Failur
 
 - Touch the old factory repo (`edri2or/factory`) or its GCP project (`factory-control-9piybr`).
 - Use the old broker SA, WIF provider, or App credentials.
-- Auto-dispatch a follow-up workflow from a finished workflow run.
+- Auto-chain stages without verifying: dispatch the next workflow only after verifying the prior run's outputs. Never dispatch `decommission-system.yml` from the agent (it's off the `dispatch_workflow` allowlist by design).
 - Open GitHub Issues to report success/failure — this is interactive, not async.
 - Write `factory/manifests/`, `factory/evidence/`, or session-summary files.
 - Bypass branch protection or skip CI checks.
@@ -102,7 +102,7 @@ Pattern: retry only on the specific error class (`PERMISSION_DENIED`, `does not 
 
 ## MCP
 
-The MCP server `5b6e937f-c064-4cfd-88c4-ef93df38fa87` provides read-only inspection tools (`verify_*_system`, `list_all_systems_inventory`, `inspect_*`, `tail_*_logs`, etc.). The GitHub MCP (`mcp__github__*`) is scoped to `edri2or/or-factory-master` only. Use these to verify; do not call any write tool against another repo from this session.
+The MCP server `5b6e937f-c064-4cfd-88c4-ef93df38fa87` provides read-only inspection tools (`verify_*_system`, `list_all_systems_inventory`, `inspect_*`, `tail_*_logs`, etc.) plus one WRITE tool — `dispatch_workflow`, which triggers the allowlisted lifecycle workflows (`provision-system.yml`, `register-system-app.yml`, `deploy-railway-cloudflare.yml`) on `or-factory-master` or any system repo via the org-wide broker App (`decommission-system.yml` is excluded by design). The GitHub MCP (`mcp__github__*`) is scoped to `edri2or/or-factory-master` only. Use the read tools to verify; `dispatch_workflow` is the only sanctioned cross-repo write (workflow_dispatch events only).
 
 The MCP server's source lives in `services/mcp-server/` and is deployed to Cloud Run in `or-factory-master-control` via `deploy-mcp-server.yml`. Railway visibility tools (extended beyond the old factory's set):
 

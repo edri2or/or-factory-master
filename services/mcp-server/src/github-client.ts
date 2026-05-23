@@ -110,6 +110,54 @@ export async function apiGetRepo(owner: string, repo: string, path: string): Pro
   return resp.json();
 }
 
+// Trigger a workflow_dispatch event. The broker App is installed org-wide with
+// actions:write, so this works on or-factory-master and any system repo. The
+// dispatch endpoint returns 204 with no body — callers use getLatestWorkflowRun
+// to discover the created run. The only write path through this client; the
+// dispatch_workflow tool gates it behind a workflow-file allowlist.
+export async function dispatchWorkflow(
+  workflowFile: string,
+  ref: string,
+  inputs: Record<string, unknown>,
+  owner: string = DEFAULT_OWNER,
+  repo: string = DEFAULT_REPO,
+): Promise<void> {
+  const resp = await ghFetchRepo(
+    owner,
+    repo,
+    `/actions/workflows/${encodeURIComponent(workflowFile)}/dispatches`,
+    { method: 'POST', body: JSON.stringify({ ref, inputs }) },
+  );
+  if (resp.status !== 204) {
+    throw new Error(`dispatch ${owner}/${repo} ${workflowFile} → ${resp.status}: ${await resp.text()}`);
+  }
+}
+
+// Most recent workflow_dispatch run for a workflow file on a branch. Used right
+// after dispatchWorkflow to return an actionable run id/url. Returns null if no
+// run is visible yet (GitHub takes a beat to materialize the run after dispatch).
+export async function getLatestWorkflowRun(
+  workflowFile: string,
+  ref: string,
+  owner: string = DEFAULT_OWNER,
+  repo: string = DEFAULT_REPO,
+): Promise<{ id: number; html_url: string; status: string; created_at: string } | null> {
+  const params = new URLSearchParams({ branch: ref, event: 'workflow_dispatch', per_page: '1' });
+  const data = (await apiGet(
+    `/actions/workflows/${encodeURIComponent(workflowFile)}/runs?${params}`,
+    owner,
+    repo,
+  )) as { workflow_runs?: Array<Record<string, unknown>> };
+  const run = data.workflow_runs?.[0];
+  if (!run) return null;
+  return {
+    id: run['id'] as number,
+    html_url: run['html_url'] as string,
+    status: run['status'] as string,
+    created_at: run['created_at'] as string,
+  };
+}
+
 // 5 MB default ceiling. The MCP transport handles multi-MB payloads and the
 // Claude Code harness spills large tool outputs to a local file the agent reads
 // in chunks, so this only exists to bound a pathological 100 MB log — not to

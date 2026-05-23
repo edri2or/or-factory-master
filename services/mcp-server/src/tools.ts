@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { apiGet, apiGetRepo, fetchJobLogs, filterLogText } from './github-client.js';
+import { apiGet, apiGetRepo, fetchJobLogs, filterLogText, dispatchWorkflow, getLatestWorkflowRun } from './github-client.js';
 import {
   getProject as gcpGetProject,
   listEnabledServices as gcpListEnabledServices,
@@ -313,6 +313,79 @@ export function registerTools(server: McpServer): void {
     async ({ owner, repo, run_id }) => {
       const data = await apiGet(`/actions/runs/${run_id}/timing`, owner, repo);
       return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
+    },
+  );
+
+  // ─── Workflow dispatch (the one WRITE tool) ─────────────────────────────
+  // Lets the agent trigger the factory's lifecycle workflows itself instead of
+  // the operator clicking "Run workflow" or curling the API with a temporary
+  // PAT. Auth is the org-wide broker App (actions:write), so it reaches both
+  // or-factory-master and any system repo. Bounded by an allowlist —
+  // decommission-system.yml is intentionally excluded (destructive; requires
+  // written approval per CLAUDE.md).
+  const DISPATCHABLE_WORKFLOWS = new Set([
+    'provision-system.yml',
+    'register-system-app.yml',
+    'deploy-railway-cloudflare.yml',
+  ]);
+
+  server.tool(
+    'dispatch_workflow',
+    'Trigger a workflow_dispatch event for an ALLOWLISTED factory workflow (provision-system.yml, register-system-app.yml, deploy-railway-cloudflare.yml). Dispatches as the org-wide broker App, so it works on or-factory-master AND any system repo (pass repo, e.g. "factory-test-24"). Polls briefly and returns the created run_id + run_url. This is the only WRITE tool on the server; decommission-system.yml is intentionally NOT dispatchable here.',
+    {
+      ...repoParams,
+      workflow_id: z.string().describe('Workflow file name to dispatch, e.g. provision-system.yml. Must be on the allowlist.'),
+      ref: z.string().optional().default('main').describe('Git ref to run on (default: main; the broker WIF CEL pins refs/heads/main)'),
+      inputs: z
+        .record(z.string(), z.string())
+        .optional()
+        .describe('workflow_dispatch inputs, e.g. {"system_name":"factory-test-24"} (deploy-railway-cloudflare.yml takes none)'),
+    },
+    async ({ owner, repo, workflow_id, ref, inputs }) => {
+      if (!DISPATCHABLE_WORKFLOWS.has(workflow_id)) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              error: 'workflow_not_allowlisted',
+              workflow_id,
+              allowed: [...DISPATCHABLE_WORKFLOWS],
+              message: 'Not on the dispatch allowlist. decommission-system.yml is intentionally excluded (destructive; requires written approval).',
+            }, null, 2),
+          }],
+        };
+      }
+      const targetRef = ref ?? 'main';
+      try {
+        await dispatchWorkflow(workflow_id, targetRef, inputs ?? {}, owner, repo);
+      } catch (e) {
+        return {
+          content: [{ type: 'text' as const, text: JSON.stringify({ error: 'dispatch_failed', workflow_id, detail: String(e).slice(0, 400) }, null, 2) }],
+        };
+      }
+      // The dispatch API returns 204 with no body — poll briefly for the run.
+      let run: Awaited<ReturnType<typeof getLatestWorkflowRun>> = null;
+      for (let i = 0; i < 5; i++) {
+        await new Promise((r) => setTimeout(r, 2000));
+        try {
+          run = await getLatestWorkflowRun(workflow_id, targetRef, owner, repo);
+          if (run) break;
+        } catch { /* transient — keep polling */ }
+      }
+      const result = {
+        dispatched: true,
+        owner: owner ?? 'edri2or',
+        repo: repo ?? 'or-factory-master',
+        workflow_id,
+        ref: targetRef,
+        inputs: inputs ?? {},
+        run_id: run?.id ?? null,
+        run_url: run?.html_url ?? null,
+        run_status: run?.status ?? null,
+        note: run ? undefined : 'run not visible yet — use list_workflow_runs to find it shortly',
+        timestamp: new Date().toISOString(),
+      };
+      return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
     },
   );
 

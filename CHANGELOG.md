@@ -1,5 +1,13 @@
 # Changelog
 
+## Stage 20 — MCP: `dispatch_workflow` write tool (agent dispatches without a PAT)
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | feature | Add one WRITE tool, `dispatch_workflow`, to the factory MCP server (`services/mcp-server/`) so the agent triggers lifecycle workflows itself instead of an operator clicking "Run workflow" or curling the API with a temporary classic PAT (`$GITHUB_CLASSIC_TOKEN`). `github-client.ts` gains `dispatchWorkflow()` — POSTs `/actions/workflows/{file}/dispatches` via the existing `ghFetchRepo` (already mints the org-wide `factory-master-broker` App token, which has `actions:write` and is installed on all repos) — plus `getLatestWorkflowRun()` for the post-204 run-id lookback (the dispatch API returns 204 with no body). `tools.ts` registers `dispatch_workflow` gated on a hardcoded allowlist (`provision-system.yml`, `register-system-app.yml`, `deploy-railway-cloudflare.yml`); `decommission-system.yml` is intentionally excluded (destructive, written-approval-only). Works cross-repo (pass `repo`, e.g. `factory-test-24`) and returns `{run_id, run_url}`. No new secret / IAM / App-permission — the broker creds are already mounted by `deploy-mcp-server.yml`. `smoke.mjs` gains a side-effect-free check asserting a non-allowlisted id is refused. CLAUDE.md "How to work #3" + the Never list + the MCP table updated (the agent now dispatches via the allowlisted tool; watch-and-verify between stages still required). |
+
+Redeploy via `deploy-mcp-server.yml` to take effect; MCP URL unchanged. Retires the env-var `$GITHUB_CLASSIC_TOKEN` dispatch path.
+
 ## Stage 19 — deploy-plane: single-redeploy env upsert + n8n HTTP readiness gate
 
 | PR | Type | Summary |

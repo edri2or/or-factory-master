@@ -79,7 +79,7 @@ function record(name, pass, evidence) {
 
 async function main() {
   const bearer = await exchangeAdminForBearer();
-  console.log(`Admin bearer minted; running 8 smoke checks against ${SMOKE_TARGET_SYSTEM} + self...`);
+  console.log(`Admin bearer minted; running 9 smoke checks against ${SMOKE_TARGET_SYSTEM} + self...`);
 
   // 1. list_system_secrets — expect github-app-id present
   try {
@@ -195,6 +195,20 @@ async function main() {
     }
   } catch (e) {
     record('verify_cloudflare_system', false, String(e).slice(0, 200));
+  }
+
+  // 9. dispatch_workflow — allowlist enforced. Side-effect-free: assert a
+  // non-allowlisted workflow id is REFUSED so we never trigger a real run from
+  // smoke. Mirrors the probe_endpoint allowlist check above.
+  try {
+    const r = await callTool(bearer, 'dispatch_workflow', { workflow_id: 'changelog-check.yml' });
+    record(
+      'dispatch_workflow allowlist enforced',
+      r.error === 'workflow_not_allowlisted',
+      r.error ?? `unexpected: ${JSON.stringify(r).slice(0, 150)}`,
+    );
+  } catch (e) {
+    record('dispatch_workflow allowlist enforced', false, String(e).slice(0, 200));
   }
 
   const failed = results.filter((r) => !r.pass);
