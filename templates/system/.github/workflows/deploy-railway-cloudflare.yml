@@ -263,17 +263,20 @@ jobs:
           fi
           echo "INFO: production environment id: $ENV_ID"
 
-          # ===== Generic env-var upsert helper =====
-          # Takes an explicit service id so we can set env vars on both
-          # Postgres and n8n services.
-          _upsert() {
-            local sid="$1" name="$2" value="$3"
-            _gql 'mutation($input: VariableUpsertInput!) { variableUpsert(input: $input) }' \
-              "$(jq -cn --arg pid "$PROJECT_ID_RW" --arg eid "$ENV_ID" --arg sid "$sid" \
-                --arg n "$name" --arg v "$value" \
-                '{input: {projectId: $pid, environmentId: $eid, serviceId: $sid, name: $n, value: $v}}')" \
+          # ===== Batched env-var upsert helper =====
+          # Takes a service id + a JSON object {name:value,...} and sets all
+          # of them in ONE variableCollectionUpsert mutation. Per-variable
+          # variableUpsert each triggers its own Railway redeploy — even a
+          # parallel `&` fan-out fires N redeploys (confirmed on
+          # factory-test-23: 15 parallel upserts produced a 12-deployment
+          # cascade), restarting n8n repeatedly mid-deploy. One collection
+          # upsert lands a single redeploy with the final state.
+          _upsert_collection() {
+            local sid="$1" vars="$2"
+            _gql 'mutation($input: VariableCollectionUpsertInput!) { variableCollectionUpsert(input: $input) }' \
+              "$(jq -cn --arg pid "$PROJECT_ID_RW" --arg eid "$ENV_ID" --arg sid "$sid" --argjson vars "$vars" \
+                '{input: {projectId: $pid, environmentId: $eid, serviceId: $sid, variables: $vars}}')" \
               > /dev/null
-            echo "  PASS: $name"
           }
 
           # ===== Postgres: SM-first, find, then create =====
@@ -353,9 +356,9 @@ jobs:
             echo "PASS: railway-postgres-volume-id persisted to SM."
           fi
 
-          # ===== Postgres env vars (only on first create, in parallel) =====
+          # ===== Postgres env vars (only on first create) =====
           if [ "$PG_FIRST_TIME" = "true" ]; then
-            echo "=== Railway: Postgres env vars (parallel upsert) ==="
+            echo "=== Railway: Postgres env vars (single collection upsert) ==="
             POSTGRES_PASSWORD=$(openssl rand -hex 24)
             echo "::add-mask::${POSTGRES_PASSWORD}"
             # DATABASE_URL uses Railway runtime reference syntax for the
@@ -376,14 +379,14 @@ jobs:
             # matches what initdb creates regardless of when env vars land.
             DLR='$'
             DATABASE_URL="postgresql://postgres:${DLR}{{POSTGRES_PASSWORD}}@${DLR}{{RAILWAY_PRIVATE_DOMAIN}}:5432/postgres"
-            pg_pids=()
-            _upsert "$PG_ID" POSTGRES_USER     postgres & pg_pids+=($!)
-            _upsert "$PG_ID" POSTGRES_DB       postgres & pg_pids+=($!)
-            _upsert "$PG_ID" POSTGRES_PASSWORD "$POSTGRES_PASSWORD" & pg_pids+=($!)
-            _upsert "$PG_ID" PGDATA            /var/lib/postgresql/data/pgdata & pg_pids+=($!)
-            _upsert "$PG_ID" DATABASE_URL      "$DATABASE_URL" & pg_pids+=($!)
-            for pid in "${pg_pids[@]}"; do wait "$pid" || { echo "FAIL: a Postgres env var upsert failed" >&2; exit 1; }; done
-            echo "PASS: Postgres env vars set (5 vars in parallel)."
+            _upsert_collection "$PG_ID" "$(jq -cn --arg pw "$POSTGRES_PASSWORD" --arg dburl "$DATABASE_URL" '{
+              POSTGRES_USER: "postgres",
+              POSTGRES_DB: "postgres",
+              POSTGRES_PASSWORD: $pw,
+              PGDATA: "/var/lib/postgresql/data/pgdata",
+              DATABASE_URL: $dburl
+            }')"
+            echo "PASS: Postgres env vars set (5 vars in one upsert → single redeploy)."
           fi
 
           # ===== n8n service: SM-first, find, then create =====
@@ -433,32 +436,34 @@ jobs:
           # reference syntax verbatim. Assemble the prefix at bash runtime so
           # that sequence never appears literally in this YAML source.
           DLR='$'
-          # Parallel upserts (matches edri2or/factory): each upsert in
-          # series triggers its own Railway redeploy, so 14 sequential
-          # = 14 redeploys. Batching with `&` + wait lands a single
-          # redeploy with the final state.
           # N8N_HOST carries the public hostname (used by n8n for the
           # "Editor accessible via" startup log + URL generation). The
           # bind interface is N8N_LISTEN_ADDRESS (default '::', covers
-          # IPv4+IPv6) — not set here.
-          n8n_pids=()
-          _upsert "$N8N_ID" DB_TYPE                postgresdb & n8n_pids+=($!)
-          _upsert "$N8N_ID" DB_POSTGRESDB_HOST     "${DLR}{{Postgres.RAILWAY_PRIVATE_DOMAIN}}" & n8n_pids+=($!)
-          _upsert "$N8N_ID" DB_POSTGRESDB_PORT     5432 & n8n_pids+=($!)
-          _upsert "$N8N_ID" DB_POSTGRESDB_DATABASE postgres & n8n_pids+=($!)
-          _upsert "$N8N_ID" DB_POSTGRESDB_USER     "${DLR}{{Postgres.POSTGRES_USER}}" & n8n_pids+=($!)
-          _upsert "$N8N_ID" DB_POSTGRESDB_PASSWORD "${DLR}{{Postgres.POSTGRES_PASSWORD}}" & n8n_pids+=($!)
-          _upsert "$N8N_ID" DB_POSTGRESDB_SCHEMA   public & n8n_pids+=($!)
-          _upsert "$N8N_ID" N8N_HOST               "$DOMAIN" & n8n_pids+=($!)
-          _upsert "$N8N_ID" N8N_PROTOCOL           https & n8n_pids+=($!)
-          _upsert "$N8N_ID" N8N_PORT               5678 & n8n_pids+=($!)
-          _upsert "$N8N_ID" PORT                   5678 & n8n_pids+=($!)
-          _upsert "$N8N_ID" WEBHOOK_URL            "https://${DOMAIN}" & n8n_pids+=($!)
-          _upsert "$N8N_ID" GENERIC_TIMEZONE       "$TIMEZONE" & n8n_pids+=($!)
-          _upsert "$N8N_ID" N8N_ENCRYPTION_KEY     "$N8N_KEY" & n8n_pids+=($!)
-          _upsert "$N8N_ID" N8N_RUNNERS_ENABLED    true & n8n_pids+=($!)
-          for pid in "${n8n_pids[@]}"; do wait "$pid" || { echo "FAIL: an n8n env var upsert failed" >&2; exit 1; }; done
-          echo "PASS: n8n env vars set (15 vars in parallel)."
+          # IPv4+IPv6) — not set here. All 15 vars go in one collection
+          # upsert so the change lands as a single Railway redeploy.
+          _upsert_collection "$N8N_ID" "$(jq -cn \
+            --arg host "${DLR}{{Postgres.RAILWAY_PRIVATE_DOMAIN}}" \
+            --arg user "${DLR}{{Postgres.POSTGRES_USER}}" \
+            --arg pass "${DLR}{{Postgres.POSTGRES_PASSWORD}}" \
+            --arg domain "$DOMAIN" --arg weburl "https://${DOMAIN}" \
+            --arg tz "$TIMEZONE" --arg key "$N8N_KEY" '{
+              DB_TYPE: "postgresdb",
+              DB_POSTGRESDB_HOST: $host,
+              DB_POSTGRESDB_PORT: "5432",
+              DB_POSTGRESDB_DATABASE: "postgres",
+              DB_POSTGRESDB_USER: $user,
+              DB_POSTGRESDB_PASSWORD: $pass,
+              DB_POSTGRESDB_SCHEMA: "public",
+              N8N_HOST: $domain,
+              N8N_PROTOCOL: "https",
+              N8N_PORT: "5678",
+              PORT: "5678",
+              WEBHOOK_URL: $weburl,
+              GENERIC_TIMEZONE: $tz,
+              N8N_ENCRYPTION_KEY: $key,
+              N8N_RUNNERS_ENABLED: "true"
+            }')"
+          echo "PASS: n8n env vars set (15 vars in one upsert → single redeploy)."
 
           # ===== Custom domain on n8n service =====
           # Railway's status.dnsRecords only contains the routing CNAME;
@@ -925,9 +930,25 @@ jobs:
           # bodies parse as no-flag-present and silently exit 0, masking
           # crash-looping n8n (seen on factory-test-19 with HTTP 403
           # "Host not in allowlist" while Postgres was in a bad state).
-          HTTP=$(curl -sS -o /tmp/n8n-settings.json -w '%{http_code}' --max-time 10 "$BASE/rest/settings" || echo "000")
+          # Readiness gate: the env-var collection upsert above triggers a
+          # Railway redeploy, and the edge can return 404/403 ("Host not in
+          # allowlist") for a while after n8n's container is "ready" while
+          # the custom domain re-propagates. A valid TLS cert (verified in
+          # the previous step) does NOT imply HTTP routes yet. Poll until n8n
+          # actually serves 200 (up to ~6 min) instead of a single shot that
+          # races the restart — seen on factory-test-23 run 26331335520,
+          # where step 8 hit a 404 window and failed while the very next
+          # dispatch passed. Still fails fast after the cap so a genuinely
+          # crash-looping n8n is not masked.
+          HTTP=000
+          for i in $(seq 1 36); do
+            HTTP=$(curl -sS -o /tmp/n8n-settings.json -w '%{http_code}' --max-time 10 "$BASE/rest/settings" || echo "000")
+            if [ "$HTTP" = "200" ]; then break; fi
+            echo "[readiness ${i}/36] GET $BASE/rest/settings -> HTTP $HTTP; n8n not ready, sleeping 10s..."
+            sleep 10
+          done
           if [ "$HTTP" != "200" ]; then
-            echo "FAIL: GET $BASE/rest/settings returned HTTP $HTTP — n8n not reachable" >&2
+            echo "FAIL: GET $BASE/rest/settings still HTTP $HTTP after ~6 min — n8n not reachable" >&2
             head -c 400 /tmp/n8n-settings.json 2>/dev/null >&2 || true; echo >&2
             exit 1
           fi
