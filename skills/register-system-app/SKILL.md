@@ -17,10 +17,8 @@ Before doing anything:
 
 ## Dispatch
 
-1. Open the workflow run via GitHub UI URL: `https://github.com/edri2or/or-factory-master/actions/workflows/register-system-app.yml`.
-2. The user dispatches `register-system-app.yml` with input `system_name=<name>` on branch `main`.
-3. **Do not dispatch via API yourself.** This is an explicit-action step — the user clicks the button.
-4. Tell the operator about the 2 clicks and the critical "Only select repositories" radio:
+1. Confirm with the user, then dispatch via the `dispatch_workflow` MCP tool: `workflow_id=register-system-app.yml`, `inputs={system_name:<name>}`, `ref=main`. It triggers the run as the org-wide broker App and returns the `run_id`.
+2. **The 2 browser clicks are still the operator's** — dispatching only *starts* the run; the operator must complete GitHub App creation within ~10 min (the run sends the receiver URL via Telegram and polls for the credentials):
    - Click 1: GitHub shows "Create GitHub App" — click it.
    - Click 2: GitHub shows the install page — **choose "Only select repositories" and tick `edri2or/<system_name>`**. Do NOT pick "All repositories" — the workflow will fail loudly if you do.
 
@@ -54,7 +52,7 @@ After `register-system-app.yml` succeeds, tell the user:
 
 1. App `<system_name>-app` is registered, narrowly scoped to `edri2or/<system_name>`, credentials in the system's SM.
 2. Repo variables `APP_ID` and `APP_INSTALLATION_ID` are set on `edri2or/<system_name>` so the system's own workflows can reach them via `${{ vars.APP_ID }}` and `${{ vars.APP_INSTALLATION_ID }}`.
-3. **Next step**: dispatch `deploy-railway-cloudflare.yml` in `edri2or/<system_name>` (Actions tab → manual `workflow_dispatch` on `main`).
+3. **Next step**: dispatch `deploy-railway-cloudflare.yml` via the `dispatch_workflow` MCP tool (`repo=<system_name>`, `workflow_id=deploy-railway-cloudflare.yml`, `ref=main`).
 
 ## Abort conditions
 
