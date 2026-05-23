@@ -1,7 +1,11 @@
 import jwt from 'jsonwebtoken';
 
-const OWNER = 'edri2or';
-const REPO = 'factory';
+const DEFAULT_OWNER = 'edri2or';
+// The factory's own repo. Was previously hardcoded to the OLD factory
+// ('factory'), which meant every run/job/log tool silently read the wrong
+// repo (404s on this repo's workflows and on system repos). Tools now accept
+// owner/repo and default here.
+const DEFAULT_REPO = 'or-factory-master';
 
 const APP_ID = process.env.GITHUB_APP_ID;
 const APP_INSTALLATION_ID = process.env.GITHUB_APP_INSTALLATION_ID;
@@ -48,9 +52,14 @@ async function installationToken(): Promise<string> {
   return cached.token;
 }
 
-async function ghFetch(path: string, init: RequestInit = {}): Promise<Response> {
+async function ghFetchRepo(
+  owner: string,
+  repo: string,
+  path: string,
+  init: RequestInit = {},
+): Promise<Response> {
   const token = await installationToken();
-  return fetch(`https://api.github.com/repos/${OWNER}/${REPO}${path}`, {
+  return fetch(`https://api.github.com/repos/${owner}/${repo}${path}`, {
     ...init,
     headers: {
       Authorization: `Bearer ${token}`,
@@ -62,9 +71,17 @@ async function ghFetch(path: string, init: RequestInit = {}): Promise<Response> 
   });
 }
 
-export async function apiGet(path: string): Promise<unknown> {
-  const resp = await ghFetch(path);
-  if (!resp.ok) throw new Error(`GitHub GET ${path} → ${resp.status}: ${await resp.text()}`);
+async function ghFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  return ghFetchRepo(DEFAULT_OWNER, DEFAULT_REPO, path, init);
+}
+
+export async function apiGet(
+  path: string,
+  owner: string = DEFAULT_OWNER,
+  repo: string = DEFAULT_REPO,
+): Promise<unknown> {
+  const resp = await ghFetchRepo(owner, repo, path);
+  if (!resp.ok) throw new Error(`GitHub GET ${owner}/${repo}${path} → ${resp.status}: ${await resp.text()}`);
   return resp.json();
 }
 
@@ -93,10 +110,83 @@ export async function apiGetRepo(owner: string, repo: string, path: string): Pro
   return resp.json();
 }
 
-export async function fetchJobLogs(jobId: string): Promise<string> {
-  const resp = await ghFetch(`/actions/jobs/${jobId}/logs`, { redirect: 'follow' });
-  if (!resp.ok) throw new Error(`Job logs fetch failed: ${resp.status}`);
-  const text = await resp.text();
-  const MAX = 50 * 1024;
-  return text.length > MAX ? `${text.slice(0, MAX)}\n[... truncated at 50 KB ...]` : text;
+// 5 MB default ceiling. The MCP transport handles multi-MB payloads and the
+// Claude Code harness spills large tool outputs to a local file the agent reads
+// in chunks, so this only exists to bound a pathological 100 MB log — not to
+// hide content. Override with maxBytes, or use grep/tailLines for a small read.
+export const DEFAULT_MAX_LOG_BYTES = 5 * 1024 * 1024;
+
+export interface LogReadOptions {
+  owner?: string;
+  repo?: string;
+  // Surgical mode: JS regex (case-insensitive). Returns only matching lines
+  // plus `context` lines around each, with a match-count header.
+  grep?: string;
+  context?: number;
+  // Pagination: byte window into the full log.
+  offsetBytes?: number;
+  maxBytes?: number;
+  // Return only the last N lines (ignored when grep is set).
+  tailLines?: number;
+}
+
+// Applies grep / tail / offset+maxBytes to a raw log string. Exported so the
+// Railway and Cloud Run log tools share one filtering contract.
+export function filterLogText(text: string, opts: LogReadOptions = {}): string {
+  if (opts.grep) {
+    let re: RegExp;
+    try {
+      re = new RegExp(opts.grep, 'i');
+    } catch {
+      return `[invalid grep regex: ${opts.grep}]`;
+    }
+    const ctx = opts.context ?? 3;
+    const lines = text.split('\n');
+    const keep = new Array<boolean>(lines.length).fill(false);
+    let matches = 0;
+    for (let i = 0; i < lines.length; i++) {
+      if (re.test(lines[i])) {
+        matches++;
+        for (let j = Math.max(0, i - ctx); j <= Math.min(lines.length - 1, i + ctx); j++) keep[j] = true;
+      }
+    }
+    if (matches === 0) {
+      return `[no lines matched /${opts.grep}/i in ${lines.length} lines (${Buffer.byteLength(text, 'utf8')} bytes)]`;
+    }
+    const out: string[] = [
+      `[grep /${opts.grep}/i — ${matches} match(es), ±${ctx} context lines, of ${lines.length} total lines]`,
+    ];
+    let lastKept = -2;
+    for (let i = 0; i < lines.length; i++) {
+      if (!keep[i]) continue;
+      if (i > lastKept + 1) out.push('--');
+      out.push(`${i + 1}: ${lines[i]}`);
+      lastKept = i;
+    }
+    return out.join('\n');
+  }
+
+  if (opts.tailLines && opts.tailLines > 0) {
+    const lines = text.split('\n');
+    return lines.slice(Math.max(0, lines.length - opts.tailLines)).join('\n');
+  }
+
+  const offset = opts.offsetBytes ?? 0;
+  const max = opts.maxBytes ?? DEFAULT_MAX_LOG_BYTES;
+  const buf = Buffer.from(text, 'utf8');
+  if (offset >= buf.length) return `[offset_bytes=${offset} is at/beyond end of log (${buf.length} bytes)]`;
+  const slice = buf.subarray(offset, offset + max).toString('utf8');
+  if (offset + max < buf.length) {
+    const remaining = buf.length - offset - max;
+    return `${slice}\n[... ${remaining} more bytes; resume with offset_bytes=${offset + max} (total ${buf.length} bytes) ...]`;
+  }
+  return slice;
+}
+
+export async function fetchJobLogs(jobId: string, opts: LogReadOptions = {}): Promise<string> {
+  const owner = opts.owner ?? DEFAULT_OWNER;
+  const repo = opts.repo ?? DEFAULT_REPO;
+  const resp = await ghFetchRepo(owner, repo, `/actions/jobs/${jobId}/logs`, { redirect: 'follow' });
+  if (!resp.ok) throw new Error(`Job logs fetch failed for ${owner}/${repo} job ${jobId}: ${resp.status}`);
+  return filterLogText(await resp.text(), opts);
 }
