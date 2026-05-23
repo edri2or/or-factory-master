@@ -1093,6 +1093,7 @@ jobs:
             --arg credName  "$CRED_NAME" \
             '{
               name: $name,
+              active: false,
               nodes: [
                 {
                   id: $whId,
