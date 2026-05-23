@@ -1,5 +1,13 @@
 # Changelog
 
+## Stage 18 — deploy-plane: idempotent n8n-owner-password (notifier login on redeploy)
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | fix | Make `n8n-owner-password` idempotent in `templates/system/.github/workflows/deploy-railway-cloudflare.yml` (~line 124): reuse the existing SM `latest` version if present (mirroring the `n8n-owner-email` block just above it); only mint a fresh password when none exists. The old code minted a fresh password every run on the assumption it was "only consumed once at /rest/owner/setup" — true until Stage 15's notifier step began logging into n8n on every deploy. On a redeploy, step 8 skips owner-setup (`showSetupOnFirstLoad=false`) so n8n keeps the first-run password, while the notifier logs in with the freshly-minted one → `POST /rest/login` 401 (surfacing as a confusing `400 emailOrLdapLoginId Required` from the `email` fallback). Surfaced on factory-test-23 deploy run 26330453235, immediately after PR #47's `active:false` fix unmasked it (login is upstream of the workflow-create call that failed before). New systems are correct from first deploy; an existing system whose password already rotated needs a one-time SM resync (re-promote the owner-creation run's version to `latest`). |
+
+Template edits propagate only to newly-provisioned systems (per CLAUDE.md). factory-test-23 gets the same fix in its frozen copy plus a one-time SM resync before re-dispatch; not auto-backfilled to other systems.
+
 ## Stage 17 — deploy-plane: notifier workflow create missing `active`
 
 | PR | Type | Summary |
