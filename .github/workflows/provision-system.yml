@@ -552,6 +552,27 @@ jobs:
           done
           echo "PASS: all ${#RUNTIME_SHELLS[@]} runtime secret shells ready."
 
+          # Seed n8n-telegram-chat-id from the factory-admin telegram-chat-id. The
+          # per-system n8n bot is a DIFFERENT bot (its token is filled in manually)
+          # but messages the SAME operator chat — a Telegram chat_id is global across
+          # bots — so the chat-id that the Copy generic secrets step just placed in
+          # this project is the right default. Only seed when empty so reuse re-runs
+          # and any manual operator override are never clobbered.
+          if ! gcloud secrets versions access latest \
+               --secret=n8n-telegram-chat-id --project="$GCP_PROJECT" >/dev/null 2>&1; then
+            if CHAT_ID=$(gcloud secrets versions access latest \
+                 --secret=telegram-chat-id --project="$GCP_PROJECT" 2>/dev/null) && [ -n "$CHAT_ID" ]; then
+              echo "::add-mask::${CHAT_ID}"
+              printf '%s' "$CHAT_ID" | gcloud secrets versions add n8n-telegram-chat-id \
+                --project="$GCP_PROJECT" --data-file=- --quiet
+              echo "PASS: seeded n8n-telegram-chat-id from telegram-chat-id"
+            else
+              echo "INFO: telegram-chat-id empty in $GCP_PROJECT — n8n-telegram-chat-id left for manual fill"
+            fi
+          else
+            echo "INFO: n8n-telegram-chat-id already has a version — not reseeding"
+          fi
+
       - name: Set repo variables
         env:
           SYSTEM_NAME: ${{ inputs.system_name }}
