@@ -1256,11 +1256,28 @@ jobs:
           HTTP=$(curl -sS -o /tmp/n8n-hook.json -w '%{http_code}' --max-time 30 \
             -X POST "$BASE/webhook/${WEBHOOK_PATH}")
           if [ "$HTTP" != "200" ]; then
-            echo "FAIL: webhook fire HTTP $HTTP" >&2
+            # The notifier workflow is created + active in n8n, but the test send
+            # did not reach Telegram. The most common cause is operator-side bot
+            # setup, not a deploy/config error: the system's Telegram bot
+            # (n8n-telegram-bot-token) has not been /start-ed by — or added to —
+            # the chat in n8n-telegram-chat-id (which provision seeds from the
+            # factory-admin telegram-chat-id), so api.telegram.org rejects the
+            # send. A failed notification must NOT fail an otherwise-successful
+            # deploy, so warn and continue rather than exit 1.
+            {
+              echo "## ⚠️  n8n 'ready' Telegram test send did not deliver"
+              echo ""
+              echo "The notifier workflow was created and activated in n8n, but firing it returned HTTP ${HTTP} from api.telegram.org. **The deploy itself succeeded** — this is only the test ping."
+              echo ""
+              echo "Most likely the system's Telegram bot (\`n8n-telegram-bot-token\`) has not been started by the chat in \`n8n-telegram-chat-id\`. Open that bot in Telegram and press **/start** (or add it to the target group)."
+              echo ""
+              echo "A redeploy will **not** resend this ping (the notifier workflow already exists, so the step is skipped). To re-send it, open the n8n workflows list and execute **${WF_NAME}** manually — the live webhook keeps working for real triggers regardless."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "WARN: webhook fire HTTP $HTTP — notifier created but test send not delivered (see job summary). Continuing." >&2
             head -c 400 /tmp/n8n-hook.json >&2 || true; echo >&2
-            exit 1
+          else
+            echo "PASS: Telegram 'n8n מוכן' notification fired for ${SYSTEM_NAME}."
           fi
-          echo "PASS: Telegram 'n8n מוכן' notification fired for ${SYSTEM_NAME}."
 
           # 8. Best-effort logout. Non-fatal.
           curl -sS -o /dev/null -b "$COOKIE_JAR" -X POST "$BASE/rest/logout" || true

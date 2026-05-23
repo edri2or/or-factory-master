@@ -1,5 +1,14 @@
 # Changelog
 
+## Stage 26 — provision seeds n8n-telegram-chat-id; deploy notifier test send non-fatal
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | feature | `.github/workflows/provision-system.yml`'s `Pre-create runtime secret shells` step now **seeds `n8n-telegram-chat-id` from `telegram-chat-id`** (placed in the project moments earlier by `scripts/copy-generic-secrets.sh`). The per-system n8n bot is a different bot — `n8n-telegram-bot-token` is still filled manually — but it messages the **same** operator chat, and a Telegram `chat_id` is global across bots, so the factory-admin chat-id is the right default. Seeds only when the secret has no version (same seed-if-empty pattern as `copy-generic-secrets.sh`) so reuse re-runs and any manual override aren't clobbered; the value is `::add-mask::`-ed and never echoed. Removes the redundant manual step of re-typing a chat-id already sitting in the same SM. Runs in both normal and reuse mode, no IAM change (broker SA is owner), applies to all future provisions immediately. |
+| TBD | fix | `templates/system/.github/workflows/deploy-railway-cloudflare.yml`: the `Create "n8n is ready" Telegram notifier workflow` step's final test send (the webhook fire) is now **non-fatal** — a non-200 from api.telegram.org writes a `$GITHUB_STEP_SUMMARY` warning and continues instead of `exit 1`; credential / workflow-create / activate stay fatal. With the chat-id now seeded, the notifier attempts a real send as soon as the bot token is filled; if that per-system bot was never `/start`-ed by (or added to) the seeded chat the send is rejected — operator-side bot setup, not a deploy failure, so it must not fail an otherwise-successful deploy. The warning is retry-accurate: the workflow is created + active but the step's name-based idempotency skips it on redeploy, so it tells the operator to `/start` the bot and re-run the notifier workflow manually from n8n. Template edit → newly-provisioned systems only. |
+
+Provision change is repo-level (all future provisions); the deploy-template change reaches systems provisioned after the edit only (per CLAUDE.md).
+
 ## Stage 25 — MCP: GitOps auto-deploy on merge to main
 
 | PR | Type | Summary |
