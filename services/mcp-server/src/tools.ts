@@ -320,18 +320,21 @@ export function registerTools(server: McpServer): void {
   // Lets the agent trigger the factory's lifecycle workflows itself instead of
   // the operator clicking "Run workflow" or curling the API with a temporary
   // PAT. Auth is the org-wide broker App (actions:write), so it reaches both
-  // or-factory-master and any system repo. Bounded by an allowlist —
-  // decommission-system.yml is intentionally excluded (destructive; requires
-  // written approval per CLAUDE.md).
+  // or-factory-master and any system repo. Bounded by an allowlist.
+  // decommission-test-system.yml IS allowed — it's narrow + test-only (deletes
+  // a test system's Railway project + DNS, archives its repo; touches no GCP
+  // project or SM). decommission-system.yml (real-system teardown, soft-deletes
+  // a GCP project) stays excluded — destructive; requires written approval.
   const DISPATCHABLE_WORKFLOWS = new Set([
     'provision-system.yml',
     'register-system-app.yml',
     'deploy-railway-cloudflare.yml',
+    'decommission-test-system.yml',
   ]);
 
   server.tool(
     'dispatch_workflow',
-    'Trigger a workflow_dispatch event for an ALLOWLISTED factory workflow (provision-system.yml, register-system-app.yml, deploy-railway-cloudflare.yml). Dispatches as the org-wide broker App, so it works on or-factory-master AND any system repo (pass repo, e.g. "factory-test-24"). Polls briefly and returns the created run_id + run_url. This is the only WRITE tool on the server; decommission-system.yml is intentionally NOT dispatchable here.',
+    'Trigger a workflow_dispatch event for an ALLOWLISTED factory workflow (provision-system.yml, register-system-app.yml, deploy-railway-cloudflare.yml, decommission-test-system.yml). Dispatches as the org-wide broker App, so it works on or-factory-master AND any system repo (pass repo, e.g. "factory-test-24"). Polls briefly and returns the created run_id + run_url. This is the only WRITE tool on the server. decommission-test-system.yml is test-only (Railway+DNS+repo-archive, no GCP/SM); the real-system decommission-system.yml is intentionally NOT dispatchable here.',
     {
       ...repoParams,
       workflow_id: z.string().describe('Workflow file name to dispatch, e.g. provision-system.yml. Must be on the allowlist.'),
