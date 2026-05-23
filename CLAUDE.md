@@ -43,13 +43,14 @@ The previous factory (`edri2or/factory`) automated everything end-to-end. Failur
 | GitHub org | `edri2or` (id `259965754`) |
 | GitHub App | `factory-master-broker` (installed org-wide, all repos) |
 | App credentials | GCP SM secrets `factory-master-broker-app-{id,private-key,installation-id}` |
+| Shared test GCP project | `factory-test-25` (reuse-mode backend for test systems; 0 quota) |
 
 ## Skills available
 
 | Skill | Purpose |
 |---|---|
-| `build-system` | Provision a new system (GCP + GitHub + secrets). Single workflow, manual dispatch. |
-| `register-system-app` | Register the per-system GitHub App after `build-system`. 2-click manual dispatch, scoped to one repo. |
+| `build-system` | Provision a new system (GCP + GitHub + secrets). Single workflow, manual dispatch. Routes test vs real: real = new GCP project; test = reuse mode (`shared_gcp_project=factory-test-25`, 0 quota). |
+| `register-system-app` | Register the per-system GitHub App after `build-system`. 2-click manual dispatch, scoped to one repo. For test systems, pass the same `shared_gcp_project`. |
 | `decommission-system` | Tear down a system (archive repo, soft-delete project). Requires written approval. |
 | `health-check` | Read-only status report of factory + all managed systems. |
 
@@ -58,8 +59,8 @@ The previous factory (`edri2or/factory`) automated everything end-to-end. Failur
 | Workflow | Trigger | Action |
 |---|---|---|
 | `register-broker-app.yml` | One-shot, already used | Created the GitHub App. Don't re-run. |
-| `provision-system.yml` | Manual `workflow_dispatch` | Builds GCP + GitHub for a new system. Pre-creates SM shells incl. `n8n-owner-email` and `n8n-owner-password`. |
-| `register-system-app.yml` | Manual `workflow_dispatch` (after `provision-system.yml`, before deploy) | Registers a per-system GitHub App via Cloud Run receiver. Narrow permissions (`contents`, `metadata`, `actions`, `workflows`, `secrets`); operator picks "Only select repositories" on click 2, the workflow verifies scope. Writes `github-app-{id,private-key,installation-id}` to the system's SM and `APP_ID` / `APP_INSTALLATION_ID` repo vars on the system repo. Idempotent. |
+| `provision-system.yml` | Manual `workflow_dispatch` | Builds GCP + GitHub for a new system. Pre-creates SM shells incl. `n8n-owner-email` and `n8n-owner-password`. Optional `shared_gcp_project` input → reuse mode (test systems): reuse that project, skip create + billing-link, clean + reseed its secrets. |
+| `register-system-app.yml` | Manual `workflow_dispatch` (after `provision-system.yml`, before deploy) | Registers a per-system GitHub App via Cloud Run receiver. Narrow permissions (`contents`, `metadata`, `actions`, `workflows`, `secrets`); operator picks "Only select repositories" on click 2, the workflow verifies scope. Writes `github-app-{id,private-key,installation-id}` to the system's SM and `APP_ID` / `APP_INSTALLATION_ID` repo vars on the system repo. Idempotent. Optional `shared_gcp_project` → App secrets/SA grants target the shared project (test systems); repo + App scope stay `system_name`. |
 | `templates/system/.github/workflows/deploy-railway-cloudflare.yml` | Manual `workflow_dispatch` in the *system* repo | Deploys n8n 1.121.0 on Railway (Postgres + persistent volume), creates Cloudflare CNAME + `_railway-verify` TXT (DNS-only), waits for Railway to issue the LE cert (retriggers via `customDomainDelete` + recreate if `verified=false`), then POSTs `/rest/owner/setup` so the URL lands on the n8n login screen. Pushed into every new system repo by `provision-system.yml`. Idempotent. |
 | `changelog-check.yml` | `push: main` + `pull_request: main` | Fails any diff that changes `.sh` / `.json` / `.yml` / `.yaml` without updating `CHANGELOG.md`, and any `CHANGELOG.md` over 20 KB. |
 | `decommission-test-projects.yml` | Manual `workflow_dispatch` | One-off cleanup of `factory-test-*` / `v2-test-*` GCP projects via the broker SA. Hard-guards against the control project. |
@@ -69,7 +70,22 @@ The deploy workflow lives in each system's own repo and is dispatched there by t
 
 ## Validation rules
 
-`system_name` must satisfy: `^[a-z][a-z0-9-]{4,28}[a-z0-9]$` (6–30 chars total). The same string becomes the GCP project ID and the GitHub repo name.
+`system_name` must satisfy: `^[a-z][a-z0-9-]{4,28}[a-z0-9]$` (6–30 chars total). In **normal mode** the same string becomes both the GCP project ID and the GitHub repo name. In **reuse mode** (test systems) the GCP project is `shared_gcp_project` and `system_name` is only the GitHub repo name.
+
+## Test systems vs. real systems
+
+The org is at its GCP project-creation quota (active + soft-deleted projects both count, for ~30 days). To keep test iteration quota-free, test systems **reuse** one shared GCP project instead of creating a new one. Route by the user's intent:
+
+| Request | Mode | What to dispatch |
+|---|---|---|
+| "create a system" / a real, persistent system | **normal** | `provision-system.yml` with `system_name=<name>` only → creates a new GCP project (consumes quota). |
+| "create a **test** system" | **reuse** | `provision-system.yml` with `system_name=<name>` **and** `shared_gcp_project=factory-test-25` → reuses that project, skips create + billing-link, cleans + reseeds its secrets → **0 quota**. |
+
+In reuse mode also pass `shared_gcp_project=factory-test-25` to `register-system-app.yml`. `deploy-railway-cloudflare.yml` is unchanged — it reads the system repo's `GCP_PROJECT_ID` var, which provision sets to the shared project.
+
+Reuse-mode consequences (state them to the user): all secrets live in `factory-test-25`'s SM and are **wiped + reseeded at the start of every reuse provision** (clean slate), so only the most-recent test round is SM-backed and per-test `github-app-*` don't persist across rounds. Fine for throwaway tests — a system that must persist needs its own GCP project (a real provision).
+
+**Still confirm cost/scope with the user before dispatching — test or real** (per "The one rule"). Test provisions are 0-quota but still create a real GitHub repo + Railway project and mutate the shared project.
 
 ## Propagation patterns
 
