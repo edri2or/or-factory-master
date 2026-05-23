@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 24 — decommission-test-system: agent-driven test teardown
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | feature | New `.github/workflows/decommission-test-system.yml` (manual, agent-dispatchable) tears down a reuse-mode TEST system: deletes its Railway project (name-verified first), removes its Cloudflare `n8n-<name>` CNAME + `_railway-verify` TXT, archives `edri2or/<system_name>`. Reuse-aware via `shared_gcp_project`; hard-refuses control projects + `factory-test-25`; touches no GCP/SM. Added to the `dispatch_workflow` allowlist (`services/mcp-server/src/tools.ts`; one `deploy-mcp-server.yml` redeploy activates it). New skill + CLAUDE.md updates. **User-triggered only, never auto-chained.** |
+
 ## Stage 23 — register-system-app: reuse-mode parity
 
 | PR | Type | Summary |

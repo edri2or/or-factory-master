@@ -1,0 +1,274 @@
+name: Decommission Test System (Railway + DNS + repo archive)
+
+# Manual dispatch only. Tears down the per-test resources of a REUSE-MODE test
+# system: deletes its Railway project, removes its Cloudflare DNS records, and
+# ARCHIVES its GitHub repo. Deliberately TEST-ONLY and narrow:
+#   - Does NOT touch any GCP project or Secret Manager (in reuse mode the shared
+#     project's secrets are wiped + reseeded by the next provision anyway).
+#   - Does NOT delete the per-system GitHub App (org-admin only — manual).
+#   - Hard-refuses control projects and the shared backend (factory-test-25).
+#
+# User-triggered ONLY. Never auto-chained after provision/deploy. The agent
+# confirms with the user before dispatching this (it is destructive).
+#
+# Auth: WIF as factory-master-broker (broker SA for GCP/SM reads; broker App
+# token for the GitHub repo archive).
+
+on:
+  workflow_dispatch:
+    inputs:
+      system_name:
+        description: "Test system to tear down (e.g. factory-test-26). Must match a test pattern."
+        required: true
+        type: string
+      shared_gcp_project:
+        description: "TEST reuse mode: the GCP project whose SM holds this system's railway/cloudflare credentials (e.g. factory-test-25). Leave empty if the system has its own project named system_name."
+        required: false
+        type: string
+        default: ""
+      railway_project_id:
+        description: "Railway project id to delete (resolve it via list_railway_projects and pass it). The workflow verifies the project's name == system_name before deleting. Leave empty to attempt a best-effort find-by-name."
+        required: false
+        type: string
+        default: ""
+
+permissions: {}
+
+jobs:
+  decommission:
+    name: Decommission ${{ inputs.system_name }} (test)
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      id-token: write
+
+    env:
+      GCP_PROJECT: "or-factory-master-control"
+      BROKER_SA: "factory-master-broker@or-factory-master-control.iam.gserviceaccount.com"
+      WIF_PROVIDER: "projects/140345952904/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
+      RAILWAY_GQL: "https://backboard.railway.com/graphql/v2"
+      CF_API: "https://api.cloudflare.com/client/v4"
+
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - name: Validate inputs (safety gate)
+        env:
+          SYSTEM_NAME: ${{ inputs.system_name }}
+          SHARED_GCP_PROJECT: ${{ inputs.shared_gcp_project }}
+        run: |
+          set -euo pipefail
+          # Test systems only — this workflow must never touch a real system.
+          if ! [[ "$SYSTEM_NAME" =~ ^(factory-test-|v2-test-|or-test-)[a-z0-9-]{1,26}[a-z0-9]$ ]]; then
+            echo "FAIL: '$SYSTEM_NAME' is not a test system (must match factory-test-*/v2-test-*/or-test-*)" >&2
+            exit 1
+          fi
+          # Never tear down a control project or the shared test backend.
+          case "$SYSTEM_NAME" in
+            or-factory-master-control|factory-control-9piybr)
+              echo "FAIL: refusing to decommission a control project" >&2; exit 1 ;;
+            factory-test-25)
+              echo "FAIL: factory-test-25 is the shared test backend — refusing" >&2; exit 1 ;;
+          esac
+
+          # SYS_PROJECT = where this system's railway/cloudflare creds live.
+          SYS_PROJECT="$SYSTEM_NAME"
+          if [ -n "$SHARED_GCP_PROJECT" ]; then
+            case "$SHARED_GCP_PROJECT" in
+              or-factory-master-control|factory-control-9piybr)
+                echo "FAIL: shared_gcp_project must not be a control project" >&2; exit 1 ;;
+            esac
+            SYS_PROJECT="$SHARED_GCP_PROJECT"
+          fi
+          {
+            echo "SYSTEM_NAME=${SYSTEM_NAME}"
+            echo "SYS_PROJECT=${SYS_PROJECT}"
+          } >> "$GITHUB_ENV"
+          echo "PASS: '$SYSTEM_NAME' is a test system; creds project = ${SYS_PROJECT}."
+
+      - name: Authenticate to GCP via WIF
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed  # v2.1.13
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.BROKER_SA }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db  # v3.0.1
+
+      - name: Resolve broker App token
+        run: |
+          set -euo pipefail
+          BROKER_APP_ID=$(gcloud secrets versions access latest \
+            --secret="factory-master-broker-app-id" --project="${GCP_PROJECT}")
+          BROKER_INSTALL_ID=$(gcloud secrets versions access latest \
+            --secret="factory-master-broker-app-installation-id" --project="${GCP_PROJECT}")
+          gcloud secrets versions access latest \
+            --secret="factory-master-broker-app-private-key" --project="${GCP_PROJECT}" \
+            > /tmp/broker-app-key.pem
+          chmod 600 /tmp/broker-app-key.pem
+
+          BROKER_TOKEN=$(bash scripts/generate-app-token.sh \
+            /tmp/broker-app-key.pem "$BROKER_APP_ID" "$BROKER_INSTALL_ID")
+          shred -u /tmp/broker-app-key.pem 2>/dev/null || rm -f /tmp/broker-app-key.pem
+          [ -n "$BROKER_TOKEN" ] || { echo "FAIL: could not mint broker App token" >&2; exit 1; }
+          echo "::add-mask::${BROKER_TOKEN}"
+          echo "BROKER_TOKEN=${BROKER_TOKEN}" >> "$GITHUB_ENV"
+
+      - name: Read Railway + Cloudflare credentials from SM
+        run: |
+          set -euo pipefail
+          _sm_read() { gcloud secrets versions access latest --secret="$1" --project="${SYS_PROJECT}" 2>/dev/null || echo ""; }
+
+          RAILWAY_TOKEN=$(_sm_read "railway-api-token")
+          CF_TOKEN_CREATOR=$(_sm_read "cloudflare-token-creator")
+          CF_ZONE_ID=$(_sm_read "cloudflare-zone-id-or-infra")
+          [ -n "$RAILWAY_TOKEN" ]    && echo "::add-mask::${RAILWAY_TOKEN}"    || echo "::warning::railway-api-token not found in ${SYS_PROJECT} SM — Railway delete will be skipped"
+          [ -n "$CF_TOKEN_CREATOR" ] && echo "::add-mask::${CF_TOKEN_CREATOR}" || echo "::warning::cloudflare-token-creator not found in ${SYS_PROJECT} SM — DNS cleanup will be skipped"
+          {
+            echo "RAILWAY_TOKEN=${RAILWAY_TOKEN}"
+            echo "CF_TOKEN_CREATOR=${CF_TOKEN_CREATOR}"
+            echo "CF_ZONE_ID=${CF_ZONE_ID}"
+          } >> "$GITHUB_ENV"
+
+      - name: Delete Railway project (verified by name)
+        env:
+          RAILWAY_PROJECT_ID_INPUT: ${{ inputs.railway_project_id }}
+        run: |
+          set -euo pipefail
+          if [ -z "${RAILWAY_TOKEN:-}" ]; then
+            echo "SKIP: no Railway token — nothing to delete."; exit 0
+          fi
+
+          _gql() {
+            local query="$1" variables="${2:-}"
+            [ -n "$variables" ] || variables='{}'
+            curl -sS -X POST "$RAILWAY_GQL" \
+              -H "Authorization: Bearer ${RAILWAY_TOKEN}" \
+              -H "Content-Type: application/json" \
+              -d "$(jq -cn --arg q "$query" --argjson v "$variables" '{query:$q,variables:$v}')"
+          }
+
+          PID="${RAILWAY_PROJECT_ID_INPUT}"
+
+          # Best-effort find-by-name if no id was passed.
+          if [ -z "$PID" ]; then
+            resp=$(_gql 'query { projects(first:200) { edges { node { id name } } } }' || echo '{}')
+            PID=$(printf '%s' "$resp" | jq -r --arg n "$SYSTEM_NAME" \
+              '(.data.projects.edges // []) | map(select(.node.name==$n)) | .[0].node.id // ""' 2>/dev/null || echo "")
+          fi
+
+          if [ -z "$PID" ] || [ "$PID" = "null" ]; then
+            echo "SKIP: no Railway project found for '${SYSTEM_NAME}' (already deleted? or pass railway_project_id)."
+            exit 0
+          fi
+
+          # CRITICAL SAFETY: verify the project's name matches system_name
+          # before deleting, so a stale/overwritten id can never nuke another
+          # system's project.
+          resp=$(_gql 'query($id:String!){ project(id:$id){ name } }' \
+            "$(jq -cn --arg id "$PID" '{id:$id}')" || echo '{}')
+          NAME=$(printf '%s' "$resp" | jq -r '.data.project.name // ""' 2>/dev/null || echo "")
+          if [ -z "$NAME" ]; then
+            echo "SKIP: Railway project id '${PID}' not found (already deleted?)."
+            exit 0
+          fi
+          if [ "$NAME" != "$SYSTEM_NAME" ]; then
+            echo "FAIL: Railway project '${PID}' is named '${NAME}', not '${SYSTEM_NAME}' — refusing to delete." >&2
+            exit 1
+          fi
+
+          resp=$(_gql 'mutation($id:String!){ projectDelete(id:$id) }' \
+            "$(jq -cn --arg id "$PID" '{id:$id}')")
+          if printf '%s' "$resp" | jq -e '.data.projectDelete == true' >/dev/null 2>&1; then
+            echo "PASS: Railway project '${SYSTEM_NAME}' (${PID}) deleted."
+          else
+            echo "FAIL: projectDelete failed: $(printf '%s' "$resp" | jq -c '.errors // .')" >&2
+            exit 1
+          fi
+
+      - name: Delete Cloudflare DNS records
+        run: |
+          set -euo pipefail
+          if [ -z "${CF_TOKEN_CREATOR:-}" ] || [ -z "${CF_ZONE_ID:-}" ]; then
+            echo "SKIP: no Cloudflare creds — nothing to delete."; exit 0
+          fi
+
+          # Mint a short-lived (1h) scoped DNS:Edit token from the creator,
+          # same pattern as the deploy workflow; revoke on exit.
+          EXPIRES=$(date -u -d '+1 hour' +%Y-%m-%dT%H:%M:%SZ)
+          TOKEN_RESP=$(curl -sS -X POST "${CF_API}/user/tokens" \
+            -H "Authorization: Bearer ${CF_TOKEN_CREATOR}" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -cn --arg name "decom-n8n-${SYSTEM_NAME}" --arg zone "$CF_ZONE_ID" --arg exp "$EXPIRES" \
+              '{name:$name,policies:[{effect:"allow",resources:{("com.cloudflare.api.account.zone."+$zone):"*"},permission_groups:[{id:"4755a26eedb94da69e1066d98aa820be"}]}],expires_on:$exp}')")
+          DNS_TOKEN=$(printf '%s' "$TOKEN_RESP" | jq -r '.result.value // empty')
+          DNS_TOKEN_ID=$(printf '%s' "$TOKEN_RESP" | jq -r '.result.id // empty')
+          [ -n "$DNS_TOKEN" ] || { echo "FAIL: could not mint scoped DNS token: $(printf '%s' "$TOKEN_RESP" | jq -c '{success,errors}')" >&2; exit 1; }
+          echo "::add-mask::${DNS_TOKEN}"
+          revoke_token() {
+            [ -n "${DNS_TOKEN_ID:-}" ] && curl -sS -X DELETE "${CF_API}/user/tokens/${DNS_TOKEN_ID}" \
+              -H "Authorization: Bearer ${CF_TOKEN_CREATOR}" >/dev/null 2>&1 && echo "DNS token revoked." || true
+          }
+          trap revoke_token EXIT
+
+          # The deploy workflow creates exactly these two records.
+          delete_record() {
+            local type="$1" name="$2"
+            local resp rec_id
+            resp=$(curl -sS "${CF_API}/zones/${CF_ZONE_ID}/dns_records?type=${type}&name=${name}" \
+              -H "Authorization: Bearer ${DNS_TOKEN}")
+            [ "$(printf '%s' "$resp" | jq -r '.success')" = "true" ] || { echo "FAIL: CF list ${type} ${name}: $resp" >&2; exit 1; }
+            rec_id=$(printf '%s' "$resp" | jq -r '.result[0].id // ""')
+            if [ -z "$rec_id" ]; then
+              echo "INFO: ${type} ${name} not present — skipping."
+              return 0
+            fi
+            resp=$(curl -sS -X DELETE "${CF_API}/zones/${CF_ZONE_ID}/dns_records/${rec_id}" \
+              -H "Authorization: Bearer ${DNS_TOKEN}")
+            [ "$(printf '%s' "$resp" | jq -r '.success')" = "true" ] || { echo "FAIL: CF delete ${type} ${name}: $resp" >&2; exit 1; }
+            echo "PASS: deleted ${type} ${name}"
+          }
+
+          delete_record "CNAME" "n8n-${SYSTEM_NAME}.or-infra.com"
+          delete_record "TXT"   "_railway-verify.n8n-${SYSTEM_NAME}.or-infra.com"
+
+      - name: Archive GitHub repo
+        run: |
+          set -euo pipefail
+          http_code=$(curl -sS -o /tmp/repo.json -w '%{http_code}' \
+            -H "Authorization: Bearer ${BROKER_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/edri2or/${SYSTEM_NAME}")
+          if [ "$http_code" = "404" ]; then
+            echo "INFO: repo edri2or/${SYSTEM_NAME} does not exist — skipping."
+            exit 0
+          fi
+          [ "$http_code" = "200" ] || { echo "FAIL: GET repo HTTP $http_code" >&2; exit 1; }
+          if [ "$(jq -r '.archived' /tmp/repo.json)" = "true" ]; then
+            echo "INFO: repo edri2or/${SYSTEM_NAME} already archived."
+            exit 0
+          fi
+          code=$(curl -sS -o /dev/null -w '%{http_code}' -X PATCH \
+            -H "Authorization: Bearer ${BROKER_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/edri2or/${SYSTEM_NAME}" \
+            -d '{"archived":true}')
+          [ "$code" = "200" ] || { echo "FAIL: archive PATCH HTTP $code" >&2; exit 1; }
+          echo "PASS: repo edri2or/${SYSTEM_NAME} archived."
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "## Decommission test system: \`${SYSTEM_NAME}\`"
+            echo ""
+            echo "Tore down (idempotent — skips anything already gone):"
+            echo "- Railway project named \`${SYSTEM_NAME}\` (deleted)"
+            echo "- Cloudflare DNS \`n8n-${SYSTEM_NAME}\` CNAME + \`_railway-verify\` TXT"
+            echo "- GitHub repo \`edri2or/${SYSTEM_NAME}\` (archived)"
+            echo ""
+            echo "Untouched by design: GCP project / Secret Manager (\`${SYS_PROJECT:-?}\`), WIF/test_pool, and the per-system GitHub App (delete that via org admin if desired)."
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -12,7 +12,7 @@ The previous factory (`edri2or/factory`) automated everything end-to-end. Failur
 
 1. **Match the user's request to a skill.** The skills below describe the supported flows.
 2. **Pre-flight checks first.** Before any dispatch, verify the inputs and the absence/presence of collisions via read-only MCP tools.
-3. **Dispatch via the `dispatch_workflow` MCP tool.** The agent triggers the allowlisted lifecycle workflows itself (`provision-system.yml`, `register-system-app.yml`, `deploy-railway-cloudflare.yml`) — no operator button-click, no env-var PAT. Confirm cost/scope with the user before a fresh provision/deploy unless they've opted into autonomy. `decommission-system.yml` is NOT dispatchable by the tool (destructive — written approval required).
+3. **Dispatch via the `dispatch_workflow` MCP tool.** The agent triggers the allowlisted workflows itself (`provision-system.yml`, `register-system-app.yml`, `deploy-railway-cloudflare.yml`, `decommission-test-system.yml`) — no operator button-click, no env-var PAT. Confirm cost/scope with the user before a fresh provision/deploy unless they've opted into autonomy. `decommission-test-system.yml` runs only on an explicit user teardown request (never auto-chained). The real-system `decommission-system.yml` is NOT dispatchable by the tool (destructive — written approval required).
 4. **Watch the run.** Poll the workflow run. Read failed step logs directly. Report what failed.
 5. **Verify outputs.** After success, call the relevant `verify_*` MCP tool to confirm the real state matches the expected state.
 6. **Stop at the boundary.** Each skill ends at a clear handoff point. Ask the user what's next; don't chain.
@@ -21,7 +21,8 @@ The previous factory (`edri2or/factory`) automated everything end-to-end. Failur
 
 - Touch the old factory repo (`edri2or/factory`) or its GCP project (`factory-control-9piybr`).
 - Use the old broker SA, WIF provider, or App credentials.
-- Auto-chain stages without verifying: dispatch the next workflow only after verifying the prior run's outputs. Never dispatch `decommission-system.yml` from the agent (it's off the `dispatch_workflow` allowlist by design).
+- Auto-chain stages without verifying: dispatch the next workflow only after verifying the prior run's outputs. Never dispatch `decommission-system.yml` (real-system teardown) from the agent (it's off the `dispatch_workflow` allowlist by design).
+- Dispatch `decommission-test-system.yml` (test teardown) for any reason other than an explicit user request to tear down a test system — never automatically, never chained after provision/deploy. Confirm with the user first; it's destructive.
 - Open GitHub Issues to report success/failure — this is interactive, not async.
 - Write `factory/manifests/`, `factory/evidence/`, or session-summary files.
 - Bypass branch protection or skip CI checks.
@@ -51,7 +52,8 @@ The previous factory (`edri2or/factory`) automated everything end-to-end. Failur
 |---|---|
 | `build-system` | Provision a new system (GCP + GitHub + secrets). Single workflow, manual dispatch. Routes test vs real: real = new GCP project; test = reuse mode (`shared_gcp_project=factory-test-25`, 0 quota). |
 | `register-system-app` | Register the per-system GitHub App after `build-system`. 2-click manual dispatch, scoped to one repo. For test systems, pass the same `shared_gcp_project`. |
-| `decommission-system` | Tear down a system (archive repo, soft-delete project). Requires written approval. |
+| `decommission-system` | Tear down a real system (archive repo, soft-delete project). Requires written approval. NOT agent-dispatchable. |
+| `decommission-test-system` | Tear down a TEST system's per-test resources: delete its Railway project + Cloudflare DNS, archive its repo. Agent-dispatchable but **user-triggered only, never auto-chained**. Touches no GCP project or SM. |
 | `health-check` | Read-only status report of factory + all managed systems. |
 
 ## Workflows
@@ -61,6 +63,7 @@ The previous factory (`edri2or/factory`) automated everything end-to-end. Failur
 | `register-broker-app.yml` | One-shot, already used | Created the GitHub App. Don't re-run. |
 | `provision-system.yml` | Manual `workflow_dispatch` | Builds GCP + GitHub for a new system. Pre-creates SM shells incl. `n8n-owner-email` and `n8n-owner-password`. Optional `shared_gcp_project` input → reuse mode (test systems): reuse that project, skip create + billing-link, clean + reseed its secrets. |
 | `register-system-app.yml` | Manual `workflow_dispatch` (after `provision-system.yml`, before deploy) | Registers a per-system GitHub App via Cloud Run receiver. Narrow permissions (`contents`, `metadata`, `actions`, `workflows`, `secrets`); operator picks "Only select repositories" on click 2, the workflow verifies scope. Writes `github-app-{id,private-key,installation-id}` to the system's SM and `APP_ID` / `APP_INSTALLATION_ID` repo vars on the system repo. Idempotent. Optional `shared_gcp_project` → App secrets/SA grants target the shared project (test systems); repo + App scope stay `system_name`. |
+| `decommission-test-system.yml` | Manual `workflow_dispatch` (agent-dispatchable; user-triggered only) | Tears down a TEST system: deletes its Railway project (verifies `project.name==system_name` before delete), removes its Cloudflare `n8n-<name>` CNAME + `_railway-verify` TXT, archives `edri2or/<system_name>`. Reuse-aware (`shared_gcp_project` says where the creds live). Hard-refuses control projects + `factory-test-25`. Touches no GCP project or SM. Never auto-chained. |
 | `templates/system/.github/workflows/deploy-railway-cloudflare.yml` | Manual `workflow_dispatch` in the *system* repo | Deploys n8n 1.121.0 on Railway (Postgres + persistent volume), creates Cloudflare CNAME + `_railway-verify` TXT (DNS-only), waits for Railway to issue the LE cert (retriggers via `customDomainDelete` + recreate if `verified=false`), then POSTs `/rest/owner/setup` so the URL lands on the n8n login screen. Pushed into every new system repo by `provision-system.yml`. Idempotent. |
 | `changelog-check.yml` | `push: main` + `pull_request: main` | Fails any diff that changes `.sh` / `.json` / `.yml` / `.yaml` without updating `CHANGELOG.md`, and any `CHANGELOG.md` over 20 KB. |
 | `decommission-test-projects.yml` | Manual `workflow_dispatch` | One-off cleanup of `factory-test-*` / `v2-test-*` GCP projects via the broker SA. Hard-guards against the control project. |
@@ -118,7 +121,7 @@ Pattern: retry only on the specific error class (`PERMISSION_DENIED`, `does not 
 
 ## MCP
 
-The MCP server `5b6e937f-c064-4cfd-88c4-ef93df38fa87` provides read-only inspection tools (`verify_*_system`, `list_all_systems_inventory`, `inspect_*`, `tail_*_logs`, etc.) plus one WRITE tool — `dispatch_workflow`, which triggers the allowlisted lifecycle workflows (`provision-system.yml`, `register-system-app.yml`, `deploy-railway-cloudflare.yml`) on `or-factory-master` or any system repo via the org-wide broker App (`decommission-system.yml` is excluded by design). The GitHub MCP (`mcp__github__*`) is scoped to `edri2or/or-factory-master` only. Use the read tools to verify; `dispatch_workflow` is the only sanctioned cross-repo write (workflow_dispatch events only).
+The MCP server `5b6e937f-c064-4cfd-88c4-ef93df38fa87` provides read-only inspection tools (`verify_*_system`, `list_all_systems_inventory`, `inspect_*`, `tail_*_logs`, etc.) plus one WRITE tool — `dispatch_workflow`, which triggers the allowlisted workflows (`provision-system.yml`, `register-system-app.yml`, `deploy-railway-cloudflare.yml`, `decommission-test-system.yml`) on `or-factory-master` or any system repo via the org-wide broker App. The real-system `decommission-system.yml` is excluded by design; `decommission-test-system.yml` is test-only and dispatched only on an explicit user teardown request. The GitHub MCP (`mcp__github__*`) is scoped to `edri2or/or-factory-master` only. Use the read tools to verify; `dispatch_workflow` is the only sanctioned cross-repo write (workflow_dispatch events only).
 
 The MCP server's source lives in `services/mcp-server/` and is deployed to Cloud Run in `or-factory-master-control` via `deploy-mcp-server.yml`. Railway visibility tools (extended beyond the old factory's set):
 
