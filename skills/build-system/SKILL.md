@@ -5,25 +5,32 @@ Build a new system from scratch — GCP project + GitHub repo + SAs + WIF + secr
 ## Pre-flight
 
 Before doing anything:
-1. Confirm with the user that this is a real provisioning request, not a test.
-2. Get `system_name` from the user. Validate locally:
+1. **Decide the mode — real vs test** (see CLAUDE.md → "Test systems vs. real systems"):
+   - **Real / persistent system** ("create a system") → **normal mode**: a new GCP project is created (consumes project quota).
+   - **Test system** ("create a test system") → **reuse mode**: pass `shared_gcp_project=factory-test-25`. No new project — it's reused; its secrets are wiped + reseeded each run (clean slate; only the latest test round is SM-backed). 0 quota. State this consequence to the user.
+   - If the request is ambiguous, ask the user which they mean.
+2. Get `system_name` from the user (it is the GitHub repo name; in normal mode also the GCP project ID). Validate locally:
    - Lowercase ASCII letters, digits, hyphens only.
    - 6–30 characters.
    - Starts with a letter, ends with `[a-z0-9]`.
    - Regex: `^[a-z][a-z0-9-]{4,28}[a-z0-9]$`
    - If the user proposed an uppercase or out-of-range name, suggest a normalized version and ask before continuing.
 
-3. Verify nothing collides:
-   - GCP project: call `mcp__5b6e937f-c064-4cfd-88c4-ef93df38fa87__list_gcp_projects` and confirm `<system_name>` is not present.
-   - GitHub repo: call `mcp__github__get_file_contents` on `edri2or/<system_name>` — 404 means available; 200 means collision (abort).
+3. Verify state via read-only MCP tools:
+   - GitHub repo (both modes): `edri2or/<system_name>` must NOT exist — the repo is always fresh. The workflow's preflight enforces this and aborts on collision.
+   - GCP project — **normal mode**: `<system_name>` must NOT exist (`list_gcp_projects`). **Reuse mode**: `factory-test-25` must EXIST and be ACTIVE (the workflow preflight checks this).
 
-4. Show the user a summary of what's about to happen and **ask for explicit go-ahead**:
-   - "I'm about to create GCP project `<name>`, GitHub repo `edri2or/<name>`, and copy 16 secrets. OK to proceed?"
+4. Show the user a summary and **ask for explicit go-ahead** (test or real):
+   - Normal: "I'm about to create GCP project `<name>`, GitHub repo `edri2or/<name>`, and copy the generic secrets. OK to proceed?"
+   - Reuse: "I'm about to provision test system `<name>` reusing GCP project `factory-test-25` (no new project, 0 quota), create repo `edri2or/<name>`, and wipe + reseed the shared project's secrets. OK to proceed?"
 
 ## Dispatch
 
-1. Confirm cost/scope with the user before provisioning real infra — "I'm about to create GCP project `<name>`, GitHub repo `edri2or/<name>`, and copy 16 secrets. OK to proceed?" — unless they've opted into autonomy.
-2. Dispatch via the `dispatch_workflow` MCP tool: `workflow_id=provision-system.yml`, `inputs={system_name:<name>}`, `ref=main`. It triggers the run as the org-wide broker App (no PAT) and returns the `run_id` + `run_url`.
+1. Confirm cost/scope with the user before provisioning (test or real) — unless they've opted into autonomy.
+2. Dispatch via the `dispatch_workflow` MCP tool: `workflow_id=provision-system.yml`, `ref=main`, with:
+   - **Normal:** `inputs={system_name:<name>}`.
+   - **Reuse (test):** `inputs={system_name:<name>, shared_gcp_project:factory-test-25}`.
+   It triggers the run as the org-wide broker App (no PAT) and returns the `run_id` + `run_url`.
 
 ## Watch
 
@@ -55,7 +62,7 @@ After `provision-system.yml` succeeds:
 2. The URL is **`https://n8n-<system_name>.or-infra.com`** (single-level subdomain — multi-level doesn't get an LE cert through Railway's customDomain).
 3. Owner credentials:
    - email: `admin@<system_name>.or-infra.com`
-   - password: `gcloud secrets versions access latest --secret=n8n-owner-password --project=<system_name>`
+   - password: `gcloud secrets versions access latest --secret=n8n-owner-password --project=<gcp_project>` — where `<gcp_project>` is `<system_name>` in normal mode, or `factory-test-25` in reuse mode.
 4. If the deploy hangs on Postgres `DEPLOYING` with zero container logs, that's the Railway account-throttle gotcha documented in `CLAUDE.md` (delete stale Railway projects via `projectDelete` and re-dispatch — it's not a code bug).
 
 ## Abort conditions

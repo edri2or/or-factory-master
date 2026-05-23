@@ -5,7 +5,7 @@ Register a per-system GitHub App, narrowly scoped to a single system repo. Runs 
 ## Pre-flight
 
 Before doing anything:
-1. Confirm with the user this is for a real, already-provisioned system.
+1. Confirm with the user the system is already provisioned. **If it was provisioned in reuse mode (a test system), pass the same `shared_gcp_project=factory-test-25`** here too — the App's SM secrets + `deploy-sa`/`runtime-sa` grants then land in the shared project, while the repo, App name, App scope, and `APP_*` repo vars stay `system_name`. (See CLAUDE.md → "Test systems vs. real systems".)
 2. Get `system_name`. Validate the same regex as `build-system`:
    - `^[a-z][a-z0-9-]{4,28}[a-z0-9]$`, 6–30 chars.
 3. Read-only existence + collision checks:
@@ -17,7 +17,10 @@ Before doing anything:
 
 ## Dispatch
 
-1. Confirm with the user, then dispatch via the `dispatch_workflow` MCP tool: `workflow_id=register-system-app.yml`, `inputs={system_name:<name>}`, `ref=main`. It triggers the run as the org-wide broker App and returns the `run_id`.
+1. Confirm with the user, then dispatch via the `dispatch_workflow` MCP tool: `workflow_id=register-system-app.yml`, `ref=main`, with:
+   - **Normal:** `inputs={system_name:<name>}`.
+   - **Reuse (test):** `inputs={system_name:<name>, shared_gcp_project:factory-test-25}`.
+   It triggers the run as the org-wide broker App and returns the `run_id`.
 2. **The 2 browser clicks are still the operator's** — dispatching only *starts* the run; the operator must complete GitHub App creation within ~10 min (the run sends the receiver URL via Telegram and polls for the credentials):
    - Click 1: GitHub shows "Create GitHub App" — click it.
    - Click 2: GitHub shows the install page — **choose "Only select repositories" and tick `edri2or/<system_name>`**. Do NOT pick "All repositories" — the workflow will fail loudly if you do.
