@@ -3,14 +3,23 @@ name: Deploy MCP Server (Cloud Run)
 # Builds and deploys the factory-master-actions MCP server to Cloud Run in
 # or-factory-master-control. Idempotent: creates runtime SA + secret bindings
 # on first run, mints MCP_ADMIN_SECRET / BEARER_SIGNING_KEY if missing,
-# rebuilds the image, deploys with the same env vars. Manual dispatch only —
-# the agent does not auto-redeploy.
+# rebuilds the image, deploys with the same env vars. GitOps: auto-redeploys
+# on push to main when services/mcp-server/** or this file changes (also
+# manual-dispatchable). The agent never redeploys directly — capability
+# changes (e.g. the dispatch allowlist) ship via reviewed PR -> merge to main
+# -> this trigger. Security rests on branch protection (PR review) + the
+# main-pinned WIF CEL, not on a manual button.
 #
 # After the first successful run, the operator must update the MCP server
 # config in Claude Code (the toolbox `mcp_url`) to the URL printed in the
 # job summary. This is a one-time action.
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'services/mcp-server/**'
+      - '.github/workflows/deploy-mcp-server.yml'
   workflow_dispatch:
 
 concurrency:
