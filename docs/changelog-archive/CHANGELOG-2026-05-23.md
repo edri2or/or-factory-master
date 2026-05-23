@@ -2,6 +2,24 @@
 
 Older `CHANGELOG.md` entries moved here to keep the main file under the 20 KB scan-friendly cap (enforced by `scripts/check-changelog-size.sh`). Ordering preserved (newest archived stage first).
 
+## Stage 17 — deploy-plane: notifier workflow create missing `active`
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | fix | Add `active: false` to the `POST /rest/workflows` create payload in the Stage 15 notifier step of `templates/system/.github/workflows/deploy-railway-cloudflare.yml`. n8n 1.121.0's internal create handler writes `req.body.active` straight into the `workflow_entity.active` column, which is `NOT NULL` with no DB default — so omitting the field made Postgres reject the insert and the endpoint returned `HTTP 500 {"message":"null value in column \"active\" of relation \"workflow_entity\" violates not-null constraint"}`. Surfaced as the happy-path failure on factory-test-23 deploy run 26314908505 (job 77471885418): `/rest/login`, the idempotency `GET /rest/workflows`, and the `telegramApi` credential create all returned PASS; the workflow POST was the first DB-writing call in the step and the first to hit the constraint. `false` (not `true`) is what the n8n UI itself sends on create — the internal API refuses to create an already-active workflow — so activation stays where it was, in the existing step-6 `POST /rest/workflows/{id}/activate` (with PATCH `{active:true}` fallback). |
+
+Template edits propagate only to newly-provisioned systems (per CLAUDE.md). factory-test-23's frozen workflow copy carries the pre-fix payload and needs the same one-line addition before its deploy workflow is re-dispatched; not auto-backfilled.
+
+## Stage 16 — MCP: full untruncated log access (uncap + repo param + grep/offset)
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | fix | Remove the 50 KB log truncation. `github-client.ts fetchJobLogs()` no longer slices to 50 KB; same `MAX_BYTES=50*1024` removed from `tools.ts` `tail_railway_deployment_logs` / `get_railway_build_logs` / `tail_cloud_run_logs`. New ceiling 5 MB (`DEFAULT_MAX_LOG_BYTES`). The harness spills large tool output to a file the agent reads in chunks, so a full job log now arrives intact. Surfaced debugging `factory-test-23`: the failing step sat past 50 KB and was silently cut, and the sandbox egress proxy blocks the GitHub→Azure-blob redirect (`productionresultssa*.blob.core.windows.net`), so direct curl can't reach it — fixing our own MCP (unrestricted Cloud Run egress) was the reliable path. |
+| TBD | fix | Parameterize owner/repo on the 7 GitHub tools. `github-client.ts` hardcoded `REPO='factory'` (the *old* repo), so every run/job/log tool read the wrong repo (404s on this repo + system repos). `apiGet(path, owner?, repo?)` + new `ghFetchRepo()` default to `edri2or/or-factory-master` and accept explicit `repo` (e.g. `factory-test-23`). Without this, full log access was impossible. Also fixed `tail_cloud_run_logs` stale default project → `or-factory-master-control`. |
+| TBD | feature | Add `read_github_actions_run_logs` + server-side `grep`/`offset`/`tail`. Shared `filterLogText()`: `grep` (case-insensitive regex → matching lines + `context` lines, default 3), `tail_lines`, or a byte window (`offset_bytes`→`max_bytes`) with a `resume with offset_bytes=N` marker. `get_run_jobs` forwards the same options; Railway/Cloud Run tools gained `grep`. Lets the agent both see everything (full read) and find the failure fast (`grep="FAIL\|::error::"`). |
+
+Redeploy via `deploy-mcp-server.yml` to take effect; MCP URL unchanged. Out of scope: manifest-based `verify_*` tools still read `factory/manifests/` and are broken independently (no-manifest design).
+
 ## Stage 15 — deploy-plane: auto-create "n8n is ready" Telegram notifier workflow
 
 | PR | Type | Summary |
