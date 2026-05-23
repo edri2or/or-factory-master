@@ -386,6 +386,7 @@ jobs:
             n8n-owner-email
             n8n-owner-password
             railway-project-id
+            railway-project-token
             railway-n8n-service-id
             railway-postgres-service-id
             railway-postgres-volume-id
