@@ -8,9 +8,14 @@ on:
   workflow_dispatch:
     inputs:
       system_name:
-        description: "Lowercase, 4-30 chars, [a-z0-9-]. Becomes GCP project ID + repo name (e.g. or-test-1)."
+        description: "Lowercase, 4-30 chars, [a-z0-9-]. Becomes the repo name (and, in normal mode, the GCP project ID). e.g. factory-test-26."
         required: true
         type: string
+      shared_gcp_project:
+        description: "TEST-ONLY: reuse this existing GCP project as the backend instead of creating a new one (skips project create + billing link). Repo, Railway, Cloudflare, and all secrets are still fresh. Must be a test project (factory-test-*/v2-test-*/or-test-*). Leave empty for normal provisioning."
+        required: false
+        type: string
+        default: ""
 
 permissions: {}
 
@@ -32,6 +37,7 @@ jobs:
         id: validate
         env:
           SYSTEM_NAME: ${{ inputs.system_name }}
+          SHARED_GCP_PROJECT: ${{ inputs.shared_gcp_project }}
         run: |
           set -euo pipefail
           if ! [[ "$SYSTEM_NAME" =~ ^[a-z][a-z0-9-]{2,28}[a-z0-9]$ ]]; then
@@ -45,6 +51,28 @@ jobs:
             exit 1
           fi
           echo "system_name=$SYSTEM_NAME" >> "$GITHUB_OUTPUT"
+
+          # Reuse mode: when shared_gcp_project is set, all GCP work targets that
+          # existing shared TEST project instead of creating a new one. The repo,
+          # Railway, Cloudflare, and all secrets are still fresh per run — only
+          # the GCP project (and its billing link) are reused. Guarded to test
+          # projects so a clean-secrets wipe can never touch a control project.
+          if [ -n "$SHARED_GCP_PROJECT" ]; then
+            case "$SHARED_GCP_PROJECT" in
+              or-factory-master-control|factory-control-9piybr)
+                echo "FAIL: shared_gcp_project must not be a control project" >&2; exit 1 ;;
+            esac
+            if ! [[ "$SHARED_GCP_PROJECT" =~ ^(factory-test-|v2-test-|or-test-)[a-z0-9-]+$ ]]; then
+              echo "FAIL: shared_gcp_project '$SHARED_GCP_PROJECT' must be a test project (factory-test-*/v2-test-*/or-test-*)" >&2
+              exit 1
+            fi
+            echo "reuse=true" >> "$GITHUB_OUTPUT"
+            echo "gcp_project=$SHARED_GCP_PROJECT" >> "$GITHUB_OUTPUT"
+            echo "INFO: reuse mode — GCP backend is shared project '$SHARED_GCP_PROJECT'; repo/Railway/secrets are fresh."
+          else
+            echo "reuse=false" >> "$GITHUB_OUTPUT"
+            echo "gcp_project=$SYSTEM_NAME" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Authenticate to GCP via WIF
         id: wif-auth
@@ -84,18 +112,30 @@ jobs:
 
           shred -u /tmp/broker-app-key.pem 2>/dev/null || rm -f /tmp/broker-app-key.pem
 
-      - name: Preflight — verify repo and project don't exist
+      - name: Preflight — verify repo and project state
         env:
           SYSTEM_NAME: ${{ inputs.system_name }}
+          GCP_PROJECT: ${{ steps.validate.outputs.gcp_project }}
+          REUSE: ${{ steps.validate.outputs.reuse }}
         run: |
           set -euo pipefail
-          # Project must not exist
-          if gcloud projects describe "$SYSTEM_NAME" >/dev/null 2>&1; then
-            echo "FAIL: GCP project '$SYSTEM_NAME' already exists" >&2
-            exit 1
+          if [ "$REUSE" = "true" ]; then
+            # Reuse mode: the shared project must already exist and be ACTIVE.
+            state=$(gcloud projects describe "$GCP_PROJECT" --format="value(lifecycleState)" 2>/dev/null || echo "")
+            if [ "$state" != "ACTIVE" ]; then
+              echo "FAIL: shared project '$GCP_PROJECT' is not ACTIVE (state: '${state:-absent}')" >&2
+              exit 1
+            fi
+            echo "INFO: shared project '$GCP_PROJECT' is ACTIVE."
+          else
+            # Normal mode: the project must not exist yet.
+            if gcloud projects describe "$GCP_PROJECT" >/dev/null 2>&1; then
+              echo "FAIL: GCP project '$GCP_PROJECT' already exists" >&2
+              exit 1
+            fi
           fi
 
-          # Repo must not exist
+          # Repo must not exist (always — the repo is fresh every run, both modes).
           http_code=$(curl -sS -o /dev/null -w '%{http_code}' \
             -H "Authorization: Bearer ${APP_TOKEN}" \
             -H "Accept: application/vnd.github+json" \
@@ -109,9 +149,10 @@ jobs:
             echo "FAIL: unexpected HTTP $http_code from GitHub when checking repo existence" >&2
             exit 1
           fi
-          echo "Preflight passed: project and repo are both available."
+          echo "Preflight passed (reuse=${REUSE})."
 
       - name: Create GCP project + link billing
+        if: steps.validate.outputs.reuse != 'true'
         env:
           SYSTEM_NAME: ${{ inputs.system_name }}
         run: |
@@ -127,7 +168,7 @@ jobs:
 
       - name: Enable APIs
         env:
-          SYSTEM_NAME: ${{ inputs.system_name }}
+          GCP_PROJECT: ${{ steps.validate.outputs.gcp_project }}
         run: |
           set -euo pipefail
           gcloud services enable \
@@ -138,29 +179,37 @@ jobs:
             cloudresourcemanager.googleapis.com \
             sts.googleapis.com \
             artifactregistry.googleapis.com \
-            --project="$SYSTEM_NAME"
+            --project="$GCP_PROJECT"
           echo "PASS: APIs enabled."
 
       - name: Create runtime-sa and deploy-sa
         env:
-          SYSTEM_NAME: ${{ inputs.system_name }}
+          GCP_PROJECT: ${{ steps.validate.outputs.gcp_project }}
         run: |
           set -euo pipefail
-          gcloud iam service-accounts create runtime-sa \
-            --project="$SYSTEM_NAME" \
-            --display-name="Runtime Service Account"
-          gcloud iam service-accounts create deploy-sa \
-            --project="$SYSTEM_NAME" \
-            --display-name="Deploy Service Account"
-          echo "PASS: service accounts created."
+          # Idempotent: in reuse mode the SAs already exist on the shared project.
+          _ensure_sa() {
+            local sa="$1" disp="$2"
+            if gcloud iam service-accounts describe \
+                 "${sa}@${GCP_PROJECT}.iam.gserviceaccount.com" \
+                 --project="$GCP_PROJECT" >/dev/null 2>&1; then
+              echo "INFO: ${sa} already exists"
+            else
+              gcloud iam service-accounts create "$sa" \
+                --project="$GCP_PROJECT" --display-name="$disp"
+              echo "PASS: ${sa} created"
+            fi
+          }
+          _ensure_sa runtime-sa "Runtime Service Account"
+          _ensure_sa deploy-sa "Deploy Service Account"
 
       - name: Grant project-level IAM
         env:
-          SYSTEM_NAME: ${{ inputs.system_name }}
+          GCP_PROJECT: ${{ steps.validate.outputs.gcp_project }}
         run: |
           set -euo pipefail
-          DEPLOY_SA="deploy-sa@${SYSTEM_NAME}.iam.gserviceaccount.com"
-          RUNTIME_SA="runtime-sa@${SYSTEM_NAME}.iam.gserviceaccount.com"
+          DEPLOY_SA="deploy-sa@${GCP_PROJECT}.iam.gserviceaccount.com"
+          RUNTIME_SA="runtime-sa@${GCP_PROJECT}.iam.gserviceaccount.com"
 
           # add-iam-policy-binding hits an eventual-consistency window right
           # after service-accounts create — the SA is visible to describe but
@@ -168,7 +217,7 @@ jobs:
           _bind() {
             local member="$1" role="$2" i
             for i in 1 2 3 4 5 6; do
-              if gcloud projects add-iam-policy-binding "$SYSTEM_NAME" \
+              if gcloud projects add-iam-policy-binding "$GCP_PROJECT" \
                    --member="$member" --role="$role" --quiet 2>&1; then
                 return 0
               fi
@@ -195,6 +244,7 @@ jobs:
           echo "PASS: project-level IAM granted."
 
       - name: Create system-level WIF pool and provider
+        if: steps.validate.outputs.reuse != 'true'
         env:
           SYSTEM_NAME: ${{ inputs.system_name }}
         run: |
@@ -249,7 +299,53 @@ jobs:
 
           echo "PASS: WIF pool + provider created."
 
+      - name: Ensure shared-project WIF test_pool (reuse mode)
+        if: steps.validate.outputs.reuse == 'true'
+        env:
+          GCP_PROJECT: ${{ steps.validate.outputs.gcp_project }}
+        run: |
+          set -euo pipefail
+          # The shared project's github-pool/github-provider already exist (from
+          # its original provision). Widen the provider so ANY edri2or/factory-test-*
+          # repo on main can authenticate, via a custom `test_pool` attribute that
+          # maps qualifying repos to a single value. update-oidc is declarative,
+          # so this is idempotent ("set once", self-healing on every reuse run).
+          _retry() {
+            local desc="$1"; shift
+            local err i
+            for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
+              if err=$("$@" 2>&1); then printf '%s\n' "$err"; return 0; fi
+              printf '%s\n' "$err" >&2
+              if printf '%s' "$err" | grep -q "ALREADY_EXISTS"; then
+                echo "INFO: $desc already exists — continuing" >&2; return 0
+              fi
+              if printf '%s' "$err" | grep -q "PERMISSION_DENIED"; then
+                echo "Retry ${i}/12 for $desc (sleeping 10s — propagation)..." >&2
+                sleep 10; continue
+              fi
+              return 1
+            done
+            echo "FAIL: $desc still failing after 12 attempts" >&2; return 1
+          }
+
+          _retry "ensure pool" \
+            gcloud iam workload-identity-pools create github-pool \
+              --project="$GCP_PROJECT" \
+              --location=global \
+              --display-name="GitHub Actions Pool"
+
+          _retry "widen provider to test_pool" \
+            gcloud iam workload-identity-pools providers update-oidc github-provider \
+              --project="$GCP_PROJECT" \
+              --location=global \
+              --workload-identity-pool=github-pool \
+              --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository,attribute.repository_id=assertion.repository_id,attribute.ref=assertion.ref,attribute.test_pool=assertion.repository.startsWith('edri2or/factory-test-') ? 'factory-test' : 'blocked'" \
+              --attribute-condition="assertion.repository_owner=='edri2or' && attribute.test_pool=='factory-test' && attribute.ref=='refs/heads/main'"
+
+          echo "PASS: shared WIF test_pool ensured on $GCP_PROJECT."
+
       - name: Grant deploy-sa workloadIdentityUser binding
+        if: steps.validate.outputs.reuse != 'true'
         env:
           SYSTEM_NAME: ${{ inputs.system_name }}
         run: |
@@ -280,6 +376,25 @@ jobs:
           done
           echo "FAIL: workloadIdentityUser binding still denied after 10 attempts" >&2
           exit 1
+
+      - name: Grant deploy-sa workloadIdentityUser on test_pool (reuse mode)
+        if: steps.validate.outputs.reuse == 'true'
+        env:
+          GCP_PROJECT: ${{ steps.validate.outputs.gcp_project }}
+        run: |
+          set -euo pipefail
+          # The shared deploy-sa already exists, so no propagation retry is
+          # needed. Bind the test_pool principalSet (set semantics — idempotent),
+          # which covers every edri2or/factory-test-* repo at once.
+          PROJECT_NUMBER=$(gcloud projects describe "$GCP_PROJECT" --format="value(projectNumber)")
+          DEPLOY_SA="deploy-sa@${GCP_PROJECT}.iam.gserviceaccount.com"
+          PRINCIPAL="principalSet://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/github-pool/attribute.test_pool/factory-test"
+          gcloud iam service-accounts add-iam-policy-binding "$DEPLOY_SA" \
+            --project="$GCP_PROJECT" \
+            --role="roles/iam.workloadIdentityUser" \
+            --member="$PRINCIPAL" \
+            --quiet
+          echo "PASS: workloadIdentityUser (test_pool) granted to ${DEPLOY_SA}."
 
       - name: Create GitHub repo with auto_init
         env:
@@ -357,16 +472,27 @@ jobs:
             || { echo "FAIL: branch protection HTTP ${http_code}: ${body}" >&2; exit 1; }
           echo "PASS: branch protection set on main."
 
-      - name: Copy generic secrets
+      - name: Clean shared-project secrets (reuse mode)
+        if: steps.validate.outputs.reuse == 'true'
         env:
-          SYSTEM_NAME: ${{ inputs.system_name }}
+          GCP_PROJECT: ${{ steps.validate.outputs.gcp_project }}
         run: |
           set -euo pipefail
-          bash scripts/copy-generic-secrets.sh "$SYSTEM_NAME"
+          # Give each test run a clean slate: wipe all Secret Manager secrets in
+          # the shared project before re-copying generics + re-creating shells.
+          # The script hard-guards to test projects and refuses control projects.
+          bash scripts/clean-project-secrets.sh "$GCP_PROJECT"
+
+      - name: Copy generic secrets
+        env:
+          GCP_PROJECT: ${{ steps.validate.outputs.gcp_project }}
+        run: |
+          set -euo pipefail
+          bash scripts/copy-generic-secrets.sh "$GCP_PROJECT"
 
       - name: Pre-create runtime secret shells
         env:
-          SYSTEM_NAME: ${{ inputs.system_name }}
+          GCP_PROJECT: ${{ steps.validate.outputs.gcp_project }}
         run: |
           set -euo pipefail
           # The deploy workflow needs to write runtime-only secrets that
@@ -394,15 +520,15 @@ jobs:
             n8n-telegram-bot-token
             n8n-telegram-chat-id
           )
-          RUNTIME_SA="runtime-sa@${SYSTEM_NAME}.iam.gserviceaccount.com"
-          DEPLOY_SA="deploy-sa@${SYSTEM_NAME}.iam.gserviceaccount.com"
+          RUNTIME_SA="runtime-sa@${GCP_PROJECT}.iam.gserviceaccount.com"
+          DEPLOY_SA="deploy-sa@${GCP_PROJECT}.iam.gserviceaccount.com"
 
           for secret in "${RUNTIME_SHELLS[@]}"; do
-            if ! gcloud secrets describe "$secret" --project="$SYSTEM_NAME" >/dev/null 2>&1; then
+            if ! gcloud secrets describe "$secret" --project="$GCP_PROJECT" >/dev/null 2>&1; then
               gcloud secrets create "$secret" \
-                --project="$SYSTEM_NAME" \
+                --project="$GCP_PROJECT" \
                 --replication-policy=automatic \
-                --labels="managed-by=or-factory-master,system=${SYSTEM_NAME},runtime-shell=true" \
+                --labels="managed-by=or-factory-master,system=${GCP_PROJECT},runtime-shell=true" \
                 --quiet
               echo "PASS: shell created: $secret"
             else
@@ -414,12 +540,12 @@ jobs:
             # too so the deploy workflow's `versions access latest` works
             # regardless of whether the project-level grant has propagated.
             gcloud secrets add-iam-policy-binding "$secret" \
-              --project="$SYSTEM_NAME" \
+              --project="$GCP_PROJECT" \
               --role="roles/secretmanager.secretAccessor" \
               --member="serviceAccount:${RUNTIME_SA}" \
               --quiet >/dev/null
             gcloud secrets add-iam-policy-binding "$secret" \
-              --project="$SYSTEM_NAME" \
+              --project="$GCP_PROJECT" \
               --role="roles/secretmanager.secretAccessor" \
               --member="serviceAccount:${DEPLOY_SA}" \
               --quiet >/dev/null
@@ -429,11 +555,14 @@ jobs:
       - name: Set repo variables
         env:
           SYSTEM_NAME: ${{ inputs.system_name }}
+          GCP_PROJECT: ${{ steps.validate.outputs.gcp_project }}
         run: |
           set -euo pipefail
-          PROJECT_NUMBER=$(gcloud projects describe "$SYSTEM_NAME" --format="value(projectNumber)")
+          # GCP_* point at the backend project (shared in reuse mode); SYSTEM_NAME
+          # remains the repo, driving Railway/Cloudflare/n8n naming in the deploy.
+          PROJECT_NUMBER=$(gcloud projects describe "$GCP_PROJECT" --format="value(projectNumber)")
           GCP_WIF_PROVIDER="projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
-          GCP_DEPLOY_SA="deploy-sa@${SYSTEM_NAME}.iam.gserviceaccount.com"
+          GCP_DEPLOY_SA="deploy-sa@${GCP_PROJECT}.iam.gserviceaccount.com"
 
           _set_var() {
             local name="$1" value="$2" resp http_code
@@ -450,23 +579,28 @@ jobs:
           }
           _set_var "GCP_WIF_PROVIDER" "$GCP_WIF_PROVIDER"
           _set_var "GCP_DEPLOY_SA"    "$GCP_DEPLOY_SA"
-          _set_var "GCP_PROJECT_ID"   "$SYSTEM_NAME"
+          _set_var "GCP_PROJECT_ID"   "$GCP_PROJECT"
           _set_var "SYSTEM_NAME"      "$SYSTEM_NAME"
 
       - name: Summary
         env:
           SYSTEM_NAME: ${{ inputs.system_name }}
+          GCP_PROJECT: ${{ steps.validate.outputs.gcp_project }}
+          REUSE: ${{ steps.validate.outputs.reuse }}
         run: |
           set -euo pipefail
-          PROJECT_NUMBER=$(gcloud projects describe "$SYSTEM_NAME" --format="value(projectNumber)")
+          PROJECT_NUMBER=$(gcloud projects describe "$GCP_PROJECT" --format="value(projectNumber)")
+          MODE="new project"
+          [ "$REUSE" = "true" ] && MODE="reuse (shared GCP project; repo/Railway/secrets fresh)"
           {
             echo "## Provisioned: \`${SYSTEM_NAME}\`"
             echo ""
             echo "| Resource | Value |"
             echo "|---|---|"
-            echo "| GCP project | \`${SYSTEM_NAME}\` (number: ${PROJECT_NUMBER}) |"
-            echo "| Runtime SA | \`runtime-sa@${SYSTEM_NAME}.iam.gserviceaccount.com\` |"
-            echo "| Deploy SA | \`deploy-sa@${SYSTEM_NAME}.iam.gserviceaccount.com\` |"
+            echo "| Mode | ${MODE} |"
+            echo "| GCP project | \`${GCP_PROJECT}\` (number: ${PROJECT_NUMBER}) |"
+            echo "| Runtime SA | \`runtime-sa@${GCP_PROJECT}.iam.gserviceaccount.com\` |"
+            echo "| Deploy SA | \`deploy-sa@${GCP_PROJECT}.iam.gserviceaccount.com\` |"
             echo "| WIF provider | \`projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/github-pool/providers/github-provider\` |"
             echo "| GitHub repo | \`edri2or/${SYSTEM_NAME}\` |"
             echo ""
