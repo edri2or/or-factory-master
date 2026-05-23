@@ -1,5 +1,13 @@
 # Changelog
 
+## Stage 19 — deploy-plane: single-redeploy env upsert + n8n HTTP readiness gate
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | fix | Two compounding fixes to `templates/system/.github/workflows/deploy-railway-cloudflare.yml` that made redeploys flaky — a deploy could fail at step 8 "Set up n8n owner account" with `GET /rest/settings` HTTP 404/403 and then pass on an immediate re-dispatch (observed on factory-test-23: run 26331335520 failed → 26331473093 passed). **(A) Collapse the env-var redeploy storm.** `_upsert` issued one Railway `variableUpsert` per variable and step 5 fired 15 in parallel for n8n + 5 for Postgres; the old comment claimed the parallel `&` fan-out "lands a single redeploy" — it does not, each `variableUpsert` triggers its own redeploy (proven: `list_railway_deployments` showed **12 n8n deployments created within ~4 s** on one run, 11 superseded). Replaced with `_upsert_collection` → one `variableCollectionUpsert` per service (all vars in a single `EnvironmentVariables` JSON map; schema verified by introspection: `VariableCollectionUpsertInput{projectId!,environmentId!,serviceId,variables!,replace,skipDeploys}`), so each service redeploys once instead of ~15×. Railway reference values (`${DLR}{{Postgres.X}}`) are preserved verbatim inside the jq map. **(B) HTTP readiness gate.** Step 7 only verifies the TLS cert (`_probe_tls_cn`), which does not imply the edge routes HTTP to a healthy n8n — after a redeploy the edge can return 404/403 ("Host not in allowlist") for minutes while the custom domain re-propagates, and step 8's single no-retry `curl /rest/settings` raced that window. Replaced with a bounded poll loop (36×10 s ≈ 6 min) that waits for HTTP 200 before proceeding, mirroring the cert-wait loop; still fails fast after the cap so a genuinely crash-looping n8n is not masked. The notifier (step 9) runs right after step 8, so it inherits the gate. |
+
+Template edits propagate only to newly-provisioned systems (per CLAUDE.md). factory-test-23 gets the same two edits in its frozen copy so its own redeploys are reliable; other existing systems are not backfilled.
+
 ## Stage 18 — deploy-plane: idempotent n8n-owner-password (notifier login on redeploy)
 
 | PR | Type | Summary |
