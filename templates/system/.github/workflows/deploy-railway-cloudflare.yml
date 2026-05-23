@@ -121,15 +121,23 @@ jobs:
             echo "PASS: n8n-owner-email set to ${N8N_OWNER_EMAIL}."
           fi
 
-          # n8n-owner-password: always add a fresh version. It's only consumed
-          # once at /rest/owner/setup, so there's no historical dependency,
-          # and a fresh version self-heals any prior broken value. The
+          # n8n-owner-password: idempotent. The notifier step (and any later
+          # automation) logs into n8n with this on EVERY deploy, but the owner
+          # account is created against it only once at /rest/owner/setup — so a
+          # fresh password on redeploy would no longer match n8n and the login
+          # would fail. Reuse the existing version; only mint one if absent. The
           # 'Aa1!' prefix guarantees n8n's password policy is satisfied
           # (>=8 chars, >=1 digit, >=1 uppercase, >=1 special).
-          N8N_OWNER_PASSWORD="Aa1!$(openssl rand -hex 16)"
-          printf '%s' "$N8N_OWNER_PASSWORD" | gcloud secrets versions add "n8n-owner-password" \
-            --project="$PROJECT_ID" --data-file=- --quiet
-          echo "PASS: fresh n8n-owner-password version stored."
+          if N8N_OWNER_PASSWORD=$(gcloud secrets versions access latest \
+                                  --secret="n8n-owner-password" --project="$PROJECT_ID" 2>/dev/null) \
+             && [ -n "$N8N_OWNER_PASSWORD" ]; then
+            echo "INFO: n8n-owner-password already has a version — reusing existing."
+          else
+            N8N_OWNER_PASSWORD="Aa1!$(openssl rand -hex 16)"
+            printf '%s' "$N8N_OWNER_PASSWORD" | gcloud secrets versions add "n8n-owner-password" \
+              --project="$PROJECT_ID" --data-file=- --quiet
+            echo "PASS: n8n-owner-password generated and stored."
+          fi
 
           echo "::add-mask::${N8N_KEY}"
           echo "::add-mask::${N8N_OWNER_PASSWORD}"
