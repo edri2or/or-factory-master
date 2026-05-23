@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { apiGet, apiGetRepo, fetchJobLogs } from './github-client.js';
+import { apiGet, apiGetRepo, fetchJobLogs, filterLogText } from './github-client.js';
 import {
   getProject as gcpGetProject,
   listEnabledServices as gcpListEnabledServices,
@@ -51,11 +51,50 @@ import { resolveRecord as dnsResolveRecord, SUPPORTED_DNS_TYPES, DnsAllowlistErr
 import { inspectCert as tlsInspectCert, TlsAllowlistError } from './tls-helper.js';
 
 export function registerTools(server: McpServer): void {
+  // Shared owner/repo params for every GitHub-backed tool. Default to the
+  // factory's own repo; pass repo (e.g. "factory-test-23") to read a system
+  // repo. The App installation must cover the target repo.
+  const repoParams = {
+    owner: z.string().optional().describe("Repo owner (default 'edri2or')"),
+    repo: z
+      .string()
+      .optional()
+      .describe("Repo name (default 'or-factory-master'; e.g. 'factory-test-23' for a system repo)"),
+  };
+  // 5 MB ceiling for entry-array log tools (Railway/Cloud Run), matching the
+  // GitHub raw-log ceiling. Bounds a pathological response without hiding data.
+  const MAX_LOG_BYTES = 5 * 1024 * 1024;
+  // Case-insensitive regex filter over serialized log entries. Invalid regex
+  // falls through to no-op (returns all) rather than throwing.
+  const grepEntries = <T>(entries: T[], pattern?: string): T[] => {
+    if (!pattern) return entries;
+    let re: RegExp;
+    try {
+      re = new RegExp(pattern, 'i');
+    } catch {
+      return entries;
+    }
+    return entries.filter((e) => re.test(JSON.stringify(e)));
+  };
+
+  // Shared log-read params (no 50 KB cap; surgical filtering + pagination).
+  const logReadParams = {
+    grep: z
+      .string()
+      .optional()
+      .describe('Case-insensitive regex; return only matching lines + context (surgical mode)'),
+    context: z.number().int().min(0).max(50).optional().describe('Lines of context around each grep match (default 3)'),
+    offset_bytes: z.number().int().min(0).optional().describe('Start of the byte window into the full log (pagination)'),
+    max_bytes: z.number().int().min(1).optional().describe('Byte ceiling for this read (default 5 MB)'),
+    tail_lines: z.number().int().min(1).optional().describe('Return only the last N lines (ignored if grep set)'),
+  };
+
   server.tool(
     'list_workflow_runs',
-    'List recent GitHub Actions workflow runs for edri2or/factory',
+    "List recent GitHub Actions workflow runs (default repo edri2or/or-factory-master; pass repo for a system repo).",
     {
-      workflow_id: z.string().optional().describe('Workflow file name, e.g. factory-orchestrator.yml'),
+      ...repoParams,
+      workflow_id: z.string().optional().describe('Workflow file name, e.g. provision-system.yml'),
       branch: z.string().optional().describe('Filter by branch name'),
       status: z
         .enum(['queued', 'in_progress', 'completed', 'waiting', 'requested', 'pending'])
@@ -63,7 +102,7 @@ export function registerTools(server: McpServer): void {
         .describe('Filter by run status'),
       limit: z.number().int().min(1).max(20).optional().default(10).describe('Number of runs to return'),
     },
-    async ({ workflow_id, branch, status, limit }) => {
+    async ({ owner, repo, workflow_id, branch, status, limit }) => {
       const params = new URLSearchParams();
       if (branch) params.set('branch', branch);
       if (status) params.set('status', status);
@@ -73,7 +112,7 @@ export function registerTools(server: McpServer): void {
         ? `/actions/workflows/${encodeURIComponent(workflow_id)}/runs?${params}`
         : `/actions/runs?${params}`;
 
-      const data = (await apiGet(path)) as { workflow_runs: unknown[] };
+      const data = (await apiGet(path, owner, repo)) as { workflow_runs: unknown[] };
       const runs = (data.workflow_runs ?? []).map((r: unknown) => {
         const run = r as Record<string, unknown>;
         return {
@@ -96,9 +135,9 @@ export function registerTools(server: McpServer): void {
   server.tool(
     'get_workflow_run',
     'Get details of a specific GitHub Actions workflow run',
-    { run_id: z.string().describe('The numeric workflow run ID') },
-    async ({ run_id }) => {
-      const run = (await apiGet(`/actions/runs/${run_id}`)) as Record<string, unknown>;
+    { ...repoParams, run_id: z.string().describe('The numeric workflow run ID') },
+    async ({ owner, repo, run_id }) => {
+      const run = (await apiGet(`/actions/runs/${run_id}`, owner, repo)) as Record<string, unknown>;
       const summary = {
         id: run['id'],
         name: run['name'],
@@ -123,14 +162,16 @@ export function registerTools(server: McpServer): void {
     'get_run_jobs',
     'Get jobs and steps for a workflow run — includes step conclusions and log URLs',
     {
+      ...repoParams,
       run_id: z.string().describe('The numeric workflow run ID'),
       fetch_logs_for_job_id: z
         .string()
         .optional()
-        .describe('If provided, also fetch plain-text logs for this specific job ID (max 50 KB)'),
+        .describe('If provided, also fetch full plain-text logs for this job ID (no 50 KB cap; use grep/tail_lines/offset_bytes to narrow)'),
+      ...logReadParams,
     },
-    async ({ run_id, fetch_logs_for_job_id }) => {
-      const data = (await apiGet(`/actions/runs/${run_id}/jobs`)) as { jobs: unknown[] };
+    async ({ owner, repo, run_id, fetch_logs_for_job_id, grep, context, offset_bytes, max_bytes, tail_lines }) => {
+      const data = (await apiGet(`/actions/runs/${run_id}/jobs`, owner, repo)) as { jobs: unknown[] };
       const jobs = (data.jobs ?? []).map((j: unknown) => {
         const job = j as Record<string, unknown>;
         return {
@@ -156,7 +197,15 @@ export function registerTools(server: McpServer): void {
       let logs: string | null = null;
       if (fetch_logs_for_job_id) {
         try {
-          logs = await fetchJobLogs(fetch_logs_for_job_id);
+          logs = await fetchJobLogs(fetch_logs_for_job_id, {
+            owner,
+            repo,
+            grep,
+            context,
+            offsetBytes: offset_bytes,
+            maxBytes: max_bytes,
+            tailLines: tail_lines,
+          });
         } catch (e) {
           logs = `Error fetching logs: ${String(e)}`;
         }
@@ -169,11 +218,37 @@ export function registerTools(server: McpServer): void {
   );
 
   server.tool(
+    'read_github_actions_run_logs',
+    'Read FULL plain-text logs for a single GitHub Actions job in any edri2or repo. No 50 KB cap (5 MB default ceiling; the Claude Code harness spills large output to a local file the agent reads in chunks). Use grep for surgical server-side filtering (case-insensitive regex + context lines), or offset_bytes/tail_lines to paginate. Resolve the job_id first via get_run_jobs. Read-only.',
+    {
+      ...repoParams,
+      job_id: z.string().describe('The numeric job ID (from get_run_jobs)'),
+      ...logReadParams,
+    },
+    async ({ owner, repo, job_id, grep, context, offset_bytes, max_bytes, tail_lines }) => {
+      try {
+        const logs = await fetchJobLogs(job_id, {
+          owner,
+          repo,
+          grep,
+          context,
+          offsetBytes: offset_bytes,
+          maxBytes: max_bytes,
+          tailLines: tail_lines,
+        });
+        return { content: [{ type: 'text' as const, text: logs }] };
+      } catch (e) {
+        return { content: [{ type: 'text' as const, text: `Error fetching logs: ${String(e)}` }] };
+      }
+    },
+  );
+
+  server.tool(
     'list_workflows',
-    'List all workflows defined in edri2or/factory (returns name, file path, state).',
-    { limit: z.number().int().min(1).max(100).optional().default(30) },
-    async ({ limit }) => {
-      const data = (await apiGet(`/actions/workflows?per_page=${limit ?? 30}`)) as { workflows: unknown[] };
+    'List all workflows defined in a repo (default edri2or/or-factory-master; returns name, file path, state).',
+    { ...repoParams, limit: z.number().int().min(1).max(100).optional().default(30) },
+    async ({ owner, repo, limit }) => {
+      const data = (await apiGet(`/actions/workflows?per_page=${limit ?? 30}`, owner, repo)) as { workflows: unknown[] };
       const workflows = (data.workflows ?? []).map((w: unknown) => {
         const wf = w as Record<string, unknown>;
         return {
@@ -191,9 +266,9 @@ export function registerTools(server: McpServer): void {
   server.tool(
     'list_run_artifacts',
     'List artifacts produced by a workflow run (metadata only — name, size, expiration, download URL).',
-    { run_id: z.string().describe('The numeric workflow run ID') },
-    async ({ run_id }) => {
-      const data = (await apiGet(`/actions/runs/${run_id}/artifacts`)) as { artifacts: unknown[] };
+    { ...repoParams, run_id: z.string().describe('The numeric workflow run ID') },
+    async ({ owner, repo, run_id }) => {
+      const data = (await apiGet(`/actions/runs/${run_id}/artifacts`, owner, repo)) as { artifacts: unknown[] };
       const artifacts = (data.artifacts ?? []).map((a: unknown) => {
         const art = a as Record<string, unknown>;
         return {
@@ -213,9 +288,9 @@ export function registerTools(server: McpServer): void {
   server.tool(
     'list_pending_deployments',
     'List environments awaiting approval for a workflow run.',
-    { run_id: z.string().describe('The numeric workflow run ID') },
-    async ({ run_id }) => {
-      const data = (await apiGet(`/actions/runs/${run_id}/pending_deployments`)) as unknown[];
+    { ...repoParams, run_id: z.string().describe('The numeric workflow run ID') },
+    async ({ owner, repo, run_id }) => {
+      const data = (await apiGet(`/actions/runs/${run_id}/pending_deployments`, owner, repo)) as unknown[];
       const pending = (data ?? []).map((p: unknown) => {
         const dep = p as Record<string, unknown>;
         const env = dep['environment'] as Record<string, unknown> | undefined;
@@ -234,9 +309,9 @@ export function registerTools(server: McpServer): void {
   server.tool(
     'get_workflow_run_usage',
     'Get billable time + duration breakdown for a workflow run.',
-    { run_id: z.string().describe('The numeric workflow run ID') },
-    async ({ run_id }) => {
-      const data = await apiGet(`/actions/runs/${run_id}/timing`);
+    { ...repoParams, run_id: z.string().describe('The numeric workflow run ID') },
+    async ({ owner, repo, run_id }) => {
+      const data = await apiGet(`/actions/runs/${run_id}/timing`, owner, repo);
       return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
     },
   );
@@ -761,22 +836,21 @@ export function registerTools(server: McpServer): void {
       environmentId: z.string().describe('Railway environment ID'),
       serviceId: z.string().describe('Railway service ID (use list_railway_projects + get_railway_project to discover)'),
       lines: z.number().int().min(1).max(500).optional().default(100).describe('Max log entries to return (capped at 500)'),
+      grep: z.string().optional().describe('Case-insensitive regex; return only entries whose serialized form matches'),
     },
-    async ({ projectId, environmentId, serviceId, lines }) => {
+    async ({ projectId, environmentId, serviceId, lines, grep }) => {
       const limit = lines ?? 100;
       const dep = await railwayGetDeployment(projectId, environmentId, serviceId);
       if (!dep) {
         return { content: [{ type: 'text' as const, text: JSON.stringify({ error: 'no_deployment', projectId, environmentId, serviceId }, null, 2) }] };
       }
-      const logs = await railwayGetDeploymentLogs(dep.id, limit);
-      // 50 KB truncation to match github-client.fetchJobLogs pattern. Keeps
-      // tool responses bounded even when log lines are huge.
-      const MAX_BYTES = 50 * 1024;
+      const logs = grepEntries(await railwayGetDeploymentLogs(dep.id, limit), grep);
+      // 5 MB ceiling — bounds a pathological response without hiding content.
       let totalBytes = 0;
       const truncated: typeof logs = [];
       for (const log of logs) {
         const lineBytes = Buffer.byteLength(JSON.stringify(log), 'utf8');
-        if (totalBytes + lineBytes > MAX_BYTES) break;
+        if (totalBytes + lineBytes > MAX_LOG_BYTES) break;
         truncated.push(log);
         totalBytes += lineBytes;
       }
@@ -788,6 +862,7 @@ export function registerTools(server: McpServer): void {
         deploymentStatus: dep.status,
         timestamp: new Date().toISOString(),
         requestedLines: limit,
+        grep: grep ?? null,
         returnedLines: truncated.length,
         truncatedFromOriginalLines: logs.length - truncated.length,
         logs: truncated,
@@ -802,16 +877,16 @@ export function registerTools(server: McpServer): void {
     {
       deploymentId: z.string().min(1).describe('Railway deployment ID (UUID)'),
       lines: z.number().int().min(1).max(500).optional().default(100).describe('Max log entries to return (capped at 500)'),
+      grep: z.string().optional().describe('Case-insensitive regex; return only entries whose serialized form matches'),
     },
-    async ({ deploymentId, lines }) => {
+    async ({ deploymentId, lines, grep }) => {
       const limit = lines ?? 100;
-      const logs = await railwayGetBuildLogs(deploymentId, limit);
-      const MAX_BYTES = 50 * 1024;
+      const logs = grepEntries(await railwayGetBuildLogs(deploymentId, limit), grep);
       let totalBytes = 0;
       const truncated: typeof logs = [];
       for (const log of logs) {
         const lineBytes = Buffer.byteLength(JSON.stringify(log), 'utf8');
-        if (totalBytes + lineBytes > MAX_BYTES) break;
+        if (totalBytes + lineBytes > MAX_LOG_BYTES) break;
         truncated.push(log);
         totalBytes += lineBytes;
       }
@@ -819,6 +894,7 @@ export function registerTools(server: McpServer): void {
         deploymentId,
         timestamp: new Date().toISOString(),
         requestedLines: limit,
+        grep: grep ?? null,
         returnedLines: truncated.length,
         truncatedFromOriginalLines: logs.length - truncated.length,
         logs: truncated,
@@ -981,22 +1057,22 @@ export function registerTools(server: McpServer): void {
 
   server.tool(
     'tail_cloud_run_logs',
-    'Tail recent Cloud Run logs for a service via Cloud Logging entries:list. Filters on resource.type="cloud_run_revision" + service_name. Returns entries in chronological order with timestamp, severity, textPayload, jsonPayload, resource labels, insertId. 50 KB byte cap on response. Read-only — requires roles/logging.viewer on the project (per-system roles/viewer covers it; factory-control gets logging.viewer via bootstrap-mcp-runtime-sa.sh best-effort grant).',
+    'Tail recent Cloud Run logs for a service via Cloud Logging entries:list. Filters on resource.type="cloud_run_revision" + service_name. Returns entries in chronological order with timestamp, severity, textPayload, jsonPayload, resource labels, insertId. 5 MB byte ceiling; use grep to narrow. Read-only — requires roles/logging.viewer on the project (per-system roles/viewer covers it).',
     {
-      serviceName: z.string().min(1).describe('Cloud Run service name (e.g. factory-actions-mcp, mcp-server)'),
-      project: z.string().optional().default('factory-control-9piybr').describe('GCP project ID (default: factory-control-9piybr)'),
+      serviceName: z.string().min(1).describe('Cloud Run service name (e.g. factory-master-actions-mcp)'),
+      project: z.string().optional().default('or-factory-master-control').describe('GCP project ID (default: or-factory-master-control)'),
       lines: z.number().int().min(1).max(500).optional().default(100).describe('Max log entries to return (capped at 500)'),
+      grep: z.string().optional().describe('Case-insensitive regex; return only entries whose serialized form matches'),
     },
-    async ({ serviceName, project, lines }) => {
+    async ({ serviceName, project, lines, grep }) => {
       const limit = lines ?? 100;
       try {
-        const entries = await gcpTailCloudRunLogs(project, serviceName, limit);
-        const MAX_BYTES = 50 * 1024;
+        const entries = grepEntries(await gcpTailCloudRunLogs(project, serviceName, limit), grep);
         let totalBytes = 0;
         const truncated: typeof entries = [];
         for (const entry of entries) {
           const lineBytes = Buffer.byteLength(JSON.stringify(entry), 'utf8');
-          if (totalBytes + lineBytes > MAX_BYTES) break;
+          if (totalBytes + lineBytes > MAX_LOG_BYTES) break;
           truncated.push(entry);
           totalBytes += lineBytes;
         }
@@ -1005,6 +1081,7 @@ export function registerTools(server: McpServer): void {
           serviceName,
           timestamp: new Date().toISOString(),
           requestedLines: limit,
+          grep: grep ?? null,
           returnedLines: truncated.length,
           truncatedFromOriginalLines: entries.length - truncated.length,
           entries: truncated,
