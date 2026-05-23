@@ -1,5 +1,13 @@
 # Changelog
 
+## Stage 23 — register-system-app: reuse-mode parity
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | feature | Extend `.github/workflows/register-system-app.yml` with the same optional `shared_gcp_project` input added to provision in Stage 22, so a system provisioned in reuse mode (no GCP project of its own) can still register its per-system GitHub App. Introduces `SYS_PROJECT` (exported to `$GITHUB_ENV` from Validate): the GCP project for the App's SM secrets + `deploy-sa`/`runtime-sa` grants — `== system_name` normally, `== shared_gcp_project` in reuse mode (guarded to test patterns, refuses control projects). Every per-system SM/SA operation now targets `SYS_PROJECT` (preflight `projects describe`, the `github-app-*` existence check, the Cloud Run receiver's `GCP_PROJECT_ID` env where it writes the credentials, secret verification, the `secretAccessor` grants + SA emails, the install-scope token reads, the repo-var secret reads, and the operator/recovery/summary text that names the SM project). Everything tied to the **repo** stays `system_name`: the App name (`<system_name>-app`), the receiver service name, `GITHUB_REPO` (App install scope), the narrow-scope check (`total_count==1 && first==edri2or/<system_name>`), and the `APP_ID`/`APP_INSTALLATION_ID` repo vars. Empty input → byte-identical to the prior behavior. Reuse nuance: the `github-app-*` secrets land in the shared project's SM, which provision's clean-secrets wipes on the next reuse run — fine for one-off tests, re-register after a re-clean. Still a HITL 2-click step. |
+
+Opt-in per dispatch; normal `register-system-app.yml` runs (no `shared_gcp_project`) are unchanged.
+
 ## Stage 22 — provision: reuse-mode (shared GCP test project; fresh repo/Railway/secrets)
 
 | PR | Type | Summary |
