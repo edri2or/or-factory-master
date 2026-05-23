@@ -562,6 +562,48 @@ jobs:
             echo "DOMAIN=${DOMAIN}"
           } >> "$GITHUB_ENV"
 
+      - name: Create Railway project token (idempotent)
+        env:
+          PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          # Mint a project-scoped Railway token (name "github-actions") and store
+          # it in this system's SM as railway-project-token. Mirrors edri2or/factory's
+          # railway-cloudflare-bootstrap.yml. The token is MINTED with the account-
+          # level railway-api-token (Authorization: Bearer, already in $RAILWAY_TOKEN),
+          # but the result is itself a PROJECT token — any future consumer that reads
+          # it back must send it via the `Project-Access-Token` header, NOT
+          # `Authorization: Bearer` (Railway rejects Bearer for project tokens; see
+          # edri2or/factory docs/adr/184). Nothing in this repo consumes it yet — it's
+          # created for parity / future use. The shell is pre-created by
+          # provision-system.yml; deploy-sa has project-level secretVersionManager
+          # so it can add a version here. Idempotent: skip if a version already exists.
+          if EXISTING=$(gcloud secrets versions access latest \
+                        --secret="railway-project-token" --project="$PROJECT_ID" 2>/dev/null) \
+             && [ -n "$EXISTING" ]; then
+            echo "INFO: railway-project-token already has a version — skipping mint."
+            exit 0
+          fi
+
+          resp=$(curl -sS -X POST "$RAILWAY_GQL" \
+            -H "Authorization: Bearer ${RAILWAY_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -cn --arg pid "$PROJECT_ID_RW" --arg eid "$ENV_ID" \
+              '{query: "mutation($pid:String!,$eid:String!){projectTokenCreate(input:{projectId:$pid,environmentId:$eid,name:\"github-actions\"})}", variables: {pid: $pid, eid: $eid}}')")
+          if printf '%s' "$resp" | jq -e '.errors' >/dev/null 2>&1; then
+            echo "FAIL: Railway projectTokenCreate returned errors:" >&2
+            printf '%s\n' "$resp" | jq -r '.errors[]? | "  - " + .message' >&2
+            exit 1
+          fi
+          TOKEN=$(printf '%s' "$resp" | jq -r '.data.projectTokenCreate // empty')
+          [ -n "$TOKEN" ] && [ "$TOKEN" != "null" ] \
+            || { echo "FAIL: projectTokenCreate returned no token" >&2; exit 1; }
+          echo "::add-mask::${TOKEN}"
+
+          printf '%s' "$TOKEN" | gcloud secrets versions add "railway-project-token" \
+            --project="$PROJECT_ID" --data-file=- --quiet
+          echo "PASS: railway-project-token minted (project=${PROJECT_ID_RW}, env=${ENV_ID}) and stored in ${PROJECT_ID} SM."
+
       - name: Configure Cloudflare DNS
         env:
           SYSTEM_NAME: ${{ vars.SYSTEM_NAME }}
