@@ -1090,10 +1090,37 @@ jobs:
                     '{($f):$e, password:$p}')" \
               || echo "000"
           }
-          HTTP=$(_login "emailOrLdapLoginId")
-          if [ "$HTTP" != "200" ]; then
-            HTTP=$(_login "email")
-          fi
+
+          # Resilient n8n REST call. Retries ONLY on "000" — a curl-level failure where
+          # no HTTP request reached the server (e.g. Railway's freshly-issued custom-domain
+          # cert briefly serving a non-matching cert → curl (60) SAN mismatch right after
+          # the TLS-wait step). Retrying "000" is safe even for POSTs (the request never hit
+          # the server, so it can't double-create). Never retries a real HTTP status.
+          _napi() {
+            local method="$1" url="$2" out="$3" data="${4:-}" i http
+            for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
+              if [ -n "$data" ]; then
+                http=$(curl -sS -o "$out" -w '%{http_code}' --max-time 20 \
+                  -b "$COOKIE_JAR" -X "$method" -H "Content-Type: application/json" -d "$data" "$url" || echo "000")
+              else
+                http=$(curl -sS -o "$out" -w '%{http_code}' --max-time 20 \
+                  -b "$COOKIE_JAR" -X "$method" "$url" || echo "000")
+              fi
+              [ "$http" != "000" ] && { printf '%s' "$http"; return 0; }
+              sleep 5
+            done
+            printf '000'
+          }
+
+          # Login, riding out the same transient cert flap (retry on any non-200, trying
+          # both n8n login field names each pass).
+          HTTP="000"
+          for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
+            HTTP=$(_login "emailOrLdapLoginId")
+            [ "$HTTP" = "200" ] || HTTP=$(_login "email")
+            [ "$HTTP" = "200" ] && break
+            sleep 5
+          done
           if [ "$HTTP" != "200" ]; then
             echo "FAIL: POST $BASE/rest/login HTTP $HTTP" >&2
             head -c 400 /tmp/n8n-login.json >&2 || true; echo >&2
@@ -1104,8 +1131,7 @@ jobs:
           # 3. Idempotency: if our notifier workflow already exists from a
           #    prior deploy, exit without touching anything. This is what
           #    keeps Telegram from re-firing on every redeploy.
-          HTTP=$(curl -sS -o /tmp/n8n-wfs.json -w '%{http_code}' --max-time 15 \
-            -b "$COOKIE_JAR" "$BASE/rest/workflows")
+          HTTP=$(_napi GET "$BASE/rest/workflows" /tmp/n8n-wfs.json)
           if [ "$HTTP" != "200" ]; then
             echo "FAIL: GET $BASE/rest/workflows HTTP $HTTP" >&2
             head -c 400 /tmp/n8n-wfs.json >&2 || true; echo >&2
@@ -1126,11 +1152,7 @@ jobs:
             type:"telegramApi",
             data:{ accessToken:$t }
           }')
-          HTTP=$(curl -sS -o /tmp/n8n-cred.json -w '%{http_code}' --max-time 15 \
-            -b "$COOKIE_JAR" \
-            -X POST "$BASE/rest/credentials" \
-            -H "Content-Type: application/json" \
-            -d "$CRED_BODY")
+          HTTP=$(_napi POST "$BASE/rest/credentials" /tmp/n8n-cred.json "$CRED_BODY")
           if [ "$HTTP" != "200" ] && [ "$HTTP" != "201" ]; then
             echo "FAIL: POST $BASE/rest/credentials HTTP $HTTP" >&2
             head -c 400 /tmp/n8n-cred.json >&2 || true; echo >&2
@@ -1208,11 +1230,7 @@ jobs:
               settings: {}
             }')
 
-          HTTP=$(curl -sS -o /tmp/n8n-wf.json -w '%{http_code}' --max-time 15 \
-            -b "$COOKIE_JAR" \
-            -X POST "$BASE/rest/workflows" \
-            -H "Content-Type: application/json" \
-            -d "$WF_BODY")
+          HTTP=$(_napi POST "$BASE/rest/workflows" /tmp/n8n-wf.json "$WF_BODY")
           if [ "$HTTP" != "200" ] && [ "$HTTP" != "201" ]; then
             echo "FAIL: POST $BASE/rest/workflows HTTP $HTTP" >&2
             head -c 400 /tmp/n8n-wf.json >&2 || true; echo >&2
@@ -1231,15 +1249,9 @@ jobs:
           #    uses POST /rest/workflows/:id/activate; modern versions also
           #    accept PATCH /rest/workflows/:id with {active:true}. Try the
           #    dedicated endpoint first, fall back to PATCH.
-          HTTP=$(curl -sS -o /tmp/n8n-activate.json -w '%{http_code}' --max-time 15 \
-            -b "$COOKIE_JAR" \
-            -X POST "$BASE/rest/workflows/${WF_ID}/activate")
+          HTTP=$(_napi POST "$BASE/rest/workflows/${WF_ID}/activate" /tmp/n8n-activate.json)
           if [ "$HTTP" != "200" ] && [ "$HTTP" != "204" ]; then
-            HTTP=$(curl -sS -o /tmp/n8n-activate.json -w '%{http_code}' --max-time 15 \
-              -b "$COOKIE_JAR" \
-              -X PATCH "$BASE/rest/workflows/${WF_ID}" \
-              -H "Content-Type: application/json" \
-              -d '{"active":true}')
+            HTTP=$(_napi PATCH "$BASE/rest/workflows/${WF_ID}" /tmp/n8n-activate.json '{"active":true}')
           fi
           if [ "$HTTP" != "200" ] && [ "$HTTP" != "204" ]; then
             echo "FAIL: workflow activation HTTP $HTTP" >&2
@@ -1253,8 +1265,7 @@ jobs:
           #    so a 200 here is positive confirmation that the message was
           #    accepted by api.telegram.org.
           sleep 2  # let n8n register the webhook route after activation
-          HTTP=$(curl -sS -o /tmp/n8n-hook.json -w '%{http_code}' --max-time 30 \
-            -X POST "$BASE/webhook/${WEBHOOK_PATH}")
+          HTTP=$(_napi POST "$BASE/webhook/${WEBHOOK_PATH}" /tmp/n8n-hook.json)
           if [ "$HTTP" != "200" ]; then
             # The notifier workflow is created + active in n8n, but the test send
             # did not reach Telegram. The most common cause is operator-side bot
