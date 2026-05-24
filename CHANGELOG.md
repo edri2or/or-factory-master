@@ -1,11 +1,27 @@
 # Changelog
 
-## Stage 33 — ops: bulk-decommission workflow also prunes leftover Cloudflare DNS
+## Stage 35 — ops: bulk-decommission workflow also prunes leftover Cloudflare DNS
 
 | PR | Type | Summary |
 |---|---|---|
 | TBD | feature | `.github/workflows/decommission-railway-projects.yml` now also deletes the dangling factory Cloudflare DNS records for the removed systems, not just the Railway projects. New "Read Cloudflare credentials from Secret Manager" step (reads `cloudflare-token-creator` + `cloudflare-zone-id-or-infra` from `or-factory-master-control`, masked) and a "Cloudflare DNS cleanup (plan + delete)" step that mints a 1h scoped DNS:Edit token (revoked on exit), lists the `or-infra.com` zone, and removes every `n8n-*` CNAME and `_railway-verify.n8n-*` TXT **except** the keepers' (the plan step records each keeper's FQDNs to a preserve-set). Reuses the exact mint/list/delete pattern from `decommission-test-system.yml`. Same `dry_run`/`confirm=DELETE` gates: the dry-run prints the full DNS keep/delete table (the only way to enumerate the records, since the MCP `cloudflare-zones-read-token` is a placeholder) and deletes nothing; per-record failures are reported, not fatal mid-loop. DNS is free, so this is dangling-record hygiene — deleting the Railway projects is what stops billing. |
-| TBD | chore | Rotated Stages 18-25 into `docs/changelog-archive/CHANGELOG-2026-05-24.md` (newest-first) to keep `CHANGELOG.md` under the 20 KB cap. |
+| TBD | chore | Rotated Stages 23-25 into `docs/changelog-archive/CHANGELOG-2026-05-24.md` (newest-first) to keep `CHANGELOG.md` under the 20 KB cap. |
+
+## Stage 34 — deploy: notifier step rides out Railway custom-domain cert flap
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | fix | `templates/system/.github/workflows/deploy-railway-cloudflare.yml`: the `Create "n8n is ready" Telegram notifier workflow` step had unguarded n8n REST curls (`HTTP=$(curl …)` with no `\|\| echo`), so a transient Railway custom-domain cert flap (`curl: (60) SSL: no alternative certificate subject name matches`, right after the TLS-wait step) aborted the step under `set -e` with exit 60 — killing the "n8n ready" ping **and** skipping the downstream OpenRouter step (observed live on `factory-test-32`). Applied the same `_napi` helper used by the OpenRouter step (Stage 31, #64): all post-login calls (`GET /rest/workflows`, `POST /rest/credentials`, `POST /rest/workflows`, activate `POST`/`PATCH`, and the webhook fire) now guard curl-level failures and retry **only** on `000` (no HTTP request reached the server → safe to retry, even POSTs), never on a real HTTP status; login retries the same way. Existing semantics unchanged: skip-when-`n8n-telegram-*`-empty, idempotent skip-if-exists, and non-fatal Telegram send (a real non-2xx still only warns). Also closes the create-vs-notify idempotency gap — with no mid-run crash, create+activate+fire complete in one run, so skip-on-redeploy is then correct. |
+
+Template edit reaches newly-provisioned systems only (per CLAUDE.md).
+
+## Stage 33 — decommission: fix Railway find-by-name (cross-workspace query)
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | fix | `.github/workflows/decommission-test-system.yml` found the Railway project to delete via the top-level `query { projects(first:200) { edges … } }`, which returns **empty** on a workspace/team-token account (Railway owns projects under `me.workspaces[].projects`, not `me` directly). So a single-system teardown without an explicit `railway_project_id` silently logged `SKIP: no Railway project found` and **leaked the Railway project** (confirmed live on `factory-test-30/31` — had to pass explicit IDs). Switched the find-by-name to `query { me { workspaces { projects { edges { node { id name } } } } } }` and flattened across workspaces in jq, mirroring the proven `listProjects` in `services/mcp-server/src/railway-client.ts` and the Stage 32 bulk-cleanup workflow. The name-verify guard (`project(id).name == system_name` before `projectDelete`) and the `railway_project_id` short-circuit are unchanged. |
+
+No behavior change when `railway_project_id` is passed; this only repairs the by-name fallback.
 
 ## Stage 32 — ops: bulk Railway project cleanup workflow (keep-list, operator-dispatched)
 

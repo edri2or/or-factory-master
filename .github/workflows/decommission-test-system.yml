@@ -197,11 +197,16 @@ jobs:
 
           PID="${RAILWAY_PROJECT_ID_INPUT}"
 
-          # Best-effort find-by-name if no id was passed.
+          # Best-effort find-by-name if no id was passed. Railway projects are owned
+          # by a workspace, not by `me` directly — the top-level `projects(first:N)`
+          # query returns EMPTY on a workspace/team-token account, so it silently
+          # found nothing and skipped the delete. Enumerate across all workspaces via
+          # me.workspaces[].projects.edges (same path as the MCP listProjects in
+          # services/mcp-server/src/railway-client.ts and decommission-railway-projects.yml).
           if [ -z "$PID" ]; then
-            resp=$(_gql 'query { projects(first:200) { edges { node { id name } } } }' || echo '{}')
+            resp=$(_gql 'query { me { workspaces { projects { edges { node { id name } } } } } }' || echo '{}')
             PID=$(printf '%s' "$resp" | jq -r --arg n "$SYSTEM_NAME" \
-              '(.data.projects.edges // []) | map(select(.node.name==$n)) | .[0].node.id // ""' 2>/dev/null || echo "")
+              '[.data.me.workspaces[]?.projects.edges[]?.node | select(.name==$n)] | .[0].id // ""' 2>/dev/null || echo "")
           fi
 
           if [ -z "$PID" ] || [ "$PID" = "null" ]; then
