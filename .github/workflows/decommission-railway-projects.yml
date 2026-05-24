@@ -1,0 +1,239 @@
+name: Decommission Railway Projects (bulk, keep-list)
+
+# Manual dispatch only. Deletes EVERY Railway project the factory token can see,
+# across ALL workspaces, EXCEPT those whose project id is in `keep_ids`.
+# Railway-ONLY: touches no GCP project, Secret Manager, GitHub repo, or DNS.
+#
+# Safety: defaults to dry-run. A real delete requires dry_run=false AND
+# confirm=DELETE, refuses an empty keep-list, and aborts if none of the keep_ids
+# match a live project (a stale keep-list must never wipe everything).
+#
+# Operator-triggered from the Actions UI only — it is intentionally NOT on the
+# MCP `dispatch_workflow` allowlist. Runs on main (WIF trusts refs/heads/main).
+#
+# Auth: WIF as factory-master-broker; Railway token read from the control
+# project's Secret Manager (railway-api-token). Same projectDelete + _gql pattern
+# as decommission-test-system.yml; cross-workspace list query mirrors the MCP
+# server (services/mcp-server/src/railway-client.ts listProjects).
+
+on:
+  workflow_dispatch:
+    inputs:
+      keep_ids:
+        description: "Comma/space-separated Railway project IDs to KEEP. Every other project is deleted."
+        required: true
+        type: string
+        default: "67951f46-f3cf-43ca-84a9-a51874a8f6bd,7781aeac-2ccd-467f-82f3-59751504ed1d,047ce86b-3e3f-4b15-8936-cd167f3aebb6,85fb9b01-332d-4c3b-9e61-fc1eb6bbe9ac,8fa8a429-cf97-4e1f-a1eb-1f42ee7a5aa6"
+      dry_run:
+        description: "List the KEEP/DELETE plan only; delete nothing. Run this first."
+        required: false
+        type: boolean
+        default: true
+      confirm:
+        description: "Type DELETE to arm real deletion (only honored when dry_run is false)."
+        required: false
+        type: string
+        default: ""
+
+permissions: {}
+
+jobs:
+  decommission:
+    name: Bulk-delete Railway projects (keep-list)
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      id-token: write
+
+    env:
+      GCP_PROJECT: "or-factory-master-control"
+      BROKER_SA: "factory-master-broker@or-factory-master-control.iam.gserviceaccount.com"
+      WIF_PROVIDER: "projects/140345952904/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
+      RAILWAY_GQL: "https://backboard.railway.com/graphql/v2"
+
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
+
+      - name: Validate inputs (safety gate)
+        env:
+          KEEP_IDS: ${{ inputs.keep_ids }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          set -euo pipefail
+          # Normalize keep_ids -> one id per line. Split on any char that is not
+          # part of a UUID (hex + hyphen), so commas/spaces/newlines all work.
+          printf '%s' "$KEEP_IDS" | tr -c 'a-zA-Z0-9-' '\n' | sed '/^$/d' | sort -u > /tmp/keep_ids.txt
+          KEEP_COUNT=$(wc -l < /tmp/keep_ids.txt | tr -d ' ')
+          if [ "$KEEP_COUNT" -eq 0 ]; then
+            echo "FAIL: keep_ids is empty — refusing (an empty keep-list would delete every project)." >&2
+            exit 1
+          fi
+          if [ "$DRY_RUN" != "true" ] && [ "$CONFIRM" != "DELETE" ]; then
+            echo "FAIL: real deletion requires confirm=DELETE (dry_run=${DRY_RUN}, confirm='${CONFIRM}')." >&2
+            exit 1
+          fi
+          echo "PASS: ${KEEP_COUNT} keep id(s); dry_run=${DRY_RUN}."
+          echo "Keep ids:"; sed 's/^/  - /' /tmp/keep_ids.txt
+
+      - name: Authenticate to GCP via WIF
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093  # v3.0.0
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.BROKER_SA }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db  # v3.0.1
+
+      - name: Read Railway token from Secret Manager
+        run: |
+          set -euo pipefail
+          RAILWAY_TOKEN=$(gcloud secrets versions access latest \
+            --secret="railway-api-token" --project="${GCP_PROJECT}")
+          [ -n "$RAILWAY_TOKEN" ] || { echo "FAIL: railway-api-token empty/not found in ${GCP_PROJECT}" >&2; exit 1; }
+          echo "::add-mask::${RAILWAY_TOKEN}"
+          echo "RAILWAY_TOKEN=${RAILWAY_TOKEN}" >> "$GITHUB_ENV"
+
+      - name: List all Railway projects (every workspace) and compute plan
+        run: |
+          set -euo pipefail
+          _gql() {
+            local query="$1" variables="${2:-}"
+            [ -n "$variables" ] || variables='{}'
+            curl -sS -X POST "$RAILWAY_GQL" \
+              -H "Authorization: Bearer ${RAILWAY_TOKEN}" \
+              -H "Content-Type: application/json" \
+              -d "$(jq -cn --arg q "$query" --argjson v "$variables" '{query:$q,variables:$v}')"
+          }
+
+          # Cross-workspace listing: Railway projects are owned by a workspace, not
+          # by `me` directly, so `projects(first:N)` returns only the personal
+          # workspace. me.workspaces[].projects.edges covers every workspace the
+          # token belongs to (mirrors the MCP server's listProjects).
+          resp=$(_gql 'query { me { workspaces { id name projects { edges { node { id name } } } } } }' || echo '{}')
+          if printf '%s' "$resp" | jq -e '.errors' >/dev/null 2>&1; then
+            echo "FAIL: Railway list query returned errors: $(printf '%s' "$resp" | jq -c '.errors')" >&2
+            exit 1
+          fi
+
+          # Flatten -> TSV: id <tab> name <tab> workspace
+          printf '%s' "$resp" \
+            | jq -r '.data.me.workspaces[] as $ws | ((($ws.projects).edges) // [])[] | [.node.id, .node.name, $ws.name] | @tsv' \
+            > /tmp/all_projects.tsv || true
+
+          TOTAL=$(wc -l < /tmp/all_projects.tsv | tr -d ' ')
+          if [ "$TOTAL" -eq 0 ]; then
+            echo "FAIL: Railway returned no projects (token/permissions issue?) — refusing to proceed." >&2
+            exit 1
+          fi
+
+          : > /tmp/delete_ids.tsv
+          KEEP_MATCHED=0
+          {
+            echo "## Railway cleanup plan"
+            echo ""
+            echo "| Action | Name | ID | Workspace |"
+            echo "|---|---|---|---|"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          while IFS="$(printf '\t')" read -r id name ws; do
+            [ -n "$id" ] || continue
+            if grep -qxF "$id" /tmp/keep_ids.txt; then
+              KEEP_MATCHED=$((KEEP_MATCHED + 1))
+              echo "KEEP    ${name}  (${id})  [${ws}]"
+              printf '| KEEP | %s | `%s` | %s |\n' "$name" "$id" "$ws" >> "$GITHUB_STEP_SUMMARY"
+            else
+              printf '%s\t%s\t%s\n' "$id" "$name" "$ws" >> /tmp/delete_ids.tsv
+              echo "DELETE  ${name}  (${id})  [${ws}]"
+              printf '| DELETE | %s | `%s` | %s |\n' "$name" "$id" "$ws" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done < /tmp/all_projects.tsv
+
+          DELETE_COUNT=$(wc -l < /tmp/delete_ids.tsv | tr -d ' ')
+          echo ""
+          echo "TOTAL=${TOTAL}  KEEP_MATCHED=${KEEP_MATCHED}  DELETE_COUNT=${DELETE_COUNT}"
+
+          # Safety: at least one live project must match the keep-list, else the
+          # keep-list is stale/wrong and we would wipe the entire workspace.
+          if [ "$KEEP_MATCHED" -eq 0 ]; then
+            echo "FAIL: none of the keep_ids matched a live project — refusing (stale keep-list would delete everything)." >&2
+            exit 1
+          fi
+
+          # Warn (do not fail) for any keep id not present among live projects.
+          cut -f1 /tmp/all_projects.tsv | sort -u > /tmp/live_ids.txt
+          while read -r kid; do
+            grep -qxF "$kid" /tmp/live_ids.txt || echo "::warning::keep id ${kid} not found among live projects (already deleted?)"
+          done < /tmp/keep_ids.txt
+
+          {
+            echo "DELETE_COUNT=${DELETE_COUNT}"
+            echo "KEEP_MATCHED=${KEEP_MATCHED}"
+            echo "TOTAL=${TOTAL}"
+          } >> "$GITHUB_ENV"
+
+      - name: Delete projects (real run only)
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          set -euo pipefail
+          if [ "$DRY_RUN" = "true" ] || [ "$CONFIRM" != "DELETE" ]; then
+            echo "DRY RUN — ${DELETE_COUNT} project(s) would be deleted, ${KEEP_MATCHED} kept. Nothing deleted."
+            echo "Re-run with dry_run=false and confirm=DELETE to execute."
+            exit 0
+          fi
+
+          _gql() {
+            local query="$1" variables="${2:-}"
+            [ -n "$variables" ] || variables='{}'
+            curl -sS -X POST "$RAILWAY_GQL" \
+              -H "Authorization: Bearer ${RAILWAY_TOKEN}" \
+              -H "Content-Type: application/json" \
+              -d "$(jq -cn --arg q "$query" --argjson v "$variables" '{query:$q,variables:$v}')"
+          }
+
+          DELETED=0
+          FAILED=0
+          while IFS="$(printf '\t')" read -r id name ws; do
+            [ -n "$id" ] || continue
+            resp=$(_gql 'mutation($id:String!){ projectDelete(id:$id) }' "$(jq -cn --arg id "$id" '{id:$id}')" || echo '{}')
+            if printf '%s' "$resp" | jq -e '.data.projectDelete == true' >/dev/null 2>&1; then
+              echo "PASS: deleted ${name} (${id}) [${ws}]"
+              DELETED=$((DELETED + 1))
+            else
+              echo "FAIL: ${name} (${id}) [${ws}]: $(printf '%s' "$resp" | jq -c '.errors // .')" >&2
+              FAILED=$((FAILED + 1))
+            fi
+          done < /tmp/delete_ids.tsv
+
+          echo "Deleted ${DELETED}, failed ${FAILED}, kept ${KEEP_MATCHED}."
+          {
+            echo "DELETED=${DELETED}"
+            echo "FAILED=${FAILED}"
+          } >> "$GITHUB_ENV"
+          if [ "$FAILED" -gt 0 ]; then
+            echo "::error::${FAILED} project(s) failed to delete (see log above)."
+            exit 1
+          fi
+
+      - name: Summary
+        if: always()
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          {
+            echo ""
+            echo "### Result"
+            if [ "$DRY_RUN" = "true" ] || [ "$CONFIRM" != "DELETE" ]; then
+              echo "- Mode: **dry-run** (nothing deleted)"
+              echo "- Would delete: ${DELETE_COUNT:-?}, keep: ${KEEP_MATCHED:-?} (of ${TOTAL:-?} total)"
+            else
+              echo "- Mode: **real delete**"
+              echo "- Deleted: ${DELETED:-?}, failed: ${FAILED:-?}, kept: ${KEEP_MATCHED:-?} (of ${TOTAL:-?} total)"
+            fi
+            echo ""
+            echo "Railway-only — no GCP project, Secret Manager, GitHub repo, or DNS touched."
+          } >> "$GITHUB_STEP_SUMMARY"
