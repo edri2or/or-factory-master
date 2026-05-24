@@ -45,7 +45,7 @@ import {
   CfZonesTokenError,
 } from './cloudflare-client.js';
 import { buildInventory } from './inventory-aggregator.js';
-import { loadManifest, condition, summarize, NotFoundError, type Check, type VerifyResult } from './manifest-helper.js';
+import { resolveSystem, condition, summarize, NotFoundError, type SystemManifest, type Check, type VerifyResult } from './manifest-helper.js';
 import { probe, isAllowedUrl, AllowlistError, type ProbeResult } from './probe.js';
 import { resolveRecord as dnsResolveRecord, SUPPORTED_DNS_TYPES, DnsAllowlistError } from './dns-helper.js';
 import { inspectCert as tlsInspectCert, TlsAllowlistError } from './tls-helper.js';
@@ -393,8 +393,13 @@ export function registerTools(server: McpServer): void {
   );
 
   // ─── Direct Verification tools (ADR 137 / PR 2b) ───────────────────────
-  // Each verify_* tool reads the system's manifest, calls the relevant
-  // provider's read-only API, and returns a Kubernetes-style result.
+  // Each verify_* tool resolves the system via resolveSystem (repo vars, no
+  // manifest), calls the relevant provider's read-only API, and returns a
+  // Kubernetes-style result.
+
+  // GCP Systems folder (CLAUDE.md fixed values). The v1 Resource Manager API
+  // returns the bare numeric id with parent.type='folder'.
+  const SYSTEMS_FOLDER_ID = '123180924297';
 
   const systemNameSchema = {
     systemName: z.string().min(1).describe('The system name (e.g. or-test-N or svc-foo)'),
@@ -405,10 +410,10 @@ export function registerTools(server: McpServer): void {
     description: string,
     conditionType: string,
     planeName: string,
-    runChecks: (m: Awaited<ReturnType<typeof loadManifest>>) => Promise<Check[]>,
+    runChecks: (m: SystemManifest) => Promise<Check[]>,
   ): void {
     server.tool(toolName, description, systemNameSchema, async ({ systemName }) => {
-      const m = await loadManifest(systemName);
+      const m = await resolveSystem(systemName);
       const checks = await runChecks(m);
       const result: VerifyResult = {
         system: systemName,
@@ -467,7 +472,7 @@ export function registerTools(server: McpServer): void {
     'GCP',
     async (m) => {
       if (!m.gcpProjectId) {
-        return [{ name: 'manifest-has-gcpProjectId', status: 'fail', evidence: 'missing gcpProjectId' }];
+        return [{ name: 'gcp-project-resolved', status: 'fail', evidence: 'could not resolve GCP_PROJECT_ID repo var' }];
       }
       const projectId = m.gcpProjectId;
       const checks: Check[] = [];
@@ -483,7 +488,7 @@ export function registerTools(server: McpServer): void {
         checks.push({ name: 'project-active', status: p.lifecycleState === 'ACTIVE' ? 'pass' : 'fail', evidence: `lifecycleState=${p.lifecycleState}` });
         checks.push({
           name: 'project-under-correct-folder',
-          status: p.parent?.type === 'folder' && p.parent?.id === '293382608212' ? 'pass' : 'fail',
+          status: p.parent?.type === 'folder' && p.parent?.id === SYSTEMS_FOLDER_ID ? 'pass' : 'fail',
           evidence: `parent=${p.parent?.type}:${p.parent?.id}`,
         });
       } else {
@@ -527,41 +532,43 @@ export function registerTools(server: McpServer): void {
 
   registerVerifier(
     'verify_railway_system',
-    'Verify the generated system\'s Railway project: project + environment exist, services (postgres/n8n/mcp) accessible, latest deployment SUCCESS.',
+    'Verify the system\'s Railway project (resolved live by project name): project + environment exist, postgres/n8n services present, latest deployment SUCCESS.',
     'RailwayReady',
     'Railway',
     async (m) => {
-      const r = m.externalResources?.railway;
-      if (!r?.projectId) {
-        return [{ name: 'manifest-has-railway-projectId', status: 'skip', evidence: 'pre-Phase-A system (no externalResources.railway)' }];
-      }
-      const checks: Check[] = [];
-      let proj;
+      // Manifest-free: the Railway project is named after the system. Resolve it
+      // live by name, then match the default ('production') environment and the
+      // postgres/n8n services by name.
+      let projSummary;
       try {
-        proj = await railwayGetProject(r.projectId);
+        projSummary = (await railwayListProjects()).find((p) => p.name === m.systemName);
       } catch (e) {
         return [{ name: 'project-exists', status: 'fail', evidence: String(e).slice(0, 200) }];
       }
-      checks.push({ name: 'project-exists', status: proj ? 'pass' : 'fail', evidence: proj ? `name=${proj.name}` : 'project-not-found' });
-      if (!proj || !r.environmentId) return checks;
-      const env = proj.environments.edges.find((e) => e.node.id === r.environmentId);
-      checks.push({ name: 'environment-exists', status: env ? 'pass' : 'fail', evidence: env ? `name=${env.node.name}` : 'not found in project' });
-      // Parallel: per-service existence + deployment fetch.
-      const services: Array<readonly [string, string | undefined]> = [
-        ['postgres', r.services?.postgres],
-        ['n8n', r.services?.n8n],
-        ['mcp', m.externalResources?.mcp?.railwayServiceId],
-      ];
+      if (!projSummary) {
+        return [{ name: 'project-exists', status: 'fail', evidence: `no Railway project named ${m.systemName}` }];
+      }
+      const projectId = projSummary.id;
+      const checks: Check[] = [];
+      const proj = await railwayGetProject(projectId);
+      checks.push({ name: 'project-exists', status: proj ? 'pass' : 'fail', evidence: proj ? `name=${proj.name} id=${projectId}` : 'project-not-found' });
+      if (!proj) return checks;
+      const env =
+        proj.environments.edges.find((e) => e.node.name === 'production') ??
+        proj.environments.edges[0];
+      checks.push({ name: 'environment-exists', status: env ? 'pass' : 'fail', evidence: env ? `name=${env.node.name}` : 'no environments' });
+      if (!env) return checks;
+      // Match the deploy template's service names. The factory's own mcp service
+      // isn't part of an n8n system deploy, so only postgres + n8n are checked.
       const serviceResults = await Promise.all(
-        services.map(async ([label, svcId]) => {
-          if (!svcId) return [{ name: `service-${label}-id-in-manifest`, status: 'skip' as const }] as Check[];
-          const found = proj.services.edges.find((s) => s.node.id === svcId);
+        (['postgres', 'n8n'] as const).map(async (label): Promise<Check[]> => {
+          const found = proj.services.edges.find((s) => s.node.name === label);
           const out: Check[] = [
-            { name: `service-${label}-exists`, status: found ? 'pass' : 'fail', evidence: found ? `name=${found.node.name}` : 'svcId not found' },
+            { name: `service-${label}-exists`, status: found ? 'pass' : 'fail', evidence: found ? `id=${found.node.id}` : 'not found in project' },
           ];
-          if (found && env && r.environmentId) {
+          if (found) {
             try {
-              const dep = await railwayGetDeployment(r.projectId!, r.environmentId, svcId);
+              const dep = await railwayGetDeployment(projectId, env.node.id, found.node.id);
               out.push({
                 name: `service-${label}-latest-deploy-success`,
                 status: dep?.status === 'SUCCESS' ? 'pass' : 'fail',
@@ -589,9 +596,9 @@ export function registerTools(server: McpServer): void {
       const zoneId = m.externalResources?.cloudflare?.zoneId ?? process.env.CLOUDFLARE_ZONE_ID;
       if (records.length === 0 || !zoneId) {
         return [{
-          name: 'manifest-has-cloudflare-records',
+          name: 'cloudflare-records-resolvable',
           status: 'skip',
-          evidence: zoneId ? 'no records in manifest' : 'no zoneId in manifest or CLOUDFLARE_ZONE_ID env',
+          evidence: 'Cloudflare records are not derivable from repo vars — verify DNS directly with list_dns_records / dns_resolve, or probe_endpoint / tls_cert_inspect on n8n-<system>.or-infra.com',
         }];
       }
       const { token, tokenId } = await cfCreateScopedReadToken(zoneId);
@@ -653,9 +660,9 @@ export function registerTools(server: McpServer): void {
     'List every GCP Secret Manager secret in the system\'s project, with name + createTime + enabled-version-count + labels. Values are never returned. Useful for catching orphaned secrets like mcp-server-railway-url that were created without a matching deploy.',
     systemNameSchema,
     async ({ systemName }) => {
-      const m = await loadManifest(systemName);
+      const m = await resolveSystem(systemName);
       if (!m.gcpProjectId) {
-        return { content: [{ type: 'text' as const, text: JSON.stringify({ error: 'no_gcp_project', message: 'manifest has no gcpProjectId' }, null, 2) }] };
+        return { content: [{ type: 'text' as const, text: JSON.stringify({ error: 'no_gcp_project', message: 'could not resolve GCP project from repo var GCP_PROJECT_ID' }, null, 2) }] };
       }
       const secrets = await gcpListSecretsWithMetadata(m.gcpProjectId);
       const result = {
@@ -761,32 +768,37 @@ export function registerTools(server: McpServer): void {
 
   server.tool(
     'inspect_railway_service',
-    'Inspect a Railway service in the system\'s project: latest deployment status and public domains (Railway-assigned + custom). Resolves projectId / environmentId from manifest.externalResources.railway.',
+    'Inspect a Railway service in the system\'s project: latest deployment status and public domains (Railway-assigned + custom). Resolves the project live by name (== systemName) and the \'production\' environment.',
     {
       systemName: z.string().min(1).describe('The system name (e.g. or-test-N)'),
       serviceName: z.string().describe('Railway service name within the project (e.g. postgres, n8n, mcp-server)'),
     },
     async ({ systemName, serviceName }) => {
-      const m = await loadManifest(systemName);
-      const r = m.externalResources?.railway;
-      if (!r?.projectId || !r?.environmentId) {
-        return { content: [{ type: 'text' as const, text: JSON.stringify({ error: 'no_railway_in_manifest', message: 'manifest has no externalResources.railway.{projectId, environmentId}' }, null, 2) }] };
+      const projSummary = (await railwayListProjects()).find((p) => p.name === systemName);
+      if (!projSummary) {
+        return { content: [{ type: 'text' as const, text: JSON.stringify({ error: 'railway_project_not_found', message: `no Railway project named ${systemName}` }, null, 2) }] };
       }
-      const proj = await railwayGetProject(r.projectId);
+      const proj = await railwayGetProject(projSummary.id);
       if (!proj) {
-        return { content: [{ type: 'text' as const, text: JSON.stringify({ error: 'railway_project_not_found', projectId: r.projectId }, null, 2) }] };
+        return { content: [{ type: 'text' as const, text: JSON.stringify({ error: 'railway_project_not_found', projectId: projSummary.id }, null, 2) }] };
+      }
+      const env =
+        proj.environments.edges.find((e) => e.node.name === 'production') ??
+        proj.environments.edges[0];
+      if (!env) {
+        return { content: [{ type: 'text' as const, text: JSON.stringify({ error: 'railway_no_environment', projectId: projSummary.id }, null, 2) }] };
       }
       const svc = proj.services.edges.find((s) => s.node.name === serviceName);
       if (!svc) {
-        return { content: [{ type: 'text' as const, text: JSON.stringify({ error: 'railway_service_not_found', serviceName, projectId: r.projectId, knownServices: proj.services.edges.map((s) => s.node.name) }, null, 2) }] };
+        return { content: [{ type: 'text' as const, text: JSON.stringify({ error: 'railway_service_not_found', serviceName, projectId: projSummary.id, knownServices: proj.services.edges.map((s) => s.node.name) }, null, 2) }] };
       }
-      const detail = await railwayGetServiceInstance(r.projectId, r.environmentId, svc.node.id);
+      const detail = await railwayGetServiceInstance(projSummary.id, env.node.id, svc.node.id);
       const result = {
         system: systemName,
         serviceName,
         timestamp: new Date().toISOString(),
-        railwayProjectId: r.projectId,
-        railwayEnvironmentId: r.environmentId,
+        railwayProjectId: projSummary.id,
+        railwayEnvironmentId: env.node.id,
         serviceId: svc.node.id,
         ...(detail ?? {}),
       };
@@ -867,9 +879,9 @@ export function registerTools(server: McpServer): void {
       providerId: z.string().optional().default('github-provider').describe('WIF provider ID (default: github-provider)'),
     },
     async ({ systemName, poolId, providerId }) => {
-      const m = await loadManifest(systemName);
+      const m = await resolveSystem(systemName);
       if (!m.gcpProjectId) {
-        return { content: [{ type: 'text' as const, text: JSON.stringify({ error: 'no_gcp_project', message: 'manifest has no gcpProjectId' }, null, 2) }] };
+        return { content: [{ type: 'text' as const, text: JSON.stringify({ error: 'no_gcp_project', message: 'could not resolve GCP project from repo var GCP_PROJECT_ID' }, null, 2) }] };
       }
       const projectNumber = await gcpGetProjectNumber(m.gcpProjectId);
       try {

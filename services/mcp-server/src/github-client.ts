@@ -93,6 +93,34 @@ export async function getRepoFile(path: string, ref: string = 'main'): Promise<s
   return Buffer.from(data.content, 'base64').toString('utf8');
 }
 
+// Read a repository Actions variable (e.g. GCP_PROJECT_ID) from any repo the
+// App installation covers. Returns the value, or null if the variable (or the
+// repo) is not found. Used by resolveSystem to locate a system's GCP project
+// without a manifest. Read access relies on the broker App's administration
+// grant — the same grant provision-system.yml uses to WRITE these variables —
+// so a future permission tightening degrades to null (caller falls back).
+export async function getRepoVariable(
+  owner: string,
+  repo: string,
+  name: string,
+): Promise<string | null> {
+  const token = await installationToken();
+  const resp = await fetch(
+    `https://api.github.com/repos/${owner}/${repo}/actions/variables/${encodeURIComponent(name)}`,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/vnd.github+json',
+        'X-GitHub-Api-Version': '2022-11-28',
+      },
+    },
+  );
+  if (resp.status === 404) return null;
+  if (!resp.ok) throw new Error(`GitHub getRepoVariable ${owner}/${repo} ${name} → ${resp.status}`);
+  const data = (await resp.json()) as { value: string };
+  return data.value;
+}
+
 // Cross-repo GET. Used by verify_github_system to inspect generated repos
 // (edri2or/<systemName>). Requires the App installation to cover those repos.
 export async function apiGetRepo(owner: string, repo: string, path: string): Promise<unknown> {
