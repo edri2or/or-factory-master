@@ -1344,8 +1344,38 @@ jobs:
                     '{($f):$e, password:$p}')" \
               || echo "000"
           }
-          HTTP=$(_login "emailOrLdapLoginId")
-          [ "$HTTP" = "200" ] || HTTP=$(_login "email")
+
+          # Resilient n8n REST call for post-login requests. Retries ONLY on "000" — a
+          # curl-level failure where no HTTP request reached the server (e.g. Railway's
+          # freshly-issued custom-domain cert briefly serving a non-matching cert →
+          # curl (60) SAN mismatch, seen right after the TLS-wait step). Retrying "000"
+          # is safe even for POSTs: the request never hit the server, so it cannot
+          # double-create. Never retries a real HTTP status. Echoes the code (or "000").
+          _napi() {
+            local method="$1" url="$2" out="$3" data="${4:-}" i http
+            for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
+              if [ -n "$data" ]; then
+                http=$(curl -sS -o "$out" -w '%{http_code}' --max-time 20 \
+                  -b "$COOKIE_JAR" -X "$method" -H "Content-Type: application/json" -d "$data" "$url" || echo "000")
+              else
+                http=$(curl -sS -o "$out" -w '%{http_code}' --max-time 20 \
+                  -b "$COOKIE_JAR" -X "$method" "$url" || echo "000")
+              fi
+              [ "$http" != "000" ] && { printf '%s' "$http"; return 0; }
+              sleep 5
+            done
+            printf '000'
+          }
+
+          # Login, riding out the same transient cert flap (retry on any non-200,
+          # trying both n8n login field names each pass).
+          HTTP="000"
+          for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
+            HTTP=$(_login "emailOrLdapLoginId")
+            [ "$HTTP" = "200" ] || HTTP=$(_login "email")
+            [ "$HTTP" = "200" ] && break
+            sleep 5
+          done
           if [ "$HTTP" != "200" ]; then
             echo "FAIL: POST $BASE/rest/login HTTP $HTTP" >&2
             head -c 400 /tmp/or-login.json >&2 || true; echo >&2
@@ -1356,8 +1386,7 @@ jobs:
           # 3. Credential idempotency: reuse by name, else create. Both apiKey AND url are
           #    required — n8n 1.121.0's openRouterApi validator rejects a partial data
           #    object even though url is marked hidden in the credential source.
-          HTTP=$(curl -sS -o /tmp/or-creds.json -w '%{http_code}' --max-time 15 \
-            -b "$COOKIE_JAR" "$BASE/rest/credentials")
+          HTTP=$(_napi GET "$BASE/rest/credentials" /tmp/or-creds.json)
           [ "$HTTP" = "200" ] || { echo "FAIL: GET /rest/credentials HTTP $HTTP" >&2; head -c 400 /tmp/or-creds.json >&2 || true; _soft_exit0 "GET /rest/credentials נכשל (HTTP $HTTP)"; }
           CRED_ID=$(jq -r --arg n "$CRED_NAME" \
             '[(.data // .) | .[]? | select(.name==$n)][0].id // empty' /tmp/or-creds.json)
@@ -1366,9 +1395,7 @@ jobs:
           else
             CRED_BODY=$(jq -cn --arg n "$CRED_NAME" --arg k "$OR_KEY" --arg u "$OR_CRED_URL" \
               '{name:$n, type:"openRouterApi", data:{apiKey:$k, url:$u}}')
-            HTTP=$(curl -sS -o /tmp/or-cred-new.json -w '%{http_code}' --max-time 15 \
-              -b "$COOKIE_JAR" -X POST "$BASE/rest/credentials" \
-              -H "Content-Type: application/json" -d "$CRED_BODY")
+            HTTP=$(_napi POST "$BASE/rest/credentials" /tmp/or-cred-new.json "$CRED_BODY")
             if [ "$HTTP" != "200" ] && [ "$HTTP" != "201" ]; then
               echo "FAIL: POST /rest/credentials HTTP $HTTP" >&2; head -c 400 /tmp/or-cred-new.json >&2 || true; echo >&2; _soft_exit0 "POST /rest/credentials נכשל (HTTP $HTTP)"
             fi
@@ -1379,8 +1406,7 @@ jobs:
 
           # 4. Workflow idempotency: reuse by name, else create. The webhook path is what
           #    we test-fire; recover it from the existing workflow on a redeploy.
-          HTTP=$(curl -sS -o /tmp/or-wfs.json -w '%{http_code}' --max-time 15 \
-            -b "$COOKIE_JAR" "$BASE/rest/workflows")
+          HTTP=$(_napi GET "$BASE/rest/workflows" /tmp/or-wfs.json)
           [ "$HTTP" = "200" ] || { echo "FAIL: GET /rest/workflows HTTP $HTTP" >&2; head -c 400 /tmp/or-wfs.json >&2 || true; _soft_exit0 "GET /rest/workflows נכשל (HTTP $HTTP)"; }
           WF_ID=$(jq -r --arg n "$WF_NAME" \
             '[(.data // .) | .[]? | select(.name==$n)][0].id // empty' /tmp/or-wfs.json)
@@ -1388,7 +1414,7 @@ jobs:
           if [ -n "$WF_ID" ]; then
             echo "INFO: workflow '${WF_NAME}' exists — skipping create (id=${WF_ID})"
             # Recover the webhook path from the full workflow object for the test-fire.
-            curl -sS -o /tmp/or-wf-get.json --max-time 15 -b "$COOKIE_JAR" "$BASE/rest/workflows/${WF_ID}" || true
+            _napi GET "$BASE/rest/workflows/${WF_ID}" /tmp/or-wf-get.json >/dev/null || true
             WEBHOOK_PATH=$(jq -r '((.data // .).nodes // [])[] | select(.name=="Webhook") | (.parameters.path // .webhookId) // empty' /tmp/or-wf-get.json 2>/dev/null | head -n1)
           else
             WEBHOOK_PATH="or-demo-$(cat /proc/sys/kernel/random/uuid)"
@@ -1434,9 +1460,7 @@ jobs:
                 },
                 settings: { executionOrder: "v1" }
               }')
-            HTTP=$(curl -sS -o /tmp/or-wf.json -w '%{http_code}' --max-time 15 \
-              -b "$COOKIE_JAR" -X POST "$BASE/rest/workflows" \
-              -H "Content-Type: application/json" -d "$WF_BODY")
+            HTTP=$(_napi POST "$BASE/rest/workflows" /tmp/or-wf.json "$WF_BODY")
             if [ "$HTTP" != "200" ] && [ "$HTTP" != "201" ]; then
               echo "FAIL: POST /rest/workflows HTTP $HTTP" >&2; head -c 600 /tmp/or-wf.json >&2 || true; echo >&2; _soft_exit0 "POST /rest/workflows נכשל (HTTP $HTTP)"
             fi
@@ -1446,12 +1470,9 @@ jobs:
           fi
 
           # 5. Activate (idempotent). Try the dedicated endpoint, fall back to PATCH.
-          HTTP=$(curl -sS -o /tmp/or-activate.json -w '%{http_code}' --max-time 15 \
-            -b "$COOKIE_JAR" -X POST "$BASE/rest/workflows/${WF_ID}/activate")
+          HTTP=$(_napi POST "$BASE/rest/workflows/${WF_ID}/activate" /tmp/or-activate.json)
           if [ "$HTTP" != "200" ] && [ "$HTTP" != "204" ]; then
-            HTTP=$(curl -sS -o /tmp/or-activate.json -w '%{http_code}' --max-time 15 \
-              -b "$COOKIE_JAR" -X PATCH "$BASE/rest/workflows/${WF_ID}" \
-              -H "Content-Type: application/json" -d '{"active":true}')
+            HTTP=$(_napi PATCH "$BASE/rest/workflows/${WF_ID}" /tmp/or-activate.json '{"active":true}')
           fi
           [ "$HTTP" = "200" ] || [ "$HTTP" = "204" ] || echo "WARN: workflow activation HTTP $HTTP (continuing to test-fire)" >&2
 
