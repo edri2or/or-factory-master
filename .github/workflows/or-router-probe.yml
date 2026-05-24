@@ -21,11 +21,14 @@ jobs:
         env:
           WEBHOOK_URL: https://n8n-factory-test-33.or-infra.com/webhook/or-demo-1937b83d-49ae-48a4-ad8c-cdd9ba7c29b7
         run: |
-          set -uo pipefail
+          # GitHub injects `bash -e`; disable errexit so one slow/failed call
+          # never aborts the others. UTF-8 locale so wc -m / substring count
+          # CHARACTERS (not bytes) for the Hebrew responses.
+          set +e
+          export LC_ALL=C.UTF-8
 
           # Retry only on handshake/connect-class curl errors (rc 6/7/35/56/60):
           # no HTTP request reached the server, so a retry cannot double-charge.
-          # Any real HTTP status (even non-200) is returned as-is.
           fire() {
             local i rc out
             for i in 1 2 3 4 5 6; do
@@ -81,18 +84,22 @@ jobs:
               (.output // .[0].output // .text // .[0].text // .message // .data.output // .json.output // empty)
               // (if type=="string" then . else empty end)' 2>/dev/null)
             [ -n "$text" ] || text="$body"
+
+            # wc reads its whole input (no early close → no SIGPIPE / broken pipe).
             words=$(printf '%s' "$text" | wc -w | tr -d ' ')
-            first100=$(printf '%s' "$text" | head -c 100)
+            chars=$(printf '%s' "$text" | wc -m | tr -d ' ')
+            first100="${text:0:100}"   # char-accurate under LC_ALL=C.UTF-8
 
             echo "MODEL: $model"
             echo "WORDS: $words"
+            echo "CHARS: $chars"
             echo "FIRST100: $first100"
 
             {
               echo "### Call ${LABEL[$i]}"
               echo "- HTTP: \`$http\` (fire_rc=$firerc), time ${tt}s, sent $ts"
               echo "- Model: \`$model\`"
-              echo "- Words: **$words**"
+              echo "- Words: **$words**  |  Chars: $chars"
               echo "- First 100 chars: $first100"
               echo ""
             } >> "$GITHUB_STEP_SUMMARY"
