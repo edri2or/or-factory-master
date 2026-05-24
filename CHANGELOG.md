@@ -1,10 +1,17 @@
 # Changelog
 
-## Stage 36 — chore: temporary OpenRouter model-attribution probe (removed after use)
+## Stage 37 — chore: temporary OpenRouter model-attribution probe (removed after use)
 
 | PR | Type | Summary |
 |---|---|---|
-| TBD | chore | Added `.github/workflows/or-model-probe.yml`, a throwaway diagnostic that runs only on `main` (broker WIF), reads `factory-test-33`'s per-system `openrouter-api-key` from the shared test project (`factory-test-25`) SM, and calls OpenRouter directly with `model=openrouter/auto` for 3 prompts to surface the resolved `.model` NotDiamond routes each to (the field n8n's AI Agent node drops from the webhook response). Path-filtered to its own file so it fires once on merge. To be removed in a follow-up once results are captured. |
+| TBD | chore | Added `.github/workflows/or-model-probe.yml` (throwaway): runs only on `main` (broker WIF), reads `factory-test-33`'s `openrouter-api-key` from `factory-test-25` SM, and calls OpenRouter directly with `model=openrouter/auto` for the 3 prompts to surface the resolved `.model` NotDiamond picks (which n8n's AI Agent node drops). Removed in a follow-up after results are captured. |
+
+## Stage 36 — mcp: verify_* tools resolve systems via repo vars, not manifests
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | fix | `services/mcp-server/src/{tools,manifest-helper,github-client}.ts`: the read-only verifier tools (`verify_gcp_system`/`verify_github_system`/`verify_railway_system`/`verify_cloudflare_system`/`list_system_secrets`/`inspect_railway_service`/`inspect_wif_provider`) loaded `factory/manifests/<name>.yml`, but this factory never writes manifests — every call 404'd (hit live verifying `factory-test-33`). New `resolveSystem()` + `getRepoVariable()` resolve a system manifest-free: `githubRepo=edri2or/<name>`, `gcpProjectId` from the repo's `GCP_PROJECT_ID` variable (shared project in reuse/test mode, `<name>` in normal mode). `verify_railway_system` + `inspect_railway_service` now resolve the Railway project live by name (`==systemName`) + `production` env, matching `postgres`/`n8n` by name. `verify_cloudflare_system` degrades to a graceful skip pointing at the direct DNS/probe tools. Removed dead `loadManifest` + its `yaml`/`getRepoFile` imports. |
+| TBD | fix | `services/mcp-server/src/tools.ts`: `verify_gcp_system`'s "project-under-correct-folder" check used a stale folder id (`293382608212`, failed 100% of the time); corrected to the real Systems folder `123180924297` (now module-level `SYSTEMS_FOLDER_ID`). |
 
 ## Stage 35 — ops: bulk-decommission workflow also prunes leftover Cloudflare DNS
 

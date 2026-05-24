@@ -1,9 +1,10 @@
-// Manifest helper. Loads a system manifest from edri2or/factory main
-// (via the existing GitHub App token) and extracts identifiers needed
-// by the verifier tools.
+// System resolution helper for the verifier tools. This factory never writes
+// manifest files (factory/manifests/*.yml), so a system's identifiers are
+// derived at call time from its GitHub repo name and its GCP_PROJECT_ID repo
+// variable (see resolveSystem). Also holds the shared Check / Condition /
+// VerifyResult types every verify_* tool returns.
 
-import yaml from 'js-yaml';
-import { getRepoFile } from './github-client.js';
+import { getRepoVariable } from './github-client.js';
 
 // Typed error for 404 responses. Lets callers detect "not found" via
 // `instanceof` rather than substring-matching on error messages.
@@ -37,13 +38,15 @@ export interface SystemManifest {
   manifestSchemaVersion?: string;
 }
 
-export async function loadManifest(systemName: string): Promise<SystemManifest> {
-  const text = await getRepoFile(`factory/manifests/${systemName}.yml`);
-  const doc = yaml.load(text) as SystemManifest;
-  if (!doc || typeof doc !== 'object' || !doc.systemName) {
-    throw new Error(`Invalid manifest for ${systemName}`);
-  }
-  return doc;
+// Resolve a system to the identifiers the verifier tools need, without reading
+// a manifest file. githubRepo is always edri2or/<name>; gcpProjectId comes from
+// the system repo's GCP_PROJECT_ID variable (= the shared backend project in
+// reuse/test mode, = <name> in normal mode), set by provision-system.yml.
+// Falls back to <name> if the variable is absent (normal-mode convention).
+export async function resolveSystem(systemName: string): Promise<SystemManifest> {
+  const githubRepo = `edri2or/${systemName}`;
+  const gcpProjectId = (await getRepoVariable('edri2or', systemName, 'GCP_PROJECT_ID')) ?? systemName;
+  return { systemName, githubRepo, gcpProjectId };
 }
 
 export interface Condition {
