@@ -443,6 +443,40 @@ jobs:
             || { echo "FAIL: push deploy workflow HTTP ${http_code}: ${body}" >&2; exit 1; }
           echo "PASS: deploy-railway-cloudflare.yml pushed to edri2or/${SYSTEM_NAME}:main"
 
+      - name: Push global skills package to system repo
+        env:
+          SYSTEM_NAME: ${{ inputs.system_name }}
+        run: |
+          set -euo pipefail
+          # Scaffold the global skills package (.claude/commands/*.md) into the
+          # new repo so every system ships with the factory's reusable skills.
+          # Runs before branch protection so the push to main needs no bypass.
+          # APP_TOKEN is masked (::add-mask::); keep `set -x` off so the token
+          # embedded in the clone URL is never echoed.
+          SRC="${GITHUB_WORKSPACE}/templates/system/.claude/commands"
+          [ -d "$SRC" ] || { echo "FAIL: skills source not found at $SRC" >&2; exit 1; }
+          COUNT=$(find "$SRC" -maxdepth 1 -name '*.md' | wc -l | tr -d ' ')
+          [ "$COUNT" -ge 1 ] || { echo "FAIL: no skill files to push (found $COUNT)" >&2; exit 1; }
+
+          CLONE_DIR=$(mktemp -d)
+          git clone --depth 1 \
+            "https://x-access-token:${APP_TOKEN}@github.com/edri2or/${SYSTEM_NAME}.git" \
+            "$CLONE_DIR" 2>/dev/null \
+            || { echo "FAIL: could not clone edri2or/${SYSTEM_NAME}" >&2; exit 1; }
+
+          mkdir -p "$CLONE_DIR/.claude/commands"
+          cp "$SRC"/*.md "$CLONE_DIR/.claude/commands/"
+
+          git -C "$CLONE_DIR" config user.name "or-factory-master[bot]"
+          git -C "$CLONE_DIR" config user.email "factory-master-broker@or-factory-master-control.iam.gserviceaccount.com"
+          git -C "$CLONE_DIR" add .claude/commands
+          git -C "$CLONE_DIR" commit -q -m "ci: scaffold global skills package (from or-factory-master)"
+          git -C "$CLONE_DIR" push -q origin HEAD:main \
+            || { echo "FAIL: could not push skills to edri2or/${SYSTEM_NAME}:main" >&2; exit 1; }
+
+          rm -rf "$CLONE_DIR"
+          echo "PASS: ${COUNT} global skills pushed to edri2or/${SYSTEM_NAME}:main (.claude/commands/)."
+
       - name: Branch protection on main
         env:
           SYSTEM_NAME: ${{ inputs.system_name }}
