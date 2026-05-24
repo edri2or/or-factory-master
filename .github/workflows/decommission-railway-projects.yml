@@ -1,8 +1,10 @@
 name: Decommission Railway Projects (bulk, keep-list)
 
 # Manual dispatch only. Deletes EVERY Railway project the factory token can see,
-# across ALL workspaces, EXCEPT those whose project id is in `keep_ids`.
-# Railway-ONLY: touches no GCP project, Secret Manager, GitHub repo, or DNS.
+# across ALL workspaces, EXCEPT those whose project id is in `keep_ids`, AND the
+# leftover factory Cloudflare DNS records (n8n-* CNAME + _railway-verify.* TXT in
+# or-infra.com) for every system except the keepers.
+# Touches no GCP project, Secret Manager, or GitHub repo.
 #
 # Safety: defaults to dry-run. A real delete requires dry_run=false AND
 # confirm=DELETE, refuses an empty keep-list, and aborts if none of the keep_ids
@@ -51,6 +53,7 @@ jobs:
       BROKER_SA: "factory-master-broker@or-factory-master-control.iam.gserviceaccount.com"
       WIF_PROVIDER: "projects/140345952904/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
       RAILWAY_GQL: "https://backboard.railway.com/graphql/v2"
+      CF_API: "https://api.cloudflare.com/client/v4"
 
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
@@ -95,6 +98,23 @@ jobs:
           echo "::add-mask::${RAILWAY_TOKEN}"
           echo "RAILWAY_TOKEN=${RAILWAY_TOKEN}" >> "$GITHUB_ENV"
 
+      - name: Read Cloudflare credentials from Secret Manager
+        run: |
+          set -euo pipefail
+          _sm_read() { gcloud secrets versions access latest --secret="$1" --project="${GCP_PROJECT}" 2>/dev/null || echo ""; }
+          CF_TOKEN_CREATOR=$(_sm_read "cloudflare-token-creator")
+          CF_ZONE_ID=$(_sm_read "cloudflare-zone-id-or-infra")
+          if [ -n "$CF_TOKEN_CREATOR" ]; then
+            echo "::add-mask::${CF_TOKEN_CREATOR}"
+            echo "PASS: Cloudflare creds loaded (zone ${CF_ZONE_ID})."
+          else
+            echo "::warning::cloudflare-token-creator not found in ${GCP_PROJECT} SM — DNS cleanup will be skipped"
+          fi
+          {
+            echo "CF_TOKEN_CREATOR=${CF_TOKEN_CREATOR}"
+            echo "CF_ZONE_ID=${CF_ZONE_ID}"
+          } >> "$GITHUB_ENV"
+
       - name: List all Railway projects (every workspace) and compute plan
         run: |
           set -euo pipefail
@@ -129,6 +149,7 @@ jobs:
           fi
 
           : > /tmp/delete_ids.tsv
+          : > /tmp/keep_dns.txt
           KEEP_MATCHED=0
           {
             echo "## Railway cleanup plan"
@@ -143,6 +164,8 @@ jobs:
               KEEP_MATCHED=$((KEEP_MATCHED + 1))
               echo "KEEP    ${name}  (${id})  [${ws}]"
               printf '| KEEP | %s | `%s` | %s |\n' "$name" "$id" "$ws" >> "$GITHUB_STEP_SUMMARY"
+              # Preserve this keeper's factory DNS records from the Cloudflare cleanup.
+              printf 'n8n-%s.or-infra.com\n_railway-verify.n8n-%s.or-infra.com\n' "$name" "$name" >> /tmp/keep_dns.txt
             else
               printf '%s\t%s\t%s\n' "$id" "$name" "$ws" >> /tmp/delete_ids.tsv
               echo "DELETE  ${name}  (${id})  [${ws}]"
@@ -218,6 +241,111 @@ jobs:
             exit 1
           fi
 
+      - name: Cloudflare DNS cleanup (plan + delete)
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CF_TOKEN_CREATOR:-}" ] || [ -z "${CF_ZONE_ID:-}" ]; then
+            echo "SKIP: no Cloudflare creds — DNS cleanup skipped."
+            { echo "DNS_DELETE_COUNT=0"; echo "DNS_DELETED=0"; echo "DNS_FAILED=0"; } >> "$GITHUB_ENV"
+            exit 0
+          fi
+
+          # Mint a 1h scoped DNS:Edit token (same pattern as decommission-test-system.yml);
+          # revoke on exit. The DNS:Edit permission group also allows listing the zone.
+          EXPIRES=$(date -u -d '+1 hour' +%Y-%m-%dT%H:%M:%SZ)
+          TOKEN_RESP=$(curl -sS -X POST "${CF_API}/user/tokens" \
+            -H "Authorization: Bearer ${CF_TOKEN_CREATOR}" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -cn --arg name "bulk-dns-cleanup" --arg zone "$CF_ZONE_ID" --arg exp "$EXPIRES" \
+              '{name:$name,policies:[{effect:"allow",resources:{("com.cloudflare.api.account.zone."+$zone):"*"},permission_groups:[{id:"4755a26eedb94da69e1066d98aa820be"}]}],expires_on:$exp}')")
+          DNS_TOKEN=$(printf '%s' "$TOKEN_RESP" | jq -r '.result.value // empty')
+          DNS_TOKEN_ID=$(printf '%s' "$TOKEN_RESP" | jq -r '.result.id // empty')
+          [ -n "$DNS_TOKEN" ] || { echo "FAIL: could not mint scoped DNS token: $(printf '%s' "$TOKEN_RESP" | jq -c '{success,errors}')" >&2; exit 1; }
+          echo "::add-mask::${DNS_TOKEN}"
+          revoke_token() {
+            [ -n "${DNS_TOKEN_ID:-}" ] && curl -sS -X DELETE "${CF_API}/user/tokens/${DNS_TOKEN_ID}" \
+              -H "Authorization: Bearer ${CF_TOKEN_CREATOR}" >/dev/null 2>&1 && echo "DNS token revoked." || true
+          }
+          trap revoke_token EXIT
+
+          # List all DNS records in the zone (paginated).
+          : > /tmp/dns_all.tsv
+          page=1
+          while :; do
+            resp=$(curl -sS "${CF_API}/zones/${CF_ZONE_ID}/dns_records?per_page=100&page=${page}" \
+              -H "Authorization: Bearer ${DNS_TOKEN}")
+            [ "$(printf '%s' "$resp" | jq -r '.success')" = "true" ] || { echo "FAIL: CF list page ${page}: $(printf '%s' "$resp" | jq -c '.errors // .')" >&2; exit 1; }
+            printf '%s' "$resp" | jq -r '.result[] | [.id, .type, .name] | @tsv' >> /tmp/dns_all.tsv
+            total_pages=$(printf '%s' "$resp" | jq -r '.result_info.total_pages // 1')
+            [ "$page" -ge "$total_pages" ] && break
+            page=$((page + 1))
+          done
+
+          # Keep only factory-pattern records: n8n-* CNAME and _railway-verify.n8n-* TXT.
+          # KEEP if the FQDN is a keeper's (in /tmp/keep_dns.txt), else DELETE.
+          : > /tmp/dns_delete.tsv
+          {
+            echo ""
+            echo "## Cloudflare DNS cleanup plan"
+            echo ""
+            echo "| Action | Type | Name |"
+            echo "|---|---|---|"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          DNS_KEEP=0
+          while IFS="$(printf '\t')" read -r rid rtype rname; do
+            [ -n "$rid" ] || continue
+            case "${rtype}:${rname}" in
+              CNAME:n8n-*) ;;
+              TXT:_railway-verify.n8n-*) ;;
+              *) continue ;;
+            esac
+            if grep -qxF "$rname" /tmp/keep_dns.txt; then
+              DNS_KEEP=$((DNS_KEEP + 1))
+              echo "KEEP    ${rtype}  ${rname}"
+              printf '| KEEP | %s | %s |\n' "$rtype" "$rname" >> "$GITHUB_STEP_SUMMARY"
+            else
+              printf '%s\t%s\t%s\n' "$rid" "$rtype" "$rname" >> /tmp/dns_delete.tsv
+              echo "DELETE  ${rtype}  ${rname}"
+              printf '| DELETE | %s | %s |\n' "$rtype" "$rname" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done < /tmp/dns_all.tsv
+
+          DNS_DELETE_COUNT=$(wc -l < /tmp/dns_delete.tsv | tr -d ' ')
+          echo "DNS: ${DNS_DELETE_COUNT} factory record(s) to delete, ${DNS_KEEP} kept."
+          echo "DNS_DELETE_COUNT=${DNS_DELETE_COUNT}" >> "$GITHUB_ENV"
+
+          if [ "$DRY_RUN" = "true" ] || [ "$CONFIRM" != "DELETE" ]; then
+            echo "DRY RUN — ${DNS_DELETE_COUNT} DNS record(s) would be deleted. Nothing deleted."
+            { echo "DNS_DELETED=0"; echo "DNS_FAILED=0"; } >> "$GITHUB_ENV"
+            exit 0
+          fi
+
+          DNS_DELETED=0
+          DNS_FAILED=0
+          while IFS="$(printf '\t')" read -r rid rtype rname; do
+            [ -n "$rid" ] || continue
+            resp=$(curl -sS -X DELETE "${CF_API}/zones/${CF_ZONE_ID}/dns_records/${rid}" \
+              -H "Authorization: Bearer ${DNS_TOKEN}" || echo '{}')
+            if [ "$(printf '%s' "$resp" | jq -r '.success')" = "true" ]; then
+              echo "PASS: deleted ${rtype} ${rname}"
+              DNS_DELETED=$((DNS_DELETED + 1))
+            else
+              echo "FAIL: delete ${rtype} ${rname}: $(printf '%s' "$resp" | jq -c '.errors // .')" >&2
+              DNS_FAILED=$((DNS_FAILED + 1))
+            fi
+          done < /tmp/dns_delete.tsv
+
+          echo "DNS deleted ${DNS_DELETED}, failed ${DNS_FAILED}, kept ${DNS_KEEP}."
+          { echo "DNS_DELETED=${DNS_DELETED}"; echo "DNS_FAILED=${DNS_FAILED}"; } >> "$GITHUB_ENV"
+          if [ "$DNS_FAILED" -gt 0 ]; then
+            echo "::error::${DNS_FAILED} DNS record(s) failed to delete (see log above)."
+            exit 1
+          fi
+
       - name: Summary
         if: always()
         env:
@@ -229,11 +357,13 @@ jobs:
             echo "### Result"
             if [ "$DRY_RUN" = "true" ] || [ "$CONFIRM" != "DELETE" ]; then
               echo "- Mode: **dry-run** (nothing deleted)"
-              echo "- Would delete: ${DELETE_COUNT:-?}, keep: ${KEEP_MATCHED:-?} (of ${TOTAL:-?} total)"
+              echo "- Railway — would delete: ${DELETE_COUNT:-?}, keep: ${KEEP_MATCHED:-?} (of ${TOTAL:-?} total)"
+              echo "- Cloudflare DNS — would delete: ${DNS_DELETE_COUNT:-?} factory record(s)"
             else
               echo "- Mode: **real delete**"
-              echo "- Deleted: ${DELETED:-?}, failed: ${FAILED:-?}, kept: ${KEEP_MATCHED:-?} (of ${TOTAL:-?} total)"
+              echo "- Railway — deleted: ${DELETED:-?}, failed: ${FAILED:-?}, kept: ${KEEP_MATCHED:-?} (of ${TOTAL:-?} total)"
+              echo "- Cloudflare DNS — deleted: ${DNS_DELETED:-?}, failed: ${DNS_FAILED:-?}"
             fi
             echo ""
-            echo "Railway-only — no GCP project, Secret Manager, GitHub repo, or DNS touched."
+            echo "Railway + Cloudflare DNS only — no GCP project, Secret Manager, or GitHub repo touched."
           } >> "$GITHUB_STEP_SUMMARY"

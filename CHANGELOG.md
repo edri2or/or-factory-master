@@ -1,5 +1,12 @@
 # Changelog
 
+## Stage 33 — ops: bulk-decommission workflow also prunes leftover Cloudflare DNS
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | feature | `.github/workflows/decommission-railway-projects.yml` now also deletes the dangling factory Cloudflare DNS records for the removed systems, not just the Railway projects. New "Read Cloudflare credentials from Secret Manager" step (reads `cloudflare-token-creator` + `cloudflare-zone-id-or-infra` from `or-factory-master-control`, masked) and a "Cloudflare DNS cleanup (plan + delete)" step that mints a 1h scoped DNS:Edit token (revoked on exit), lists the `or-infra.com` zone, and removes every `n8n-*` CNAME and `_railway-verify.n8n-*` TXT **except** the keepers' (the plan step records each keeper's FQDNs to a preserve-set). Reuses the exact mint/list/delete pattern from `decommission-test-system.yml`. Same `dry_run`/`confirm=DELETE` gates: the dry-run prints the full DNS keep/delete table (the only way to enumerate the records, since the MCP `cloudflare-zones-read-token` is a placeholder) and deletes nothing; per-record failures are reported, not fatal mid-loop. DNS is free, so this is dangling-record hygiene — deleting the Railway projects is what stops billing. |
+| TBD | chore | Rotated Stages 18-25 into `docs/changelog-archive/CHANGELOG-2026-05-24.md` (newest-first) to keep `CHANGELOG.md` under the 20 KB cap. |
+
 ## Stage 32 — ops: bulk Railway project cleanup workflow (keep-list, operator-dispatched)
 
 | PR | Type | Summary |
@@ -63,35 +70,7 @@ Provision change is repo-level (all future provisions); existing system repos ke
 
 Provision change is repo-level (all future provisions); the deploy-template change reaches systems provisioned after the edit only (per CLAUDE.md).
 
-## Stage 25 — MCP: GitOps auto-deploy on merge to main
-
-| PR | Type | Summary |
-|---|---|---|
-| TBD | feature | Add a `push` trigger (branches `main`, paths `services/mcp-server/**` + the workflow file) to `.github/workflows/deploy-mcp-server.yml`, alongside the existing `workflow_dispatch`, so a reviewed PR that changes the server (e.g. the `dispatch_workflow` allowlist) **auto-redeploys on merge** — no manual dispatch. The `concurrency` queue (`cancel-in-progress: false`), `environment: production`, and `if: github.ref=='refs/heads/main'` were already present. Security is unchanged and sits where it belongs: branch protection (PR review — the agent can't self-merge) + the WIF CEL pinned to `refs/heads/main` (off-`main` runs can't authenticate), **not** a manual button. The agent only *proposes* via PR; the human *merge* activates. Merging this PR itself fires the first auto-deploy, shipping current `main` (incl. Stage 24's allowlist) and activating `decommission-test-system`. |
-
-## Stage 24 — decommission-test-system: agent-driven test teardown
-
-| PR | Type | Summary |
-|---|---|---|
-| TBD | feature | New `.github/workflows/decommission-test-system.yml` (manual, agent-dispatchable) tears down a reuse-mode TEST system: deletes its Railway project (name-verified first), removes its Cloudflare `n8n-<name>` CNAME + `_railway-verify` TXT, archives `edri2or/<system_name>`. Reuse-aware via `shared_gcp_project`; hard-refuses control projects + `factory-test-25`; touches no GCP/SM. Added to the `dispatch_workflow` allowlist (`services/mcp-server/src/tools.ts`; one `deploy-mcp-server.yml` redeploy activates it). New skill + CLAUDE.md updates. **User-triggered only, never auto-chained.** |
-
-## Stage 23 — register-system-app: reuse-mode parity
-
-| PR | Type | Summary |
-|---|---|---|
-| TBD | feature | Extend `.github/workflows/register-system-app.yml` with the same optional `shared_gcp_project` input added to provision in Stage 22, so a system provisioned in reuse mode (no GCP project of its own) can still register its per-system GitHub App. Introduces `SYS_PROJECT` (exported to `$GITHUB_ENV` from Validate): the GCP project for the App's SM secrets + `deploy-sa`/`runtime-sa` grants — `== system_name` normally, `== shared_gcp_project` in reuse mode (guarded to test patterns, refuses control projects). Every per-system SM/SA operation now targets `SYS_PROJECT` (preflight `projects describe`, the `github-app-*` existence check, the Cloud Run receiver's `GCP_PROJECT_ID` env where it writes the credentials, secret verification, the `secretAccessor` grants + SA emails, the install-scope token reads, the repo-var secret reads, and the operator/recovery/summary text that names the SM project). Everything tied to the **repo** stays `system_name`: the App name (`<system_name>-app`), the receiver service name, `GITHUB_REPO` (App install scope), the narrow-scope check (`total_count==1 && first==edri2or/<system_name>`), and the `APP_ID`/`APP_INSTALLATION_ID` repo vars. Empty input → byte-identical to the prior behavior. Reuse nuance: the `github-app-*` secrets land in the shared project's SM, which provision's clean-secrets wipes on the next reuse run — fine for one-off tests, re-register after a re-clean. Still a HITL 2-click step. |
-
-Opt-in per dispatch; normal `register-system-app.yml` runs (no `shared_gcp_project`) are unchanged.
-
-## Stage 22 — provision: reuse-mode (shared GCP test project; fresh repo/Railway/secrets)
-
-| PR | Type | Summary |
-|---|---|---|
-| TBD | feature | Add an optional `shared_gcp_project` input to `.github/workflows/provision-system.yml` so repeated end-to-end tests can reuse one fixed GCP project instead of creating a new one each run (the GCP project-creation quota is exhausted at 156 active+soft-deleted; soft-deleted projects keep counting for 30 days). **Empty input → behavior is byte-identical to before** (creates a new project; `gcp_project` output falls back to `system_name`). **Set to a test project (`factory-test-*`/`v2-test-*`/`or-test-*`) → reuse mode:** the `Create GCP project + link billing` step, the normal WIF-create step, and the per-repo `deploy-sa` workloadIdentityUser binding are gated `if: reuse != 'true'`; all other GCP-operating steps target a new `$GCP_PROJECT` env (== `system_name` in normal mode). The repo, Railway, Cloudflare, and all secrets stay fresh every run — only the GCP project + its billing link are reused (the deploy template already reads `GCP_PROJECT_ID` and `SYSTEM_NAME` as separate repo vars, so it needs no change). Reuse mode adds three steps: (a) idempotent WIF widening via a `test_pool` custom attribute-mapping (`assertion.repository.startsWith('edri2or/factory-test-') ? 'factory-test' : 'blocked'`) + matching attribute-condition, so any `factory-test-*` repo on `main` authenticates with **no per-test WIF mutation** ("set once", self-healing); (b) a `deploy-sa` `workloadIdentityUser` binding on the `attribute.test_pool/factory-test` principalSet (set semantics — idempotent); (c) a clean-secrets step. New `scripts/clean-project-secrets.sh` wipes every Secret Manager secret in the shared project before generics are re-copied and runtime shells re-created (the deploy workflow regenerates `n8n-encryption-key`/`n8n-owner-password`/`railway-*` on first deploy, so a wipe is safe and login still works) — hard-guarded to the test patterns and refusing both control projects, mirroring `decommission-test-projects.yml`. `Create runtime-sa and deploy-sa` is now idempotent (describe-then-create) so reuse runs don't abort on `ALREADY_EXISTS`. Repo vars in reuse mode: `GCP_WIF_PROVIDER`/`GCP_DEPLOY_SA`/`GCP_PROJECT_ID` point at the shared project, `SYSTEM_NAME` stays the repo. **Security tradeoff (accepted):** in reuse mode any `edri2or/factory-test-*` repo on `main` can impersonate the shared project's `deploy-sa` and read/write its (throwaway, per-run-regenerated) secrets — contained to a dedicated test project. No new GCP SA keys, no new secret types, billing stays linked (never unlinked/relinked per run). |
-
-Reuse mode is opt-in per dispatch; production provisioning (no `shared_gcp_project`) is unchanged. First reuse run against a project sets up its `test_pool` WIF; subsequent runs are no-ops on WIF/IAM and only re-clean + re-seed secrets.
-
-Stages 6-10 archived to `docs/changelog-archive/CHANGELOG-2026-05-22.md`; Stages 11-17 to `docs/changelog-archive/CHANGELOG-2026-05-23.md`; Stages 18-21 to `docs/changelog-archive/CHANGELOG-2026-05-24.md` — keeping this file under the 20 KB scan-friendly cap.
+Stages 6-10 archived to `docs/changelog-archive/CHANGELOG-2026-05-22.md`; Stages 11-17 to `docs/changelog-archive/CHANGELOG-2026-05-23.md`; Stages 18-25 to `docs/changelog-archive/CHANGELOG-2026-05-24.md` — keeping this file under the 20 KB scan-friendly cap.
 
 ## Bootstrap stages 1-4
 
