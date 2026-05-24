@@ -146,9 +146,11 @@ Source of truth: `gcloud secrets list --project=or-factory-master-control`.
 
 Three buckets:
 
-1. **App credentials (3, never copied to system projects)** — `factory-master-broker-app-{id,installation-id,private-key}`. The broker SA reads them at the start of every workflow run to mint an installation token.
-2. **Generic API keys (16, copied to every system project)** — `anthropic-api-key`, `openai-api-key`, `openrouter-management-key`, `perplexity-api-key`, `opencode-api-key`, `deepseek-api-key`, `google-api-key`, `linear-api-key`, `linear-team-id`, `stripe-api-key`, `telegram-chat-id`, `telegram-bot-token`, `railway-api-token`, `cloudflare-token-creator`, `cloudflare-account-id`, `cloudflare-zone-id-or-infra`. Copied by `scripts/copy-generic-secrets.sh` during `provision-system.yml`.
-3. **Anything else** — currently nothing. The `EXCLUDE` regex in the copy script is narrow on purpose (`^factory-master-broker-app-(id|private-key|installation-id)$`); any new secret added to control SM will be copied to every system unless the regex is updated.
+1. **App credentials + super-credentials (never copied to system projects)** —
+   - `factory-master-broker-app-{id,installation-id,private-key}`. The broker SA reads them at the start of every workflow run to mint an installation token.
+   - `openrouter-management-key` — the OpenRouter **management (provisioning) key**, which can mint/list/revoke inference keys for the entire OpenRouter account. It lives **only** in control SM and is used solely inside `provision-system.yml` (to mint a per-system inference key) and `decommission-test-system.yml` (to revoke one). It must never reach a tenant SM. The per-system `openrouter-api-key` (the actual `sk-or-v1-…` inference key) and its `openrouter-key-hash` are **minted per system** into each tenant SM by provision — they do not exist in control SM.
+2. **Generic API keys (15, copied to every system project)** — `anthropic-api-key`, `openai-api-key`, `perplexity-api-key`, `opencode-api-key`, `deepseek-api-key`, `google-api-key`, `linear-api-key`, `linear-team-id`, `stripe-api-key`, `telegram-chat-id`, `telegram-bot-token`, `railway-api-token`, `cloudflare-token-creator`, `cloudflare-account-id`, `cloudflare-zone-id-or-infra`. Copied by `scripts/copy-generic-secrets.sh` during `provision-system.yml`.
+3. **Anything else** — currently nothing. The `EXCLUDE` regex in the copy script is `^(factory-master-broker-app-.*|.*-management-key|.*-provisioning-key|.*-master-key)$`: broker App creds plus any management/provisioning/master key are excluded by pattern, so a future super-credential is never copied without a point fix. Any **other** new secret added to control SM will still be copied to every system unless the regex is widened.
 
 ### Cloudflare API token scopes (`cloudflare-token-creator`)
 

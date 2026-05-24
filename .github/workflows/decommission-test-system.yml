@@ -131,6 +131,52 @@ jobs:
             echo "CF_ZONE_ID=${CF_ZONE_ID}"
           } >> "$GITHUB_ENV"
 
+      - name: Revoke OpenRouter inference key
+        run: |
+          set -euo pipefail
+          # Revoke this system's per-system OpenRouter inference key before teardown,
+          # using the account-wide management key (control project only). Best-effort:
+          # an orphaned inference key is not a teardown blocker, so any failure warns
+          # and continues. SYS_PROJECT is where the system's secrets live (reuse-aware).
+          OR_API="https://openrouter.ai/api/v1"
+
+          HASH=$(gcloud secrets versions access latest \
+            --secret="openrouter-key-hash" --project="$SYS_PROJECT" 2>/dev/null || echo "")
+          if [ -z "$HASH" ]; then
+            echo "INFO: no OpenRouter key to revoke, continuing"
+            exit 0
+          fi
+
+          MGMT_KEY=$(gcloud secrets versions access latest \
+            --secret="openrouter-management-key" --project="$GCP_PROJECT" 2>/dev/null || echo "")
+          if [ -z "$MGMT_KEY" ]; then
+            echo "::warning::openrouter-management-key unavailable in ${GCP_PROJECT} — cannot revoke key ${HASH}; continuing teardown"
+            exit 0
+          fi
+          echo "::add-mask::${MGMT_KEY}"
+
+          set +e
+          HTTP=$(curl -sS -o /tmp/or-del.json -w '%{http_code}' --max-time 30 \
+            -X DELETE "${OR_API}/keys/${HASH}" \
+            -H "Authorization: Bearer ${MGMT_KEY}")
+          CURL_RC=$?
+          set -e
+          DELETED=$(jq -r '.deleted // empty' /tmp/or-del.json 2>/dev/null || true)
+          rm -f /tmp/or-del.json
+
+          if [ "$CURL_RC" -eq 0 ] && [ "$HTTP" = "200" ] && [ "$DELETED" = "true" ]; then
+            echo "PASS: revoked OpenRouter inference key (hash=${HASH})."
+          else
+            {
+              echo "## ⚠️ ביטול מפתח OpenRouter נכשל"
+              echo "מפתח ה-Inference (hash=\`${HASH}\`) לא בוטל (curl_rc=${CURL_RC}, http=${HTTP}). פירוק המערכת ממשיך כרגיל — ניתן לבטל ידנית מאוחר יותר:"
+              echo '```'
+              echo "curl -X DELETE ${OR_API}/keys/${HASH} -H 'Authorization: Bearer <management-key>'"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "WARN: OpenRouter key revoke failed (curl_rc=${CURL_RC}, http=${HTTP}) — continuing teardown" >&2
+          fi
+
       - name: Delete Railway project (verified by name)
         env:
           RAILWAY_PROJECT_ID_INPUT: ${{ inputs.railway_project_id }}

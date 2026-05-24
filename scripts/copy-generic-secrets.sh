@@ -31,8 +31,12 @@ echo "Runtime SA      : $RUNTIME_SA_EMAIL"
 echo "Deploy SA       : $DEPLOY_SA_EMAIL"
 echo ""
 
-# App credentials belong exclusively to the factory broker — never copied.
-EXCLUDE="^factory-master-broker-app-(id|private-key|installation-id)$"
+# Super-credentials belong exclusively to or-factory-master-control — never copied.
+# Covers the broker App creds plus any management/provisioning/master key (e.g.
+# openrouter-management-key, which can mint/revoke inference keys account-wide).
+# Pattern-based so future *-management-key / *-provisioning-key / *-master-key
+# secrets are excluded without a point fix.
+EXCLUDE="^(factory-master-broker-app-.*|.*-management-key|.*-provisioning-key|.*-master-key)$"
 
 # Secrets present in factory SM but intentionally NOT copied (shell + IAM only).
 # Empty for now — kept as a hook for future policy.
