@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 38 — chore: remove the temporary OpenRouter model-attribution probe
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | chore | Removed `.github/workflows/or-model-probe.yml` (added Stage 37) now that results are captured. `openrouter/auto` (NotDiamond) routing for the 3 test prompts: easy → `openai/gpt-5-nano`, medium + complex → `google/gemini-2.5-flash-lite`. |
+
 ## Stage 37 — chore: temporary OpenRouter model-attribution probe (removed after use)
 
 | PR | Type | Summary |
