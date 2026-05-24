@@ -524,6 +524,117 @@ jobs:
           set -euo pipefail
           bash scripts/copy-generic-secrets.sh "$GCP_PROJECT"
 
+      - name: Mint per-system OpenRouter inference key
+        env:
+          GCP_PROJECT: ${{ steps.validate.outputs.gcp_project }}
+          SYSTEM_SLUG: ${{ inputs.system_name }}
+        run: |
+          set -euo pipefail
+          # Mint a fresh, ISOLATED OpenRouter inference key for this system using the
+          # account-wide management key. That management key lives ONLY in
+          # or-factory-master-control and is never copied into a tenant SM (see the
+          # EXCLUDE pattern in copy-generic-secrets.sh). The minted key + its revocation
+          # hash land in the tenant SM. Soft-fail by design: an OpenRouter hiccup must
+          # never fail provisioning — warn (Hebrew) to the job summary and exit 0.
+          FACTORY_PROJECT="or-factory-master-control"
+          OR_API="https://openrouter.ai/api/v1"
+
+          _warn_and_exit0() {
+            {
+              echo "## ⚠️ Mint OpenRouter inference key נכשל"
+              echo "ה-provision של המערכת המשיך תקין, אבל מינטינג מפתח ה-Inference של OpenRouter נכשל."
+              echo "פעולות נדרשות:"
+              echo "1. בדוק שיש יתרה חיובית ב-OpenRouter: https://openrouter.ai/credits"
+              echo "2. בדוק שה-Management Key ב-or-factory-master-control תקף"
+              echo "3. הפעל מחדש את ה-step ידנית, או הרץ את כל ה-provision מחדש (השלבים אידמפוטנטיים)"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          }
+
+          # Idempotency: a readable openrouter-api-key version means we already minted.
+          if gcloud secrets versions access latest \
+               --secret="openrouter-api-key" --project="$GCP_PROJECT" >/dev/null 2>&1; then
+            echo "INFO: openrouter-api-key exists — skipping mint"
+            exit 0
+          fi
+
+          MGMT_KEY=$(gcloud secrets versions access latest \
+            --secret="openrouter-management-key" --project="$FACTORY_PROJECT" 2>/dev/null || true)
+          if [ -z "$MGMT_KEY" ]; then
+            echo "WARN: openrouter-management-key missing/empty in $FACTORY_PROJECT — cannot mint" >&2
+            _warn_and_exit0
+          fi
+          echo "::add-mask::${MGMT_KEY}"
+
+          REQ_BODY=$(jq -cn --arg n "$SYSTEM_SLUG" \
+            '{name:$n, limit:25, limit_reset:"monthly", include_byok_in_limit:false}')
+
+          # Scoped error handling around the external call — global set -e must not turn
+          # a transient OpenRouter failure into a failed provision.
+          set +e
+          HTTP=$(curl -sS -o /tmp/or-mint.json -w '%{http_code}' --max-time 30 \
+            -X POST "${OR_API}/keys" \
+            -H "Authorization: Bearer ${MGMT_KEY}" \
+            -H "Content-Type: application/json" \
+            -d "$REQ_BODY")
+          CURL_RC=$?
+          set -e
+
+          # The hash is a non-secret identifier (safe to log); only the live key is masked.
+          HASH=$(jq -r '.data.hash // empty' /tmp/or-mint.json 2>/dev/null || true)
+          KEY=$(jq -r '.key // empty' /tmp/or-mint.json 2>/dev/null || true)
+          [ -n "$KEY" ] && echo "::add-mask::${KEY}"
+
+          if [ "$CURL_RC" -ne 0 ] || { [ "$HTTP" != "200" ] && [ "$HTTP" != "201" ]; } || [ -z "$KEY" ]; then
+            echo "WARN: OpenRouter mint failed (curl_rc=${CURL_RC}, http=${HTTP}, key_present=$([ -n "$KEY" ] && echo yes || echo no))" >&2
+            head -c 400 /tmp/or-mint.json >&2 2>/dev/null || true; echo >&2
+            # The key string is shown exactly once. If a hash was returned but the key is
+            # unusable (any partial failure), revoke the orphan so it cannot linger.
+            if [ -n "$HASH" ]; then
+              echo "INFO: attempting orphan-key cleanup via DELETE /keys/${HASH}"
+              curl -sS -o /dev/null --max-time 30 \
+                -X DELETE "${OR_API}/keys/${HASH}" \
+                -H "Authorization: Bearer ${MGMT_KEY}" || true
+            fi
+            rm -f /tmp/or-mint.json
+            _warn_and_exit0
+          fi
+          rm -f /tmp/or-mint.json
+          echo "PASS: minted OpenRouter inference key '${SYSTEM_SLUG}' (hash=${HASH})."
+
+          RUNTIME_SA="runtime-sa@${GCP_PROJECT}.iam.gserviceaccount.com"
+          DEPLOY_SA="deploy-sa@${GCP_PROJECT}.iam.gserviceaccount.com"
+
+          # openrouter-api-key (secret) + openrouter-key-hash (identifier). Both readable
+          # by runtime-sa (runtime use) and deploy-sa (the deploy workflow authenticates
+          # as deploy-sa to create the n8n openRouterApi credential).
+          _put_secret() {
+            local name="$1" value="$2"
+            if ! gcloud secrets describe "$name" --project="$GCP_PROJECT" >/dev/null 2>&1; then
+              gcloud secrets create "$name" \
+                --project="$GCP_PROJECT" \
+                --replication-policy=automatic \
+                --labels="system=${SYSTEM_SLUG},source=openrouter-mint,managed-by=or-factory-master" \
+                --quiet
+            fi
+            gcloud secrets add-iam-policy-binding "$name" \
+              --project="$GCP_PROJECT" \
+              --role="roles/secretmanager.secretAccessor" \
+              --member="serviceAccount:${RUNTIME_SA}" \
+              --quiet >/dev/null
+            gcloud secrets add-iam-policy-binding "$name" \
+              --project="$GCP_PROJECT" \
+              --role="roles/secretmanager.secretAccessor" \
+              --member="serviceAccount:${DEPLOY_SA}" \
+              --quiet >/dev/null
+            printf '%s' "$value" | gcloud secrets versions add "$name" \
+              --project="$GCP_PROJECT" --data-file=- --quiet
+          }
+
+          _put_secret "openrouter-api-key"  "$KEY"
+          _put_secret "openrouter-key-hash" "$HASH"
+          echo "PASS: openrouter-api-key + openrouter-key-hash stored in ${GCP_PROJECT} SM."
+
       - name: Pre-create runtime secret shells
         env:
           GCP_PROJECT: ${{ steps.validate.outputs.gcp_project }}

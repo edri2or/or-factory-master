@@ -1282,6 +1282,207 @@ jobs:
           # 8. Best-effort logout. Non-fatal.
           curl -sS -o /dev/null -b "$COOKIE_JAR" -X POST "$BASE/rest/logout" || true
 
+      - name: Create OpenRouter credential + demo workflow in n8n
+        env:
+          PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          SYSTEM_NAME: ${{ vars.SYSTEM_NAME }}
+        run: |
+          set -euo pipefail
+          # On first deploy, wire OpenRouter into the freshly provisioned n8n: create an
+          # openRouterApi credential from the per-system inference key (minted by
+          # provision-system.yml, stored in this system's SM) and a demo workflow
+          # Webhook → AI Agent → OpenRouter Chat Model using model `openrouter/auto`
+          # (NotDiamond auto-routing). Uses n8n's internal /rest/* API + a fresh cookie
+          # session. Idempotent: reuses an existing credential/workflow by name. The final
+          # test-fire is informational — any OpenRouter/n8n hiccup warns (Hebrew) and the
+          # deploy still succeeds.
+          BASE="https://n8n-${SYSTEM_NAME}.or-infra.com"
+          CRED_NAME="OpenRouter (factory-master)"
+          WF_NAME="factory-master: OpenRouter auto-router demo"
+          OR_CRED_URL="https://openrouter.ai/api/v1"
+
+          # 1. Read the per-system OpenRouter inference key from this system's SM.
+          OR_KEY=$(gcloud secrets versions access latest \
+            --secret="openrouter-api-key" --project="$PROJECT_ID" 2>/dev/null || echo "")
+          if [ -z "$OR_KEY" ]; then
+            {
+              echo "## ⚠️ OpenRouter לא הוגדר ב-n8n"
+              echo "המפתח \`openrouter-api-key\` חסר או ריק ב-SM של המערכת (\`${PROJECT_ID}\`)."
+              echo "ה-credential וה-workflow של OpenRouter לא נוצרו. הפריסה נחשבת מוצלחת."
+              echo "הרץ מחדש את ה-provision (השלב אידמפוטנטי) כדי למנט מפתח, ואז פרוס מחדש."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "WARN: openrouter-api-key empty in $PROJECT_ID SM — skipping OpenRouter wiring (see job summary)"
+            exit 0
+          fi
+          echo "::add-mask::${OR_KEY}"
+
+          # 2. Independent fresh n8n login — its own cookie jar, not shared with any
+          #    earlier step.
+          COOKIE_JAR=$(mktemp)
+          trap 'rm -f "$COOKIE_JAR" /tmp/or-login.json /tmp/or-creds.json /tmp/or-cred-new.json /tmp/or-wfs.json /tmp/or-wf.json /tmp/or-wf-get.json /tmp/or-activate.json /tmp/or-hook.json' EXIT
+          _login() {
+            local field="$1"
+            curl -sS -o /tmp/or-login.json -w '%{http_code}' --max-time 15 \
+              -c "$COOKIE_JAR" \
+              -X POST "$BASE/rest/login" \
+              -H "Content-Type: application/json" \
+              -d "$(jq -cn --arg f "$field" --arg e "$N8N_OWNER_EMAIL" --arg p "$N8N_OWNER_PASSWORD" \
+                    '{($f):$e, password:$p}')" \
+              || echo "000"
+          }
+          HTTP=$(_login "emailOrLdapLoginId")
+          [ "$HTTP" = "200" ] || HTTP=$(_login "email")
+          if [ "$HTTP" != "200" ]; then
+            echo "FAIL: POST $BASE/rest/login HTTP $HTTP" >&2
+            head -c 400 /tmp/or-login.json >&2 || true; echo >&2
+            exit 1
+          fi
+          echo "PASS: n8n owner login → session cookie captured."
+
+          # 3. Credential idempotency: reuse by name, else create. Both apiKey AND url are
+          #    required — n8n 1.121.0's openRouterApi validator rejects a partial data
+          #    object even though url is marked hidden in the credential source.
+          HTTP=$(curl -sS -o /tmp/or-creds.json -w '%{http_code}' --max-time 15 \
+            -b "$COOKIE_JAR" "$BASE/rest/credentials")
+          [ "$HTTP" = "200" ] || { echo "FAIL: GET /rest/credentials HTTP $HTTP" >&2; head -c 400 /tmp/or-creds.json >&2 || true; exit 1; }
+          CRED_ID=$(jq -r --arg n "$CRED_NAME" \
+            '[(.data // .) | .[]? | select(.name==$n)][0].id // empty' /tmp/or-creds.json)
+          if [ -n "$CRED_ID" ]; then
+            echo "INFO: credential '${CRED_NAME}' exists — skipping create (id=${CRED_ID})"
+          else
+            CRED_BODY=$(jq -cn --arg n "$CRED_NAME" --arg k "$OR_KEY" --arg u "$OR_CRED_URL" \
+              '{name:$n, type:"openRouterApi", data:{apiKey:$k, url:$u}}')
+            HTTP=$(curl -sS -o /tmp/or-cred-new.json -w '%{http_code}' --max-time 15 \
+              -b "$COOKIE_JAR" -X POST "$BASE/rest/credentials" \
+              -H "Content-Type: application/json" -d "$CRED_BODY")
+            if [ "$HTTP" != "200" ] && [ "$HTTP" != "201" ]; then
+              echo "FAIL: POST /rest/credentials HTTP $HTTP" >&2; head -c 400 /tmp/or-cred-new.json >&2 || true; echo >&2; exit 1
+            fi
+            CRED_ID=$(jq -r '.data.id // .id' /tmp/or-cred-new.json)
+            [ -n "$CRED_ID" ] && [ "$CRED_ID" != "null" ] || { echo "FAIL: no credential id in response" >&2; head -c 400 /tmp/or-cred-new.json >&2 || true; exit 1; }
+            echo "PASS: openRouterApi credential created (id=${CRED_ID})."
+          fi
+
+          # 4. Workflow idempotency: reuse by name, else create. The webhook path is what
+          #    we test-fire; recover it from the existing workflow on a redeploy.
+          HTTP=$(curl -sS -o /tmp/or-wfs.json -w '%{http_code}' --max-time 15 \
+            -b "$COOKIE_JAR" "$BASE/rest/workflows")
+          [ "$HTTP" = "200" ] || { echo "FAIL: GET /rest/workflows HTTP $HTTP" >&2; head -c 400 /tmp/or-wfs.json >&2 || true; exit 1; }
+          WF_ID=$(jq -r --arg n "$WF_NAME" \
+            '[(.data // .) | .[]? | select(.name==$n)][0].id // empty' /tmp/or-wfs.json)
+
+          if [ -n "$WF_ID" ]; then
+            echo "INFO: workflow '${WF_NAME}' exists — skipping create (id=${WF_ID})"
+            # Recover the webhook path from the full workflow object for the test-fire.
+            curl -sS -o /tmp/or-wf-get.json --max-time 15 -b "$COOKIE_JAR" "$BASE/rest/workflows/${WF_ID}" || true
+            WEBHOOK_PATH=$(jq -r '((.data // .).nodes // [])[] | select(.name=="Webhook") | (.parameters.path // .webhookId) // empty' /tmp/or-wf-get.json 2>/dev/null | head -n1)
+          else
+            WEBHOOK_PATH="or-demo-$(cat /proc/sys/kernel/random/uuid)"
+            WF_BODY=$(jq -n \
+              --arg wfname  "$WF_NAME" \
+              --arg whpath  "$WEBHOOK_PATH" \
+              --arg credid  "$CRED_ID" \
+              --arg credname "$CRED_NAME" \
+              '{
+                name: $wfname,
+                nodes: [
+                  {
+                    parameters: { httpMethod: "POST", path: $whpath, responseMode: "lastNode", options: {} },
+                    id: "11111111-1111-1111-1111-111111111111",
+                    name: "Webhook",
+                    type: "n8n-nodes-base.webhook",
+                    typeVersion: 2,
+                    position: [240, 300],
+                    webhookId: $whpath
+                  },
+                  {
+                    parameters: { promptType: "define", text: "={{ $json.body.prompt || $json.query.prompt || \"Say hello in one short sentence.\" }}", options: {} },
+                    id: "22222222-2222-2222-2222-222222222222",
+                    name: "AI Agent",
+                    type: "@n8n/n8n-nodes-langchain.agent",
+                    typeVersion: 2,
+                    position: [560, 300]
+                  },
+                  {
+                    parameters: { model: "openrouter/auto", options: {} },
+                    id: "33333333-3333-3333-3333-333333333333",
+                    name: "OpenRouter Chat Model",
+                    type: "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+                    typeVersion: 1,
+                    position: [560, 540],
+                    credentials: { openRouterApi: { id: $credid, name: $credname } }
+                  }
+                ],
+                connections: {
+                  "Webhook": { main: [[{ node: "AI Agent", type: "main", index: 0 }]] },
+                  "OpenRouter Chat Model": { ai_languageModel: [[{ node: "AI Agent", type: "ai_languageModel", index: 0 }]] }
+                },
+                settings: { executionOrder: "v1" }
+              }')
+            HTTP=$(curl -sS -o /tmp/or-wf.json -w '%{http_code}' --max-time 15 \
+              -b "$COOKIE_JAR" -X POST "$BASE/rest/workflows" \
+              -H "Content-Type: application/json" -d "$WF_BODY")
+            if [ "$HTTP" != "200" ] && [ "$HTTP" != "201" ]; then
+              echo "FAIL: POST /rest/workflows HTTP $HTTP" >&2; head -c 600 /tmp/or-wf.json >&2 || true; echo >&2; exit 1
+            fi
+            WF_ID=$(jq -r '.data.id // .id' /tmp/or-wf.json)
+            [ -n "$WF_ID" ] && [ "$WF_ID" != "null" ] || { echo "FAIL: no workflow id in response" >&2; head -c 600 /tmp/or-wf.json >&2 || true; exit 1; }
+            echo "PASS: workflow created (id=${WF_ID}, webhook path=${WEBHOOK_PATH})."
+          fi
+
+          # 5. Activate (idempotent). Try the dedicated endpoint, fall back to PATCH.
+          HTTP=$(curl -sS -o /tmp/or-activate.json -w '%{http_code}' --max-time 15 \
+            -b "$COOKIE_JAR" -X POST "$BASE/rest/workflows/${WF_ID}/activate")
+          if [ "$HTTP" != "200" ] && [ "$HTTP" != "204" ]; then
+            HTTP=$(curl -sS -o /tmp/or-activate.json -w '%{http_code}' --max-time 15 \
+              -b "$COOKIE_JAR" -X PATCH "$BASE/rest/workflows/${WF_ID}" \
+              -H "Content-Type: application/json" -d '{"active":true}')
+          fi
+          [ "$HTTP" = "200" ] || [ "$HTTP" = "204" ] || echo "WARN: workflow activation HTTP $HTTP (continuing to test-fire)" >&2
+
+          WEBHOOK_URL="${BASE}/webhook/${WEBHOOK_PATH}"
+
+          # 6. Test-fire (~\$0.001). Informational only — never fail the deploy on this.
+          set +e
+          sleep 3
+          HTTP=$(curl -sS -o /tmp/or-hook.json -w '%{http_code}' --max-time 30 --retry 1 --retry-delay 5 \
+            -X POST "$WEBHOOK_URL" \
+            -H 'Content-Type: application/json' \
+            -d '{"prompt":"Reply with the single word: ok"}')
+          CURL_RC=$?
+          set -e
+
+          if [ "$CURL_RC" -eq 0 ] && [ "$HTTP" = "200" ]; then
+            MODEL=$(jq -r '(.model // .data.model // empty)' /tmp/or-hook.json 2>/dev/null || true)
+            [ -n "$MODEL" ] || MODEL="openrouter/auto (ראה https://openrouter.ai/activity)"
+            REPLY=$(jq -r '(.output // .text // .message // .) | if type=="string" then . else tostring end' /tmp/or-hook.json 2>/dev/null | head -c 200)
+            {
+              echo "## ✅ OpenRouter auto-router פעיל"
+              echo "- Workflow: ${WF_NAME}"
+              echo "- Webhook: ${WEBHOOK_URL}"
+              echo "- מודל שנבחר: ${MODEL}"
+              echo "- תגובה: ${REPLY}"
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "PASS: OpenRouter demo workflow fired (model=${MODEL})."
+          else
+            {
+              echo "## ⚠️ OpenRouter הוגדר אך הבדיקה נכשלה"
+              echo "ה-credential וה-workflow נוצרו ב-n8n, אבל הקריאה ל-webhook נכשלה."
+              echo "- Webhook: ${WEBHOOK_URL}"
+              echo ""
+              echo "בדוק:"
+              echo "1. יתרה ב-OpenRouter: https://openrouter.ai/credits"
+              echo "2. Activity log: https://openrouter.ai/activity"
+              echo "3. הפעלה ידנית: curl -X POST ${WEBHOOK_URL} -H 'Content-Type: application/json' -d '{\"prompt\":\"hi\"}'"
+              echo ""
+              echo "הפריסה נחשבת מוצלחת — הבדיקה היא informational בלבד."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "WARN: OpenRouter test-fire failed (curl_rc=${CURL_RC}, http=${HTTP}) — deploy still succeeds (see job summary)" >&2
+            head -c 400 /tmp/or-hook.json >&2 2>/dev/null || true; echo >&2
+          fi
+
+          curl -sS -o /dev/null -b "$COOKIE_JAR" -X POST "$BASE/rest/logout" || true
+
       - name: Persist Railway IDs to system SM
         env:
           PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
