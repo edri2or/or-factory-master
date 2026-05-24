@@ -32,3 +32,6 @@ jobs:
 
       - name: Check changelog size
         run: bash scripts/check-changelog-size.sh
+
+      - name: Check skills mirror in sync
+        run: bash scripts/check-skills-mirror.sh
