@@ -1,5 +1,13 @@
 # Changelog
 
+## Stage 33 — decommission: fix Railway find-by-name (cross-workspace query)
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | fix | `.github/workflows/decommission-test-system.yml` found the Railway project to delete via the top-level `query { projects(first:200) { edges … } }`, which returns **empty** on a workspace/team-token account (Railway owns projects under `me.workspaces[].projects`, not `me` directly). So a single-system teardown without an explicit `railway_project_id` silently logged `SKIP: no Railway project found` and **leaked the Railway project** (confirmed live on `factory-test-30/31` — had to pass explicit IDs). Switched the find-by-name to `query { me { workspaces { projects { edges { node { id name } } } } } }` and flattened across workspaces in jq, mirroring the proven `listProjects` in `services/mcp-server/src/railway-client.ts` and the Stage 32 bulk-cleanup workflow. The name-verify guard (`project(id).name == system_name` before `projectDelete`) and the `railway_project_id` short-circuit are unchanged. |
+
+No behavior change when `railway_project_id` is passed; this only repairs the by-name fallback.
+
 ## Stage 32 — ops: bulk Railway project cleanup workflow (keep-list, operator-dispatched)
 
 | PR | Type | Summary |
@@ -83,15 +91,7 @@ Provision change is repo-level (all future provisions); the deploy-template chan
 
 Opt-in per dispatch; normal `register-system-app.yml` runs (no `shared_gcp_project`) are unchanged.
 
-## Stage 22 — provision: reuse-mode (shared GCP test project; fresh repo/Railway/secrets)
-
-| PR | Type | Summary |
-|---|---|---|
-| TBD | feature | Add an optional `shared_gcp_project` input to `.github/workflows/provision-system.yml` so repeated end-to-end tests can reuse one fixed GCP project instead of creating a new one each run (the GCP project-creation quota is exhausted at 156 active+soft-deleted; soft-deleted projects keep counting for 30 days). **Empty input → behavior is byte-identical to before** (creates a new project; `gcp_project` output falls back to `system_name`). **Set to a test project (`factory-test-*`/`v2-test-*`/`or-test-*`) → reuse mode:** the `Create GCP project + link billing` step, the normal WIF-create step, and the per-repo `deploy-sa` workloadIdentityUser binding are gated `if: reuse != 'true'`; all other GCP-operating steps target a new `$GCP_PROJECT` env (== `system_name` in normal mode). The repo, Railway, Cloudflare, and all secrets stay fresh every run — only the GCP project + its billing link are reused (the deploy template already reads `GCP_PROJECT_ID` and `SYSTEM_NAME` as separate repo vars, so it needs no change). Reuse mode adds three steps: (a) idempotent WIF widening via a `test_pool` custom attribute-mapping (`assertion.repository.startsWith('edri2or/factory-test-') ? 'factory-test' : 'blocked'`) + matching attribute-condition, so any `factory-test-*` repo on `main` authenticates with **no per-test WIF mutation** ("set once", self-healing); (b) a `deploy-sa` `workloadIdentityUser` binding on the `attribute.test_pool/factory-test` principalSet (set semantics — idempotent); (c) a clean-secrets step. New `scripts/clean-project-secrets.sh` wipes every Secret Manager secret in the shared project before generics are re-copied and runtime shells re-created (the deploy workflow regenerates `n8n-encryption-key`/`n8n-owner-password`/`railway-*` on first deploy, so a wipe is safe and login still works) — hard-guarded to the test patterns and refusing both control projects, mirroring `decommission-test-projects.yml`. `Create runtime-sa and deploy-sa` is now idempotent (describe-then-create) so reuse runs don't abort on `ALREADY_EXISTS`. Repo vars in reuse mode: `GCP_WIF_PROVIDER`/`GCP_DEPLOY_SA`/`GCP_PROJECT_ID` point at the shared project, `SYSTEM_NAME` stays the repo. **Security tradeoff (accepted):** in reuse mode any `edri2or/factory-test-*` repo on `main` can impersonate the shared project's `deploy-sa` and read/write its (throwaway, per-run-regenerated) secrets — contained to a dedicated test project. No new GCP SA keys, no new secret types, billing stays linked (never unlinked/relinked per run). |
-
-Reuse mode is opt-in per dispatch; production provisioning (no `shared_gcp_project`) is unchanged. First reuse run against a project sets up its `test_pool` WIF; subsequent runs are no-ops on WIF/IAM and only re-clean + re-seed secrets.
-
-Stages 6-10 archived to `docs/changelog-archive/CHANGELOG-2026-05-22.md`; Stages 11-17 to `docs/changelog-archive/CHANGELOG-2026-05-23.md`; Stages 18-21 to `docs/changelog-archive/CHANGELOG-2026-05-24.md` — keeping this file under the 20 KB scan-friendly cap.
+Stages 6-10 archived to `docs/changelog-archive/CHANGELOG-2026-05-22.md`; Stages 11-17 to `docs/changelog-archive/CHANGELOG-2026-05-23.md`; Stages 18-22 to `docs/changelog-archive/CHANGELOG-2026-05-24.md` — keeping this file under the 20 KB scan-friendly cap.
 
 ## Bootstrap stages 1-4
 
