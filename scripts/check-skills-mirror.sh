@@ -20,4 +20,4 @@ if ! diff -rq "$SRC" "$MIRROR" >/tmp/skills-mirror-diff 2>&1; then
   exit 1
 fi
 
-echo "PASS: skills mirror in sync ($(ls "$SRC"/*.md | wc -l | tr -d ' ') skills)."
+echo "PASS: skills mirror in sync ($(find "$SRC" -maxdepth 1 -name '*.md' | wc -l | tr -d ' ') skills)."
