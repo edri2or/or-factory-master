@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 36 — chore: temporary OpenRouter model-attribution probe (removed after use)
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | chore | Added `.github/workflows/or-model-probe.yml`, a throwaway diagnostic that runs only on `main` (broker WIF), reads `factory-test-33`'s per-system `openrouter-api-key` from the shared test project (`factory-test-25`) SM, and calls OpenRouter directly with `model=openrouter/auto` for 3 prompts to surface the resolved `.model` NotDiamond routes each to (the field n8n's AI Agent node drops from the webhook response). Path-filtered to its own file so it fires once on merge. To be removed in a follow-up once results are captured. |
+
 ## Stage 35 — ops: bulk-decommission workflow also prunes leftover Cloudflare DNS
 
 | PR | Type | Summary |
