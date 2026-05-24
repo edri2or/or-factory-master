@@ -1,5 +1,12 @@
 # Changelog
 
+## Stage 36 — mcp: verify_* tools resolve systems via repo vars, not manifests
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | fix | `services/mcp-server/src/{tools,manifest-helper,github-client}.ts`: the read-only verifier tools (`verify_gcp_system`/`verify_github_system`/`verify_railway_system`/`verify_cloudflare_system`/`list_system_secrets`/`inspect_railway_service`/`inspect_wif_provider`) loaded `factory/manifests/<name>.yml`, but this factory never writes manifests — every call 404'd (hit live verifying `factory-test-33`). New `resolveSystem()` + `getRepoVariable()` resolve a system manifest-free: `githubRepo=edri2or/<name>`, `gcpProjectId` from the repo's `GCP_PROJECT_ID` variable (shared project in reuse/test mode, `<name>` in normal mode). `verify_railway_system` + `inspect_railway_service` now resolve the Railway project live by name (`==systemName`) + `production` env, matching `postgres`/`n8n` by name. `verify_cloudflare_system` degrades to a graceful skip pointing at the direct DNS/probe tools. Removed dead `loadManifest` + its `yaml`/`getRepoFile` imports. |
+| TBD | fix | `services/mcp-server/src/tools.ts`: `verify_gcp_system`'s "project-under-correct-folder" check used a stale folder id (`293382608212`, failed 100% of the time); corrected to the real Systems folder `123180924297` (now module-level `SYSTEMS_FOLDER_ID`). |
+
 ## Stage 35 — ops: bulk-decommission workflow also prunes leftover Cloudflare DNS
 
 | PR | Type | Summary |
