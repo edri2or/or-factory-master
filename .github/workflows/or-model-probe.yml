@@ -1,0 +1,97 @@
+name: OR model attribution probe (temporary)
+
+# THROWAWAY diagnostic probe. Runs only on main (broker WIF pins
+# ref=refs/heads/main), reads factory-test-33's per-system OpenRouter
+# inference key from the shared test project SM, and calls OpenRouter
+# directly with model=openrouter/auto for 3 prompts (easy/medium/complex)
+# to reveal which model NotDiamond routes each to — the .model field that
+# n8n's AI Agent node drops. Path-filtered to its own file so it fires
+# once on merge, not on unrelated main pushes. Removed after results.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/or-model-probe.yml'
+  workflow_dispatch: {}
+
+permissions: {}
+
+jobs:
+  probe:
+    name: OpenRouter auto-router model attribution
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      id-token: write
+    steps:
+      - name: Authenticate to GCP via WIF
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093  # v3.0.0
+        with:
+          workload_identity_provider: "projects/140345952904/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
+          service_account: "factory-master-broker@or-factory-master-control.iam.gserviceaccount.com"
+
+      - name: Call OpenRouter directly x3 and report resolved model
+        env:
+          SHARED_GCP_PROJECT: factory-test-25
+          OR_API: https://openrouter.ai/api/v1
+        run: |
+          # GitHub injects bash -e; disable so one failed call never aborts the
+          # rest. UTF-8 so wc -m / substring count characters for Hebrew.
+          set +e
+          export LC_ALL=C.UTF-8
+
+          OR_KEY=$(gcloud secrets versions access latest \
+            --secret=openrouter-api-key --project="$SHARED_GCP_PROJECT" 2>/tmp/smerr)
+          if [ -z "$OR_KEY" ]; then
+            echo "FAIL: could not read openrouter-api-key from $SHARED_GCP_PROJECT SM:" >&2
+            cat /tmp/smerr >&2
+            exit 1
+          fi
+          echo "::add-mask::$OR_KEY"
+          echo "PASS: read factory-test-33 per-system OpenRouter inference key from $SHARED_GCP_PROJECT SM."
+
+          LABEL=("1 - easy" "2 - medium" "3 - complex")
+          PROMPT=(
+            "מה זה DNS בשפה פשוטה, במשפט אחד"
+            "כתוב הסבר של 200 מילה בעברית על איך עובד OAuth 2.0, כולל ההבדל בין authorization code flow לבין client credentials"
+            "נתח את היתרונות והחסרונות של ארכיטקטורת event-driven לעומת request-response עבור מערכת SaaS B2B עם 10K משתמשים. תן את המלצה מנומקת."
+          )
+
+          {
+            echo "## OpenRouter auto-router — model attribution"
+            echo "Direct OpenRouter calls with model=\`openrouter/auto\` (factory-test-33 inference key). UTC: $(date -u +%FT%TZ)"
+            echo ""
+            echo "| call | resolved model | total_tokens | words | http |"
+            echo "|---|---|---|---|---|"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          for i in 0 1 2; do
+            echo "=================================================================="
+            echo "CALL ${LABEL[$i]}"
+            payload=$(jq -cn --arg m "${PROMPT[$i]}" \
+              '{model:"openrouter/auto", messages:[{role:"user",content:$m}]}')
+            out=$(curl -sS -m 180 -w '\n__HTTP__%{http_code}' "$OR_API/chat/completions" \
+              -H "Authorization: Bearer $OR_KEY" -H 'Content-Type: application/json' \
+              -d "$payload")
+            resp="${out%%$'\n__HTTP__'*}"
+            http="${out##*__HTTP__}"
+
+            model=$(printf '%s' "$resp" | jq -r '.model // "(none)"' 2>/dev/null)
+            tokens=$(printf '%s' "$resp" | jq -r '.usage.total_tokens // "?"' 2>/dev/null)
+            text=$(printf '%s' "$resp" | jq -r '.choices[0].message.content // ""' 2>/dev/null)
+            err=$(printf '%s' "$resp" | jq -r '.error.message // empty' 2>/dev/null)
+            words=$(printf '%s' "$text" | wc -w | tr -d ' ')
+            first100="${text:0:100}"
+
+            echo "HTTP: $http"
+            echo "MODEL: $model"
+            echo "TOKENS: $tokens"
+            echo "WORDS: $words"
+            echo "FIRST100: $first100"
+            [ -n "$err" ] && echo "ERROR: $err"
+
+            echo "| ${LABEL[$i]} | \`$model\` | $tokens | $words | $http |" >> "$GITHUB_STEP_SUMMARY"
+          done
+          rm -f /tmp/smerr
+          echo "PROBE DONE."

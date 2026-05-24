@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 37 — chore: temporary OpenRouter model-attribution probe (removed after use)
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | chore | Added `.github/workflows/or-model-probe.yml` (throwaway): runs only on `main` (broker WIF), reads `factory-test-33`'s `openrouter-api-key` from `factory-test-25` SM, and calls OpenRouter directly with `model=openrouter/auto` for the 3 prompts to surface the resolved `.model` NotDiamond picks (which n8n's AI Agent node drops). Removed in a follow-up after results are captured. |
+
 ## Stage 36 — mcp: verify_* tools resolve systems via repo vars, not manifests
 
 | PR | Type | Summary |
