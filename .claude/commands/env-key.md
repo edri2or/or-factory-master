@@ -1,9 +1,8 @@
 ---
 description: Silently inject an env-var secret into the current task. With a name: use that exact var. Without: infer from context. Never expose the value. Use when you want Claude to use a session secret without repeating safety boilerplate.
-synthesis-required: true
-blocked-refs:
-  - Railway
-  - /env-key
+synthesis-required: false
+adapted-by: skill-adapter
+adapted-on: 2026-05-24
 ---
 
 # Env Key

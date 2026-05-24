@@ -1,11 +1,8 @@
 ---
 description: Bootstrap GCP Secret Manager + Workload Identity Federation via Terraform CI. Provisions WIF pool, populates secrets, replaces god-mode PATs with fine-grained tokens. Use when wiring zero-secrets-in-code CI/CD for a new GitHub Actions project.
-synthesis-required: true
-blocked-refs:
-  - JOURNEY.md
-  - Railway
-  - Telegram
-  - /gcp-wif-secret-manager-integration
+synthesis-required: false
+adapted-by: skill-adapter
+adapted-on: 2026-05-24
 ---
 
 # GCP Secret Manager + WIF Integration

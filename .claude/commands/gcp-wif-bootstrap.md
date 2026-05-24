@@ -1,10 +1,8 @@
 ---
 description: Bootstraps WIF + Secret Manager Terraform for a new GCP project. Writes terraform/ files with declarative github_actions_secret resources plus a GitHub Actions workflow using the App-token-via-WIF chain. Use for secure Actions secret setup.
-synthesis-required: true
-blocked-refs:
-  - JOURNEY.md
-  - /actions/secrets/
-  - /gcp-wif-bootstrap
+synthesis-required: false
+adapted-by: skill-adapter
+adapted-on: 2026-05-24
 ---
 
 # GCP WIF Bootstrap

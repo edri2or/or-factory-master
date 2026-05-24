@@ -1,10 +1,8 @@
 ---
 description: Researches automation feasibility using live tool inventory and web evidence. Ranks options with 5-dimension scoring and precise 'how it works here' description. Use when automating a workflow and needing evidence-based feasibility check.
-synthesis-required: true
-blocked-refs:
-  - /build-skill
-  - /scaffold-feature
-  - /automation-research
+synthesis-required: false
+adapted-by: skill-adapter
+adapted-on: 2026-05-24
 ---
 
 # Automation Research

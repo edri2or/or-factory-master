@@ -1,9 +1,8 @@
 ---
 description: Scans all GitHub Actions workflows org-wide in real time and prints an inventory table: repo, scope, creation date, creator, required tokens, and the skill that created each workflow. Use when auditing org automations.
-synthesis-required: true
-blocked-refs:
-  - /env-key
-  - /org-skill-pipeline
+synthesis-required: false
+adapted-by: skill-adapter
+adapted-on: 2026-05-24
 ---
 
 # Org Workflow Inventory

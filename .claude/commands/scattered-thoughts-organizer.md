@@ -1,9 +1,8 @@
 ---
 description: Decodes scattered thoughts into clear intent: explains your reasoning, validates terms against the codebase, researches online, then proposes or executes. Use when you have a vague idea, half-formed question, or messy words to explore.
-synthesis-required: true
-blocked-refs:
-  - JOURNEY.md
-  - /git-commit
+synthesis-required: false
+adapted-by: skill-adapter
+adapted-on: 2026-05-24
 ---
 
 # Scattered Thoughts Organizer

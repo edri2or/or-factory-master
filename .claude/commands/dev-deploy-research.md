@@ -1,13 +1,8 @@
 ---
 description: Parses a completed deep-research document, confirms with the user, then scaffolds the file structure (product or infra track) under dev/ideas/ or dev/changes/ and updates dev/README.md. Use after research is complete.
-synthesis-required: true
-blocked-refs:
-  - dev/ideas/NNN-slug
-  - dev/changes/NNN-slug
-  - dev/ideas/001-task-recurrence-feature
-  - dev/changes/001-supabase-ssr-v2
-  - JOURNEY.md
-  - /dev-research-prompt
+synthesis-required: false
+adapted-by: skill-adapter
+adapted-on: 2026-05-24
 ---
 
 # Dev Deploy Research
