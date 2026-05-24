@@ -1301,6 +1301,20 @@ jobs:
           WF_NAME="factory-master: OpenRouter auto-router demo"
           OR_CRED_URL="https://openrouter.ai/api/v1"
 
+          # Soft-fail: any n8n REST hiccup writes a Hebrew warning and exits 0 — wiring
+          # OpenRouter must never fail an otherwise-successful deploy (non-negotiable).
+          _soft_exit0() {
+            local reason="$1"
+            {
+              echo "## ⚠️ הגדרת OpenRouter ב-n8n דילגה"
+              echo "ה-credential/workflow של OpenRouter לא הושלמו: ${reason}."
+              echo "הפריסה נחשבת מוצלחת — אפשר להגדיר ידנית או לפרוס מחדש (השלב אידמפוטנטי)."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "WARN: OpenRouter n8n wiring skipped — ${reason} (deploy still succeeds)" >&2
+            [ -n "${COOKIE_JAR:-}" ] && curl -sS -o /dev/null -b "$COOKIE_JAR" -X POST "$BASE/rest/logout" 2>/dev/null || true
+            exit 0
+          }
+
           # 1. Read the per-system OpenRouter inference key from this system's SM.
           OR_KEY=$(gcloud secrets versions access latest \
             --secret="openrouter-api-key" --project="$PROJECT_ID" 2>/dev/null || echo "")
@@ -1335,7 +1349,7 @@ jobs:
           if [ "$HTTP" != "200" ]; then
             echo "FAIL: POST $BASE/rest/login HTTP $HTTP" >&2
             head -c 400 /tmp/or-login.json >&2 || true; echo >&2
-            exit 1
+            _soft_exit0 "התחברות ל-n8n נכשלה (HTTP $HTTP)"
           fi
           echo "PASS: n8n owner login → session cookie captured."
 
@@ -1344,7 +1358,7 @@ jobs:
           #    object even though url is marked hidden in the credential source.
           HTTP=$(curl -sS -o /tmp/or-creds.json -w '%{http_code}' --max-time 15 \
             -b "$COOKIE_JAR" "$BASE/rest/credentials")
-          [ "$HTTP" = "200" ] || { echo "FAIL: GET /rest/credentials HTTP $HTTP" >&2; head -c 400 /tmp/or-creds.json >&2 || true; exit 1; }
+          [ "$HTTP" = "200" ] || { echo "FAIL: GET /rest/credentials HTTP $HTTP" >&2; head -c 400 /tmp/or-creds.json >&2 || true; _soft_exit0 "GET /rest/credentials נכשל (HTTP $HTTP)"; }
           CRED_ID=$(jq -r --arg n "$CRED_NAME" \
             '[(.data // .) | .[]? | select(.name==$n)][0].id // empty' /tmp/or-creds.json)
           if [ -n "$CRED_ID" ]; then
@@ -1356,10 +1370,10 @@ jobs:
               -b "$COOKIE_JAR" -X POST "$BASE/rest/credentials" \
               -H "Content-Type: application/json" -d "$CRED_BODY")
             if [ "$HTTP" != "200" ] && [ "$HTTP" != "201" ]; then
-              echo "FAIL: POST /rest/credentials HTTP $HTTP" >&2; head -c 400 /tmp/or-cred-new.json >&2 || true; echo >&2; exit 1
+              echo "FAIL: POST /rest/credentials HTTP $HTTP" >&2; head -c 400 /tmp/or-cred-new.json >&2 || true; echo >&2; _soft_exit0 "POST /rest/credentials נכשל (HTTP $HTTP)"
             fi
             CRED_ID=$(jq -r '.data.id // .id' /tmp/or-cred-new.json)
-            [ -n "$CRED_ID" ] && [ "$CRED_ID" != "null" ] || { echo "FAIL: no credential id in response" >&2; head -c 400 /tmp/or-cred-new.json >&2 || true; exit 1; }
+            [ -n "$CRED_ID" ] && [ "$CRED_ID" != "null" ] || { echo "FAIL: no credential id in response" >&2; head -c 400 /tmp/or-cred-new.json >&2 || true; _soft_exit0 "לא התקבל credential id"; }
             echo "PASS: openRouterApi credential created (id=${CRED_ID})."
           fi
 
@@ -1367,7 +1381,7 @@ jobs:
           #    we test-fire; recover it from the existing workflow on a redeploy.
           HTTP=$(curl -sS -o /tmp/or-wfs.json -w '%{http_code}' --max-time 15 \
             -b "$COOKIE_JAR" "$BASE/rest/workflows")
-          [ "$HTTP" = "200" ] || { echo "FAIL: GET /rest/workflows HTTP $HTTP" >&2; head -c 400 /tmp/or-wfs.json >&2 || true; exit 1; }
+          [ "$HTTP" = "200" ] || { echo "FAIL: GET /rest/workflows HTTP $HTTP" >&2; head -c 400 /tmp/or-wfs.json >&2 || true; _soft_exit0 "GET /rest/workflows נכשל (HTTP $HTTP)"; }
           WF_ID=$(jq -r --arg n "$WF_NAME" \
             '[(.data // .) | .[]? | select(.name==$n)][0].id // empty' /tmp/or-wfs.json)
 
@@ -1385,6 +1399,7 @@ jobs:
               --arg credname "$CRED_NAME" \
               '{
                 name: $wfname,
+                active: false,
                 nodes: [
                   {
                     parameters: { httpMethod: "POST", path: $whpath, responseMode: "lastNode", options: {} },
@@ -1423,10 +1438,10 @@ jobs:
               -b "$COOKIE_JAR" -X POST "$BASE/rest/workflows" \
               -H "Content-Type: application/json" -d "$WF_BODY")
             if [ "$HTTP" != "200" ] && [ "$HTTP" != "201" ]; then
-              echo "FAIL: POST /rest/workflows HTTP $HTTP" >&2; head -c 600 /tmp/or-wf.json >&2 || true; echo >&2; exit 1
+              echo "FAIL: POST /rest/workflows HTTP $HTTP" >&2; head -c 600 /tmp/or-wf.json >&2 || true; echo >&2; _soft_exit0 "POST /rest/workflows נכשל (HTTP $HTTP)"
             fi
             WF_ID=$(jq -r '.data.id // .id' /tmp/or-wf.json)
-            [ -n "$WF_ID" ] && [ "$WF_ID" != "null" ] || { echo "FAIL: no workflow id in response" >&2; head -c 600 /tmp/or-wf.json >&2 || true; exit 1; }
+            [ -n "$WF_ID" ] && [ "$WF_ID" != "null" ] || { echo "FAIL: no workflow id in response" >&2; head -c 600 /tmp/or-wf.json >&2 || true; _soft_exit0 "לא התקבל workflow id"; }
             echo "PASS: workflow created (id=${WF_ID}, webhook path=${WEBHOOK_PATH})."
           fi
 
