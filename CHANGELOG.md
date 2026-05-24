@@ -1,5 +1,13 @@
 # Changelog
 
+## Stage 31 — deploy: ride out Railway custom-domain cert flap in the OpenRouter step
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | fix | `templates/system/.github/workflows/deploy-railway-cloudflare.yml`: a live deploy of `factory-test-31` failed at the OpenRouter step with `curl: (60) SSL: no alternative certificate subject name matches target host name` — Railway's freshly-issued custom-domain cert briefly served a non-matching cert right after the TLS-wait step (login succeeded, the next call hit the flap). Because that `curl` was unguarded, `set -e` aborted the step with curl's exit 60, **bypassing the Stage 30 soft-fail** (`_soft_exit0` never ran; `Persist Railway IDs` + `Summary` were skipped). All post-login n8n calls now route through a `_napi` helper that guards curl-level failures (`\|\| echo "000"`) and retries **only** on `000` (no HTTP request reached the server, so retrying is safe even for POSTs — cannot double-create), never on a real HTTP status; login gets the same retry loop. This rides out the transient cert flap and makes the Stage 30 soft-fail actually hold for connection-level failures, not just non-2xx. |
+
+Template edit reaches newly-provisioned systems only (per CLAUDE.md). The notifier step has the same latent unguarded-curl pattern but is out of scope here.
+
 ## Stage 30 — deploy: fix OpenRouter workflow create (missing `active`) + enforce soft-fail
 
 | PR | Type | Summary |
