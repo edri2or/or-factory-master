@@ -1,10 +1,8 @@
 ---
 description: Mines partial successes across many repos, verifies each ran autonomously via commit/CI evidence, web-validates the join, and synthesizes one end-to-end autonomous process. Use when fragments worked in separate projects and you want them combined.
-synthesis-required: true
-blocked-refs:
-  - JOURNEY.md
-  - /scaffold-feature
-  - /safe-refactor
+synthesis-required: false
+adapted-by: skill-adapter
+adapted-on: 2026-05-24
 ---
 
 # Cross-Repo Success Synthesis

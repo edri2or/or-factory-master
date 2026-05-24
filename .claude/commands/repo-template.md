@@ -1,9 +1,8 @@
 ---
 description: Convert a GitHub repo to a template (enables 'Use this template' button) via GitHub API. Auto-detects current repo or accepts owner/repo argument. Use when making a repo a template or enabling template mode.
-synthesis-required: true
-blocked-refs:
-  - /repo-template
-  - /repos/org/legacy-api
+synthesis-required: false
+adapted-by: skill-adapter
+adapted-on: 2026-05-24
 ---
 
 # Repo Template

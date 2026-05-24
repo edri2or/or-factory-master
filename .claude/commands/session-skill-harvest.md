@@ -1,9 +1,8 @@
 ---
 description: Scans current session and [your-journey-file] for recurring workflow patterns; surfaces ranked SKILL.md candidates with recurrence counts. Use when harvesting skill candidates or extracting reusable workflows.
-synthesis-required: true
-blocked-refs:
-  - JOURNEY.md
-  - /build-skill
+synthesis-required: false
+adapted-by: skill-adapter
+adapted-on: 2026-05-24
 ---
 
 # Session Skill Harvest

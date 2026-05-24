@@ -1,11 +1,8 @@
 ---
 description: Bootstraps a scoped GitHub App via the Manifest Flow and writes its credentials to GCP Secret Manager. One human click in Cloud Shell; no classic PAT. Use when a new system needs an installation-token identity for GitHub Actions.
-synthesis-required: true
-blocked-refs:
-  - JOURNEY.md
-  - /gcp-wif-bootstrap
-  - /installations/new
-  - non-core source-experiment
+synthesis-required: false
+adapted-by: skill-adapter
+adapted-on: 2026-05-24
 ---
 
 # GitHub App Bootstrap

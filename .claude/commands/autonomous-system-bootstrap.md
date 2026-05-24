@@ -1,9 +1,8 @@
 ---
 description: Generates and executes idempotent GCP Cloud Shell command batches for autonomous system bootstrap, with checkpoint validation and a structured runbook. Use when bootstrapping WIF, Secret Manager, or [your-railway] for a new agent deployment.
-synthesis-required: true
-blocked-refs:
-  - dev/changes/001-autonomous-system-architecture
-  - Railway
+synthesis-required: false
+adapted-by: skill-adapter
+adapted-on: 2026-05-24
 ---
 
 # Autonomous System Bootstrap Skill

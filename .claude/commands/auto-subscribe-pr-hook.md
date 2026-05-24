@@ -1,10 +1,8 @@
 ---
 description: Install a SessionStart hook so each new Claude Code session auto-subscribes to GitHub PR webhook activity (CI, reviews, merges) for the current branch's open PR. Use when PR subscriptions must persist across sessions and compacts.
-synthesis-required: true
-blocked-refs:
-  - /compact
-  - /clear
-  - non-core source-experiment
+synthesis-required: false
+adapted-by: skill-adapter
+adapted-on: 2026-05-24
 ---
 
 # Auto-subscribe to PR Activity on SessionStart

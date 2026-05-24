@@ -1,14 +1,8 @@
 ---
 description: Deploys Stage 6 multi-agent layer — Agent Router + ops/code/research sub-agents + infra stub — on N8N with Macro-F1 ≥ 0.85 gate, wires [your-telegram] free-form Hebrew routing. Use after Stages 1–5 complete or to re-deploy the router.
-synthesis-required: true
-blocked-refs:
-  - JOURNEY.md
-  - Railway
-  - Telegram
-  - OpenRouter
-  - /status
-  - /agent-session
-  - /stage6-multi-agent
+synthesis-required: false
+adapted-by: skill-adapter
+adapted-on: 2026-05-24
 ---
 
 # Stage 6 — Multi-Agent Orchestration Layer

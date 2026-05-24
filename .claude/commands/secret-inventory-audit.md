@@ -1,11 +1,8 @@
 ---
 description: Audits GCP Secret Manager secrets for expiry, rotation schedule, and access hygiene. Flags secrets overdue for rotation or without expiry policy. Use when reviewing secret health, preparing for a security audit, or enforcing Minimum Secret Inventory.
-synthesis-required: true
-blocked-refs:
-  - dev/changes/001-autonomous-system-architecture
-  - Railway
-  - Telegram
-  - OpenRouter
+synthesis-required: false
+adapted-by: skill-adapter
+adapted-on: 2026-05-24
 ---
 
 # Secret Inventory Audit Skill

@@ -1,11 +1,8 @@
 ---
 description: Bootstraps [your-railway] + PostgreSQL + N8N via GCP Secret Manager WIF keyless auth. Creates services, configures N8N env vars, registers [your-cloudflare] DNS, waits for healthcheck, and creates owner account. Use when GCP and secrets exist.
-synthesis-required: true
-blocked-refs:
-  - JOURNEY.md
-  - Railway
-  - Cloudflare
-  - /gcp-railway-bootstrap
+synthesis-required: false
+adapted-by: skill-adapter
+adapted-on: 2026-05-24
 ---
 
 # GCP + [your-railway] + N8N Bootstrap

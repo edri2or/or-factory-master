@@ -1,16 +1,8 @@
 ---
 description: Converts an existing project-specific SKILL.md into a portable, system-agnostic version. Strips project references, product terms, and experiment IDs. Use when you want to reuse an existing skill in any independent codebase.
-synthesis-required: true
-blocked-refs:
-  - PRODUCT.md
-  - JOURNEY.md
-  - AGENT.md
-  - REGISTRY.md
-  - Supabase
-  - TypeORM
-  - Vercel
-  - /git-commit
-  - /<skill-name>
+synthesis-required: false
+adapted-by: skill-adapter
+adapted-on: 2026-05-24
 ---
 
 # Skill Converter
@@ -46,7 +38,7 @@ Build a findings list: `[line N] <original text> → <action: remove | generaliz
 
 **File path references** (remove or generalize):
 - Paths under `src/`, `docs/adr/`, `experiments/`, `dev/`, `research/`, `policy/`
-- Named files: `[your-journey-file]`, `CLAUDE.md`, `[your-product-file]`, `[your-agent-file]`, `[your-registry-file]`
+- Named files: `[your-journey-file]`, `CLAUDE.md`, `CHANGELOG.md`, `CLAUDE.md`, `[your-registry-file]`
 - Named plugin paths: `.claude/plugins/<specific-plugin-name>/`
 
 **Product terminology** (replace with generic equivalents):
