@@ -1,5 +1,14 @@
 # Changelog
 
+## Stage 31 — ops: bulk Railway project cleanup workflow (keep-list, operator-dispatched)
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | feature | New `.github/workflows/decommission-railway-projects.yml` — a manual `workflow_dispatch` that deletes **every** Railway project the factory token can see, across all workspaces, **except** those whose project id is in the `keep_ids` input. Fills a real gap: the MCP `railway_graphql_read` tool refuses mutations, and `decommission-test-system.yml` hard-refuses any non-`{factory,v2,or}-test-*` name (and `factory-test-25`) and deletes one-at-a-time with repo/DNS side effects — neither can do a bulk Railway-only prune. Reuses the proven WIF→broker-SA auth, `_gql` helper, and `projectDelete` mutation from `decommission-test-system.yml`; lists across workspaces via `me { workspaces { projects { edges } } }` (mirrors the MCP `listProjects`, so the second workspace's `or-project39-railway` is included, unlike `projects(first:N)`). Railway token is read from `or-factory-master-control` SM (`railway-api-token`). |
+| TBD | safety | Guards: defaults to **dry-run** (prints a KEEP/DELETE plan table to the job summary, deletes nothing); a real run requires `dry_run=false` **and** `confirm=DELETE`; refuses an empty `keep_ids`; aborts if **none** of the `keep_ids` match a live project (a stale keep-list can never wipe the workspace) and if Railway returns zero projects; per-project delete failures are collected and reported (exit 1 at end) without blocking the rest. Keep-list is by **project id** (not name) because names duplicate (e.g. `project-life-34` ×6). Default `keep_ids` = the 5 keepers (`factory-org-reader-mcp`, `project-life-130`, `factory-test-30`, `factory-test-31`, `factory-test-25`). |
+
+Operator-triggered only — intentionally **not** on the MCP `dispatch_workflow` allowlist, and runs on `main` (WIF trusts `refs/heads/main`). Railway-only: no GCP project, Secret Manager, GitHub repo, or DNS is touched.
+
 ## Stage 30 — deploy: fix OpenRouter workflow create (missing `active`) + enforce soft-fail
 
 | PR | Type | Summary |
