@@ -1,0 +1,101 @@
+name: OR auto-router probe (temporary)
+
+# THROWAWAY probe — fires 3 prompts at factory-test-33's n8n OpenRouter
+# auto-router demo webhook from a runner (open egress) and prints the
+# responses to the log + job summary. Pushed to a feature branch only,
+# removed after results are captured. Not part of the factory flow.
+
+on:
+  push:
+    branches: [claude/happy-franklin-sTMoK]
+  workflow_dispatch: {}
+
+permissions: {}
+
+jobs:
+  probe:
+    name: Fire 3 prompts at the n8n OpenRouter demo webhook
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call webhook x3 and report
+        env:
+          WEBHOOK_URL: https://n8n-factory-test-33.or-infra.com/webhook/or-demo-1937b83d-49ae-48a4-ad8c-cdd9ba7c29b7
+        run: |
+          set -uo pipefail
+
+          # Retry only on handshake/connect-class curl errors (rc 6/7/35/56/60):
+          # no HTTP request reached the server, so a retry cannot double-charge.
+          # Any real HTTP status (even non-200) is returned as-is.
+          fire() {
+            local i rc out
+            for i in 1 2 3 4 5 6; do
+              out=$(curl -sS -m 240 -w '\n__HTTP__%{http_code}__TIME__%{time_total}' \
+                -X POST "$WEBHOOK_URL" -H 'Content-Type: application/json' -d "$1" 2>/tmp/cerr)
+              rc=$?
+              if [ "$rc" -eq 0 ]; then printf '%s' "$out"; return 0; fi
+              case "$rc" in
+                6|7|35|56|60) echo ">> transient curl rc=$rc (try $i): $(cat /tmp/cerr)" >&2; sleep 8 ;;
+                *) echo ">> non-retryable curl rc=$rc: $(cat /tmp/cerr)" >&2; printf '%s' "$out"; return "$rc" ;;
+              esac
+            done
+            echo ">> exhausted retries" >&2; return 1
+          }
+
+          LABEL=("1 - easy" "2 - medium" "3 - complex")
+          PROMPT=(
+            "מה זה DNS בשפה פשוטה, במשפט אחד"
+            "כתוב הסבר של 200 מילה בעברית על איך עובד OAuth 2.0, כולל ההבדל בין authorization code flow לבין client credentials"
+            "נתח את היתרונות והחסרונות של ארכיטקטורת event-driven לעומת request-response עבור מערכת SaaS B2B עם 10K משתמשים. תן את המלצה מנומקת."
+          )
+
+          {
+            echo "## OpenRouter auto-router probe — factory-test-33"
+            echo "Webhook: \`$WEBHOOK_URL\`"
+            echo "UTC start: $(date -u +%FT%TZ)"
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          for i in 0 1 2; do
+            echo "=================================================================="
+            echo "CALL ${LABEL[$i]}"
+            echo "prompt: ${PROMPT[$i]}"
+            payload=$(jq -cn --arg p "${PROMPT[$i]}" '{prompt:$p}')
+            ts="$(date -u +%FT%TZ)"
+            resp=$(fire "$payload"); firerc=$?
+            body="${resp%%$'\n__HTTP__'*}"
+            meta="${resp#*$'\n__HTTP__'}"; http="${meta%%__TIME__*}"; tt="${meta#*__TIME__}"
+            echo "fire_rc=$firerc http=$http time=${tt}s sent_at=$ts"
+            echo "----- RAW RESPONSE (full) -----"
+            printf '%s\n' "$body"
+            echo "----- /RAW -----"
+
+            # Model: explicit fields, then recursive scan for any *model* key.
+            model=$(printf '%s' "$body" | jq -r '(.model // .data.model // empty)' 2>/dev/null)
+            if [ -z "$model" ]; then
+              model=$(printf '%s' "$body" | jq -r 'try ([paths(scalars) as $p | select(($p[-1]|tostring)|test("model";"i")) | getpath($p)][0]) // empty' 2>/dev/null)
+            fi
+            [ -n "$model" ] || model="(absent in response)"
+
+            # Answer text: common n8n/agent shapes, else the raw body.
+            text=$(printf '%s' "$body" | jq -r '
+              (.output // .[0].output // .text // .[0].text // .message // .data.output // .json.output // empty)
+              // (if type=="string" then . else empty end)' 2>/dev/null)
+            [ -n "$text" ] || text="$body"
+            words=$(printf '%s' "$text" | wc -w | tr -d ' ')
+            first100=$(printf '%s' "$text" | head -c 100)
+
+            echo "MODEL: $model"
+            echo "WORDS: $words"
+            echo "FIRST100: $first100"
+
+            {
+              echo "### Call ${LABEL[$i]}"
+              echo "- HTTP: \`$http\` (fire_rc=$firerc), time ${tt}s, sent $ts"
+              echo "- Model: \`$model\`"
+              echo "- Words: **$words**"
+              echo "- First 100 chars: $first100"
+              echo ""
+            } >> "$GITHUB_STEP_SUMMARY"
+          done
+          rm -f /tmp/cerr
+          echo "PROBE DONE."
