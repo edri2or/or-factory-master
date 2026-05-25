@@ -21,7 +21,7 @@ Before starting, read in parallel:
 - `state.json` — confirm Stages 1–5 are `completed` and Stage 6 is `in_progress`.
 - `docs/adr/` — architectural envelope ADR for multi-agent orchestration.
 - `docs/adr/` — routing decisions + sub-agent catalogue ADR.
-- `docs/adr/` — [your-openrouter] classifier model, Macro-F1 gate, SKILL.md DoD, OWASP LLM01/LLM06 sanitisation rules ADR.
+- `docs/adr/` — [your-openrouter] classifier model, Macro-F1 gate, SKILL.md DoD, OWASP LLM01 (Prompt Injection), LLM02 (Sensitive Information Disclosure), and LLM05 (Improper Output Handling) sanitisation rules ADR (LLM06:2025 Excessive Agency is handled via HITL gating in a later Stage).
 - `docs/adr/` — split-file N8N workflow layout ADR (why workflow JSONs live under `workflows/n8n/` instead of being inlined in the YAML).
 - `workflows/n8n/*.json` — the 5 shipped workflows + `test-battery.json`.
 - `.github/workflows/configure-subagents.yml` — deployment + Macro-F1 gate workflow.
@@ -38,17 +38,22 @@ Telegram Operator Interface (N8N)
       │                └── false ─────▶ Forward to Router (HTTP POST)
       ▼
 Agent Router (webhook /agent-router)
-  Sanitise → Classify (OpenRouter gpt-4o-mini, JSON mode)
-        → Extract Intent (confidence < 0.6 ≡ unknown — OWASP LLM06)
+  Sanitise → Classify (OpenRouter openai/gpt-5-nano, pinned — JSON mode)
+        → Extract Intent (confidence < 0.7 ≡ unknown — OWASP LLM01)
         → If is_test  ─────▶ Respond { ok, intent }
         → If unknown ─────▶ Telegram clarification → Respond
-        → HTTP dispatch  ▶  /webhook/<intent>-agent  ─▶ Respond
+        → Execute Sub-workflow  ▶  <intent>-agent  ─▶ Respond
       ▼
 Sub-agent (ops | code | research | infra)
   Extract Context → domain HTTP call → Build Reply
     → If is_test   ─────▶ Respond (skip Telegram)
     → Telegram send      ─▶ Respond
 ```
+
+> **Sub-agent dispatch (Stage 51):** the Router invokes sub-agents via n8n
+> `Execute Sub-workflow` nodes — **not** `@n8n/n8n-nodes-langchain.agentTool`,
+> which n8n issue #22489 breaks with GPT-5 / Responses-API models (open as of
+> May 2026).
 
 `is_test` sentinel: sub-agents skip [your-telegram] sends when `chat_id == 'test'`
 so the Macro-F1 probes exercise the full Router → dispatch path without spamming
@@ -195,7 +200,7 @@ Open the PR. Expected CI result:
 | N8N credential not found (`[your-telegram] Bot`, `[your-openrouter]`) | *Resolve existing credential IDs* step exits 1 | Upstream stage never ran or credential renamed | Re-run the upstream stage's `configure-*.yml` (Stage 4 for `[your-openrouter]`, Stage 5 for `[your-telegram] Bot`) |
 | Macro-F1 < 0.85 | Gate step exits 1 with `FAIL — Macro-F1 below threshold` | Classifier drift, prompt regression, `unknown` confusing `ops` | Inspect probe lines for the misclassified prompts, tighten system prompt in `agent-router.json` *Classify* node, re-run |
 | URL allowlist bypass | E.g. `https://evil.com/github.com/x` slips past Sanitise | Substring regex on raw URL instead of `URL().hostname` | `agent-router.json` *Sanitise* must use `new URL(u).hostname` + `host === h \|\| host.endsWith('.' + h)` against an allow-list |
-| Missing `confidence` treated as high-confidence | `unknown` prompts route to the wrong agent | Guard `if (confidence > 0 && confidence < 0.6)` lets zero-confidence through | Guard must be `if (confidence < 0.6 && intent !== 'unknown')` — no `> 0` clause (OWASP LLM06 bounded refusal) |
+| Missing `confidence` treated as high-confidence | `unknown` prompts route to the wrong agent | Guard `if (confidence > 0 && confidence < 0.7)` lets zero-confidence through | Guard must be `if (confidence < 0.7 && intent !== 'unknown')` — no `> 0` clause (OWASP LLM01 bounded refusal) |
 | [your-telegram] workflow deploys but webhook returns empty 200 | Post-deploy `/status` E2E probe fails with `Unexpected webhook response: ` | Bash single-quote heredoc consumed inner `''` in an N8N expression → stored as `|| }}` → n8n's expression engine throws `SyntaxError` → IF node halts silently → `Respond to Webhook` never fires | Inside the jq template's outer `'...'`, use `\"\"` for empty-string literals, never `''` |
 | Bash `local` leakage in `upsert_one` | Function overwrites caller-scoped variables | Missing `local` declarations | Declare every variable the function writes: `local name processed WFS WF_ID PUT_RESP CREATE WF_REST VER ACTIVE ACT OK` |
 | `check_skill()` fails locally before SKILL.md exists | CI red on SKILL.md-less PR | **Expected** — Hard Rule #10 self-validation | Write the SKILL.md; do not bypass the check |

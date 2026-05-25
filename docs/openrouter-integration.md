@@ -93,3 +93,34 @@ MGMT=$(gcloud secrets versions access latest --secret=openrouter-management-key 
 curl -X DELETE "https://openrouter.ai/api/v1/keys/${HASH}" -H "Authorization: Bearer ${MGMT}"
 # תגובה תקינה: {"deleted": true}
 ```
+
+## 7. Agent Router (Stage 51 — מעבר ל-demo workflow)
+
+מעבר ל-demo workflow הבסיסי שכל מערכת מקבלת, המפעל מקים גם תבנית **Agent Router**
+מרובת-סוכנים. ה-router מסווג קלט משתמש לפי כוונה (`ops`/`code`/`research`/`infra`/
+`unknown`) ומנתב ל-sub-workflow ייעודי. **ה-demo workflow הקיים
+(`factory-master: OpenRouter auto-router demo`) לא משתנה ונשאר ה-baseline.**
+
+Stage 51a מקים את הבסיס: router + sub-agents של `ops` ו-`unknown`. Stage 51b יוסיף
+`code`/`research`/`infra`; Stage 51c יוסיף את שער ה-Macro-F1 ב-CI.
+
+**קבצים** (נדחפים לכל מערכת חדשה ע"י `provision-system.yml`):
+- `workflows/n8n/{agent-router,ops-agent,unknown-agent}.json` — ה-workflows של n8n.
+- `.github/workflows/configure-agent-router.yml` — workflow ב-manual dispatch שטוען
+  אותם ל-n8n דרך ה-REST API. אידמפוטנטי: הרצה חוזרת מעדכנת את ה-workflows הקיימים
+  לפי שם.
+
+**הפעלה על מערכת קיימת:** הפעל את `configure-agent-router.yml` מלשונית ה-Actions של
+המערכת (לאחר ש-`deploy-railway-cloudflare.yml` רץ פעם אחת — הוא יוצר את ה-credential
+‏`OpenRouter (factory-master)` שה-router משתמש בו מחדש לפי שם).
+
+**החלטות ארכיטקטוניות** (מאומתות במחקר, מתועדות ב-factory-research-context.md):
+- ה-classifier מפונן ל-`openai/gpt-5-nano` (לא `openrouter/auto` — דטרמיניזם ל-CI).
+- ה-sub-agents: `anthropic/claude-haiku-4.5` (ops; ובהמשך code/research) או
+  `openai/gpt-5-mini:exacto` (infra). ה-fallback (`unknown`) על `gpt-5-nano`.
+- ה-sub-agents מופעלים דרך `Execute Sub-workflow`, לא `agentTool` (n8n issue #22489
+  שובר אותו עם מודלי GPT-5/Responses API נכון למאי 2026).
+- Defense-in-depth: סניטיזציה של קלט (L2), classifier שמחזיר רק `{intent, confidence}`
+  (L3), סף ביטחון 0.7 (L4), ואימות egress עם allowlist ל-URL (L5).
+- כל שלב soft-fail: כשל ב-router לעולם לא מפיל את ה-run; אזהרה בעברית ב-job summary
+  ו-`exit 0` (זהה לעיקרון ה-OpenRouter בכל המפעל).

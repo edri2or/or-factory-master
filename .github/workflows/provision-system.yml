@@ -443,7 +443,7 @@ jobs:
             || { echo "FAIL: push deploy workflow HTTP ${http_code}: ${body}" >&2; exit 1; }
           echo "PASS: deploy-railway-cloudflare.yml pushed to edri2or/${SYSTEM_NAME}:main"
 
-      - name: Push .claude package (commands + skills) to system repo
+      - name: Push .claude package + Agent Router scaffold to system repo
         env:
           SYSTEM_NAME: ${{ inputs.system_name }}
         run: |
@@ -473,15 +473,31 @@ jobs:
           mkdir -p "$CLONE_DIR/.claude"
           cp -r "$SRC"/. "$CLONE_DIR/.claude/"
 
+          # Stage 51a: also scaffold the Agent Router into the new repo — the n8n
+          # workflow JSONs (workflows/n8n/*.json) and the manual-dispatch workflow
+          # configure-agent-router.yml that loads them into n8n via the REST API.
+          # The deploy workflow wires only the single OpenRouter demo; the multi-agent
+          # router is configured separately, so its files ship alongside .claude here.
+          WF_SRC="${GITHUB_WORKSPACE}/templates/system/workflows"
+          CFG_SRC="${GITHUB_WORKSPACE}/templates/system/.github/workflows/configure-agent-router.yml"
+          [ -d "$WF_SRC/n8n" ] || { echo "FAIL: agent-router workflow JSONs not found at $WF_SRC/n8n" >&2; exit 1; }
+          [ -f "$CFG_SRC" ] || { echo "FAIL: configure-agent-router.yml not found at $CFG_SRC" >&2; exit 1; }
+          mkdir -p "$CLONE_DIR/workflows" "$CLONE_DIR/.github/workflows"
+          cp -r "$WF_SRC"/. "$CLONE_DIR/workflows/"
+          cp "$CFG_SRC" "$CLONE_DIR/.github/workflows/configure-agent-router.yml"
+
           git -C "$CLONE_DIR" config user.name "or-factory-master[bot]"
           git -C "$CLONE_DIR" config user.email "factory-master-broker@or-factory-master-control.iam.gserviceaccount.com"
-          git -C "$CLONE_DIR" add .claude
-          git -C "$CLONE_DIR" commit -q -m "ci: scaffold .claude package — commands + skills (from or-factory-master)"
+          git -C "$CLONE_DIR" add .claude workflows .github/workflows/configure-agent-router.yml
+          # Guard the commit: a reuse-mode re-provision with byte-identical files would
+          # otherwise abort this step under `set -e` ("nothing to commit").
+          git -C "$CLONE_DIR" diff --cached --quiet \
+            || git -C "$CLONE_DIR" commit -q -m "ci: scaffold .claude package + Agent Router (from or-factory-master)"
           git -C "$CLONE_DIR" push -q origin HEAD:main \
-            || { echo "FAIL: could not push .claude package to edri2or/${SYSTEM_NAME}:main" >&2; exit 1; }
+            || { echo "FAIL: could not push scaffold to edri2or/${SYSTEM_NAME}:main" >&2; exit 1; }
 
           rm -rf "$CLONE_DIR"
-          echo "PASS: .claude package pushed to edri2or/${SYSTEM_NAME}:main (${COUNT} commands + gcp-hands-client skill)."
+          echo "PASS: .claude package + Agent Router scaffold pushed to edri2or/${SYSTEM_NAME}:main (${COUNT} commands + gcp-hands-client skill + 3 n8n workflows + configure-agent-router.yml)."
 
       - name: Branch protection on main
         env:
