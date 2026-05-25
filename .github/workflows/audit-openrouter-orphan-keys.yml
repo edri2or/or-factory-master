@@ -1,0 +1,269 @@
+name: Audit OpenRouter Orphan Keys
+
+# Runs daily (dry-run: reports only, no deletions).
+# Manual dispatch with dry_run=false + confirm=DELETE performs real cleanup.
+#
+# A key is ORPHAN if no GitHub repo edri2or/<key-name> exists.
+# A key is STALE if the repo exists but its openrouter-key-hash in GCP SM
+# doesn't match — meaning this key is a leftover from a previous provision
+# cycle (reuse mode). Broker SA access to openrouter-key-hash is granted
+# by provision-system.yml's "Mint per-system OpenRouter inference key" step
+# (only for systems provisioned after Stage 47).
+# For older systems, SM reads fail gracefully → classified as UNCERTAIN.
+
+on:
+  schedule:
+    - cron: '0 6 * * *'   # daily 06:00 UTC
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run — report only, no deletions'
+        type: boolean
+        default: true
+      confirm:
+        description: 'Type DELETE to confirm real deletions (only applies when dry_run=false)'
+        type: string
+        default: ''
+
+permissions: {}
+
+jobs:
+  audit:
+    name: Audit OpenRouter orphan keys
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
+
+      - name: Authenticate to GCP via WIF
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093  # v3.0.0
+        with:
+          workload_identity_provider: "projects/140345952904/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
+          service_account: "factory-master-broker@or-factory-master-control.iam.gserviceaccount.com"
+
+      - name: Read secrets from control SM
+        run: |
+          set -euo pipefail
+          CONTROL="or-factory-master-control"
+
+          OR_MGMT_KEY=$(gcloud secrets versions access latest \
+            --secret="openrouter-management-key" --project="$CONTROL")
+          [ -n "$OR_MGMT_KEY" ] || { echo "FAIL: openrouter-management-key missing" >&2; exit 1; }
+          echo "::add-mask::${OR_MGMT_KEY}"
+
+          # App credentials for reading repo variables
+          APP_ID=$(gcloud secrets versions access latest \
+            --secret="factory-master-broker-app-id" --project="$CONTROL")
+          gcloud secrets versions access latest \
+            --secret="factory-master-broker-app-private-key" --project="$CONTROL" \
+            > /tmp/broker-app-key.pem
+          chmod 600 /tmp/broker-app-key.pem
+          INSTALL_ID=$(gcloud secrets versions access latest \
+            --secret="factory-master-broker-app-installation-id" --project="$CONTROL")
+          APP_TOKEN=$(bash scripts/generate-app-token.sh /tmp/broker-app-key.pem "$APP_ID" "$INSTALL_ID")
+          [ -n "$APP_TOKEN" ] || { echo "FAIL: could not get App token" >&2; exit 1; }
+          echo "::add-mask::${APP_TOKEN}"
+          shred -u /tmp/broker-app-key.pem 2>/dev/null || rm -f /tmp/broker-app-key.pem
+
+          # Telegram for reporting (best-effort — missing = no notification, not a failure)
+          TG_TOKEN=$(gcloud secrets versions access latest \
+            --secret="telegram-bot-token" --project="$CONTROL" 2>/dev/null || echo "")
+          TG_CHAT=$(gcloud secrets versions access latest \
+            --secret="telegram-chat-id" --project="$CONTROL" 2>/dev/null || echo "")
+          [ -n "$TG_TOKEN" ] && echo "::add-mask::${TG_TOKEN}"
+          [ -n "$TG_CHAT" ]  && echo "::add-mask::${TG_CHAT}"
+
+          {
+            echo "OR_MGMT_KEY=${OR_MGMT_KEY}"
+            echo "APP_TOKEN=${APP_TOKEN}"
+            echo "TG_TOKEN=${TG_TOKEN}"
+            echo "TG_CHAT=${TG_CHAT}"
+          } >> "$GITHUB_ENV"
+
+      - name: Reconcile OpenRouter keys
+        env:
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          INPUT_DRY_RUN: ${{ inputs.dry_run }}
+          INPUT_CONFIRM: ${{ inputs.confirm }}
+        run: |
+          set -euo pipefail
+          OR_API="https://openrouter.ai/api/v1"
+          GH_API="https://api.github.com"
+
+          # Determine run mode
+          if [ "$GITHUB_EVENT_NAME" = "schedule" ]; then
+            DRY_RUN="true"
+          else
+            DRY_RUN="${INPUT_DRY_RUN:-true}"
+          fi
+          DO_DELETE="false"
+          if [ "$DRY_RUN" = "false" ] && [ "${INPUT_CONFIRM:-}" = "DELETE" ]; then
+            DO_DELETE="true"
+          fi
+          echo "Mode: dry_run=${DRY_RUN} do_delete=${DO_DELETE}"
+
+          # 1. List all OpenRouter keys (including disabled)
+          OR_KEYS=$(curl -sS --max-time 30 \
+            -H "Authorization: Bearer ${OR_MGMT_KEY}" \
+            "${OR_API}/keys?include_disabled=true")
+          KEY_COUNT=$(printf '%s' "$OR_KEYS" | jq '.data | length' 2>/dev/null || echo 0)
+          echo "OpenRouter keys found: ${KEY_COUNT}"
+
+          # 2. Reconcile each key
+          LIVE=0; ORPHANS=0; STALE=0; UNCERTAIN=0; DELETED=0; DELETE_ERRORS=0
+          SUMMARY_ROWS=""
+
+          while IFS= read -r key_json; do
+            NAME=$(printf '%s' "$key_json" | jq -r '.name // empty')
+            HASH=$(printf '%s' "$key_json" | jq -r '.hash // empty')
+            DISABLED=$(printf '%s' "$key_json" | jq -r '.disabled // false')
+            CREATED=$(printf '%s' "$key_json" | jq -r '.created_at // empty' | cut -c1-10)
+            [ -n "$NAME" ] && [ -n "$HASH" ] || continue
+
+            HASH_PREFIX="${HASH:0:8}..."
+            STATUS=""
+            ACTION="—"
+
+            # Check GitHub repo existence
+            GH_HTTP=$(curl -sS -o /tmp/gh-repo.json -w '%{http_code}' --max-time 10 \
+              -H "Authorization: Bearer ${APP_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "${GH_API}/repos/edri2or/${NAME}" || echo "000")
+
+            if [ "$GH_HTTP" = "404" ]; then
+              STATUS="🗑️ Orphan"
+              ORPHANS=$((ORPHANS + 1))
+            elif [ "$GH_HTTP" = "200" ]; then
+              # Repo exists — try to read GCP_PROJECT_ID variable then compare hash
+              GCP_PROJECT_ID=$(curl -sS --max-time 10 \
+                -H "Authorization: Bearer ${APP_TOKEN}" \
+                -H "Accept: application/vnd.github+json" \
+                -H "X-GitHub-Api-Version: 2022-11-28" \
+                "${GH_API}/repos/edri2or/${NAME}/actions/variables/GCP_PROJECT_ID" \
+                2>/dev/null | jq -r '.value // empty' || echo "")
+
+              if [ -n "$GCP_PROJECT_ID" ]; then
+                SM_HASH=$(gcloud secrets versions access latest \
+                  --secret="openrouter-key-hash" \
+                  --project="$GCP_PROJECT_ID" 2>/dev/null || echo "NOACCESS")
+                if [ "$SM_HASH" = "NOACCESS" ]; then
+                  STATUS="❓ Uncertain"
+                  UNCERTAIN=$((UNCERTAIN + 1))
+                elif [ "$SM_HASH" = "$HASH" ]; then
+                  STATUS="✅ Live"
+                  LIVE=$((LIVE + 1))
+                else
+                  STATUS="⚠️ Stale"
+                  STALE=$((STALE + 1))
+                fi
+              else
+                # Repo exists but no GCP_PROJECT_ID var — treat as uncertain
+                STATUS="❓ Uncertain"
+                UNCERTAIN=$((UNCERTAIN + 1))
+              fi
+            else
+              # Unexpected GitHub API error — skip
+              STATUS="❓ Uncertain (GH HTTP ${GH_HTTP})"
+              UNCERTAIN=$((UNCERTAIN + 1))
+            fi
+
+            # Delete if applicable
+            if [ "$DO_DELETE" = "true" ] && \
+               { [ "$STATUS" = "🗑️ Orphan" ] || [ "$STATUS" = "⚠️ Stale" ]; }; then
+              DEL_HTTP=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 15 \
+                -X DELETE "${OR_API}/keys/${HASH}" \
+                -H "Authorization: Bearer ${OR_MGMT_KEY}" || echo "000")
+              if [ "$DEL_HTTP" = "200" ] || [ "$DEL_HTTP" = "204" ]; then
+                ACTION="Deleted"
+                DELETED=$((DELETED + 1))
+              else
+                ACTION="⚠️ Delete failed (HTTP ${DEL_HTTP})"
+                DELETE_ERRORS=$((DELETE_ERRORS + 1))
+              fi
+            elif [ "$DRY_RUN" = "true" ] && \
+               { [ "$STATUS" = "🗑️ Orphan" ] || [ "$STATUS" = "⚠️ Stale" ]; }; then
+              ACTION="Would delete"
+            fi
+
+            DISABLED_TAG=""
+            [ "$DISABLED" = "true" ] && DISABLED_TAG=" *(disabled)*"
+
+            SUMMARY_ROWS="${SUMMARY_ROWS}| \`${NAME}\`${DISABLED_TAG} | \`${HASH_PREFIX}\` | ${CREATED} | ${STATUS} | ${ACTION} |"$'\n'
+          done < <(printf '%s' "$OR_KEYS" | jq -c '.data[]? // empty')
+
+          TOTAL=$((LIVE + ORPHANS + STALE + UNCERTAIN))
+          MODE_TAG="🔍 Dry run"
+          [ "$DO_DELETE" = "true" ] && MODE_TAG="🗑️ Live run"
+
+          {
+            echo "## OpenRouter Key Audit — $(date -u +%Y-%m-%d)"
+            echo ""
+            echo "**Mode:** ${MODE_TAG}"
+            echo ""
+            echo "| Key Name | Hash | Created | Status | Action |"
+            echo "|---|---|---|---|---|"
+            printf '%s' "$SUMMARY_ROWS"
+            echo ""
+            echo "**Summary:** ${TOTAL} keys — ✅ ${LIVE} live | 🗑️ ${ORPHANS} orphan | ⚠️ ${STALE} stale | ❓ ${UNCERTAIN} uncertain"
+            [ "$DO_DELETE" = "true" ] && echo "**Deleted:** ${DELETED} | **Errors:** ${DELETE_ERRORS}"
+            echo ""
+            if [ "$DRY_RUN" = "true" ] && [ $((ORPHANS + STALE)) -gt 0 ]; then
+              echo "> To delete orphans and stale keys: dispatch this workflow with \`dry_run=false\` and \`confirm=DELETE\`."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # Persist counts for Telegram step
+          {
+            echo "AUDIT_ORPHANS=${ORPHANS}"
+            echo "AUDIT_STALE=${STALE}"
+            echo "AUDIT_UNCERTAIN=${UNCERTAIN}"
+            echo "AUDIT_LIVE=${LIVE}"
+            echo "AUDIT_DELETED=${DELETED}"
+            echo "AUDIT_DELETE_ERRORS=${DELETE_ERRORS}"
+            echo "AUDIT_DRY_RUN=${DRY_RUN}"
+          } >> "$GITHUB_ENV"
+
+          # Fail if deletions had errors
+          [ "$DELETE_ERRORS" -eq 0 ] || { echo "FAIL: ${DELETE_ERRORS} delete(s) failed" >&2; exit 1; }
+          echo "PASS: audit complete (orphans=${ORPHANS}, stale=${STALE}, deleted=${DELETED})."
+
+      - name: Notify via Telegram
+        if: always()
+        run: |
+          set -euo pipefail
+          [ -n "${TG_TOKEN:-}" ] && [ -n "${TG_CHAT:-}" ] || {
+            echo "INFO: Telegram not configured — skipping notification"
+            exit 0
+          }
+
+          TOTAL_ISSUES=$((${AUDIT_ORPHANS:-0} + ${AUDIT_STALE:-0}))
+          [ "$TOTAL_ISSUES" -gt 0 ] || {
+            echo "INFO: no issues found — skipping Telegram (clean audit)"
+            exit 0
+          }
+
+          if [ "${AUDIT_DRY_RUN:-true}" = "true" ]; then
+            MSG=$(printf '%s\n' \
+              "🔍 *OpenRouter Audit* — $(date -u +%Y-%m-%d)" \
+              "⚠️ נמצאו מפתחות יתומים/ישנים:" \
+              "- ${AUDIT_ORPHANS:-0} יתומים (אין ריפו)" \
+              "- ${AUDIT_STALE:-0} ישנים (hash לא תואם)" \
+              "- ${AUDIT_UNCERTAIN:-0} לא ניתן לאמת" \
+              "לניקוי: dispatch \`audit-openrouter-orphan-keys\` עם \`dry_run=false, confirm=DELETE\`")
+          else
+            MSG=$(printf '%s\n' \
+              "🗑️ *OpenRouter Audit* — $(date -u +%Y-%m-%d)" \
+              "${AUDIT_DELETED:-0} מפתחות נמחקו | ${AUDIT_DELETE_ERRORS:-0} שגיאות מחיקה")
+          fi
+
+          curl -sS --max-time 15 \
+            -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -cn --arg chat "$TG_CHAT" --arg text "$MSG" \
+              '{chat_id:$chat, text:$text, parse_mode:"Markdown"}')" \
+            > /dev/null || echo "WARN: Telegram send failed (non-fatal)"

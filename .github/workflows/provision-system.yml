@@ -639,6 +639,14 @@ jobs:
 
           _put_secret "openrouter-api-key"  "$KEY"
           _put_secret "openrouter-key-hash" "$HASH"
+          # Grant broker SA read access to the hash so audit-openrouter-orphan-keys.yml
+          # can reconcile live keys without needing deploy-sa or runtime-sa impersonation.
+          # NOTE: only the hash (non-secret identifier), NOT openrouter-api-key.
+          gcloud secrets add-iam-policy-binding "openrouter-key-hash" \
+            --project="$GCP_PROJECT" \
+            --role="roles/secretmanager.secretAccessor" \
+            --member="serviceAccount:factory-master-broker@or-factory-master-control.iam.gserviceaccount.com" \
+            --quiet >/dev/null 2>&1 || true
           echo "PASS: openrouter-api-key + openrouter-key-hash stored in ${GCP_PROJECT} SM."
 
       - name: Pre-create runtime secret shells
