@@ -127,6 +127,7 @@ jobs:
             HASH_PREFIX="${HASH:0:8}..."
             STATUS=""
             ACTION="—"
+            GCP_PROJECT_ID=""
 
             # Check GitHub repo existence
             GH_HTTP=$(curl -sS -o /tmp/gh-repo.json -w '%{http_code}' --max-time 10 \
@@ -194,9 +195,14 @@ jobs:
             [ "$DISABLED" = "true" ] && DISABLED_TAG=" *(disabled)*"
 
             SUMMARY_ROWS="${SUMMARY_ROWS}| \`${NAME}\`${DISABLED_TAG} | \`${HASH_PREFIX}\` | ${CREATED} | ${STATUS} | ${ACTION} |"$'\n'
+
+            # Also emit each classified key to stdout — the per-key table above
+            # only lands in the job summary, which GitHub exposes via no API.
+            echo "[key] status='${STATUS}' name='${NAME}' hash='${HASH_PREFIX}' created='${CREATED}' project='${GCP_PROJECT_ID:-none}' disabled='${DISABLED}' action='${ACTION}'"
           done < <(printf '%s' "$OR_KEYS" | jq -c '.data[]? // empty')
 
           TOTAL=$((LIVE + ORPHANS + STALE + UNCERTAIN))
+          echo "BREAKDOWN: total=${TOTAL} live=${LIVE} orphan=${ORPHANS} stale=${STALE} uncertain=${UNCERTAIN}"
           MODE_TAG="🔍 Dry run"
           [ "$DO_DELETE" = "true" ] && MODE_TAG="🗑️ Live run"
 

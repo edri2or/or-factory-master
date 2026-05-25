@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 48 — ops: audit emits per-key classification to stdout
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | chore | `audit-openrouter-orphan-keys.yml`: the per-key classification table was only written to `$GITHUB_STEP_SUMMARY`, which GitHub exposes via no REST API — so the full result couldn't be read back from a finished run (only the aggregate counts were on stdout). Added a per-key `echo` to stdout (status, name, hash prefix, created, project, disabled, action) plus a `BREAKDOWN:` line carrying all five counts (live/orphan/stale/uncertain/total), so the complete audit is recoverable from the run logs. Also reset `GCP_PROJECT_ID` at the top of each loop iteration so the log line never reports a stale project for an orphan key. No classification or deletion behavior changed. |
+
 ## Stage 47 — ops: daily OpenRouter orphan-key audit
 
 | PR | Type | Summary |
