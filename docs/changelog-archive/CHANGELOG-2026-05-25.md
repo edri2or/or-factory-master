@@ -2,6 +2,14 @@
 
 Older `CHANGELOG.md` entries moved here to keep the main file under the 20 KB scan-friendly cap (enforced by `scripts/check-changelog-size.sh`). Ordering preserved (newest archived stage first).
 
+## Stage 33 — decommission: fix Railway find-by-name (cross-workspace query)
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | fix | `.github/workflows/decommission-test-system.yml` found the Railway project to delete via the top-level `query { projects(first:200) { edges … } }`, which returns **empty** on a workspace/team-token account (Railway owns projects under `me.workspaces[].projects`, not `me` directly). So a single-system teardown without an explicit `railway_project_id` silently logged `SKIP: no Railway project found` and **leaked the Railway project** (confirmed live on `factory-test-30/31` — had to pass explicit IDs). Switched the find-by-name to `query { me { workspaces { projects { edges { node { id name } } } } } }` and flattened across workspaces in jq, mirroring the proven `listProjects` in `services/mcp-server/src/railway-client.ts` and the Stage 32 bulk-cleanup workflow. The name-verify guard (`project(id).name == system_name` before `projectDelete`) and the `railway_project_id` short-circuit are unchanged. |
+
+No behavior change when `railway_project_id` is passed; this only repairs the by-name fallback.
+
 ## Stage 32 — ops: bulk Railway project cleanup workflow (keep-list, operator-dispatched)
 
 | PR | Type | Summary |
