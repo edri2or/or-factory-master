@@ -1344,7 +1344,7 @@ jobs:
           # 2. Independent fresh n8n login — its own cookie jar, not shared with any
           #    earlier step.
           COOKIE_JAR=$(mktemp)
-          trap 'rm -f "$COOKIE_JAR" /tmp/or-login.json /tmp/or-creds.json /tmp/or-cred-new.json /tmp/or-wfs.json /tmp/or-wf.json /tmp/or-wf-get.json /tmp/or-activate.json /tmp/or-hook.json /tmp/or-exec-list.json /tmp/or-exec.json' EXIT
+          trap 'rm -f "$COOKIE_JAR" /tmp/or-login.json /tmp/or-creds.json /tmp/or-cred-new.json /tmp/or-wfs.json /tmp/or-wf.json /tmp/or-wf-get.json /tmp/or-activate.json /tmp/or-hook.json /tmp/or-exec-list.json' EXIT
           _login() {
             local field="$1"
             curl -sS -o /tmp/or-login.json -w '%{http_code}' --max-time 15 \
@@ -1502,53 +1502,34 @@ jobs:
           if [ "$CURL_RC" -eq 0 ] && [ "$HTTP" = "200" ]; then
             REPLY=$(jq -r '(.output // .text // .message // .) | if type=="string" then . else tostring end' /tmp/or-hook.json 2>/dev/null | head -c 200)
 
-            # n8n's AI Agent webhook response drops the resolved model, so recover the
-            # routed model + tokens + duration from the execution runData (Stage 37/38).
-            # n8n 1.121.0 internal REST API: GET /rest/executions lists under .results
-            # (not .data) and filters via ?filter={"workflowId":...} (a bare workflowId=
-            # is ignored); GET /rest/executions/:id returns the execution directly with
-            # .data as a JSON-stringified payload (parse before reading .resultData.runData);
-            # the LLM sub-node's usage is under .tokenUsage OR .tokenUsageEstimate.
-            # COOKIE_JAR + _napi are still open here.
+            # The resolved model is not available from n8n (the AI Agent webhook response drops
+            # it, and n8n strips it from the stored runData too — confirmed live: generationInfo
+            # holds only finish_reason). So take the duration from the actual n8n demo execution
+            # (the list summary carries startedAt/stoppedAt under .data.results[]), and read the
+            # resolved model + token usage from a direct OpenRouter call below. COOKIE_JAR +
+            # _napi and OR_KEY (the per-system inference key) are still in scope here.
             sleep 2
             _napi GET "$BASE/rest/executions?filter=%7B%22workflowId%22%3A%22${WF_ID}%22%7D&limit=1" /tmp/or-exec-list.json > /dev/null || true
-            echo "DEBUG(temp) exec-list <=600B: $(head -c 600 /tmp/or-exec-list.json 2>/dev/null)" >&2
-            EXEC_ID=$(jq -r '(.results // .data // .) | (if type=="array" then .[0].id else empty end) // empty' /tmp/or-exec-list.json 2>/dev/null || echo "")
-            echo "DEBUG(temp) EXEC_ID=[${EXEC_ID}]" >&2
+            STARTED=$(jq -r '(.data.results // .results // .data // .) | (if type=="array" then .[0].startedAt else empty end) // empty' /tmp/or-exec-list.json 2>/dev/null || echo "")
+            STOPPED=$(jq -r '(.data.results // .results // .data // .) | (if type=="array" then .[0].stoppedAt else empty end) // empty' /tmp/or-exec-list.json 2>/dev/null || echo "")
 
             MODEL_NAME=""
             PROMPT_T="?"
             COMP_T="?"
             DURATION_S="?"
-
-            if [ -n "$EXEC_ID" ] && [ "$EXEC_ID" != "null" ]; then
-              _napi GET "$BASE/rest/executions/${EXEC_ID}?includeData=true" /tmp/or-exec.json > /dev/null || true
-              echo "DEBUG(temp) exec-detail <=2000B: $(head -c 2000 /tmp/or-exec.json 2>/dev/null)" >&2
-
-              # The execution run payload (.resultData.runData) sits in the execution's
-              # .data, which is returned JSON-stringified; fromjson parses it. Guarded so
-              # an unexpected shape (e.g. a flatted array) degrades to empty, never errors.
-              EXTRACT=$(jq -r '
-                ( if (.data | type) == "string" then (.data | try fromjson catch {})
-                  elif (.resultData | type) == "object" then .
-                  elif (.data | type) == "object" then (if (.data.data | type) == "string" then (.data.data | try fromjson catch {}) else .data end)
-                  else {} end ) as $draw
-                | (if ($draw | type) == "object" then $draw else {} end) as $d
-                | ($d.resultData.runData["OpenRouter Chat Model"][0].data.ai_languageModel[0][0].json) as $j
-                | (($j.tokenUsage // $j.tokenUsageEstimate) // {}) as $u
-                | [ ($j.response.generations[0][0].generationInfo.model_name // ""), ($u.promptTokens // "?"), ($u.completionTokens // "?") ]
-                | @tsv
-              ' /tmp/or-exec.json 2>/dev/null || printf '\t?\t?')
-              MODEL_NAME=$(printf '%s' "$EXTRACT" | cut -f1)
-              PROMPT_T=$(printf '%s' "$EXTRACT" | cut -f2); [ -n "$PROMPT_T" ] || PROMPT_T="?"
-              COMP_T=$(printf '%s' "$EXTRACT" | cut -f3); [ -n "$COMP_T" ] || COMP_T="?"
-
-              STARTED=$(jq -r 'if has("startedAt") then .startedAt elif (.data | type) == "object" then .data.startedAt else empty end // empty' /tmp/or-exec.json 2>/dev/null || echo "")
-              STOPPED=$(jq -r 'if has("stoppedAt") then .stoppedAt elif (.data | type) == "object" then .data.stoppedAt else empty end // empty' /tmp/or-exec.json 2>/dev/null || echo "")
-              if [ -n "$STARTED" ] && [ -n "$STOPPED" ]; then
-                DURATION_S=$(python3 -c "from datetime import datetime; a=datetime.fromisoformat('${STARTED}'.replace('Z','+00:00')); b=datetime.fromisoformat('${STOPPED}'.replace('Z','+00:00')); print(f'{(b-a).total_seconds():.1f}')" 2>/dev/null || echo "?")
-              fi
+            if [ -n "$STARTED" ] && [ -n "$STOPPED" ]; then
+              DURATION_S=$(python3 -c "from datetime import datetime; a=datetime.fromisoformat('${STARTED}'.replace('Z','+00:00')); b=datetime.fromisoformat('${STOPPED}'.replace('Z','+00:00')); print(f'{(b-a).total_seconds():.1f}')" 2>/dev/null || echo "?")
             fi
+
+            # Resolved model + tokens from a direct OpenRouter call: the chat response .model is
+            # the model openrouter/auto actually routed to, and .usage carries the tokens
+            # (n8n hides both). ~$0.0005; informational, guarded so it never fails the deploy.
+            OR_RESP=$(curl -sS --max-time 30 -X POST "$OR_CRED_URL/chat/completions" \
+              -H "Authorization: Bearer ${OR_KEY}" -H "Content-Type: application/json" \
+              -d '{"model":"openrouter/auto","messages":[{"role":"user","content":"Reply with the single word: ok"}],"max_tokens":16}' 2>/dev/null || echo "")
+            MODEL_NAME=$(printf '%s' "$OR_RESP" | jq -r '.model // empty' 2>/dev/null || echo "")
+            PROMPT_T=$(printf '%s' "$OR_RESP" | jq -r '.usage.prompt_tokens // "?"' 2>/dev/null || echo "?")
+            COMP_T=$(printf '%s' "$OR_RESP" | jq -r '.usage.completion_tokens // "?"' 2>/dev/null || echo "?")
 
             [ -n "$MODEL_NAME" ] || MODEL_NAME="openrouter/auto (ראה https://openrouter.ai/activity)"
 

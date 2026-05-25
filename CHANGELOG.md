@@ -1,10 +1,42 @@
 # Changelog
 
-## Stage 41 — feat: bundle the gcp-hands-client skill into every scaffolded system
+## Stage 45 — feat: bundle the gcp-hands-client skill into every scaffolded system
 
 | PR | Type | Summary |
 |---|---|---|
 | TBD | feature | Vendor `templates/system/.claude/skills/gcp-hands-client/{SKILL.md,README.md}` (byte-identical to `edri2or/gcp-hands@main`); `provision-system.yml` now scaffolds the whole `.claude` tree (commands + skills) so each new repo can dispatch GCP ops to `edri2or/gcp-hands` out of the box. Cross-repo dispatch-token requirement is documented in the vendored README (per-system App stays single-repo), not provisioned. Periodic re-sync deferred (gcp-hands PLAN.md "SKILL.md drift"). |
+
+Template edit reaches newly-provisioned systems only (per CLAUDE.md).
+
+## Stage 44 — deploy: get the OpenRouter resolved model + tokens from a direct API call
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | fix | `templates/system/.github/workflows/deploy-railway-cloudflare.yml`: the Stage 43 `DBGMODEL` dump proved (live on `factory-test-39`) that n8n **strips the resolved model** from its stored runData (`generationInfo` holds only `finish_reason`), so it cannot be recovered from the execution at all. Per OpenRouter docs the chat-completion **response `.model`** is the model `openrouter/auto` actually routed to (and `.usage` has the tokens) — exactly what the Activity page shows. So the OpenRouter step now reads model + tokens from a **direct `POST {OR_CRED_URL}/chat/completions`** (Bearer = the per-system inference key already in scope; `max_tokens:16`; ~$0.0005; guarded so it never fails the deploy). Duration still comes from the **actual n8n demo execution** (the `.data.results[]` list summary's `startedAt`/`stoppedAt`). Removed the `/rest/executions/:id` detail fetch, the Python flatted decoder, and all temporary `DEBUG(temp)`/`DBGMODEL` lines — finalizes Stages 40–43. |
+
+Template edit reaches newly-provisioned systems only (per CLAUDE.md).
+
+## Stage 43 — deploy: search runData for the OpenRouter model + dump generationInfo (diagnostic)
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | fix | `templates/system/.github/workflows/deploy-railway-cloudflare.yml`: live on `factory-test-38` the Stage 42 flatted decoder made **tokens (7+1) and duration (1.7s) render**, but the model stayed on the fallback — `generations[0][0].generationInfo.model_name` was empty. Replaced the single-path model read with a recursive search of the decoded `response` for a `model_name`/`model` key whose value matches a `provider/model` pattern (finds it wherever n8n places it; ignores the reply text). Added a temporary `DBGMODEL` stderr line dumping the decoded `generationInfo` so the next deploy reveals the model's location — or confirms n8n strips it (the model lives in langchain's `llmOutput`, which n8n may drop from the per-generation payload). Tokens/duration unchanged; dropped `2>/dev/null` on the python call so the diagnostic shows. Validated locally with a real flatted encoder: model-present → `provider/model\t7\t1`, model-absent → `\t7\t1`. |
+
+Template edit reaches newly-provisioned systems only (per CLAUDE.md).
+
+## Stage 42 — deploy: decode n8n 'flatted' execution data for OpenRouter model + tokens
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | fix | `templates/system/.github/workflows/deploy-railway-cloudflare.yml`: live on `factory-test-37` the Stage 41 fix made `EXEC_ID` + duration render, but the `DEBUG(temp)` dump showed the execution **detail** returns the run payload (`exec.data`) in n8n's **`flatted`** format (a JSON array of registry slots with numeric-string refs, possibly cyclic), which jq can't decode — so model/tokens stayed on the fallback. Replaced the jq model/tokens extraction with a small **memoised, cycle-safe Python flatted decoder** that resolves the registry, then reads `model_name` from the OpenRouter sub-node's `generations` and tokens from `tokenUsage`/`tokenUsageEstimate`. Also handles plain-JSON string/object shapes; any failure prints a tab fallback (never errors the step). Validated locally (realistic flatted sample → `model\tprompt\tcomp`; `tokenUsageEstimate` variant; cyclic input degrades with no hang). `EXEC_ID` + duration (from the list summary) unchanged. `DEBUG(temp)` exec-detail kept one more cycle to confirm the live shape, then removed. |
+
+Template edit reaches newly-provisioned systems only (per CLAUDE.md).
+
+## Stage 41 — deploy: fix OpenRouter exec-list envelope (.data.results) + duration from list
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | fix | `templates/system/.github/workflows/deploy-railway-cloudflare.yml`: Stage 40 still fell back to `?` on a live `factory-test-36` deploy — the `DEBUG(temp)` dump showed the internal `GET /rest/executions` wraps the array as **`.data.results[]`** (Stage 40 read `.results`, missing the top-level `.data` envelope), so `EXEC_ID` was empty and the block was skipped. Now reads `.data.results`; and since the list summary carries `startedAt`/`stoppedAt`, **duration is taken straight from the list** (no detail call) — verified against the captured payload (`EXEC_ID=2`, duration `1.3s`). Model + tokens still come from the execution detail; hardened that jq to resolve the run payload across wrapped/unwrapped shapes and parse the stringified `.data` (graceful empty if it is a `flatted` array). The `DEBUG(temp)` dump stays one more cycle to confirm the detail payload shape (plain-JSON vs flatted), then is removed. |
 
 Template edit reaches newly-provisioned systems only (per CLAUDE.md).
 
@@ -84,38 +116,7 @@ Operator-triggered only — intentionally **not** on the MCP `dispatch_workflow`
 
 Template edit reaches newly-provisioned systems only (per CLAUDE.md). The notifier step has the same latent unguarded-curl pattern but is out of scope here.
 
-## Stage 30 — deploy: fix OpenRouter workflow create (missing `active`) + enforce soft-fail
-
-| PR | Type | Summary |
-|---|---|---|
-| TBD | fix | `templates/system/.github/workflows/deploy-railway-cloudflare.yml`: the Stage 29 `Create OpenRouter credential + demo workflow in n8n` step posted a workflow body without a top-level `active` field, so n8n 1.121.0's `POST /rest/workflows` returned `HTTP 500 — null value in column "active" of relation "workflow_entity" violates not-null constraint` (same class as Stage 17's notifier fix). Added `active: false` to the workflow JSON (it is activated immediately after via the activate endpoint). Caught on a live deploy of `factory-test-30`: the credential created fine (`openRouterApi` apiKey+url validated), the workflow POST 500'd. |
-| TBD | fix | Same step violated the non-negotiable soft-fail rule: every n8n REST failure (login, `GET`/`POST /rest/credentials`, `GET`/`POST /rest/workflows`, missing id) did a hard `exit 1`, which failed the whole deploy (steps `Persist Railway IDs` + `Summary` were skipped). All hard exits replaced with a `_soft_exit0` helper that writes a Hebrew warning to `$GITHUB_STEP_SUMMARY` and `exit 0`, so an OpenRouter/n8n hiccup can never fail an otherwise-successful deploy. |
-
-Template edit reaches newly-provisioned systems only (per CLAUDE.md); existing system repos keep their current deploy workflow until re-provisioned.
-
-## Stage 29 — OpenRouter per-system inference keys with management-key isolation
-
-| PR | Type | Summary |
-|---|---|---|
-| TBD | security | `scripts/copy-generic-secrets.sh` EXCLUDE broadened from `^factory-master-broker-app-(id\|private-key\|installation-id)$` to `^(factory-master-broker-app-.*\|.*-management-key\|.*-provisioning-key\|.*-master-key)$`. `openrouter-management-key` (a super-credential that can mint/revoke inference keys account-wide) — and any future `*-management-key` / `*-provisioning-key` / `*-master-key` — is no longer copied into tenant Secret Managers; it stays exclusively in `or-factory-master-control`. Closes a propagation gap. |
-| TBD | feature | `.github/workflows/provision-system.yml` gains a `Mint per-system OpenRouter inference key` step (after generic copy, before runtime-shell pre-create): reads `openrouter-management-key` from control SM, `POST /api/v1/keys` (`limit:25`, `limit_reset:"monthly"`, `include_byok_in_limit:false`), and stores the live key as `openrouter-api-key` + its revocation id as `openrouter-key-hash` in the tenant SM (both granted `secretAccessor` to runtime-sa + deploy-sa). Idempotent (skips if `openrouter-api-key` already has a version). Soft-fail: API/parse failure masks the key, attempts orphan-key `DELETE` if a hash was returned, writes a Hebrew job-summary warning, and `exit 0`. |
-| TBD | feature | `templates/system/.github/workflows/deploy-railway-cloudflare.yml` gains a `Create OpenRouter credential + demo workflow in n8n` step (after the Telegram notifier): fresh n8n login, creates the `openRouterApi` credential `OpenRouter (factory-master)` (both `apiKey` + `url` in `data`) and the `factory-master: OpenRouter auto-router demo` workflow (Webhook → AI Agent → OpenRouter Chat Model, model `openrouter/auto`), activates it, and test-fires the webhook. Idempotent by name for both credential and workflow; test-fire is informational (soft-fail with a Hebrew warning, deploy stays green). Verified against n8n 1.121.0: `openRouterApi` (apiKey + hidden url, default `https://openrouter.ai/api/v1`), `@n8n/n8n-nodes-langchain.lmChatOpenRouter` typeVersion 1, `@n8n/n8n-nodes-langchain.agent` typeVersion 2, sub-node `ai_languageModel` wiring under the model node's own name. |
-| TBD | feature | `.github/workflows/decommission-test-system.yml` gains a `Revoke OpenRouter inference key` step (before Railway delete): reads `openrouter-key-hash` from the system SM and `DELETE /api/v1/keys/:hash` with the control-project management key, verifying `{"deleted":true}`. Best-effort — a revoke failure warns and continues teardown (an orphaned inference key is not a blocker). |
-| TBD | docs | New `docs/openrouter-integration.md` (Hebrew): what OpenRouter + `openrouter/auto` are, the one-time manual management-key setup, the automatic per-system flow, troubleshooting, costs, and manual revoke. `docs/external-state.md` corrected to list `openrouter-management-key` as a never-copied super-credential rather than a generic copied secret. |
-
-Provision/deploy/decommission changes are repo-level and reach newly-provisioned systems only; existing system repos keep their current deploy workflow until re-provisioned (per CLAUDE.md). `openrouter-api-key` / `openrouter-key-hash` are minted per system and never shared.
-
-## Stage 28 — provision: scaffold global skills package into every system repo
-
-| PR | Type | Summary |
-|---|---|---|
-| TBD | feature | `.github/workflows/provision-system.yml` now scaffolds the **global skills package** into every new system repo: a new `Push global skills package to system repo` step (after the deploy-workflow scaffold, **before** branch protection so the push to `main` needs no bypass) clones `edri2or/<system_name>` with the broker `APP_TOKEN`, copies `templates/system/.claude/commands/*.md` into the repo's `.claude/commands/`, and pushes a single `ci: scaffold global skills package` commit. Every provisioned system (test **and** real — repo content, no GCP/quota impact) ships with the same 63 reusable slash-command skills the factory has. `APP_TOKEN` is `::add-mask::`-ed and `set -x` stays off so the token in the clone URL is never echoed; the step guards on a non-empty source and a successful push. |
-| TBD | chore | New `templates/system/.claude/commands/` — the mirror that becomes the package pushed into system repos (makes `templates/system/` the single canonical description of "what a system repo gets", consistent with the deploy workflow already living there). Seeded byte-identical to the factory's own `.claude/commands/` (63 files). |
-| TBD | chore | New `scripts/check-skills-mirror.sh` (`diff -rq` guard, `PASS:`/`ERROR:` style matching `check-changelog-updated.sh`) wired into `.github/workflows/changelog-check.yml` as a third step, so the mirror can never silently drift from `.claude/commands/`. |
-
-Provision change is repo-level (all future provisions); existing system repos keep their current contents until re-provisioned (per CLAUDE.md).
-
-Stages 6-10 archived to `docs/changelog-archive/CHANGELOG-2026-05-22.md`; Stages 11-17 to `docs/changelog-archive/CHANGELOG-2026-05-23.md`; Stages 18-25 to `docs/changelog-archive/CHANGELOG-2026-05-24.md`; Stages 26-27 to `docs/changelog-archive/CHANGELOG-2026-05-25.md` — keeping this file under the 20 KB scan-friendly cap.
+Stages 6-10 archived to `docs/changelog-archive/CHANGELOG-2026-05-22.md`; Stages 11-17 to `docs/changelog-archive/CHANGELOG-2026-05-23.md`; Stages 18-25 to `docs/changelog-archive/CHANGELOG-2026-05-24.md`; Stages 26-30 to `docs/changelog-archive/CHANGELOG-2026-05-25.md` — keeping this file under the 20 KB scan-friendly cap.
 
 ## Bootstrap stages 1-4
 
