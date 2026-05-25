@@ -1,5 +1,13 @@
 # Changelog
 
+## Stage 44 — deploy: get the OpenRouter resolved model + tokens from a direct API call
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | fix | `templates/system/.github/workflows/deploy-railway-cloudflare.yml`: the Stage 43 `DBGMODEL` dump proved (live on `factory-test-39`) that n8n **strips the resolved model** from its stored runData (`generationInfo` holds only `finish_reason`), so it cannot be recovered from the execution at all. Per OpenRouter docs the chat-completion **response `.model`** is the model `openrouter/auto` actually routed to (and `.usage` has the tokens) — exactly what the Activity page shows. So the OpenRouter step now reads model + tokens from a **direct `POST {OR_CRED_URL}/chat/completions`** (Bearer = the per-system inference key already in scope; `max_tokens:16`; ~$0.0005; guarded so it never fails the deploy). Duration still comes from the **actual n8n demo execution** (the `.data.results[]` list summary's `startedAt`/`stoppedAt`). Removed the `/rest/executions/:id` detail fetch, the Python flatted decoder, and all temporary `DEBUG(temp)`/`DBGMODEL` lines — finalizes Stages 40–43. |
+
+Template edit reaches newly-provisioned systems only (per CLAUDE.md).
+
 ## Stage 43 — deploy: search runData for the OpenRouter model + dump generationInfo (diagnostic)
 
 | PR | Type | Summary |
