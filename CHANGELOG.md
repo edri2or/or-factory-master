@@ -1,5 +1,12 @@
 # Changelog
 
+## Stage 47 — ops: daily OpenRouter orphan-key audit
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | feature | New `.github/workflows/audit-openrouter-orphan-keys.yml`: runs daily at 06:00 UTC (dry-run; reports only) and on manual dispatch (with `dry_run=false`+`confirm=DELETE` for real cleanup). Lists all OpenRouter keys via the management key, classifies each as **Live** (repo exists + SM hash matches), **Orphan** (no repo), **Stale** (repo exists but SM hash mismatch — leftover from a reuse-mode re-provision), or **Uncertain** (can't read SM hash — broker SA not yet granted access on pre-Stage-47 systems). Renders a table in the job summary; Telegram notification when issues are found. Deletion is opt-in via manual dispatch only (scheduled runs are always read-only). |
+| TBD | fix | `provision-system.yml` "Mint per-system OpenRouter inference key" step: after storing `openrouter-key-hash`, now also grants `roles/secretmanager.secretAccessor` to the broker SA (`factory-master-broker@or-factory-master-control`) on that secret — enabling the audit workflow to do hash reconciliation for systems provisioned going forward. Pre-Stage-47 systems remain Uncertain until re-provisioned or manually backfilled. |
+
 ## Stage 46 — deploy: patient TLS-cert wait fixes the recurring first-deploy failure
 
 | PR | Type | Summary |
@@ -107,24 +114,7 @@ Template edit reaches newly-provisioned systems only (per CLAUDE.md).
 
 No behavior change when `railway_project_id` is passed; this only repairs the by-name fallback.
 
-## Stage 32 — ops: bulk Railway project cleanup workflow (keep-list, operator-dispatched)
-
-| PR | Type | Summary |
-|---|---|---|
-| TBD | feature | New `.github/workflows/decommission-railway-projects.yml` — a manual `workflow_dispatch` that deletes **every** Railway project the factory token can see, across all workspaces, **except** those whose project id is in the `keep_ids` input. Fills a real gap: the MCP `railway_graphql_read` tool refuses mutations, and `decommission-test-system.yml` hard-refuses any non-`{factory,v2,or}-test-*` name (and `factory-test-25`) and deletes one-at-a-time with repo/DNS side effects — neither can do a bulk Railway-only prune. Reuses the proven WIF→broker-SA auth, `_gql` helper, and `projectDelete` mutation from `decommission-test-system.yml`; lists across workspaces via `me { workspaces { projects { edges } } }` (mirrors the MCP `listProjects`, so the second workspace's `or-project39-railway` is included, unlike `projects(first:N)`). Railway token is read from `or-factory-master-control` SM (`railway-api-token`). |
-| TBD | safety | Guards: defaults to **dry-run** (prints a KEEP/DELETE plan table to the job summary, deletes nothing); a real run requires `dry_run=false` **and** `confirm=DELETE`; refuses an empty `keep_ids`; aborts if **none** of the `keep_ids` match a live project (a stale keep-list can never wipe the workspace) and if Railway returns zero projects; per-project delete failures are collected and reported (exit 1 at end) without blocking the rest. Keep-list is by **project id** (not name) because names duplicate (e.g. `project-life-34` ×6). Default `keep_ids` = the 5 keepers (`factory-org-reader-mcp`, `project-life-130`, `factory-test-30`, `factory-test-31`, `factory-test-25`). |
-
-Operator-triggered only — intentionally **not** on the MCP `dispatch_workflow` allowlist, and runs on `main` (WIF trusts `refs/heads/main`). Railway-only: no GCP project, Secret Manager, GitHub repo, or DNS is touched.
-
-## Stage 31 — deploy: ride out Railway custom-domain cert flap in the OpenRouter step
-
-| PR | Type | Summary |
-|---|---|---|
-| TBD | fix | `templates/system/.github/workflows/deploy-railway-cloudflare.yml`: a live deploy of `factory-test-31` failed at the OpenRouter step with `curl: (60) SSL: no alternative certificate subject name matches target host name` — Railway's freshly-issued custom-domain cert briefly served a non-matching cert right after the TLS-wait step (login succeeded, the next call hit the flap). Because that `curl` was unguarded, `set -e` aborted the step with curl's exit 60, **bypassing the Stage 30 soft-fail** (`_soft_exit0` never ran; `Persist Railway IDs` + `Summary` were skipped). All post-login n8n calls now route through a `_napi` helper that guards curl-level failures (`\|\| echo "000"`) and retries **only** on `000` (no HTTP request reached the server, so retrying is safe even for POSTs — cannot double-create), never on a real HTTP status; login gets the same retry loop. This rides out the transient cert flap and makes the Stage 30 soft-fail actually hold for connection-level failures, not just non-2xx. |
-
-Template edit reaches newly-provisioned systems only (per CLAUDE.md). The notifier step has the same latent unguarded-curl pattern but is out of scope here.
-
-Stages 6-10 archived to `docs/changelog-archive/CHANGELOG-2026-05-22.md`; Stages 11-17 to `docs/changelog-archive/CHANGELOG-2026-05-23.md`; Stages 18-25 to `docs/changelog-archive/CHANGELOG-2026-05-24.md`; Stages 26-30 to `docs/changelog-archive/CHANGELOG-2026-05-25.md` — keeping this file under the 20 KB scan-friendly cap.
+Stages 6-10 archived to `docs/changelog-archive/CHANGELOG-2026-05-22.md`; Stages 11-17 to `docs/changelog-archive/CHANGELOG-2026-05-23.md`; Stages 18-25 to `docs/changelog-archive/CHANGELOG-2026-05-24.md`; Stages 26-32 to `docs/changelog-archive/CHANGELOG-2026-05-25.md` — keeping this file under the 20 KB scan-friendly cap.
 
 ## Bootstrap stages 1-4
 
