@@ -1538,8 +1538,8 @@ jobs:
               # with numeric-string refs, possibly cyclic) — jq can't safely decode it, so a
               # small memoised (cycle-safe) Python flatted decoder parses it; it also handles
               # plain-JSON string/object shapes. Any failure prints a tab fallback.
-              MI=$(python3 - <<'PY' 2>/dev/null || printf '\t?\t?'
-          import json
+              MI=$(python3 - <<'PY' || printf '\t?\t?'
+          import json,sys,re
           def _flat(s):
               a=json.loads(s)
               if not isinstance(a,list): return a
@@ -1567,8 +1567,23 @@ jobs:
               rd=_flat(d) if isinstance(d,str) else (d if isinstance(d,dict) else {})
               run=rd["resultData"]["runData"]["OpenRouter Chat Model"][0]
               j=run["data"]["ai_languageModel"][0][0]["json"]
-              gens=(j.get("response") or {}).get("generations") or [[{}]]
-              model=((gens[0][0] or {}).get("generationInfo") or {}).get("model_name") or ""
+              gen=(((j.get("response") or {}).get("generations") or [[{}]])[0] or [{}])[0] or {}
+              gi=gen.get("generationInfo") or {}
+              sys.stderr.write("DBGMODEL gi=%s rkeys=%s genkeys=%s\n"%(json.dumps(gi)[:600],list((j.get("response") or {}).keys()),list(gen.keys())))
+              PAT=re.compile(r"^[a-z0-9-]+/[A-Za-z0-9._-]+$")
+              def fm(o):
+                  if isinstance(o,dict):
+                      for kk in ("model_name","model"):
+                          if isinstance(o.get(kk),str) and PAT.match(o[kk]): return o[kk]
+                      for v in o.values():
+                          r=fm(v)
+                          if r: return r
+                  elif isinstance(o,list):
+                      for v in o:
+                          r=fm(v)
+                          if r: return r
+                  return None
+              model=fm(j.get("response") or {}) or ""
               u=j.get("tokenUsage") or j.get("tokenUsageEstimate") or {}
               print("%s\t%s\t%s"%(model,u.get("promptTokens","?"),u.get("completionTokens","?")))
           except Exception:
