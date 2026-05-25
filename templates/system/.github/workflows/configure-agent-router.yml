@@ -205,6 +205,22 @@ jobs:
           REPLY=""
           [ "$CURL_RC" -eq 0 ] && REPLY=$(jq -r '(.reply // .output // .) | if type=="string" then . else tostring end' /tmp/ar-hook.json 2>/dev/null | head -c 300)
 
+          # 6b. Diagnostics to stdout (n8n does NOT log node-level execution errors
+          #     to container stdout, so surface them here — readable via the run
+          #     logs). Prints the smoke result + the router's last execution status,
+          #     and greps the execution detail for the failing node/message.
+          echo "SMOKE: http=${HTTP} curl_rc=${CURL_RC} body=$(head -c 300 /tmp/ar-hook.json 2>/dev/null | tr '\n' ' ')"
+          _napi GET "$BASE/rest/executions?filter=%7B%22workflowId%22%3A%22${ROUTER_ID}%22%7D&limit=1" /tmp/ar-exec-list.json >/dev/null 2>&1 || true
+          EXEC_ID=$(jq -r 'first((.data.results // .results // .data // .)[]? | .id) // empty' /tmp/ar-exec-list.json 2>/dev/null)
+          EXEC_STATUS=$(jq -r 'first((.data.results // .results // .data // .)[]? | (.status // empty)) // empty' /tmp/ar-exec-list.json 2>/dev/null)
+          echo "EXEC: id=${EXEC_ID:-none} status=${EXEC_STATUS:-?}"
+          if [ -n "$EXEC_ID" ]; then
+            _napi GET "$BASE/rest/executions/${EXEC_ID}" /tmp/ar-exec.json >/dev/null 2>&1 || true
+            grep -oE '"(message|description|name)":"[^"]{0,200}"' /tmp/ar-exec.json 2>/dev/null \
+              | grep -iE 'error|fail|cannot|not found|undefined|invalid|parse|model|propagat|ECONN|getaddrinfo|stopped|problem' \
+              | head -8 | sed 's/^/EXEC_ERR: /' || true
+          fi
+
           # 7. Logout + Hebrew summary.
           curl -sS -o /dev/null -b "$COOKIE_JAR" -X POST "$BASE/rest/logout" || true
           {
