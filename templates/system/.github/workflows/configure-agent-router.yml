@@ -31,6 +31,7 @@ jobs:
     # WIF CEL pins ref=refs/heads/main; running off other branches will fail to auth.
     if: github.ref == 'refs/heads/main'
     permissions:
+      contents: read    # actions/checkout needs this to read workflows/n8n/*.json (private repo)
       id-token: write   # WIF OIDC token
 
     steps:

@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 51a — fix: configure-agent-router checkout needs `contents: read`
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | fix | `templates/system/.github/workflows/configure-agent-router.yml`: the job declared `permissions: id-token: write` only (copied from deploy, which has no checkout step), so `GITHUB_TOKEN` lost the default `contents: read` and `actions/checkout` failed with `remote: Repository not found` on the private system repo — caught live on the factory-test-51a E2E (run only reached the checkout step). Added `contents: read` to the job permissions. No other change. |
+
 ## Stage 51a — feat: Agent Router foundation (router + ops + unknown sub-agents)
 
 | PR | Type | Summary |
