@@ -1,5 +1,13 @@
 # Changelog
 
+## Stage 42 — deploy: decode n8n 'flatted' execution data for OpenRouter model + tokens
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | fix | `templates/system/.github/workflows/deploy-railway-cloudflare.yml`: live on `factory-test-37` the Stage 41 fix made `EXEC_ID` + duration render, but the `DEBUG(temp)` dump showed the execution **detail** returns the run payload (`exec.data`) in n8n's **`flatted`** format (a JSON array of registry slots with numeric-string refs, possibly cyclic), which jq can't decode — so model/tokens stayed on the fallback. Replaced the jq model/tokens extraction with a small **memoised, cycle-safe Python flatted decoder** that resolves the registry, then reads `model_name` from the OpenRouter sub-node's `generations` and tokens from `tokenUsage`/`tokenUsageEstimate`. Also handles plain-JSON string/object shapes; any failure prints a tab fallback (never errors the step). Validated locally (realistic flatted sample → `model\tprompt\tcomp`; `tokenUsageEstimate` variant; cyclic input degrades with no hang). `EXEC_ID` + duration (from the list summary) unchanged. `DEBUG(temp)` exec-detail kept one more cycle to confirm the live shape, then removed. |
+
+Template edit reaches newly-provisioned systems only (per CLAUDE.md).
+
 ## Stage 41 — deploy: fix OpenRouter exec-list envelope (.data.results) + duration from list
 
 | PR | Type | Summary |
