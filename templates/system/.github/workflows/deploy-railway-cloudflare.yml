@@ -792,17 +792,15 @@ jobs:
         env:
           SYSTEM_NAME: ${{ vars.SYSTEM_NAME }}
         run: |
-          # Railway issues the per-domain LE cert only after its verification
-          # job runs against the customDomain. Sometimes Railway loses that
-          # first verification attempt — observed on factory-test-20 and
-          # factory-test-21: customDomain sat in verified=false for 9+ idle
-          # minutes with no progress; a fresh customDomainDelete + Create
-          # unstuck it within seconds. Wall-clock time alone does not unstick;
-          # the recreate does.
+          # Railway issues the per-domain LE cert only after its verification job runs against
+          # the customDomain — DNS propagation + verify + issuance take ~8-15 min on a STABLE
+          # domain. Rarely Railway genuinely stalls (verified=false for 9+ idle min, seen on
+          # factory-test-20/21) and a customDomainDelete + Create unstuck it.
           #
-          # Strategy: 2 attempts × 5-min TLS-handshake poll, with one
-          # customDomain recreate + CF CNAME repoint between attempts.
-          # Total wall-clock cap ~10 min.
+          # Strategy: poll patiently for ~15 min WITHOUT recreating — recreating changes the
+          # CNAME target and resets verification progress, which was the cause of recurring
+          # first-deploy failures. Only if that long wait fails, recreate once (last resort,
+          # with Railway's flaky customDomainCreate 500 guarded) and poll ~8 min more. Cap ~23 min.
           #
           # Blocking on overall timeout (exit 1) — the downstream
           # `Set up n8n owner account` step curls the FQDN over HTTPS and
@@ -834,24 +832,32 @@ jobs:
             _rgql 'mutation($id:String!){customDomainDelete(id:$id)}' \
               "$(jq -cn --arg id "$CUSTOM_DOMAIN_ID" '{id:$id}')" >/dev/null
             sleep 5
-            local resp new_status new_id new_target
-            resp=$(_rgql 'mutation($i:CustomDomainCreateInput!){
-                customDomainCreate(input:$i){
-                  id status {
-                    dnsRecords { hostlabel recordType requiredValue }
-                    verified
+            local resp new_status new_id new_target rc_n
+            new_id=""; new_target=""
+            # Railway's customDomainCreate is flaky (intermittent INTERNAL_SERVER_ERROR /
+            # "please try again"). Retry it instead of dying on the first 500.
+            for rc_n in 1 2 3 4 5 6; do
+              resp=$(_rgql 'mutation($i:CustomDomainCreateInput!){
+                  customDomainCreate(input:$i){
+                    id status {
+                      dnsRecords { hostlabel recordType requiredValue }
+                      verified
+                    }
                   }
-                }
-              }' \
-              "$(jq -cn --arg pid "$PROJECT_ID_RW" --arg eid "$ENV_ID" --arg sid "$N8N_ID" --arg d "$DOMAIN" \
-                '{i:{projectId:$pid,environmentId:$eid,serviceId:$sid,domain:$d,targetPort:5678}}')")
-            new_status=$(printf '%s' "$resp" | jq -c '.data.customDomainCreate // {}')
-            new_id=$(printf '%s' "$new_status" | jq -r '.id // ""')
-            new_target=$(printf '%s' "$new_status" | jq -r \
-              '.status.dnsRecords // [] | map(select(.recordType=="DNS_RECORD_TYPE_CNAME")) | .[0].requiredValue // ""')
+                }' \
+                "$(jq -cn --arg pid "$PROJECT_ID_RW" --arg eid "$ENV_ID" --arg sid "$N8N_ID" --arg d "$DOMAIN" \
+                  '{i:{projectId:$pid,environmentId:$eid,serviceId:$sid,domain:$d,targetPort:5678}}')")
+              new_status=$(printf '%s' "$resp" | jq -c '.data.customDomainCreate // {}')
+              new_id=$(printf '%s' "$new_status" | jq -r '.id // ""')
+              new_target=$(printf '%s' "$new_status" | jq -r \
+                '.status.dnsRecords // [] | map(select(.recordType=="DNS_RECORD_TYPE_CNAME")) | .[0].requiredValue // ""')
+              if [ -n "$new_id" ] && [ -n "$new_target" ]; then break; fi
+              echo "  customDomainCreate attempt ${rc_n}/6 got no id/target (Railway may have 500'd); retry in 10s. resp=${resp}" >&2
+              sleep 10
+            done
             if [ -z "$new_id" ] || [ -z "$new_target" ]; then
-              echo "::error::customDomain recreate returned no id/target. resp=${resp}" >&2
-              exit 1
+              echo "::error::customDomain recreate failed after 6 attempts. resp=${resp}" >&2
+              return 1
             fi
             CUSTOM_DOMAIN_ID="$new_id"
             echo "  customDomainCreate -> id=${new_id} cname=${new_target}" >&2
@@ -920,30 +926,39 @@ jobs:
               -H "Authorization: Bearer ${CF_TOKEN_CREATOR}" >/dev/null 2>&1 || true
           }
 
-          ATTEMPTS=2
-          POLLS_PER_ATTEMPT=30   # × 10s = 5 min per attempt
-          for attempt in $(seq 1 $ATTEMPTS); do
-            echo "=== TLS poll attempt ${attempt}/${ATTEMPTS} on https://${DOMAIN} (up to 5min) ==="
-            for i in $(seq 1 $POLLS_PER_ATTEMPT); do
+          # Cert issuance (DNS propagation + Railway verify + Let's Encrypt) takes ~8-15 min on a
+          # STABLE domain. Recreating the customDomain changes the CNAME target and resets that
+          # progress, so do NOT recreate first — poll patiently (~15 min). Only if that long wait
+          # fails, recreate once (last resort; helps the rare genuinely-stuck case seen on
+          # factory-test-20/21) and poll ~8 min more. The recreate retries Railway's flaky 500.
+          _poll_cert() {
+            local n="$1" i cn
+            for i in $(seq 1 "$n"); do
               cn=$(_probe_tls_cn)
               if [ "${cn:-}" = "${DOMAIN}" ]; then
-                echo "PASS: Railway issued cert for ${DOMAIN} (attempt=${attempt} poll=${i})"
-                exit 0
+                echo "PASS: Railway issued cert for ${DOMAIN} (poll ${i}/${n})"
+                return 0
               fi
-              echo "[attempt ${attempt} poll ${i}/${POLLS_PER_ATTEMPT}] CN=${cn:-<no cert>}; sleeping 10s..."
+              echo "[cert poll ${i}/${n}] CN=${cn:-<no cert>}; sleeping 10s..."
               sleep 10
             done
-            if [ "$attempt" -lt "$ATTEMPTS" ]; then
-              echo "::notice::Attempt ${attempt} timed out after 5 min. Recreating customDomain to enqueue a fresh Railway verification..."
-              new_target=$(_recreate_custom_domain)
-              _cf_repoint_cname "$new_target" || echo "::warning::CF repoint had issues; continuing to next poll"
-            fi
-          done
+            return 1
+          }
 
-          echo "::error::Railway did not issue cert for ${DOMAIN} after ${ATTEMPTS} attempts (~10 min)."
-          echo "::error::This is usually the Railway scheduler throttle — too many stale projects in the workspace."
-          echo "::error::Recovery: delete stale Railway projects via projectDelete, then re-dispatch this workflow."
-          echo "::error::See CLAUDE.md propagation-patterns table, 'Railway scheduler throttle' row."
+          echo "=== Waiting for Railway TLS cert on https://${DOMAIN} (patient, up to ~15 min on the stable domain) ==="
+          if _poll_cert 90; then exit 0; fi
+
+          echo "::notice::Cert not issued after ~15 min — recreating customDomain once (last resort), then polling ~8 min more..."
+          if new_target=$(_recreate_custom_domain); then
+            _cf_repoint_cname "$new_target" || echo "::warning::CF repoint after recreate had issues; continuing to poll"
+            if _poll_cert 48; then exit 0; fi
+          else
+            echo "::error::customDomain recreate failed (Railway customDomainCreate kept erroring)." >&2
+          fi
+
+          echo "::error::Railway did not issue cert for ${DOMAIN} after ~23 min (15 min + recreate + 8 min)."
+          echo "::error::The cert normally issues within ~15 min; a persistent failure may be the Railway"
+          echo "::error::scheduler throttle (too many fresh projects) — delete stale Railway projects, then re-dispatch."
           exit 1
 
       - name: Set up n8n owner account
