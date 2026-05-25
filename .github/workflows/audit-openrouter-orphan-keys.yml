@@ -111,11 +111,24 @@ jobs:
           fi
           echo "Mode: dry_run=${DRY_RUN} do_delete=${DO_DELETE}"
 
-          # Protected key names (never deleted). Wrap in commas + strip spaces so a
-          # single name can be matched as a ",NAME," substring without partial hits.
-          _KN="${INPUT_KEEP_NAMES:-}"
-          KEEP_NAMES=",${_KN// /},"
-          [ "$KEEP_NAMES" != ",," ] && echo "Protected (keep) names: ${_KN}"
+          # Protected key names — never deleted, and excluded from the actionable
+          # issue count so the scheduled audit stays quiet about them. Built from the
+          # committed allowlist (honored by scheduled runs too) MERGED with the
+          # optional keep_names dispatch input. Each source is normalized separately
+          # (split on any non-[A-Za-z0-9-] → one token per line) and appended to a temp
+          # file, then deduped; matched later with grep -qxF. Two explicit appends —
+          # not a `{ grep; printf; }` group — because grep-then-printf in a piped group
+          # drops the printf output, and `grep | tr` under pipefail aborts on no-match.
+          KEEP_FILE=".github/openrouter-keep.txt"
+          : > /tmp/keep_names.txt
+          if [ -f "$KEEP_FILE" ]; then
+            grep -vE '^[[:space:]]*#' "$KEEP_FILE" | tr -c 'a-zA-Z0-9-' '\n' >> /tmp/keep_names.txt || true
+          fi
+          printf '%s' "${INPUT_KEEP_NAMES:-}" | tr -c 'a-zA-Z0-9-' '\n' >> /tmp/keep_names.txt
+          sed -i '/^$/d' /tmp/keep_names.txt
+          sort -u -o /tmp/keep_names.txt /tmp/keep_names.txt
+          KEEP_COUNT=$(wc -l < /tmp/keep_names.txt | tr -d ' ')
+          [ "$KEEP_COUNT" -gt 0 ] && { echo "Protected (keep) names:"; sed 's/^/  - /' /tmp/keep_names.txt; }
 
           # 1. List all OpenRouter keys (including disabled)
           OR_KEYS=$(curl -sS --max-time 30 \
@@ -189,7 +202,7 @@ jobs:
             CANDIDATE="false"
             { [ "$STATUS" = "🗑️ Orphan" ] || [ "$STATUS" = "⚠️ Stale" ]; } && CANDIDATE="true"
             PROTECTED="false"
-            case "$KEEP_NAMES" in *",${NAME},"*) PROTECTED="true";; esac
+            grep -qxF "$NAME" /tmp/keep_names.txt && PROTECTED="true"
 
             if [ "$CANDIDATE" = "true" ] && [ "$PROTECTED" = "true" ]; then
               ACTION="🔒 Kept (protected)"
@@ -220,7 +233,11 @@ jobs:
           done < <(printf '%s' "$OR_KEYS" | jq -c '.data[]? // empty')
 
           TOTAL=$((LIVE + ORPHANS + STALE + UNCERTAIN))
-          echo "BREAKDOWN: total=${TOTAL} live=${LIVE} orphan=${ORPHANS} stale=${STALE} uncertain=${UNCERTAIN} kept=${KEPT}"
+          # Actionable = orphan/stale keys that are NOT protected (every protected key
+          # is also counted in ORPHANS/STALE). The Telegram alert triggers on this, so
+          # an all-protected result stays silent.
+          ACTIONABLE=$(( ORPHANS + STALE - KEPT ))
+          echo "BREAKDOWN: total=${TOTAL} live=${LIVE} orphan=${ORPHANS} stale=${STALE} uncertain=${UNCERTAIN} kept=${KEPT} actionable=${ACTIONABLE}"
           MODE_TAG="🔍 Dry run"
           [ "$DO_DELETE" = "true" ] && MODE_TAG="🗑️ Live run"
 
@@ -233,10 +250,10 @@ jobs:
             echo "|---|---|---|---|---|"
             printf '%s' "$SUMMARY_ROWS"
             echo ""
-            echo "**Summary:** ${TOTAL} keys — ✅ ${LIVE} live | 🗑️ ${ORPHANS} orphan | ⚠️ ${STALE} stale | ❓ ${UNCERTAIN} uncertain"
+            echo "**Summary:** ${TOTAL} keys — ✅ ${LIVE} live | 🗑️ ${ORPHANS} orphan | ⚠️ ${STALE} stale | ❓ ${UNCERTAIN} uncertain | 🔒 ${KEPT} kept | ⚑ ${ACTIONABLE} actionable"
             [ "$DO_DELETE" = "true" ] && echo "**Deleted:** ${DELETED} | **Kept (protected):** ${KEPT} | **Errors:** ${DELETE_ERRORS}"
             echo ""
-            if [ "$DRY_RUN" = "true" ] && [ $((ORPHANS + STALE)) -gt 0 ]; then
+            if [ "$DRY_RUN" = "true" ] && [ "$ACTIONABLE" -gt 0 ]; then
               echo "> To delete orphans and stale keys: dispatch this workflow with \`dry_run=false\` and \`confirm=DELETE\`."
             fi
           } >> "$GITHUB_STEP_SUMMARY"
@@ -250,6 +267,8 @@ jobs:
             echo "AUDIT_DELETED=${DELETED}"
             echo "AUDIT_DELETE_ERRORS=${DELETE_ERRORS}"
             echo "AUDIT_DRY_RUN=${DRY_RUN}"
+            echo "AUDIT_KEPT=${KEPT}"
+            echo "AUDIT_ACTIONABLE=${ACTIONABLE}"
           } >> "$GITHUB_ENV"
 
           # Fail if deletions had errors
@@ -265,19 +284,21 @@ jobs:
             exit 0
           }
 
-          TOTAL_ISSUES=$((${AUDIT_ORPHANS:-0} + ${AUDIT_STALE:-0}))
-          [ "$TOTAL_ISSUES" -gt 0 ] || {
-            echo "INFO: no issues found — skipping Telegram (clean audit)"
+          # Only actionable (non-protected) orphan/stale keys warrant an alert. When
+          # every orphan/stale key is on the allowlist, ACTIONABLE=0 → stay silent.
+          [ "${AUDIT_ACTIONABLE:-0}" -gt 0 ] || {
+            echo "INFO: no actionable issues — skipping Telegram (${AUDIT_KEPT:-0} protected)"
             exit 0
           }
 
           if [ "${AUDIT_DRY_RUN:-true}" = "true" ]; then
             MSG=$(printf '%s\n' \
               "🔍 *OpenRouter Audit* — $(date -u +%Y-%m-%d)" \
-              "⚠️ נמצאו מפתחות יתומים/ישנים:" \
+              "⚠️ ${AUDIT_ACTIONABLE:-0} מפתחות דורשים ניקוי (יתומים/ישנים, לא מוגנים):" \
               "- ${AUDIT_ORPHANS:-0} יתומים (אין ריפו)" \
               "- ${AUDIT_STALE:-0} ישנים (hash לא תואם)" \
               "- ${AUDIT_UNCERTAIN:-0} לא ניתן לאמת" \
+              "- 🔒 ${AUDIT_KEPT:-0} מוגנים (ברשימת keep, לא נספרים)" \
               "לניקוי: dispatch \`audit-openrouter-orphan-keys\` עם \`dry_run=false, confirm=DELETE\`")
           else
             MSG=$(printf '%s\n' \

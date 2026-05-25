@@ -1,0 +1,12 @@
+# OpenRouter key allowlist — names here are NEVER deleted by
+# audit-openrouter-orphan-keys.yml and do NOT count as actionable orphan/stale
+# issues (so the daily scheduled audit stays quiet about them).
+#
+# One key name per line. '#' comments and blank lines are ignored.
+# Use this for keys that are intentional but have no matching edri2or/<name>
+# GitHub repo (e.g. a manually-run n8n), which would otherwise be flagged orphan.
+#
+# The keep_names workflow_dispatch input is merged on top of this list at run time.
+
+n8n-railway-production
+n8n-telegram-bot
