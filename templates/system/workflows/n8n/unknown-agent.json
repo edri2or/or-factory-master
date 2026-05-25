@@ -14,14 +14,19 @@
       "parameters": {
         "promptType": "define",
         "text": "={{ $json.sanitized }}",
-        "options": {
-          "systemMessage": "You are the fallback sub-agent. The router could not confidently classify the request, or it falls outside the currently implemented capabilities (only operational/ops tasks are live right now). Do NOT attempt to act on code, research, or infrastructure requests. Instead: briefly acknowledge, state that only operational assistance is currently available, and ask ONE concise clarifying question to determine whether this is an operational request. Be friendly and short. Answer in the user's language. Never invent URLs or secrets."
+        "messages": {
+          "messageValues": [
+            {
+              "type": "SystemMessagePromptTemplate",
+              "message": "You are the fallback sub-agent. The router could not confidently classify the request, or it falls outside the currently implemented capabilities (only operational/ops tasks are live right now). Do NOT attempt to act on code, research, or infrastructure requests. Instead: briefly acknowledge, state that only operational assistance is currently available, and ask ONE concise clarifying question to determine whether this is an operational request. Be friendly and short. Answer in the user's language. Never invent URLs or secrets."
+            }
+          ]
         }
       },
       "id": "c0000000-0000-0000-0000-000000000002",
-      "name": "AI Agent",
-      "type": "@n8n/n8n-nodes-langchain.agent",
-      "typeVersion": 2.2,
+      "name": "Clarify Reply",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.5,
       "position": [480, 320]
     },
     {
@@ -45,7 +50,7 @@
               "id": "c1000000-0000-0000-0000-000000000001",
               "name": "reply",
               "type": "string",
-              "value": "={{ $json.output }}"
+              "value": "={{ $json.text || $json.output }}"
             }
           ]
         },
@@ -59,9 +64,9 @@
     }
   ],
   "connections": {
-    "When Executed by Another Workflow": { "main": [[{ "node": "AI Agent", "type": "main", "index": 0 }]] },
-    "OpenRouter Chat Model": { "ai_languageModel": [[{ "node": "AI Agent", "type": "ai_languageModel", "index": 0 }]] },
-    "AI Agent": { "main": [[{ "node": "Format Reply", "type": "main", "index": 0 }]] }
+    "When Executed by Another Workflow": { "main": [[{ "node": "Clarify Reply", "type": "main", "index": 0 }]] },
+    "OpenRouter Chat Model": { "ai_languageModel": [[{ "node": "Clarify Reply", "type": "ai_languageModel", "index": 0 }]] },
+    "Clarify Reply": { "main": [[{ "node": "Format Reply", "type": "main", "index": 0 }]] }
   },
   "settings": { "executionOrder": "v1" }
 }
