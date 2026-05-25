@@ -12,10 +12,12 @@
 const ALLOWED_HOST_SUFFIXES = ['.or-infra.com', '.up.railway.app', '.run.app'];
 const ALLOWED_SCHEMES = new Set(['https:']);
 const TIMEOUT_MS = 10_000;
+const MAX_TIMEOUT_MS = 60_000;
 const MAX_BODY = 4096;
 
 export interface ProbeResult {
   url: string;
+  method: string;
   status: number;
   ok: boolean;
   contentType: string | null;
@@ -26,6 +28,16 @@ export interface ProbeResult {
     statusMatched: boolean;
     bodyMatched: boolean;
   };
+}
+
+// POST/body/timeout opts. The host allowlist still applies to every request —
+// these only let a verifier POST to a factory-owned webhook (e.g. the Agent
+// Router) and wait longer for an LLM-backed response.
+export interface ProbeOptions {
+  method?: string;
+  body?: string;
+  contentType?: string;
+  timeoutMs?: number;
 }
 
 export class AllowlistError extends Error {
@@ -58,6 +70,7 @@ export async function probe(
   url: string,
   expectStatus?: number,
   expectBodyContains?: string,
+  opts: ProbeOptions = {},
 ): Promise<ProbeResult> {
   let parsed: URL;
   try {
@@ -74,15 +87,25 @@ export async function probe(
     );
   }
 
+  const method = (opts.method ?? 'GET').toUpperCase();
+  const timeoutMs = Math.min(Math.max(opts.timeoutMs ?? TIMEOUT_MS, 1), MAX_TIMEOUT_MS);
+  const init: RequestInit = { signal: undefined, redirect: 'follow', method };
+  if (opts.body != null && method !== 'GET' && method !== 'HEAD') {
+    init.body = opts.body;
+    init.headers = { 'content-type': opts.contentType ?? 'application/json' };
+  }
+
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+  init.signal = ctrl.signal;
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   const start = Date.now();
   try {
-    const resp = await fetch(url, { signal: ctrl.signal, redirect: 'follow' });
+    const resp = await fetch(url, init);
     const raw = await resp.text();
     const body = raw.slice(0, MAX_BODY);
     return {
       url,
+      method,
       status: resp.status,
       ok: resp.ok,
       contentType: resp.headers.get('content-type'),

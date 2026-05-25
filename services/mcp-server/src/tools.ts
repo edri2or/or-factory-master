@@ -325,16 +325,21 @@ export function registerTools(server: McpServer): void {
   // a test system's Railway project + DNS, archives its repo; touches no GCP
   // project or SM). decommission-system.yml (real-system teardown, soft-deletes
   // a GCP project) stays excluded — destructive; requires written approval.
+  // configure-agent-router.yml IS allowed — it's a per-system n8n config workflow
+  // (idempotent create/update of the Agent Router workflows via REST; soft-fail,
+  // touches no GCP/SM), so the agent can wire the router itself instead of the
+  // operator clicking "Run workflow".
   const DISPATCHABLE_WORKFLOWS = new Set([
     'provision-system.yml',
     'register-system-app.yml',
     'deploy-railway-cloudflare.yml',
+    'configure-agent-router.yml',
     'decommission-test-system.yml',
   ]);
 
   server.tool(
     'dispatch_workflow',
-    'Trigger a workflow_dispatch event for an ALLOWLISTED factory workflow (provision-system.yml, register-system-app.yml, deploy-railway-cloudflare.yml, decommission-test-system.yml). Dispatches as the org-wide broker App, so it works on or-factory-master AND any system repo (pass repo, e.g. "factory-test-24"). Polls briefly and returns the created run_id + run_url. This is the only WRITE tool on the server. decommission-test-system.yml is test-only (Railway+DNS+repo-archive, no GCP/SM); the real-system decommission-system.yml is intentionally NOT dispatchable here.',
+    'Trigger a workflow_dispatch event for an ALLOWLISTED factory workflow (provision-system.yml, register-system-app.yml, deploy-railway-cloudflare.yml, configure-agent-router.yml, decommission-test-system.yml). Dispatches as the org-wide broker App, so it works on or-factory-master AND any system repo (pass repo, e.g. "factory-test-24"). Polls briefly and returns the created run_id + run_url. This is the only WRITE tool on the server. configure-agent-router.yml wires the multi-agent router into a system\'s n8n (idempotent, soft-fail); decommission-test-system.yml is test-only (Railway+DNS+repo-archive, no GCP/SM); the real-system decommission-system.yml is intentionally NOT dispatchable here.',
     {
       ...repoParams,
       workflow_id: z.string().describe('Workflow file name to dispatch, e.g. provision-system.yml. Must be on the allowlist.'),
@@ -638,15 +643,24 @@ export function registerTools(server: McpServer): void {
 
   server.tool(
     'probe_endpoint',
-    'HTTPS GET on a factory-owned URL (or-infra.com / up.railway.app / run.app). Returns status, content-type, body (truncated 4 KB), and optional expect_status / expect_body_contains checks. 10 s timeout.',
+    'HTTPS request to a factory-owned URL (or-infra.com / up.railway.app / run.app). Defaults to GET; pass method=POST + body to fire a webhook end-to-end (e.g. the Agent Router at /webhook/agent-router) and read the reply. Returns status, content-type, body (truncated 4 KB), and optional expect_status / expect_body_contains checks. Default 10 s timeout (raise timeout_ms up to 60000 for LLM-backed webhooks). Host allowlist always enforced.',
     {
       url: z.string().describe('https URL; host must end with an allowlisted suffix'),
+      method: z.enum(['GET', 'POST']).optional().describe('HTTP method (default GET). POST to fire a webhook.'),
+      body: z.string().optional().describe('Request body for POST, e.g. the JSON string {"text":"מה מצב השרתים?"}'),
+      content_type: z.string().optional().describe('Content-Type for the body (default application/json)'),
+      timeout_ms: z.number().int().optional().describe('Timeout in ms (default 10000, max 60000). Raise for LLM-backed webhooks like the Agent Router.'),
       expect_status: z.number().int().optional().describe('Optional: assert HTTP status equals this'),
       expect_body_contains: z.string().optional().describe('Optional: assert response body includes this substring'),
     },
-    async ({ url, expect_status, expect_body_contains }) => {
+    async ({ url, method, body, content_type, timeout_ms, expect_status, expect_body_contains }) => {
       try {
-        const result: ProbeResult = await probe(url, expect_status, expect_body_contains);
+        const result: ProbeResult = await probe(url, expect_status, expect_body_contains, {
+          method,
+          body,
+          contentType: content_type,
+          timeoutMs: timeout_ms,
+        });
         return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
       } catch (e) {
         const err = e instanceof AllowlistError ? { error: 'allowlist_rejected', message: e.message } : { error: 'probe_failed', message: String(e).slice(0, 300) };
