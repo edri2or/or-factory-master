@@ -1,5 +1,14 @@
 # Changelog
 
+## Stage 40 — deploy: fix OpenRouter summary extraction for real n8n 1.121.0 (+ temp debug)
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | fix | `templates/system/.github/workflows/deploy-railway-cloudflare.yml`: the Stage 39 extraction fell back to the generic label + `?` tokens/duration on a live `factory-test-35` deploy. Root causes (confirmed against n8n 1.121.0 source): the internal `GET /rest/executions` lists under **`.results`** (not `.data`) and filters via **`?filter={"workflowId":…}`** (a bare `workflowId=` is ignored), so `EXEC_ID` came back empty and the whole block was skipped (every value, incl. duration, fell back); `GET /rest/executions/:id` returns the execution directly with `.data` **JSON-stringified** (must `fromjson` before `.resultData.runData`); and token usage is under `.tokenUsage` **or** `.tokenUsageEstimate`. Rewrote the extraction to filter+read `.results`, parse the stringified `.data` (guarded so an unexpected shape — e.g. an n8n `flatted` array — degrades to empty, never errors), and read both token keys. The `model_name` path (`…generations[0][0].generationInfo.model_name`) was already correct and is unchanged. |
+| TBD | chore | Added a temporary `DEBUG(temp)` dump (bounded, stderr/build-log only — execution runData carries the prompt/reply but no secrets) of the raw executions list/detail + resolved `EXEC_ID`, to confirm the real response shapes on the next live deploy (esp. plain-JSON vs n8n `flatted`). To be removed in a follow-up once verified, per the Stage 37/38 throwaway-probe pattern. |
+
+Template edit reaches newly-provisioned systems only (per CLAUDE.md).
+
 ## Stage 39 — deploy: OpenRouter summary shows the routed model + token usage + duration
 
 | PR | Type | Summary |
