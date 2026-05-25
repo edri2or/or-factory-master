@@ -1,5 +1,12 @@
 # Changelog
 
+## Stage 51a — fix: robust classifier (no throwing output-parser) + configure diagnostics
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | fix | `templates/system/workflows/n8n/agent-router.json`: the classifier paired `chainLlm` with a `Structured Output Parser`, which **throws** on any non-conforming model output and errored the whole router (live `factory-test-51c` returned HTTP 500, surfaced once the lastNode fix stopped masking it). Dropped the parser (`hasOutputParser:false`, removed the node + `ai_outputParser` connection); the classifier returns raw JSON and the `Build Dispatch` Code node parses it inside try/catch → defaults to `intent:unknown, confidence:0` on any failure (graceful; OWASP LLM01 bounded refusal). |
+| TBD | chore | `templates/system/.github/workflows/configure-agent-router.yml`: the smoke probe now echoes its HTTP/body and the router's last n8n execution `status` + failing node/message to **stdout** (n8n doesn't log node-level execution errors to container stdout, and `$GITHUB_STEP_SUMMARY` has no REST API), so a runtime router failure is diagnosable from the run logs alone. |
+
 ## Stage 51a — fix: Agent Router returns its reply (lastNode, drop Respond-to-Webhook)
 
 | PR | Type | Summary |
