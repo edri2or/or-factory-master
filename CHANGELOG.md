@@ -1,5 +1,13 @@
 # Changelog
 
+## Stage 51a — feat: Agent Router foundation (router + ops + unknown sub-agents)
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | feature | New `templates/system/workflows/n8n/{agent-router,ops-agent,unknown-agent}.json` — n8n workflow JSONs that scaffold the Stage 6 multi-agent spec. Router: Webhook → Code(sanitize, L2) → `chainLlm` classify (pinned `openai/gpt-5-nano`, temp 0) + Structured Output Parser → `{intent, confidence}` → Code(re-attach `sanitized`) → Switch (ops at confidence ≥ 0.7, else fallback) → `Execute Sub-workflow` → Code(egress, L5: URL allowlist + strip `<script>` + reject `exec(`/`eval(`) → Respond. Sub-agents use `Execute Sub-workflow` (not `agentTool` — n8n issue #22489) via `executeWorkflowTrigger` with `inputSource:passthrough`; ops on `anthropic/claude-haiku-4.5`, unknown on `openai/gpt-5-nano`. Node typeVersions verified against n8n@1.121.0. The existing `factory-master: OpenRouter auto-router demo` workflow is untouched. code/research/infra sub-agents land in Stage 51b. |
+| TBD | feature | New `templates/system/.github/workflows/configure-agent-router.yml`: manual-dispatch workflow that loads the 3 JSONs, `sed`-resolves placeholders (`@@CRED_OPENROUTER_ID@@`, `@@SUB_{OPS,UNKNOWN}_WF_ID@@`), creates/updates them in n8n by name (PATCH-or-POST + activate), and fires one Hebrew smoke probe. Mirrors `deploy-railway-cloudflare.yml`'s `_sm_read`/`_login`/`_napi`(retry-on-`000`-only)/`_soft_exit0` helpers, EXIT-trap cleanup, `::add-mask::`, and Hebrew job-summary style; bodies sent via `--data-binary @file`. `provision-system.yml` extended (additively, in the existing `.claude` push step) to also scaffold `workflows/n8n/*.json` + this workflow into every new system repo, with a commit guard for reuse-mode re-provisions. |
+| TBD | docs | `stage6-multi-agent.md` (both factory + template copies) refreshed: OWASP mapping → LLM01 + LLM02 + LLM05 (LLM06:2025 Excessive Agency via HITL later); confidence threshold 0.6 → 0.7; classifier `gpt-4o-mini` → pinned `openai/gpt-5-nano`; dispatch via `Execute Sub-workflow` not `agentTool`/HTTP (n8n #22489). `docs/openrouter-integration.md` gains a `## 7. Agent Router` section. Template edits reach newly-provisioned systems only. |
+
 ## Stage 50 — ops: persistent OpenRouter keep-list silences the daily audit
 
 | PR | Type | Summary |
@@ -72,65 +80,3 @@ Template edit reaches newly-provisioned systems only (per CLAUDE.md).
 | TBD | fix | `templates/system/.github/workflows/deploy-railway-cloudflare.yml`: Stage 40 still fell back to `?` on a live `factory-test-36` deploy — the `DEBUG(temp)` dump showed the internal `GET /rest/executions` wraps the array as **`.data.results[]`** (Stage 40 read `.results`, missing the top-level `.data` envelope), so `EXEC_ID` was empty and the block was skipped. Now reads `.data.results`; and since the list summary carries `startedAt`/`stoppedAt`, **duration is taken straight from the list** (no detail call) — verified against the captured payload (`EXEC_ID=2`, duration `1.3s`). Model + tokens still come from the execution detail; hardened that jq to resolve the run payload across wrapped/unwrapped shapes and parse the stringified `.data` (graceful empty if it is a `flatted` array). The `DEBUG(temp)` dump stays one more cycle to confirm the detail payload shape (plain-JSON vs flatted), then is removed. |
 
 Template edit reaches newly-provisioned systems only (per CLAUDE.md).
-
-## Stage 40 — deploy: fix OpenRouter summary extraction for real n8n 1.121.0 (+ temp debug)
-
-| PR | Type | Summary |
-|---|---|---|
-| TBD | fix | `templates/system/.github/workflows/deploy-railway-cloudflare.yml`: the Stage 39 extraction fell back to the generic label + `?` tokens/duration on a live `factory-test-35` deploy. Root causes (confirmed against n8n 1.121.0 source): the internal `GET /rest/executions` lists under **`.results`** (not `.data`) and filters via **`?filter={"workflowId":…}`** (a bare `workflowId=` is ignored), so `EXEC_ID` came back empty and the whole block was skipped (every value, incl. duration, fell back); `GET /rest/executions/:id` returns the execution directly with `.data` **JSON-stringified** (must `fromjson` before `.resultData.runData`); and token usage is under `.tokenUsage` **or** `.tokenUsageEstimate`. Rewrote the extraction to filter+read `.results`, parse the stringified `.data` (guarded so an unexpected shape — e.g. an n8n `flatted` array — degrades to empty, never errors), and read both token keys. The `model_name` path (`…generations[0][0].generationInfo.model_name`) was already correct and is unchanged. |
-| TBD | chore | Added a temporary `DEBUG(temp)` dump (bounded, stderr/build-log only — execution runData carries the prompt/reply but no secrets) of the raw executions list/detail + resolved `EXEC_ID`, to confirm the real response shapes on the next live deploy (esp. plain-JSON vs n8n `flatted`). To be removed in a follow-up once verified, per the Stage 37/38 throwaway-probe pattern. |
-
-Template edit reaches newly-provisioned systems only (per CLAUDE.md).
-
-## Stage 39 — deploy: OpenRouter summary shows the routed model + token usage + duration
-
-| PR | Type | Summary |
-|---|---|---|
-| TBD | feature | `templates/system/.github/workflows/deploy-railway-cloudflare.yml`: the OpenRouter test-fire success branch now surfaces the **actually-routed** model (NotDiamond's pick), prompt/completion token usage, and run duration, pulled from n8n's `/rest/executions/{id}?includeData=true` runData — the AI Agent webhook response drops the resolved model (confirmed by the Stage 37/38 probe), so the old `.model // .data.model` read of the webhook body always fell back to the generic `openrouter/auto` label. Renders them as a table in the job summary. Reuses the existing `_napi` helper + still-open cookie session; every new call is guarded so a missed/mismatched execution lookup degrades to the generic label + `?` usage and never fails the (informational) test-fire. `trap` extended to clean the 2 new temp files; duration computed via a one-line `python3` (a multi-line block can't live in a YAML `run:` scalar). |
-
-Template edit reaches newly-provisioned systems only (per CLAUDE.md).
-
-## Stage 38 — chore: remove the temporary OpenRouter model-attribution probe
-
-| PR | Type | Summary |
-|---|---|---|
-| TBD | chore | Removed `.github/workflows/or-model-probe.yml` (added Stage 37) now that results are captured. `openrouter/auto` (NotDiamond) routing for the 3 test prompts: easy → `openai/gpt-5-nano`, medium + complex → `google/gemini-2.5-flash-lite`. |
-
-## Stage 37 — chore: temporary OpenRouter model-attribution probe (removed after use)
-
-| PR | Type | Summary |
-|---|---|---|
-| TBD | chore | Added `.github/workflows/or-model-probe.yml` (throwaway): runs only on `main` (broker WIF), reads `factory-test-33`'s `openrouter-api-key` from `factory-test-25` SM, and calls OpenRouter directly with `model=openrouter/auto` for the 3 prompts to surface the resolved `.model` NotDiamond picks (which n8n's AI Agent node drops). Removed in a follow-up after results are captured. |
-
-## Stage 36 — mcp: verify_* tools resolve systems via repo vars, not manifests
-
-| PR | Type | Summary |
-|---|---|---|
-| TBD | fix | `services/mcp-server/src/{tools,manifest-helper,github-client}.ts`: the read-only verifier tools (`verify_gcp_system`/`verify_github_system`/`verify_railway_system`/`verify_cloudflare_system`/`list_system_secrets`/`inspect_railway_service`/`inspect_wif_provider`) loaded `factory/manifests/<name>.yml`, but this factory never writes manifests — every call 404'd (hit live verifying `factory-test-33`). New `resolveSystem()` + `getRepoVariable()` resolve a system manifest-free: `githubRepo=edri2or/<name>`, `gcpProjectId` from the repo's `GCP_PROJECT_ID` variable (shared project in reuse/test mode, `<name>` in normal mode). `verify_railway_system` + `inspect_railway_service` now resolve the Railway project live by name (`==systemName`) + `production` env, matching `postgres`/`n8n` by name. `verify_cloudflare_system` degrades to a graceful skip pointing at the direct DNS/probe tools. Removed dead `loadManifest` + its `yaml`/`getRepoFile` imports. |
-| TBD | fix | `services/mcp-server/src/tools.ts`: `verify_gcp_system`'s "project-under-correct-folder" check used a stale folder id (`293382608212`, failed 100% of the time); corrected to the real Systems folder `123180924297` (now module-level `SYSTEMS_FOLDER_ID`). |
-
-## Stage 35 — ops: bulk-decommission workflow also prunes leftover Cloudflare DNS
-
-| PR | Type | Summary |
-|---|---|---|
-| TBD | feature | `.github/workflows/decommission-railway-projects.yml` now also deletes the dangling factory Cloudflare DNS records for the removed systems, not just the Railway projects. New "Read Cloudflare credentials from Secret Manager" step (reads `cloudflare-token-creator` + `cloudflare-zone-id-or-infra` from `or-factory-master-control`, masked) and a "Cloudflare DNS cleanup (plan + delete)" step that mints a 1h scoped DNS:Edit token (revoked on exit), lists the `or-infra.com` zone, and removes every `n8n-*` CNAME and `_railway-verify.n8n-*` TXT **except** the keepers' (the plan step records each keeper's FQDNs to a preserve-set). Reuses the exact mint/list/delete pattern from `decommission-test-system.yml`. Same `dry_run`/`confirm=DELETE` gates: the dry-run prints the full DNS keep/delete table (the only way to enumerate the records, since the MCP `cloudflare-zones-read-token` is a placeholder) and deletes nothing; per-record failures are reported, not fatal mid-loop. DNS is free, so this is dangling-record hygiene — deleting the Railway projects is what stops billing. |
-| TBD | chore | Rotated Stages 23-25 into `docs/changelog-archive/CHANGELOG-2026-05-24.md` (newest-first) to keep `CHANGELOG.md` under the 20 KB cap. |
-
-## Stage 34 — deploy: notifier step rides out Railway custom-domain cert flap
-
-| PR | Type | Summary |
-|---|---|---|
-| TBD | fix | `templates/system/.github/workflows/deploy-railway-cloudflare.yml`: the `Create "n8n is ready" Telegram notifier workflow` step had unguarded n8n REST curls (`HTTP=$(curl …)` with no `\|\| echo`), so a transient Railway custom-domain cert flap (`curl: (60) SSL: no alternative certificate subject name matches`, right after the TLS-wait step) aborted the step under `set -e` with exit 60 — killing the "n8n ready" ping **and** skipping the downstream OpenRouter step (observed live on `factory-test-32`). Applied the same `_napi` helper used by the OpenRouter step (Stage 31, #64): all post-login calls (`GET /rest/workflows`, `POST /rest/credentials`, `POST /rest/workflows`, activate `POST`/`PATCH`, and the webhook fire) now guard curl-level failures and retry **only** on `000` (no HTTP request reached the server → safe to retry, even POSTs), never on a real HTTP status; login retries the same way. Existing semantics unchanged: skip-when-`n8n-telegram-*`-empty, idempotent skip-if-exists, and non-fatal Telegram send (a real non-2xx still only warns). Also closes the create-vs-notify idempotency gap — with no mid-run crash, create+activate+fire complete in one run, so skip-on-redeploy is then correct. |
-
-Template edit reaches newly-provisioned systems only (per CLAUDE.md).
-
-Stages 6-10 archived to `docs/changelog-archive/CHANGELOG-2026-05-22.md`; Stages 11-17 to `docs/changelog-archive/CHANGELOG-2026-05-23.md`; Stages 18-25 to `docs/changelog-archive/CHANGELOG-2026-05-24.md`; Stages 26-33 to `docs/changelog-archive/CHANGELOG-2026-05-25.md` — keeping this file under the 20 KB scan-friendly cap.
-
-## Bootstrap stages 1-4
-
-Pre-repo work, done in Cloud Shell and the GitHub UI. Documented in `docs/bootstrap-record.md` and the manual grants in `docs/external-state.md`.
-
-- Stage 1: GCP control project `or-factory-master-control`, org policy override, manual API enables
-- Stage 2: `factory-master-broker` SA, WIF pool/provider on control project, folder IAM
-- Stage 3: 16 generic secrets copied from old factory (`factory-control-9piybr`) to `or-factory-master-control`
-- Stage 4: GitHub App `factory-master-broker` registered via Cloud Run receiver, installed org-wide, App credentials stored in SM

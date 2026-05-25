@@ -1,0 +1,67 @@
+{
+  "name": "factory-master: unknown-agent",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": { "inputSource": "passthrough" },
+      "id": "c0000000-0000-0000-0000-000000000001",
+      "name": "When Executed by Another Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 320]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.sanitized }}",
+        "options": {
+          "systemMessage": "You are the fallback sub-agent. The router could not confidently classify the request, or it falls outside the currently implemented capabilities (only operational/ops tasks are live right now). Do NOT attempt to act on code, research, or infrastructure requests. Instead: briefly acknowledge, state that only operational assistance is currently available, and ask ONE concise clarifying question to determine whether this is an operational request. Be friendly and short. Answer in the user's language. Never invent URLs or secrets."
+        }
+      },
+      "id": "c0000000-0000-0000-0000-000000000002",
+      "name": "AI Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [480, 320]
+    },
+    {
+      "parameters": {
+        "model": "openai/gpt-5-nano",
+        "options": { "temperature": 0.3, "maxTokens": 500 }
+      },
+      "id": "c0000000-0000-0000-0000-000000000003",
+      "name": "OpenRouter Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [480, 540],
+      "credentials": { "openRouterApi": { "id": "@@CRED_OPENROUTER_ID@@", "name": "OpenRouter (factory-master)" } }
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "c1000000-0000-0000-0000-000000000001",
+              "name": "reply",
+              "type": "string",
+              "value": "={{ $json.output }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "c0000000-0000-0000-0000-000000000004",
+      "name": "Format Reply",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [720, 320]
+    }
+  ],
+  "connections": {
+    "When Executed by Another Workflow": { "main": [[{ "node": "AI Agent", "type": "main", "index": 0 }]] },
+    "OpenRouter Chat Model": { "ai_languageModel": [[{ "node": "AI Agent", "type": "ai_languageModel", "index": 0 }]] },
+    "AI Agent": { "main": [[{ "node": "Format Reply", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" }
+}
