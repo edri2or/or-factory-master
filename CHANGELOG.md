@@ -1,5 +1,13 @@
 # Changelog
 
+## Stage 43 — deploy: search runData for the OpenRouter model + dump generationInfo (diagnostic)
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | fix | `templates/system/.github/workflows/deploy-railway-cloudflare.yml`: live on `factory-test-38` the Stage 42 flatted decoder made **tokens (7+1) and duration (1.7s) render**, but the model stayed on the fallback — `generations[0][0].generationInfo.model_name` was empty. Replaced the single-path model read with a recursive search of the decoded `response` for a `model_name`/`model` key whose value matches a `provider/model` pattern (finds it wherever n8n places it; ignores the reply text). Added a temporary `DBGMODEL` stderr line dumping the decoded `generationInfo` so the next deploy reveals the model's location — or confirms n8n strips it (the model lives in langchain's `llmOutput`, which n8n may drop from the per-generation payload). Tokens/duration unchanged; dropped `2>/dev/null` on the python call so the diagnostic shows. Validated locally with a real flatted encoder: model-present → `provider/model\t7\t1`, model-absent → `\t7\t1`. |
+
+Template edit reaches newly-provisioned systems only (per CLAUDE.md).
+
 ## Stage 42 — deploy: decode n8n 'flatted' execution data for OpenRouter model + tokens
 
 | PR | Type | Summary |
@@ -92,28 +100,7 @@ Operator-triggered only — intentionally **not** on the MCP `dispatch_workflow`
 
 Template edit reaches newly-provisioned systems only (per CLAUDE.md). The notifier step has the same latent unguarded-curl pattern but is out of scope here.
 
-## Stage 30 — deploy: fix OpenRouter workflow create (missing `active`) + enforce soft-fail
-
-| PR | Type | Summary |
-|---|---|---|
-| TBD | fix | `templates/system/.github/workflows/deploy-railway-cloudflare.yml`: the Stage 29 `Create OpenRouter credential + demo workflow in n8n` step posted a workflow body without a top-level `active` field, so n8n 1.121.0's `POST /rest/workflows` returned `HTTP 500 — null value in column "active" of relation "workflow_entity" violates not-null constraint` (same class as Stage 17's notifier fix). Added `active: false` to the workflow JSON (it is activated immediately after via the activate endpoint). Caught on a live deploy of `factory-test-30`: the credential created fine (`openRouterApi` apiKey+url validated), the workflow POST 500'd. |
-| TBD | fix | Same step violated the non-negotiable soft-fail rule: every n8n REST failure (login, `GET`/`POST /rest/credentials`, `GET`/`POST /rest/workflows`, missing id) did a hard `exit 1`, which failed the whole deploy (steps `Persist Railway IDs` + `Summary` were skipped). All hard exits replaced with a `_soft_exit0` helper that writes a Hebrew warning to `$GITHUB_STEP_SUMMARY` and `exit 0`, so an OpenRouter/n8n hiccup can never fail an otherwise-successful deploy. |
-
-Template edit reaches newly-provisioned systems only (per CLAUDE.md); existing system repos keep their current deploy workflow until re-provisioned.
-
-## Stage 29 — OpenRouter per-system inference keys with management-key isolation
-
-| PR | Type | Summary |
-|---|---|---|
-| TBD | security | `scripts/copy-generic-secrets.sh` EXCLUDE broadened from `^factory-master-broker-app-(id\|private-key\|installation-id)$` to `^(factory-master-broker-app-.*\|.*-management-key\|.*-provisioning-key\|.*-master-key)$`. `openrouter-management-key` (a super-credential that can mint/revoke inference keys account-wide) — and any future `*-management-key` / `*-provisioning-key` / `*-master-key` — is no longer copied into tenant Secret Managers; it stays exclusively in `or-factory-master-control`. Closes a propagation gap. |
-| TBD | feature | `.github/workflows/provision-system.yml` gains a `Mint per-system OpenRouter inference key` step (after generic copy, before runtime-shell pre-create): reads `openrouter-management-key` from control SM, `POST /api/v1/keys` (`limit:25`, `limit_reset:"monthly"`, `include_byok_in_limit:false`), and stores the live key as `openrouter-api-key` + its revocation id as `openrouter-key-hash` in the tenant SM (both granted `secretAccessor` to runtime-sa + deploy-sa). Idempotent (skips if `openrouter-api-key` already has a version). Soft-fail: API/parse failure masks the key, attempts orphan-key `DELETE` if a hash was returned, writes a Hebrew job-summary warning, and `exit 0`. |
-| TBD | feature | `templates/system/.github/workflows/deploy-railway-cloudflare.yml` gains a `Create OpenRouter credential + demo workflow in n8n` step (after the Telegram notifier): fresh n8n login, creates the `openRouterApi` credential `OpenRouter (factory-master)` (both `apiKey` + `url` in `data`) and the `factory-master: OpenRouter auto-router demo` workflow (Webhook → AI Agent → OpenRouter Chat Model, model `openrouter/auto`), activates it, and test-fires the webhook. Idempotent by name for both credential and workflow; test-fire is informational (soft-fail with a Hebrew warning, deploy stays green). Verified against n8n 1.121.0: `openRouterApi` (apiKey + hidden url, default `https://openrouter.ai/api/v1`), `@n8n/n8n-nodes-langchain.lmChatOpenRouter` typeVersion 1, `@n8n/n8n-nodes-langchain.agent` typeVersion 2, sub-node `ai_languageModel` wiring under the model node's own name. |
-| TBD | feature | `.github/workflows/decommission-test-system.yml` gains a `Revoke OpenRouter inference key` step (before Railway delete): reads `openrouter-key-hash` from the system SM and `DELETE /api/v1/keys/:hash` with the control-project management key, verifying `{"deleted":true}`. Best-effort — a revoke failure warns and continues teardown (an orphaned inference key is not a blocker). |
-| TBD | docs | New `docs/openrouter-integration.md` (Hebrew): what OpenRouter + `openrouter/auto` are, the one-time manual management-key setup, the automatic per-system flow, troubleshooting, costs, and manual revoke. `docs/external-state.md` corrected to list `openrouter-management-key` as a never-copied super-credential rather than a generic copied secret. |
-
-Provision/deploy/decommission changes are repo-level and reach newly-provisioned systems only; existing system repos keep their current deploy workflow until re-provisioned (per CLAUDE.md). `openrouter-api-key` / `openrouter-key-hash` are minted per system and never shared.
-
-Stages 6-10 archived to `docs/changelog-archive/CHANGELOG-2026-05-22.md`; Stages 11-17 to `docs/changelog-archive/CHANGELOG-2026-05-23.md`; Stages 18-25 to `docs/changelog-archive/CHANGELOG-2026-05-24.md`; Stages 26-28 to `docs/changelog-archive/CHANGELOG-2026-05-25.md` — keeping this file under the 20 KB scan-friendly cap.
+Stages 6-10 archived to `docs/changelog-archive/CHANGELOG-2026-05-22.md`; Stages 11-17 to `docs/changelog-archive/CHANGELOG-2026-05-23.md`; Stages 18-25 to `docs/changelog-archive/CHANGELOG-2026-05-24.md`; Stages 26-30 to `docs/changelog-archive/CHANGELOG-2026-05-25.md` — keeping this file under the 20 KB scan-friendly cap.
 
 ## Bootstrap stages 1-4
 
