@@ -1344,7 +1344,7 @@ jobs:
           # 2. Independent fresh n8n login — its own cookie jar, not shared with any
           #    earlier step.
           COOKIE_JAR=$(mktemp)
-          trap 'rm -f "$COOKIE_JAR" /tmp/or-login.json /tmp/or-creds.json /tmp/or-cred-new.json /tmp/or-wfs.json /tmp/or-wf.json /tmp/or-wf-get.json /tmp/or-activate.json /tmp/or-hook.json' EXIT
+          trap 'rm -f "$COOKIE_JAR" /tmp/or-login.json /tmp/or-creds.json /tmp/or-cred-new.json /tmp/or-wfs.json /tmp/or-wf.json /tmp/or-wf-get.json /tmp/or-activate.json /tmp/or-hook.json /tmp/or-exec-list.json /tmp/or-exec.json' EXIT
           _login() {
             local field="$1"
             curl -sS -o /tmp/or-login.json -w '%{http_code}' --max-time 15 \
@@ -1500,17 +1500,74 @@ jobs:
           set -e
 
           if [ "$CURL_RC" -eq 0 ] && [ "$HTTP" = "200" ]; then
-            MODEL=$(jq -r '(.model // .data.model // empty)' /tmp/or-hook.json 2>/dev/null || true)
-            [ -n "$MODEL" ] || MODEL="openrouter/auto (ראה https://openrouter.ai/activity)"
             REPLY=$(jq -r '(.output // .text // .message // .) | if type=="string" then . else tostring end' /tmp/or-hook.json 2>/dev/null | head -c 200)
+
+            # n8n's AI Agent webhook response drops the resolved model (Stage 37/38
+            # probe), so recover the actually-routed model + token usage + run
+            # duration from the execution's runData. COOKIE_JAR + _napi still open here.
+            sleep 2
+            _napi GET "$BASE/rest/executions?workflowId=${WF_ID}&limit=1" /tmp/or-exec-list.json > /dev/null || true
+            EXEC_ID=$(jq -r '
+              if .data then .data[0].id
+              elif type=="array" then .[0].id
+              else empty end // empty
+            ' /tmp/or-exec-list.json 2>/dev/null || echo "")
+
+            MODEL_NAME=""
+            PROMPT_T="?"
+            COMP_T="?"
+            DURATION_S="?"
+
+            if [ -n "$EXEC_ID" ] && [ "$EXEC_ID" != "null" ]; then
+              _napi GET "$BASE/rest/executions/${EXEC_ID}?includeData=true" /tmp/or-exec.json > /dev/null || true
+
+              # runData path to the OpenRouter sub-node (connection type ai_languageModel).
+              MODEL_NAME=$(jq -r '
+                (.data // .)
+                | .data.resultData.runData["OpenRouter Chat Model"][0]
+                  .data.ai_languageModel[0][0].json
+                  .response.generations[0][0].generationInfo.model_name
+                // empty
+              ' /tmp/or-exec.json 2>/dev/null || echo "")
+
+              PROMPT_T=$(jq -r '
+                (.data // .)
+                | .data.resultData.runData["OpenRouter Chat Model"][0]
+                  .data.ai_languageModel[0][0].json
+                  .tokenUsage.promptTokens
+                // "?"
+              ' /tmp/or-exec.json 2>/dev/null || echo "?")
+
+              COMP_T=$(jq -r '
+                (.data // .)
+                | .data.resultData.runData["OpenRouter Chat Model"][0]
+                  .data.ai_languageModel[0][0].json
+                  .tokenUsage.completionTokens
+                // "?"
+              ' /tmp/or-exec.json 2>/dev/null || echo "?")
+
+              STARTED=$(jq -r '(.data // .) | .startedAt // empty' /tmp/or-exec.json 2>/dev/null || echo "")
+              STOPPED=$(jq -r '(.data // .) | .stoppedAt // empty' /tmp/or-exec.json 2>/dev/null || echo "")
+              if [ -n "$STARTED" ] && [ -n "$STOPPED" ]; then
+                DURATION_S=$(python3 -c "from datetime import datetime; a=datetime.fromisoformat('${STARTED}'.replace('Z','+00:00')); b=datetime.fromisoformat('${STOPPED}'.replace('Z','+00:00')); print(f'{(b-a).total_seconds():.1f}')" 2>/dev/null || echo "?")
+              fi
+            fi
+
+            [ -n "$MODEL_NAME" ] || MODEL_NAME="openrouter/auto (ראה https://openrouter.ai/activity)"
+
             {
               echo "## ✅ OpenRouter auto-router פעיל"
-              echo "- Workflow: ${WF_NAME}"
-              echo "- Webhook: ${WEBHOOK_URL}"
-              echo "- מודל שנבחר: ${MODEL}"
-              echo "- תגובה: ${REPLY}"
+              echo "| שדה | ערך |"
+              echo "|---|---|"
+              echo "| Workflow | ${WF_NAME} |"
+              echo "| מודל שנבחר | \`${MODEL_NAME}\` |"
+              echo "| Prompt tokens | ${PROMPT_T} |"
+              echo "| Completion tokens | ${COMP_T} |"
+              echo "| זמן ריצה | ${DURATION_S}s |"
+              echo "| תגובה | ${REPLY} |"
+              echo "| Webhook | ${WEBHOOK_URL} |"
             } >> "$GITHUB_STEP_SUMMARY"
-            echo "PASS: OpenRouter demo workflow fired (model=${MODEL})."
+            echo "PASS: OpenRouter demo workflow fired (model=${MODEL_NAME}, tokens=${PROMPT_T}+${COMP_T}, duration=${DURATION_S}s)."
           else
             {
               echo "## ⚠️ OpenRouter הוגדר אך הבדיקה נכשלה"
