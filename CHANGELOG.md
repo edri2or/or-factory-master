@@ -1,5 +1,13 @@
 # Changelog
 
+## Stage 41 — feat: bundle the gcp-hands-client skill into every scaffolded system
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | feature | Vendor `templates/system/.claude/skills/gcp-hands-client/{SKILL.md,README.md}` (byte-identical to `edri2or/gcp-hands@main`); `provision-system.yml` now scaffolds the whole `.claude` tree (commands + skills) so each new repo can dispatch GCP ops to `edri2or/gcp-hands` out of the box. Cross-repo dispatch-token requirement is documented in the vendored README (per-system App stays single-repo), not provisioned. Periodic re-sync deferred (gcp-hands PLAN.md "SKILL.md drift"). |
+
+Template edit reaches newly-provisioned systems only (per CLAUDE.md).
+
 ## Stage 40 — deploy: fix OpenRouter summary extraction for real n8n 1.121.0 (+ temp debug)
 
 | PR | Type | Summary |
