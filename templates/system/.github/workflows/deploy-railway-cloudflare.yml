@@ -1533,24 +1533,51 @@ jobs:
               _napi GET "$BASE/rest/executions/${EXEC_ID}?includeData=true" /tmp/or-exec.json > /dev/null || true
               echo "DEBUG(temp) exec-detail <=2000B: $(head -c 2000 /tmp/or-exec.json 2>/dev/null)" >&2
 
-              # Model + tokens live only in the detail's runData. Resolve the run payload
-              # across shapes: exec wrapped in .data (its .data string = payload) or the
-              # exec returned directly (.data string = payload). fromjson parses it; guarded
-              # so an unexpected shape (e.g. an n8n 'flatted' array) degrades to empty.
-              EXTRACT=$(jq -r '
-                ( if (.data | type) == "string" then (.data | try fromjson catch {})
-                  elif (.data | type) == "object" then (if (.data.data | type) == "string" then (.data.data | try fromjson catch {}) elif (.data.resultData | type) == "object" then .data else {} end)
-                  elif (.resultData | type) == "object" then .
-                  else {} end ) as $draw
-                | (if ($draw | type) == "object" then $draw else {} end) as $d
-                | ($d.resultData.runData["OpenRouter Chat Model"][0].data.ai_languageModel[0][0].json) as $j
-                | (($j.tokenUsage // $j.tokenUsageEstimate) // {}) as $u
-                | [ ($j.response.generations[0][0].generationInfo.model_name // ""), ($u.promptTokens // "?"), ($u.completionTokens // "?") ]
-                | @tsv
-              ' /tmp/or-exec.json 2>/dev/null || printf '\t?\t?')
-              MODEL_NAME=$(printf '%s' "$EXTRACT" | cut -f1)
-              PROMPT_T=$(printf '%s' "$EXTRACT" | cut -f2); [ -n "$PROMPT_T" ] || PROMPT_T="?"
-              COMP_T=$(printf '%s' "$EXTRACT" | cut -f3); [ -n "$COMP_T" ] || COMP_T="?"
+              # Model + tokens live only in the detail's runData, but n8n returns the run
+              # payload (exec.data) in its 'flatted' form (a JSON array of registry slots
+              # with numeric-string refs, possibly cyclic) — jq can't safely decode it, so a
+              # small memoised (cycle-safe) Python flatted decoder parses it; it also handles
+              # plain-JSON string/object shapes. Any failure prints a tab fallback.
+              MI=$(python3 - <<'PY' 2>/dev/null || printf '\t?\t?'
+          import json
+          def _flat(s):
+              a=json.loads(s)
+              if not isinstance(a,list): return a
+              k={}
+              def r(v):
+                  if isinstance(v,str):
+                      i=int(v); return k[i] if i in k else _b(i)
+                  return v
+              def _b(i):
+                  v=a[i]
+                  if isinstance(v,dict):
+                      o={}; k[i]=o
+                      for kk,vv in v.items(): o[kk]=r(vv)
+                      return o
+                  if isinstance(v,list):
+                      o=[]; k[i]=o
+                      for vv in v: o.append(r(vv))
+                      return o
+                  k[i]=v; return v
+              return _b(0)
+          try:
+              t=json.load(open("/tmp/or-exec.json"))
+              e=t["data"] if isinstance(t.get("data"),dict) else t
+              d=e.get("data")
+              rd=_flat(d) if isinstance(d,str) else (d if isinstance(d,dict) else {})
+              run=rd["resultData"]["runData"]["OpenRouter Chat Model"][0]
+              j=run["data"]["ai_languageModel"][0][0]["json"]
+              gens=(j.get("response") or {}).get("generations") or [[{}]]
+              model=((gens[0][0] or {}).get("generationInfo") or {}).get("model_name") or ""
+              u=j.get("tokenUsage") or j.get("tokenUsageEstimate") or {}
+              print("%s\t%s\t%s"%(model,u.get("promptTokens","?"),u.get("completionTokens","?")))
+          except Exception:
+              print("\t?\t?")
+          PY
+              )
+              MODEL_NAME=$(printf '%s' "$MI" | cut -f1)
+              PROMPT_T=$(printf '%s' "$MI" | cut -f2); [ -n "$PROMPT_T" ] || PROMPT_T="?"
+              COMP_T=$(printf '%s' "$MI" | cut -f3); [ -n "$COMP_T" ] || COMP_T="?"
             fi
 
             [ -n "$MODEL_NAME" ] || MODEL_NAME="openrouter/auto (ראה https://openrouter.ai/activity)"
