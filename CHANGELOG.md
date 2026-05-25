@@ -1,5 +1,13 @@
 # Changelog
 
+## Stage 41 — deploy: fix OpenRouter exec-list envelope (.data.results) + duration from list
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | fix | `templates/system/.github/workflows/deploy-railway-cloudflare.yml`: Stage 40 still fell back to `?` on a live `factory-test-36` deploy — the `DEBUG(temp)` dump showed the internal `GET /rest/executions` wraps the array as **`.data.results[]`** (Stage 40 read `.results`, missing the top-level `.data` envelope), so `EXEC_ID` was empty and the block was skipped. Now reads `.data.results`; and since the list summary carries `startedAt`/`stoppedAt`, **duration is taken straight from the list** (no detail call) — verified against the captured payload (`EXEC_ID=2`, duration `1.3s`). Model + tokens still come from the execution detail; hardened that jq to resolve the run payload across wrapped/unwrapped shapes and parse the stringified `.data` (graceful empty if it is a `flatted` array). The `DEBUG(temp)` dump stays one more cycle to confirm the detail payload shape (plain-JSON vs flatted), then is removed. |
+
+Template edit reaches newly-provisioned systems only (per CLAUDE.md).
+
 ## Stage 40 — deploy: fix OpenRouter summary extraction for real n8n 1.121.0 (+ temp debug)
 
 | PR | Type | Summary |
@@ -97,17 +105,7 @@ Template edit reaches newly-provisioned systems only (per CLAUDE.md); existing s
 
 Provision/deploy/decommission changes are repo-level and reach newly-provisioned systems only; existing system repos keep their current deploy workflow until re-provisioned (per CLAUDE.md). `openrouter-api-key` / `openrouter-key-hash` are minted per system and never shared.
 
-## Stage 28 — provision: scaffold global skills package into every system repo
-
-| PR | Type | Summary |
-|---|---|---|
-| TBD | feature | `.github/workflows/provision-system.yml` now scaffolds the **global skills package** into every new system repo: a new `Push global skills package to system repo` step (after the deploy-workflow scaffold, **before** branch protection so the push to `main` needs no bypass) clones `edri2or/<system_name>` with the broker `APP_TOKEN`, copies `templates/system/.claude/commands/*.md` into the repo's `.claude/commands/`, and pushes a single `ci: scaffold global skills package` commit. Every provisioned system (test **and** real — repo content, no GCP/quota impact) ships with the same 63 reusable slash-command skills the factory has. `APP_TOKEN` is `::add-mask::`-ed and `set -x` stays off so the token in the clone URL is never echoed; the step guards on a non-empty source and a successful push. |
-| TBD | chore | New `templates/system/.claude/commands/` — the mirror that becomes the package pushed into system repos (makes `templates/system/` the single canonical description of "what a system repo gets", consistent with the deploy workflow already living there). Seeded byte-identical to the factory's own `.claude/commands/` (63 files). |
-| TBD | chore | New `scripts/check-skills-mirror.sh` (`diff -rq` guard, `PASS:`/`ERROR:` style matching `check-changelog-updated.sh`) wired into `.github/workflows/changelog-check.yml` as a third step, so the mirror can never silently drift from `.claude/commands/`. |
-
-Provision change is repo-level (all future provisions); existing system repos keep their current contents until re-provisioned (per CLAUDE.md).
-
-Stages 6-10 archived to `docs/changelog-archive/CHANGELOG-2026-05-22.md`; Stages 11-17 to `docs/changelog-archive/CHANGELOG-2026-05-23.md`; Stages 18-25 to `docs/changelog-archive/CHANGELOG-2026-05-24.md`; Stages 26-27 to `docs/changelog-archive/CHANGELOG-2026-05-25.md` — keeping this file under the 20 KB scan-friendly cap.
+Stages 6-10 archived to `docs/changelog-archive/CHANGELOG-2026-05-22.md`; Stages 11-17 to `docs/changelog-archive/CHANGELOG-2026-05-23.md`; Stages 18-25 to `docs/changelog-archive/CHANGELOG-2026-05-24.md`; Stages 26-28 to `docs/changelog-archive/CHANGELOG-2026-05-25.md` — keeping this file under the 20 KB scan-friendly cap.
 
 ## Bootstrap stages 1-4
 

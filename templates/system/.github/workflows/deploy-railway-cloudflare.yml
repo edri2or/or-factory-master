@@ -1503,35 +1503,44 @@ jobs:
             REPLY=$(jq -r '(.output // .text // .message // .) | if type=="string" then . else tostring end' /tmp/or-hook.json 2>/dev/null | head -c 200)
 
             # n8n's AI Agent webhook response drops the resolved model, so recover the
-            # routed model + tokens + duration from the execution runData (Stage 37/38).
-            # n8n 1.121.0 internal REST API: GET /rest/executions lists under .results
-            # (not .data) and filters via ?filter={"workflowId":...} (a bare workflowId=
-            # is ignored); GET /rest/executions/:id returns the execution directly with
-            # .data as a JSON-stringified payload (parse before reading .resultData.runData);
-            # the LLM sub-node's usage is under .tokenUsage OR .tokenUsageEstimate.
+            # routed model + tokens + duration from the execution API (Stage 37/38).
+            # n8n 1.121.0 internal REST API (confirmed live on factory-test-36):
+            #   - GET /rest/executions wraps the list as .data.results[] and filters via
+            #     ?filter={"workflowId":...} (a bare workflowId= is ignored). The summary
+            #     already carries id + startedAt + stoppedAt, so EXEC_ID and duration come
+            #     straight from it — no detail call needed for duration.
+            #   - GET /rest/executions/:id (for model/tokens) wraps the execution in .data;
+            #     its .data field is the run payload, returned JSON-stringified.
+            #   - the LLM sub-node's usage is under .tokenUsage OR .tokenUsageEstimate.
             # COOKIE_JAR + _napi are still open here.
             sleep 2
             _napi GET "$BASE/rest/executions?filter=%7B%22workflowId%22%3A%22${WF_ID}%22%7D&limit=1" /tmp/or-exec-list.json > /dev/null || true
             echo "DEBUG(temp) exec-list <=600B: $(head -c 600 /tmp/or-exec-list.json 2>/dev/null)" >&2
-            EXEC_ID=$(jq -r '(.results // .data // .) | (if type=="array" then .[0].id else empty end) // empty' /tmp/or-exec-list.json 2>/dev/null || echo "")
+            EXEC_ID=$(jq -r '(.data.results // .results // .data // .) | (if type=="array" then .[0].id else empty end) // empty' /tmp/or-exec-list.json 2>/dev/null || echo "")
+            STARTED=$(jq -r '(.data.results // .results // .data // .) | (if type=="array" then .[0].startedAt else empty end) // empty' /tmp/or-exec-list.json 2>/dev/null || echo "")
+            STOPPED=$(jq -r '(.data.results // .results // .data // .) | (if type=="array" then .[0].stoppedAt else empty end) // empty' /tmp/or-exec-list.json 2>/dev/null || echo "")
             echo "DEBUG(temp) EXEC_ID=[${EXEC_ID}]" >&2
 
             MODEL_NAME=""
             PROMPT_T="?"
             COMP_T="?"
             DURATION_S="?"
+            if [ -n "$STARTED" ] && [ -n "$STOPPED" ]; then
+              DURATION_S=$(python3 -c "from datetime import datetime; a=datetime.fromisoformat('${STARTED}'.replace('Z','+00:00')); b=datetime.fromisoformat('${STOPPED}'.replace('Z','+00:00')); print(f'{(b-a).total_seconds():.1f}')" 2>/dev/null || echo "?")
+            fi
 
             if [ -n "$EXEC_ID" ] && [ "$EXEC_ID" != "null" ]; then
               _napi GET "$BASE/rest/executions/${EXEC_ID}?includeData=true" /tmp/or-exec.json > /dev/null || true
               echo "DEBUG(temp) exec-detail <=2000B: $(head -c 2000 /tmp/or-exec.json 2>/dev/null)" >&2
 
-              # The execution run payload (.resultData.runData) sits in the execution's
-              # .data, which is returned JSON-stringified; fromjson parses it. Guarded so
-              # an unexpected shape (e.g. a flatted array) degrades to empty, never errors.
+              # Model + tokens live only in the detail's runData. Resolve the run payload
+              # across shapes: exec wrapped in .data (its .data string = payload) or the
+              # exec returned directly (.data string = payload). fromjson parses it; guarded
+              # so an unexpected shape (e.g. an n8n 'flatted' array) degrades to empty.
               EXTRACT=$(jq -r '
                 ( if (.data | type) == "string" then (.data | try fromjson catch {})
+                  elif (.data | type) == "object" then (if (.data.data | type) == "string" then (.data.data | try fromjson catch {}) elif (.data.resultData | type) == "object" then .data else {} end)
                   elif (.resultData | type) == "object" then .
-                  elif (.data | type) == "object" then (if (.data.data | type) == "string" then (.data.data | try fromjson catch {}) else .data end)
                   else {} end ) as $draw
                 | (if ($draw | type) == "object" then $draw else {} end) as $d
                 | ($d.resultData.runData["OpenRouter Chat Model"][0].data.ai_languageModel[0][0].json) as $j
@@ -1542,12 +1551,6 @@ jobs:
               MODEL_NAME=$(printf '%s' "$EXTRACT" | cut -f1)
               PROMPT_T=$(printf '%s' "$EXTRACT" | cut -f2); [ -n "$PROMPT_T" ] || PROMPT_T="?"
               COMP_T=$(printf '%s' "$EXTRACT" | cut -f3); [ -n "$COMP_T" ] || COMP_T="?"
-
-              STARTED=$(jq -r 'if has("startedAt") then .startedAt elif (.data | type) == "object" then .data.startedAt else empty end // empty' /tmp/or-exec.json 2>/dev/null || echo "")
-              STOPPED=$(jq -r 'if has("stoppedAt") then .stoppedAt elif (.data | type) == "object" then .data.stoppedAt else empty end // empty' /tmp/or-exec.json 2>/dev/null || echo "")
-              if [ -n "$STARTED" ] && [ -n "$STOPPED" ]; then
-                DURATION_S=$(python3 -c "from datetime import datetime; a=datetime.fromisoformat('${STARTED}'.replace('Z','+00:00')); b=datetime.fromisoformat('${STOPPED}'.replace('Z','+00:00')); print(f'{(b-a).total_seconds():.1f}')" 2>/dev/null || echo "?")
-              fi
             fi
 
             [ -n "$MODEL_NAME" ] || MODEL_NAME="openrouter/auto (ראה https://openrouter.ai/activity)"
