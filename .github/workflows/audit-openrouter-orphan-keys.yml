@@ -24,6 +24,10 @@ on:
         description: 'Type DELETE to confirm real deletions (only applies when dry_run=false)'
         type: string
         default: ''
+      keep_names:
+        description: 'Comma-separated key names to NEVER delete (protected), e.g. n8n-railway-production,n8n-telegram-bot'
+        type: string
+        default: ''
 
 permissions: {}
 
@@ -89,6 +93,7 @@ jobs:
           GITHUB_EVENT_NAME: ${{ github.event_name }}
           INPUT_DRY_RUN: ${{ inputs.dry_run }}
           INPUT_CONFIRM: ${{ inputs.confirm }}
+          INPUT_KEEP_NAMES: ${{ inputs.keep_names }}
         run: |
           set -euo pipefail
           OR_API="https://openrouter.ai/api/v1"
@@ -106,6 +111,12 @@ jobs:
           fi
           echo "Mode: dry_run=${DRY_RUN} do_delete=${DO_DELETE}"
 
+          # Protected key names (never deleted). Wrap in commas + strip spaces so a
+          # single name can be matched as a ",NAME," substring without partial hits.
+          _KN="${INPUT_KEEP_NAMES:-}"
+          KEEP_NAMES=",${_KN// /},"
+          [ "$KEEP_NAMES" != ",," ] && echo "Protected (keep) names: ${_KN}"
+
           # 1. List all OpenRouter keys (including disabled)
           OR_KEYS=$(curl -sS --max-time 30 \
             -H "Authorization: Bearer ${OR_MGMT_KEY}" \
@@ -114,7 +125,7 @@ jobs:
           echo "OpenRouter keys found: ${KEY_COUNT}"
 
           # 2. Reconcile each key
-          LIVE=0; ORPHANS=0; STALE=0; UNCERTAIN=0; DELETED=0; DELETE_ERRORS=0
+          LIVE=0; ORPHANS=0; STALE=0; UNCERTAIN=0; DELETED=0; DELETE_ERRORS=0; KEPT=0
           SUMMARY_ROWS=""
 
           while IFS= read -r key_json; do
@@ -173,9 +184,17 @@ jobs:
               UNCERTAIN=$((UNCERTAIN + 1))
             fi
 
-            # Delete if applicable
-            if [ "$DO_DELETE" = "true" ] && \
-               { [ "$STATUS" = "🗑️ Orphan" ] || [ "$STATUS" = "⚠️ Stale" ]; }; then
+            # A deletion candidate is any orphan/stale key. A protected name is never
+            # deleted — skipped even in a live run.
+            CANDIDATE="false"
+            { [ "$STATUS" = "🗑️ Orphan" ] || [ "$STATUS" = "⚠️ Stale" ]; } && CANDIDATE="true"
+            PROTECTED="false"
+            case "$KEEP_NAMES" in *",${NAME},"*) PROTECTED="true";; esac
+
+            if [ "$CANDIDATE" = "true" ] && [ "$PROTECTED" = "true" ]; then
+              ACTION="🔒 Kept (protected)"
+              KEPT=$((KEPT + 1))
+            elif [ "$DO_DELETE" = "true" ] && [ "$CANDIDATE" = "true" ]; then
               DEL_HTTP=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 15 \
                 -X DELETE "${OR_API}/keys/${HASH}" \
                 -H "Authorization: Bearer ${OR_MGMT_KEY}" || echo "000")
@@ -186,8 +205,7 @@ jobs:
                 ACTION="⚠️ Delete failed (HTTP ${DEL_HTTP})"
                 DELETE_ERRORS=$((DELETE_ERRORS + 1))
               fi
-            elif [ "$DRY_RUN" = "true" ] && \
-               { [ "$STATUS" = "🗑️ Orphan" ] || [ "$STATUS" = "⚠️ Stale" ]; }; then
+            elif [ "$DRY_RUN" = "true" ] && [ "$CANDIDATE" = "true" ]; then
               ACTION="Would delete"
             fi
 
@@ -202,7 +220,7 @@ jobs:
           done < <(printf '%s' "$OR_KEYS" | jq -c '.data[]? // empty')
 
           TOTAL=$((LIVE + ORPHANS + STALE + UNCERTAIN))
-          echo "BREAKDOWN: total=${TOTAL} live=${LIVE} orphan=${ORPHANS} stale=${STALE} uncertain=${UNCERTAIN}"
+          echo "BREAKDOWN: total=${TOTAL} live=${LIVE} orphan=${ORPHANS} stale=${STALE} uncertain=${UNCERTAIN} kept=${KEPT}"
           MODE_TAG="🔍 Dry run"
           [ "$DO_DELETE" = "true" ] && MODE_TAG="🗑️ Live run"
 
@@ -216,7 +234,7 @@ jobs:
             printf '%s' "$SUMMARY_ROWS"
             echo ""
             echo "**Summary:** ${TOTAL} keys — ✅ ${LIVE} live | 🗑️ ${ORPHANS} orphan | ⚠️ ${STALE} stale | ❓ ${UNCERTAIN} uncertain"
-            [ "$DO_DELETE" = "true" ] && echo "**Deleted:** ${DELETED} | **Errors:** ${DELETE_ERRORS}"
+            [ "$DO_DELETE" = "true" ] && echo "**Deleted:** ${DELETED} | **Kept (protected):** ${KEPT} | **Errors:** ${DELETE_ERRORS}"
             echo ""
             if [ "$DRY_RUN" = "true" ] && [ $((ORPHANS + STALE)) -gt 0 ]; then
               echo "> To delete orphans and stale keys: dispatch this workflow with \`dry_run=false\` and \`confirm=DELETE\`."

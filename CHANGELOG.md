@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 49 — ops: audit `keep_names` input protects keys from deletion
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | feature | `audit-openrouter-orphan-keys.yml`: added a `keep_names` manual-dispatch input (comma-separated key names) that are **never deleted**, even on a live run. A protected orphan/stale key is reported with action `🔒 Kept (protected)` and counted in a new `kept` tally (job summary + `BREAKDOWN:` stdout line). Lets a real cleanup spare specific keys (e.g. `n8n-railway-production,n8n-telegram-bot`, which are orphan-by-no-repo but may still back a manually-run system) instead of the previous all-orphan-and-stale-or-nothing behavior. Matching is exact per name (wrapped in commas, spaces stripped). No change to dry-run/scheduled behavior when the input is empty. |
+
 ## Stage 48 — ops: audit emits per-key classification to stdout
 
 | PR | Type | Summary |
