@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 51a — fix: Agent Router returns its reply (lastNode, drop Respond-to-Webhook)
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | fix | `templates/system/workflows/n8n/agent-router.json`: the router replied with HTTP 200 but an **empty body** — caught live on factory-test-51b via the new POST-capable `probe_endpoint`. Root cause: the webhook used `responseMode: responseNode` + a `Respond to Webhook` node (`firstIncomingItem`), which returned no body, whereas the factory's proven demo-workflow pattern uses `responseMode: lastNode` and returns the final node's JSON directly (the demo webhook returns `{"output":"ok"}`). Switched the router to `lastNode` and made the `Egress Validation` Code node terminal (removed the `Respond to Webhook` node + its connection), so the HTTP response is the egress `{reply}` object. |
+
 ## Stage 51a — feat: agent can dispatch + verify the Agent Router end-to-end (MCP)
 
 | PR | Type | Summary |
