@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 52 — chore: remove router `_diag` debug + activate only the router
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | chore | The Stage 51 router was confirmed working end-to-end on live `factory-test-52a` (POST `/webhook/agent-router` → HTTP 200 + a non-empty Hebrew ops reply, `EXEC status=success`). Removed the temporary `_diag` block from `agent-router.json` egress (its job is done; superseded by `inspect_n8n_execution`). `configure-agent-router.yml` now activates **only** the router (Webhook trigger); the ops/unknown sub-agents are left **inactive by design** (Execute-Workflow-Trigger workflows aren't activatable and are invoked directly by the router), and the job summary says so. |
+
 ## Stage 52 — feat: n8n observability (Public API key + MCP tools)
 
 | PR | Type | Summary |
@@ -92,37 +98,5 @@ Template edit reaches newly-provisioned systems only (per CLAUDE.md).
 | PR | Type | Summary |
 |---|---|---|
 | TBD | feature | Vendor `templates/system/.claude/skills/gcp-hands-client/{SKILL.md,README.md}` (byte-identical to `edri2or/gcp-hands@main`); `provision-system.yml` now scaffolds the whole `.claude` tree (commands + skills) so each new repo can dispatch GCP ops to `edri2or/gcp-hands` out of the box. Cross-repo dispatch-token requirement is documented in the vendored README (per-system App stays single-repo), not provisioned. Periodic re-sync deferred (gcp-hands PLAN.md "SKILL.md drift"). |
-
-Template edit reaches newly-provisioned systems only (per CLAUDE.md).
-
-## Stage 44 — deploy: get the OpenRouter resolved model + tokens from a direct API call
-
-| PR | Type | Summary |
-|---|---|---|
-| TBD | fix | `templates/system/.github/workflows/deploy-railway-cloudflare.yml`: the Stage 43 `DBGMODEL` dump proved (live on `factory-test-39`) that n8n **strips the resolved model** from its stored runData (`generationInfo` holds only `finish_reason`), so it cannot be recovered from the execution at all. Per OpenRouter docs the chat-completion **response `.model`** is the model `openrouter/auto` actually routed to (and `.usage` has the tokens) — exactly what the Activity page shows. So the OpenRouter step now reads model + tokens from a **direct `POST {OR_CRED_URL}/chat/completions`** (Bearer = the per-system inference key already in scope; `max_tokens:16`; ~$0.0005; guarded so it never fails the deploy). Duration still comes from the **actual n8n demo execution** (the `.data.results[]` list summary's `startedAt`/`stoppedAt`). Removed the `/rest/executions/:id` detail fetch, the Python flatted decoder, and all temporary `DEBUG(temp)`/`DBGMODEL` lines — finalizes Stages 40–43. |
-
-Template edit reaches newly-provisioned systems only (per CLAUDE.md).
-
-## Stage 43 — deploy: search runData for the OpenRouter model + dump generationInfo (diagnostic)
-
-| PR | Type | Summary |
-|---|---|---|
-| TBD | fix | `templates/system/.github/workflows/deploy-railway-cloudflare.yml`: live on `factory-test-38` the Stage 42 flatted decoder made **tokens (7+1) and duration (1.7s) render**, but the model stayed on the fallback — `generations[0][0].generationInfo.model_name` was empty. Replaced the single-path model read with a recursive search of the decoded `response` for a `model_name`/`model` key whose value matches a `provider/model` pattern (finds it wherever n8n places it; ignores the reply text). Added a temporary `DBGMODEL` stderr line dumping the decoded `generationInfo` so the next deploy reveals the model's location — or confirms n8n strips it (the model lives in langchain's `llmOutput`, which n8n may drop from the per-generation payload). Tokens/duration unchanged; dropped `2>/dev/null` on the python call so the diagnostic shows. Validated locally with a real flatted encoder: model-present → `provider/model\t7\t1`, model-absent → `\t7\t1`. |
-
-Template edit reaches newly-provisioned systems only (per CLAUDE.md).
-
-## Stage 42 — deploy: decode n8n 'flatted' execution data for OpenRouter model + tokens
-
-| PR | Type | Summary |
-|---|---|---|
-| TBD | fix | `templates/system/.github/workflows/deploy-railway-cloudflare.yml`: live on `factory-test-37` the Stage 41 fix made `EXEC_ID` + duration render, but the `DEBUG(temp)` dump showed the execution **detail** returns the run payload (`exec.data`) in n8n's **`flatted`** format (a JSON array of registry slots with numeric-string refs, possibly cyclic), which jq can't decode — so model/tokens stayed on the fallback. Replaced the jq model/tokens extraction with a small **memoised, cycle-safe Python flatted decoder** that resolves the registry, then reads `model_name` from the OpenRouter sub-node's `generations` and tokens from `tokenUsage`/`tokenUsageEstimate`. Also handles plain-JSON string/object shapes; any failure prints a tab fallback (never errors the step). Validated locally (realistic flatted sample → `model\tprompt\tcomp`; `tokenUsageEstimate` variant; cyclic input degrades with no hang). `EXEC_ID` + duration (from the list summary) unchanged. `DEBUG(temp)` exec-detail kept one more cycle to confirm the live shape, then removed. |
-
-Template edit reaches newly-provisioned systems only (per CLAUDE.md).
-
-## Stage 41 — deploy: fix OpenRouter exec-list envelope (.data.results) + duration from list
-
-| PR | Type | Summary |
-|---|---|---|
-| TBD | fix | `templates/system/.github/workflows/deploy-railway-cloudflare.yml`: Stage 40 still fell back to `?` on a live `factory-test-36` deploy — the `DEBUG(temp)` dump showed the internal `GET /rest/executions` wraps the array as **`.data.results[]`** (Stage 40 read `.results`, missing the top-level `.data` envelope), so `EXEC_ID` was empty and the block was skipped. Now reads `.data.results`; and since the list summary carries `startedAt`/`stoppedAt`, **duration is taken straight from the list** (no detail call) — verified against the captured payload (`EXEC_ID=2`, duration `1.3s`). Model + tokens still come from the execution detail; hardened that jq to resolve the run payload across wrapped/unwrapped shapes and parse the stringified `.data` (graceful empty if it is a `flatted` array). The `DEBUG(temp)` dump stays one more cycle to confirm the detail payload shape (plain-JSON vs flatted), then is removed. |
 
 Template edit reaches newly-provisioned systems only (per CLAUDE.md).
