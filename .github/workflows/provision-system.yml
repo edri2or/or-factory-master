@@ -423,20 +423,27 @@ jobs:
           # Runs before branch protection so the push doesn't need to bypass
           # any rules. auto_init created `main` with just a README; this adds
           # the deploy workflow as a single commit on `main`.
+          # This workflow is large (>100 KB) and grows over time, so its base64
+          # exceeds Linux's ~128 KB single-argument cap (MAX_ARG_STRLEN). Pass it
+          # to jq via --rawfile and to curl via --data-binary @file instead of as
+          # inline CLI args, which would fail with "Argument list too long".
           FILE=templates/system/.github/workflows/deploy-railway-cloudflare.yml
           [ -f "$FILE" ] || { echo "FAIL: template not found at $FILE" >&2; exit 1; }
-          CONTENT_B64=$(base64 -w0 < "$FILE")
-          BODY=$(jq -cn \
+          B64_FILE=$(mktemp)
+          BODY_FILE=$(mktemp)
+          trap 'rm -f "$B64_FILE" "$BODY_FILE"' EXIT
+          base64 -w0 < "$FILE" > "$B64_FILE"
+          jq -cn \
             --arg msg "ci: scaffold deploy-railway-cloudflare workflow (from or-factory-master)" \
-            --arg content "$CONTENT_B64" \
+            --rawfile content "$B64_FILE" \
             --arg branch "main" \
-            '{message:$msg, content:$content, branch:$branch}')
+            '{message:$msg, content:$content, branch:$branch}' > "$BODY_FILE"
           resp=$(curl -sS -w '\nHTTP_STATUS:%{http_code}' -X PUT \
             -H "Authorization: Bearer ${APP_TOKEN}" \
             -H "Accept: application/vnd.github+json" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
             "https://api.github.com/repos/edri2or/${SYSTEM_NAME}/contents/.github/workflows/deploy-railway-cloudflare.yml" \
-            -d "$BODY")
+            --data-binary @"$BODY_FILE")
           http_code=$(printf '%s' "$resp" | tail -1 | sed 's/HTTP_STATUS://')
           body=$(printf '%s' "$resp" | sed '$d')
           [ "$http_code" = "201" ] \

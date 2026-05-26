@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 57 — fix: push the large deploy workflow via file, not CLI args (Phase D)
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | fix | PR 2 grew `deploy-railway-cloudflare.yml` past ~110 KB; its base64 (~147 KB) exceeds Linux's ~128 KB single-arg cap, so `provision-system.yml`'s scaffold-push step died with `jq: Argument list too long` (caught live on `gateway-test-1`). Now passes the base64 to `jq --rawfile` and the body to `curl --data-binary @file` — size-robust. |
+
 ## Stage 56 — fix: scaffold the Caddy gateway files into provisioned system repos (Phase D)
 
 | PR | Type | Summary |
