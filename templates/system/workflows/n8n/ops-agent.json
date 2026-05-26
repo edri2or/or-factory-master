@@ -14,20 +14,15 @@
       "parameters": {
         "promptType": "define",
         "text": "={{ $json.sanitized }}",
-        "messages": {
-          "messageValues": [
-            {
-              "type": "SystemMessagePromptTemplate",
-              "message": "You are the OPS sub-agent for a self-hosted automation system. You handle operational questions: deployment status, service health, logs, restarts, and routine ops tasks. Be concise, accurate, and actionable. If you lack live data, say what you would check and where. Never invent URLs or secrets. Answer in the user's language (Hebrew or English, detected from the input)."
-            }
-          ]
+        "options": {
+          "systemMessage": "You are the OPS sub-agent for a self-hosted automation system. You handle operational questions: deployment status, service health, logs, restarts, and routine ops tasks. You have a tool that calls this system's own n8n Public API to list workflows and their active/inactive status — use it whenever the user asks which workflows are active, about automation/deployment status, or overall system status, and base your answer on the live data it returns. Be concise, accurate, and actionable. Never invent URLs or secrets. Answer in the user's language (Hebrew or English, detected from the input)."
         }
       },
       "id": "b0000000-0000-0000-0000-000000000002",
-      "name": "Ops Reply",
-      "type": "@n8n/n8n-nodes-langchain.chainLlm",
-      "typeVersion": 1.5,
-      "position": [480, 320]
+      "name": "Ops Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [520, 320]
     },
     {
       "parameters": {
@@ -38,8 +33,26 @@
       "name": "OpenRouter Chat Model",
       "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
       "typeVersion": 1,
-      "position": [480, 540],
+      "position": [400, 560],
       "credentials": { "openRouterApi": { "id": "@@CRED_OPENROUTER_ID@@", "name": "OpenRouter (factory-master)" } }
+    },
+    {
+      "parameters": {
+        "toolDescription": "Call the system's own n8n Public API to get the live list of workflows and their active/inactive status. Use this to answer which workflows are active, automation/deployment status, or overall system status. Returns JSON.",
+        "method": "GET",
+        "url": "https://@@N8N_DOMAIN@@/api/v1/workflows",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendQuery": false,
+        "sendHeaders": false,
+        "sendBody": false
+      },
+      "id": "b0000000-0000-0000-0000-000000000005",
+      "name": "n8n API",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [640, 560],
+      "credentials": { "httpHeaderAuth": { "id": "@@CRED_N8N_API_ID@@", "name": "n8n Public API (X-N8N-API-KEY)" } }
     },
     {
       "parameters": {
@@ -50,7 +63,7 @@
               "id": "b1000000-0000-0000-0000-000000000001",
               "name": "reply",
               "type": "string",
-              "value": "={{ $json.text || $json.output }}"
+              "value": "={{ $json.output || $json.text }}"
             }
           ]
         },
@@ -60,13 +73,14 @@
       "name": "Format Reply",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
-      "position": [720, 320]
+      "position": [820, 320]
     }
   ],
   "connections": {
-    "When Executed by Another Workflow": { "main": [[{ "node": "Ops Reply", "type": "main", "index": 0 }]] },
-    "OpenRouter Chat Model": { "ai_languageModel": [[{ "node": "Ops Reply", "type": "ai_languageModel", "index": 0 }]] },
-    "Ops Reply": { "main": [[{ "node": "Format Reply", "type": "main", "index": 0 }]] }
+    "When Executed by Another Workflow": { "main": [[{ "node": "Ops Agent", "type": "main", "index": 0 }]] },
+    "OpenRouter Chat Model": { "ai_languageModel": [[{ "node": "Ops Agent", "type": "ai_languageModel", "index": 0 }]] },
+    "n8n API": { "ai_tool": [[{ "node": "Ops Agent", "type": "ai_tool", "index": 0 }]] },
+    "Ops Agent": { "main": [[{ "node": "Format Reply", "type": "main", "index": 0 }]] }
   },
   "settings": { "executionOrder": "v1" }
 }
