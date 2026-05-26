@@ -97,7 +97,9 @@ for f in workflows/n8n/agent-router.json \
 done
 test -f .github/workflows/configure-subagents.yml   || exit 1
 test -f .github/workflows/configure-telegram-n8n.yml || exit 1
-test -f scripts/macro_f1.py                          || exit 1
+test -f scripts/eval_router.py                       || exit 1
+test -f tests/router_battery.yaml                    || exit 1
+test -f .github/workflows/eval-agent-router.yml                          || exit 1
 ```
 
 If any artifact is missing, do **not** hand-write it here — the canonical copies
@@ -129,13 +131,13 @@ confirmation of each before proceeding to the next.
 
 | # | Action | Operator hand-off (Hebrew) | Acceptance |
 |---|---|---|---|
-| 3 | Dispatch `configure-subagents.yml` | הפעל ב-GitHub Actions את `configure-subagents.yml` על `main`. תעקוב אחרי השורה `Macro-F1: X.XXX (threshold 0.85)` ודווח לי את הערך. | Run exits 0 **and** Macro-F1 ≥ 0.85 |
+| 3 | Dispatch `eval-agent-router.yml` (Macro-F1 gate) | הפעל ב-GitHub Actions את `eval-agent-router.yml` על `main`. תעקוב אחרי השורה `Macro-F1: X.XXX (threshold 0.85)` ודווח לי את הערך. | Run exits 0 **and** Macro-F1 ≥ 0.85 |
 | 4 | Re-dispatch `configure-telegram-n8n.yml` | הפעל שוב ב-GitHub Actions את `configure-telegram-n8n.yml` על `main`. | Run exits 0; 9 nodes in the resulting N8N workflow |
 | 5 | Live [your-telegram] free-form probe | שלח לבוט הודעה חופשית בעברית (למשל: `מה מצב השירותים?`). ודווח לי את התשובה. | Non-empty Hebrew reply **not** equal to the `/status` or `/agent-session` text — confirms the Router path fired, not the slash-command path |
 
-Step 3 log markers to spot: `Updating|Creating Agent Router (id=...)` for each
-of the 5 workflows, 10 probe lines `N | expected=... | got=... | text=...`,
-per-class F1 table, `PASS — routing quality OK.`.
+Step 3 log markers to spot (from `eval-agent-router.yml` → `scripts/eval_router.py`):
+`Macro-F1: X.XXX (threshold 0.85)` followed by the per-class P/R/F1 lines, with
+`report.json` uploaded as a build artifact.
 
 ### Step 6: Flip Stage 6 to `completed` in `state.json`
 
