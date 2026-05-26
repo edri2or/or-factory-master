@@ -1,0 +1,103 @@
+name: Seed test bot token default (one-shot)
+
+# One-time helper. Captures the per-system TEST Telegram bot token so that every
+# future test provision auto-seeds it (see provision-system.yml's reuse-mode
+# n8n-telegram-bot-token seed + the n8n-telegram-bot-token-test EXCLUDE in
+# scripts/copy-generic-secrets.sh).
+#
+# Copies the LATEST version of <source_secret> from <source_project> into
+# n8n-telegram-bot-token-test in or-factory-master-control, server-side, under
+# the broker SA via WIF. The value is piped directly between gcloud calls — it
+# is never echoed, stored in a variable, or written to the logs. Idempotent:
+# re-running just adds another (identical) version.
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_project:
+        description: "Test GCP project holding the token to capture (factory-test-*/v2-test-*/or-test-*)."
+        required: true
+        type: string
+        default: "factory-test-25"
+      source_secret:
+        description: "Secret name to read in the source project."
+        required: true
+        type: string
+        default: "n8n-telegram-bot-token"
+      dest_secret:
+        description: "Destination secret name in or-factory-master-control."
+        required: true
+        type: string
+        default: "n8n-telegram-bot-token-test"
+
+permissions: {}
+
+jobs:
+  seed:
+    name: Seed test bot token default
+    runs-on: ubuntu-latest
+    environment: production
+    # Broker WIF CEL pins ref=refs/heads/main; running off other branches will fail to auth.
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      id-token: write   # WIF OIDC token
+
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
+
+      - name: Authenticate to GCP via WIF
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093  # v3.0.0
+        with:
+          workload_identity_provider: "projects/140345952904/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
+          service_account: "factory-master-broker@or-factory-master-control.iam.gserviceaccount.com"
+
+      - name: Copy the token into control SM
+        env:
+          SOURCE_PROJECT: ${{ inputs.source_project }}
+          SOURCE_SECRET: ${{ inputs.source_secret }}
+          DEST_SECRET: ${{ inputs.dest_secret }}
+        run: |
+          set -euo pipefail
+          # Destination is ALWAYS the control project. Never parameterised.
+          DEST_PROJECT="or-factory-master-control"
+
+          # Guard the source to a test project so this can never read from a
+          # control/real project's SM.
+          if ! [[ "$SOURCE_PROJECT" =~ ^(factory-test-|v2-test-|or-test-)[a-z0-9-]+$ ]]; then
+            echo "FAIL: source_project '$SOURCE_PROJECT' must be a test project (factory-test-*/v2-test-*/or-test-*)" >&2
+            exit 1
+          fi
+
+          # Verify the source actually has a readable version (no value printed).
+          if ! gcloud secrets versions access latest \
+               --secret="$SOURCE_SECRET" --project="$SOURCE_PROJECT" >/dev/null 2>&1; then
+            echo "FAIL: $SOURCE_SECRET has no accessible version in $SOURCE_PROJECT" >&2
+            exit 1
+          fi
+
+          # Create the destination secret if it does not yet exist.
+          if ! gcloud secrets describe "$DEST_SECRET" --project="$DEST_PROJECT" >/dev/null 2>&1; then
+            gcloud secrets create "$DEST_SECRET" \
+              --project="$DEST_PROJECT" \
+              --replication-policy=automatic \
+              --labels=purpose=test-default-bot,managed-by=or-factory-master \
+              --quiet
+            echo "PASS: created $DEST_SECRET in $DEST_PROJECT"
+          else
+            echo "INFO: $DEST_SECRET already exists in $DEST_PROJECT"
+          fi
+
+          # Copy the value server-side. The pipe keeps it off the logs and out
+          # of any shell variable.
+          gcloud secrets versions access latest \
+            --secret="$SOURCE_SECRET" --project="$SOURCE_PROJECT" \
+          | gcloud secrets versions add "$DEST_SECRET" \
+            --project="$DEST_PROJECT" --data-file=- --quiet
+          echo "PASS: copied latest $SOURCE_SECRET ($SOURCE_PROJECT) -> $DEST_SECRET ($DEST_PROJECT)"
+
+          # Report the resulting enabled-version count (never the value).
+          COUNT=$(gcloud secrets versions list "$DEST_SECRET" \
+            --project="$DEST_PROJECT" --filter="state=ENABLED" \
+            --format="value(name)" | wc -l)
+          echo "PASS: $DEST_SECRET now has ${COUNT} enabled version(s)."
