@@ -678,6 +678,8 @@ jobs:
           #     /rest/owner/setup; the workflow auto-creates the n8n admin
           #     account on first deploy)
           #   - railway-* pointers persisted from Railway's API responses
+          #   - webhook-hmac-secret + caddy-railway-{service-id,url} (Phase D
+          #     gateway: per-system HMAC secret + Caddy service id/URL)
           # deploy-sa has roles/secretmanager.secretVersionManager at project
           # level — that includes versions.add but NOT secrets.create. Create
           # the shells here, as the broker SA (which has roles/owner), so the
@@ -696,6 +698,9 @@ jobs:
             n8n-telegram-bot-token
             n8n-telegram-chat-id
             n8n-api-key
+            webhook-hmac-secret
+            caddy-railway-service-id
+            caddy-railway-url
           )
           RUNTIME_SA="runtime-sa@${GCP_PROJECT}.iam.gserviceaccount.com"
           DEPLOY_SA="deploy-sa@${GCP_PROJECT}.iam.gserviceaccount.com"

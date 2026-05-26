@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 55 — feat: deploy creates Caddy as a third Railway service (Phase D, PR 2)
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | feature | `deploy-railway-cloudflare.yml` now provisions a **Caddy gateway** as a third Railway service (added after the n8n owner-account step, so n8n is confirmed serving before the smoke test). Generates/reads a per-system `webhook-hmac-secret` in SM (idempotent + masked, mirrors `n8n-encryption-key`); `serviceCreate`s a `caddy` service from the system's own repo (`source:{repo}`, building `Dockerfile.caddy` via `RAILWAY_DOCKERFILE_PATH` — Railway's GitHub integration has `edri2or` access, verified); upserts `HMAC_SECRET`/`RATE_LIMIT_BURST=50`/`RATE_LIMIT_WINDOW=10s`/`PORT=8080` in one collection; assigns a Railway `*.up.railway.app` subdomain; runs 3 hard-gated smoke tests (`/health`→200, `/webhook` no-HMAC→401, valid-HMAC→non-5xx reaching n8n) + a Hebrew summary. **n8n keeps its public domain** — the swap is PR 3. Idempotent (SM-first `caddy-railway-service-id`/`caddy-railway-url`). `provision-system.yml` pre-creates the 3 new secret shells (deploy-sa adds versions but can't create secrets). Template edit reaches newly-provisioned systems only. |
+
 ## Stage 54 — feat: Caddyfile + constant-time HMAC module template for the per-system gateway (Phase D, PR 1)
 
 | PR | Type | Summary |
@@ -100,15 +106,3 @@
 | TBD | feature | New `templates/system/workflows/n8n/{agent-router,ops-agent,unknown-agent}.json` — n8n workflow JSONs that scaffold the Stage 6 multi-agent spec. Router: Webhook → Code(sanitize, L2) → `chainLlm` classify (pinned `openai/gpt-5-nano`, temp 0) + Structured Output Parser → `{intent, confidence}` → Code(re-attach `sanitized`) → Switch (ops at confidence ≥ 0.7, else fallback) → `Execute Sub-workflow` → Code(egress, L5: URL allowlist + strip `<script>` + reject `exec(`/`eval(`) → Respond. Sub-agents use `Execute Sub-workflow` (not `agentTool` — n8n issue #22489) via `executeWorkflowTrigger` with `inputSource:passthrough`; ops on `anthropic/claude-haiku-4.5`, unknown on `openai/gpt-5-nano`. Node typeVersions verified against n8n@1.121.0. The existing `factory-master: OpenRouter auto-router demo` workflow is untouched. code/research/infra sub-agents land in Stage 51b. |
 | TBD | feature | New `templates/system/.github/workflows/configure-agent-router.yml`: manual-dispatch workflow that loads the 3 JSONs, `sed`-resolves placeholders (`@@CRED_OPENROUTER_ID@@`, `@@SUB_{OPS,UNKNOWN}_WF_ID@@`), creates/updates them in n8n by name (PATCH-or-POST + activate), and fires one Hebrew smoke probe. Mirrors `deploy-railway-cloudflare.yml`'s `_sm_read`/`_login`/`_napi`(retry-on-`000`-only)/`_soft_exit0` helpers, EXIT-trap cleanup, `::add-mask::`, and Hebrew job-summary style; bodies sent via `--data-binary @file`. `provision-system.yml` extended (additively, in the existing `.claude` push step) to also scaffold `workflows/n8n/*.json` + this workflow into every new system repo, with a commit guard for reuse-mode re-provisions. |
 | TBD | docs | `stage6-multi-agent.md` (both factory + template copies) refreshed: OWASP mapping → LLM01 + LLM02 + LLM05 (LLM06:2025 Excessive Agency via HITL later); confidence threshold 0.6 → 0.7; classifier `gpt-4o-mini` → pinned `openai/gpt-5-nano`; dispatch via `Execute Sub-workflow` not `agentTool`/HTTP (n8n #22489). `docs/openrouter-integration.md` gains a `## 7. Agent Router` section. Template edits reach newly-provisioned systems only. |
-
-## Stage 50 — ops: persistent OpenRouter keep-list silences the daily audit
-
-| PR | Type | Summary |
-|---|---|---|
-| TBD | feature | `audit-openrouter-orphan-keys.yml` + new `.github/openrouter-keep.txt`: the Stage 49 `keep_names` protection was dispatch-only, so the daily scheduled run still flagged intentionally-kept orphan keys (e.g. `n8n-railway-production`, `n8n-telegram-bot` — orphan only because no `edri2or/<name>` repo exists) and pinged Telegram every day. Added a committed allowlist file (one name per line, `#` comments) honored by **all** runs (scheduled + dispatch), merged with the `keep_names` input and matched with `grep -qxF` (same normalize idiom as `decommission-railway-projects.yml`). Protected keys are excluded from a new **actionable** tally (orphan+stale minus kept); the Telegram alert and the dry-run delete hint now trigger on `actionable>0` instead of raw orphan/stale, so an all-protected result stays silent. The job summary + `BREAKDOWN:` stdout line now also report `kept` and `actionable`. |
-
-## Stage 49 — ops: audit `keep_names` input protects keys from deletion
-
-| PR | Type | Summary |
-|---|---|---|
-| TBD | feature | `audit-openrouter-orphan-keys.yml`: added a `keep_names` manual-dispatch input (comma-separated key names) that are **never deleted**, even on a live run. A protected orphan/stale key is reported with action `🔒 Kept (protected)` and counted in a new `kept` tally (job summary + `BREAKDOWN:` stdout line). Lets a real cleanup spare specific keys (e.g. `n8n-railway-production,n8n-telegram-bot`, which are orphan-by-no-repo but may still back a manually-run system) instead of the previous all-orphan-and-stale-or-nothing behavior. Matching is exact per name (wrapped in commas, spaces stripped). No change to dry-run/scheduled behavior when the input is empty. |

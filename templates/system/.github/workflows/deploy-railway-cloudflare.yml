@@ -1033,6 +1033,225 @@ jobs:
           fi
           echo "PASS: n8n owner created (email=${N8N_OWNER_EMAIL}, name=${FIRSTNAME} ${LASTNAME})"
 
+      # ===== Phase D gateway (PR 2): Caddy as a third Railway service =====
+      # Placed AFTER the n8n owner-account step so n8n is confirmed serving 200
+      # before we smoke-test Caddy's HMAC->n8n path. In this PR n8n KEEPS its
+      # public domain (the domain swap is PR 3); Caddy is verified in isolation
+      # on a Railway-provided *.up.railway.app subdomain.
+      - name: Generate or read webhook HMAC secret
+        env:
+          PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          # Per-system HMAC secret that Caddy uses to verify X-Hub-Signature-256
+          # on /webhook/* before forwarding to n8n. Mirrors the n8n-encryption-key
+          # pattern: idempotent (never rotate once set — a new secret would reject
+          # every configured webhook caller). The shell is pre-created by
+          # provision-system.yml's "Pre-create runtime secret shells"; deploy-sa
+          # has project-level secretVersionManager (versions.add) + per-secret
+          # accessor but NOT secrets.create, so we add a version, never create.
+          if HMAC_SECRET=$(gcloud secrets versions access latest \
+                           --secret="webhook-hmac-secret" --project="$PROJECT_ID" 2>/dev/null) \
+             && [ -n "$HMAC_SECRET" ]; then
+            echo "INFO: webhook-hmac-secret already has a version — reusing existing secret."
+          else
+            HMAC_SECRET=$(openssl rand -hex 32)
+            printf '%s' "$HMAC_SECRET" | gcloud secrets versions add "webhook-hmac-secret" \
+              --project="$PROJECT_ID" --data-file=- --quiet
+            echo "PASS: generated 32-byte webhook-hmac-secret and stored new version."
+          fi
+          echo "::add-mask::${HMAC_SECRET}"
+          echo "HMAC_SECRET=${HMAC_SECRET}" >> "$GITHUB_ENV"
+
+      - name: Provision Caddy gateway service on Railway
+        env:
+          PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          SYSTEM_NAME: ${{ vars.SYSTEM_NAME }}
+        run: |
+          set -euo pipefail
+          # Reuses PROJECT_ID_RW / ENV_ID (exported to $GITHUB_ENV by the
+          # "Provision Railway" step) and RAILWAY_TOKEN (from "Read API tokens").
+          # The helpers below are shell-local, so we redefine the same _gql /
+          # _upsert_collection used by the provision step.
+          _gql() {
+            local query="$1"
+            local variables="${2:-}"
+            [ -n "$variables" ] || variables='{}'
+            local body resp
+            body=$(jq -cn --arg q "$query" --argjson v "$variables" \
+              '{query: $q, variables: $v}')
+            resp=$(curl -sS -X POST "$RAILWAY_GQL" \
+              -H "Authorization: Bearer ${RAILWAY_TOKEN}" \
+              -H "Content-Type: application/json" \
+              -d "$body")
+            if printf '%s' "$resp" | jq -e '.errors' >/dev/null 2>&1; then
+              echo "FAIL: Railway GraphQL errors:" >&2
+              printf '%s\n' "$resp" | jq -r '.errors[] | "  - " + .message' >&2
+              return 1
+            fi
+            printf '%s' "$resp"
+          }
+          _upsert_collection() {
+            local sid="$1" vars="$2"
+            _gql 'mutation($input: VariableCollectionUpsertInput!) { variableCollectionUpsert(input: $input) }' \
+              "$(jq -cn --arg pid "$PROJECT_ID_RW" --arg eid "$ENV_ID" --arg sid "$sid" --argjson vars "$vars" \
+                '{input: {projectId: $pid, environmentId: $eid, serviceId: $sid, variables: $vars}}')" \
+              > /dev/null
+          }
+
+          # ===== Caddy service: SM-first, find, then create from the system repo =====
+          # Build source = this system's own repo (edri2or/<system>), which carries
+          # the Caddyfile + Dockerfile.caddy + caddy/hmacguard from Phase D PR 1.
+          # Railway's GitHub integration has access to edri2or repos (verified).
+          echo "=== Railway: Caddy gateway service (SM-first lookup) ==="
+          CADDY_ID=$(gcloud secrets versions access latest \
+            --secret=caddy-railway-service-id --project="$PROJECT_ID" 2>/dev/null || echo "")
+          if [ -n "$CADDY_ID" ] && [ "$CADDY_ID" != "null" ]; then
+            echo "INFO: reusing Caddy service_id from SM: $CADDY_ID"
+          else
+            resp=$(_gql 'query($id: String!) { project(id: $id) { services { edges { node { id name } } } } }' \
+              "$(jq -cn --arg id "$PROJECT_ID_RW" '{id: $id}')" 2>/dev/null || echo '{}')
+            CADDY_ID=$(printf '%s' "$resp" | jq -r \
+              '(.data.project.services.edges // []) | map(select(.node.name=="caddy")) | .[0].node.id // ""' 2>/dev/null || echo "")
+
+            if [ -z "$CADDY_ID" ] || [ "$CADDY_ID" = "null" ]; then
+              resp=$(_gql 'mutation($input: ServiceCreateInput!) { serviceCreate(input: $input) { id } }' \
+                "$(jq -cn --arg pid "$PROJECT_ID_RW" --arg repo "edri2or/${SYSTEM_NAME}" \
+                  '{input: {projectId: $pid, name: "caddy", source: {repo: $repo}}}')")
+              CADDY_ID=$(printf '%s' "$resp" | jq -r '.data.serviceCreate.id' 2>/dev/null || echo "")
+              [ -n "$CADDY_ID" ] && [ "$CADDY_ID" != "null" ] \
+                || { echo "FAIL: Caddy serviceCreate returned no id; resp=$resp" >&2; exit 1; }
+              echo "PASS: Caddy service created from repo edri2or/${SYSTEM_NAME}: $CADDY_ID"
+            else
+              echo "INFO: Caddy service found in project: $CADDY_ID"
+            fi
+
+            printf '%s' "$CADDY_ID" | gcloud secrets versions add caddy-railway-service-id \
+              --project="$PROJECT_ID" --data-file=- --quiet
+            echo "PASS: caddy-railway-service-id persisted to SM."
+          fi
+
+          # ===== Caddy env vars (idempotent collection upsert) =====
+          # Names MUST match what the Caddyfile reads. RAILWAY_DOCKERFILE_PATH
+          # points Railway at our non-default Dockerfile (the repo has no root
+          # Dockerfile) so it builds the custom Caddy image instead of nixpacks.
+          echo "=== Railway: Caddy env vars (single collection upsert) ==="
+          _upsert_collection "$CADDY_ID" "$(jq -cn --arg hmac "$HMAC_SECRET" '{
+            HMAC_SECRET: $hmac,
+            RATE_LIMIT_BURST: "50",
+            RATE_LIMIT_WINDOW: "10s",
+            PORT: "8080",
+            RAILWAY_DOCKERFILE_PATH: "Dockerfile.caddy"
+          }')"
+          echo "PASS: Caddy env vars set (5 vars in one upsert → single redeploy with Dockerfile.caddy)."
+
+          # ===== Caddy public subdomain (Railway-provided *.up.railway.app) =====
+          # SM-first; else reuse an existing serviceDomain; else create one. No
+          # `domain` arg → Railway generates the subdomain. n8n's public custom
+          # domain is untouched (the swap is PR 3).
+          echo "=== Railway: assign Caddy public subdomain ==="
+          CADDY_URL=$(gcloud secrets versions access latest \
+            --secret=caddy-railway-url --project="$PROJECT_ID" 2>/dev/null || echo "")
+          if [ -n "$CADDY_URL" ] && [ "$CADDY_URL" != "null" ]; then
+            echo "INFO: reusing Caddy URL from SM: $CADDY_URL"
+          else
+            resp=$(_gql 'query($id: String!) { service(id: $id) { serviceInstances { edges { node { environmentId domains { serviceDomains { domain } } } } } } }' \
+              "$(jq -cn --arg id "$CADDY_ID" '{id: $id}')" 2>/dev/null || echo '{}')
+            CADDY_URL=$(printf '%s' "$resp" | jq -r --arg eid "$ENV_ID" \
+              '(.data.service.serviceInstances.edges // []) | map(select(.node.environmentId==$eid)) | .[0].node.domains.serviceDomains // [] | .[0].domain // ""' 2>/dev/null || echo "")
+
+            if [ -z "$CADDY_URL" ] || [ "$CADDY_URL" = "null" ]; then
+              resp=$(_gql 'mutation($input: ServiceDomainCreateInput!) { serviceDomainCreate(input: $input) { domain } }' \
+                "$(jq -cn --arg eid "$ENV_ID" --arg sid "$CADDY_ID" '{input: {environmentId: $eid, serviceId: $sid}}')")
+              CADDY_URL=$(printf '%s' "$resp" | jq -r '.data.serviceDomainCreate.domain' 2>/dev/null || echo "")
+              [ -n "$CADDY_URL" ] && [ "$CADDY_URL" != "null" ] \
+                || { echo "FAIL: serviceDomainCreate returned no domain; resp=$resp" >&2; exit 1; }
+              echo "PASS: Caddy subdomain assigned: $CADDY_URL"
+            else
+              echo "INFO: Caddy already has a serviceDomain: $CADDY_URL"
+            fi
+
+            printf '%s' "$CADDY_URL" | gcloud secrets versions add caddy-railway-url \
+              --project="$PROJECT_ID" --data-file=- --quiet
+            echo "PASS: caddy-railway-url persisted to SM."
+          fi
+
+          {
+            echo "CADDY_ID=${CADDY_ID}"
+            echo "CADDY_URL=${CADDY_URL}"
+          } >> "$GITHUB_ENV"
+
+      - name: Caddy gateway smoke tests
+        env:
+          SYSTEM_NAME: ${{ vars.SYSTEM_NAME }}
+        run: |
+          set -euo pipefail
+          # Verification gate (hard-fail). Confirms Caddy is up and enforcing
+          # HMAC + forwarding verified traffic to n8n over the private network,
+          # all WITHOUT touching n8n's public domain.
+          echo "=== Caddy gateway smoke tests on https://${CADDY_URL} ==="
+
+          # 1. /health -> 200. Doubles as the deploy-readiness gate: poll up to
+          #    ~10 min while Railway builds Dockerfile.caddy, boots Caddy, and
+          #    routes the fresh subdomain.
+          H1=000
+          for i in $(seq 1 60); do
+            H1=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "https://${CADDY_URL}/health" || echo "000")
+            [ "$H1" = "200" ] && break
+            echo "[caddy /health ${i}/60] HTTP ${H1}; Caddy not ready, sleeping 10s..."
+            sleep 10
+          done
+          [ "$H1" = "200" ] || { echo "FAIL: Caddy /health still HTTP $H1 after ~10 min on https://${CADDY_URL}" >&2; exit 1; }
+          echo "PASS: Caddy /health -> 200."
+
+          # 2. /webhook/* without a signature -> 401 (rejected at the edge).
+          H2=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 \
+            -X POST "https://${CADDY_URL}/webhook/agent-router" \
+            -H "Content-Type: application/json" --data '{"text":"smoke test"}' || echo "000")
+          [ "$H2" = "401" ] || { echo "FAIL: Caddy /webhook without HMAC expected 401, got $H2" >&2; exit 1; }
+          echo "PASS: Caddy /webhook without HMAC -> 401."
+
+          # 3. /webhook/* with a valid HMAC -> passes Caddy and reaches n8n
+          #    (non-5xx and NOT 401). n8n returns 404 here because agent-router
+          #    isn't configured yet (configure-agent-router.yml does that) — a
+          #    404 still proves the verified request reached n8n via the private
+          #    network. Retry on 5xx/000 for Caddy->n8n private-net warmup.
+          PAYLOAD='{"text":"smoke test"}'
+          SIG=$(printf '%s' "$PAYLOAD" | openssl dgst -sha256 -hmac "$HMAC_SECRET" | awk '{print $NF}')
+          H3=000
+          for i in $(seq 1 18); do
+            H3=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 \
+              -X POST "https://${CADDY_URL}/webhook/agent-router" \
+              -H "Content-Type: application/json" \
+              -H "X-Hub-Signature-256: sha256=${SIG}" \
+              --data "$PAYLOAD" || echo "000")
+            if [ "$H3" != "000" ] && [ "$H3" -lt 500 ]; then break; fi
+            echo "[caddy hmac->n8n ${i}/18] HTTP ${H3}; private-net warmup, sleeping 10s..."
+            sleep 10
+          done
+          if [ "$H3" = "000" ] || [ "$H3" -ge 500 ]; then
+            echo "FAIL: Caddy /webhook with HMAC did not reach n8n (HTTP $H3 — 5xx/timeout = Caddy->n8n.railway.internal failed)" >&2
+            exit 1
+          fi
+          if [ "$H3" = "401" ]; then
+            echo "FAIL: Caddy /webhook with a VALID HMAC returned 401 — verification rejected a correct signature (hmacguard bug or HMAC_SECRET mismatch)" >&2
+            exit 1
+          fi
+          echo "PASS: Caddy /webhook with valid HMAC -> HTTP $H3 (reached n8n through the private network)."
+
+          {
+            echo "## ✅ Caddy gateway התווסף (Phase D, PR 2)"
+            echo ""
+            echo "| בדיקה | תוצאה |"
+            echo "|---|---|"
+            echo "| Caddy /health | ${H1} |"
+            echo "| Caddy /webhook ללא HMAC | ${H2} |"
+            echo "| Caddy /webhook עם HMAC | ${H3} |"
+            echo "| כתובת Caddy זמנית | https://${CADDY_URL} |"
+            echo "| כתובת n8n הציבורית | https://n8n-${SYSTEM_NAME}.or-infra.com (ללא שינוי) |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "PASS: Caddy gateway smoke tests passed (health=${H1}, no-hmac=${H2}, hmac=${H3})."
+
       - name: Create "n8n is ready" Telegram notifier workflow
         env:
           PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
@@ -1718,8 +1937,12 @@ jobs:
             echo "| Postgres service | \`${PG_ID}\` |"
             echo "| n8n service | \`${N8N_ID}\` |"
             echo "| n8n image | \`${N8N_IMAGE}\` |"
+            echo "| Caddy gateway service | \`${CADDY_ID}\` |"
+            echo "| Caddy temp URL (Phase D PR 2) | https://${CADDY_URL} |"
             echo "| Custom domain | \`${DOMAIN}\` |"
             echo "| CNAME target | \`${CNAME_TARGET}\` |"
             echo ""
             echo "**DEPLOY COMPLETE.** Visit https://${DOMAIN} — first load opens n8n owner-account setup. Allow 1-3 min after first run for Let's Encrypt cert."
+            echo ""
+            echo "Phase D PR 2: a Caddy gateway now runs at https://${CADDY_URL} (HMAC + per-IP rate limit on \`/webhook/*\`). n8n still serves its public domain directly — routing \`${DOMAIN}\` through Caddy lands in PR 3."
           } >> "$GITHUB_STEP_SUMMARY"
