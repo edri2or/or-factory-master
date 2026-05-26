@@ -19,7 +19,11 @@
 #   /webhook/*          -> rate-limit per IP, then HMAC verify, then proxy to n8n
 #                          over Railway's private network. 401 on bad/missing HMAC,
 #                          429 on rate-limit exceed.
-#   any other path      -> 404
+#   any other path      -> proxied to n8n unauthenticated at the edge. n8n's own
+#                          login/session/API-key guards the UI + /rest/* API; only
+#                          /webhook/* carries the HMAC gate. (Once Caddy fronts the
+#                          public domain, the operator UI, the deploy's own /rest/*
+#                          steps, and configure-agent-router.yml all go through here.)
 {
 	admin off
 	auto_https off
@@ -69,7 +73,14 @@
 		}
 	}
 
+	# Everything else (n8n UI, /rest/* API, static assets) is proxied to n8n,
+	# guarded by n8n's own auth rather than HMAC — only /webhook/* needs the edge
+	# HMAC gate. This keeps n8n fully usable at the public URL once Caddy fronts
+	# the domain (PR 3 swap): the operator login, the deploy workflow's /rest/*
+	# steps, and configure-agent-router.yml all flow through here.
 	handle {
-		respond "Not Found" 404
+		reverse_proxy http://n8n.railway.internal:5678 {
+			header_up Host {host}
+		}
 	}
 }
