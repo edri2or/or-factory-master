@@ -179,6 +179,31 @@ jobs:
             printf '%s' "$resp"
           }
 
+          # Resolve a project id by exact name. The scoped deploy token returns
+          # 0 from the top-level workspace(id).projects and projects() shapes,
+          # but CAN read projects via the me.workspaces path (a different
+          # resolver) — try that first, then fall back to the other two. Echoes
+          # the first matching id, or "" if none is visible.
+          _find_project_by_name() {
+            local wid="$1" name="$2" resp pid
+            resp=$(_gql 'query { me { workspaces { id projects { edges { node { id name } } } } } }' 2>/dev/null || echo '{}')
+            pid=$(printf '%s' "$resp" | jq -r --arg n "$name" \
+              '[.data.me.workspaces[]? | .projects.edges[]? | .node | select(.name==$n)] | .[0].id // ""' 2>/dev/null || echo "")
+            if [ -z "$pid" ] || [ "$pid" = "null" ]; then
+              resp=$(_gql 'query($wid: String!) { workspace(id: $wid) { projects { edges { node { id name } } } } }' \
+                "$(jq -cn --arg wid "$wid" '{wid: $wid}')" 2>/dev/null || echo '{}')
+              pid=$(printf '%s' "$resp" | jq -r --arg n "$name" \
+                '(.data.workspace.projects.edges // []) | map(select(.node.name==$n)) | .[0].node.id // ""' 2>/dev/null || echo "")
+            fi
+            if [ -z "$pid" ] || [ "$pid" = "null" ]; then
+              resp=$(_gql 'query { projects(first:100) { edges { node { id name } } } }' 2>/dev/null || echo '{}')
+              pid=$(printf '%s' "$resp" | jq -r --arg n "$name" \
+                '(.data.projects.edges // []) | map(select(.node.name==$n)) | .[0].node.id // ""' 2>/dev/null || echo "")
+            fi
+            if [ "$pid" = "null" ]; then pid=""; fi
+            printf '%s' "$pid"
+          }
+
           DOMAIN="n8n-${SYSTEM_NAME}.or-infra.com"
 
           # ===== Workspace: required by projectCreate when token sees >1 =====
@@ -196,11 +221,12 @@ jobs:
           echo "INFO: using workspace: $WORKSPACE_ID"
 
           # ===== Project: SM-first, find, then create =====
-          # SM is the source of truth for resource ids — Railway's listing
-          # APIs return 0 for this token's scope, so we can't rely on
-          # find-by-name. The PROJECT shell is pre-created by provision-
-          # system.yml; we add a version here after the first successful
-          # projectCreate, and every subsequent run reads it back.
+          # SM is the source of truth for resource ids. find-by-name is the
+          # fallback: the scoped token reads projects only via the me.workspaces
+          # path (see _find_project_by_name) — the top-level workspace(id) and
+          # projects() shapes return 0 — so on a re-run after the id was lost we
+          # can recover it instead of creating a duplicate. The PROJECT shell is
+          # pre-created by provision-system.yml; we add a version after create.
           echo "=== Railway: project (SM-first lookup) ==="
           PROJECT_ID_RW=""
 
@@ -210,36 +236,42 @@ jobs:
           if [ -n "$PROJECT_ID_RW" ] && [ "$PROJECT_ID_RW" != "null" ]; then
             echo "INFO: reusing project_id from SM: $PROJECT_ID_RW"
           else
-            # 2. Best-effort Railway find (may return 0 with this token's
-            # scope — that's fine, we fall through to create).
-            resp=$(_gql 'query($wid: String!) { workspace(id: $wid) { projects { edges { node { id name } } } } }' \
-              "$(jq -cn --arg wid "$WORKSPACE_ID" '{wid: $wid}')" 2>/dev/null || echo '{}')
-            ws_count=$(printf '%s' "$resp" | jq '(.data.workspace.projects.edges // []) | length' 2>/dev/null || echo 0)
-            echo "DEBUG: workspace($WORKSPACE_ID).projects returned $ws_count projects"
-            PROJECT_ID_RW=$(printf '%s' "$resp" | jq -r --arg n "$SYSTEM_NAME" \
-              '(.data.workspace.projects.edges // []) | map(select(.node.name==$n)) | .[0].node.id // ""' 2>/dev/null || echo "")
+            # 2. Find by name (me.workspaces path; falls back to the blind shapes).
+            PROJECT_ID_RW=$(_find_project_by_name "$WORKSPACE_ID" "$SYSTEM_NAME")
+            if [ -n "$PROJECT_ID_RW" ] && [ "$PROJECT_ID_RW" != "null" ]; then
+              echo "INFO: found existing project by name: $PROJECT_ID_RW"
+            else
+              echo "DEBUG: no existing project named '$SYSTEM_NAME' visible; will create."
 
-            if [ -z "$PROJECT_ID_RW" ] || [ "$PROJECT_ID_RW" = "null" ]; then
-              resp=$(_gql 'query { projects(first:100) { edges { node { id name } } } }' 2>/dev/null || echo '{}')
-              tl_count=$(printf '%s' "$resp" | jq '(.data.projects.edges // []) | length' 2>/dev/null || echo 0)
-              echo "DEBUG: top-level projects(first:100) returned $tl_count projects"
-              PROJECT_ID_RW=$(printf '%s' "$resp" | jq -r --arg n "$SYSTEM_NAME" \
-                '(.data.projects.edges // []) | map(select(.node.name==$n)) | .[0].node.id // ""' 2>/dev/null || echo "")
-            fi
-
-            # 3. Create
-            if [ -z "$PROJECT_ID_RW" ] || [ "$PROJECT_ID_RW" = "null" ]; then
+              # 3. Create — with 504-safe recovery (never blind re-create).
               resp=$(_gql 'mutation($input: ProjectCreateInput!) { projectCreate(input: $input) { id } }' \
                 "$(jq -cn --arg name "$SYSTEM_NAME" --arg ws "$WORKSPACE_ID" \
-                  '{input: {name: $name, defaultEnvironmentName: "production", workspaceId: $ws}}')")
+                  '{input: {name: $name, defaultEnvironmentName: "production", workspaceId: $ws}}')" 2>/dev/null || echo '{}')
               PROJECT_ID_RW=$(printf '%s' "$resp" | jq -r '.data.projectCreate.id' 2>/dev/null || echo "")
-              [ -n "$PROJECT_ID_RW" ] && [ "$PROJECT_ID_RW" != "null" ] \
-                || { echo "FAIL: projectCreate returned no id; resp=$resp" >&2; exit 1; }
-              echo "PASS: project created: $PROJECT_ID_RW"
-              # Give Railway a moment for the project to be fully queryable.
-              sleep 5
-            else
-              echo "INFO: project found via Railway: $PROJECT_ID_RW"
+              if [ -n "$PROJECT_ID_RW" ] && [ "$PROJECT_ID_RW" != "null" ]; then
+                echo "PASS: project created: $PROJECT_ID_RW"
+                sleep 5
+              else
+                # Railway's projectCreate intermittently returns a 504 AFTER the
+                # backend has already created the project (confirmed on factory-
+                # test-102): the project exists but its id never reached us. A
+                # blind retry would create a DUPLICATE, so poll for it by name
+                # and adopt it instead.
+                echo "WARN: projectCreate returned no id (likely a Railway 504 mid-create); resp head: $(printf '%s' "$resp" | tr -d '\n' | head -c 160)" >&2
+                for i in $(seq 1 6); do
+                  sleep 10
+                  PROJECT_ID_RW=$(_find_project_by_name "$WORKSPACE_ID" "$SYSTEM_NAME")
+                  if [ -n "$PROJECT_ID_RW" ] && [ "$PROJECT_ID_RW" != "null" ]; then break; fi
+                  echo "DEBUG: 504-recovery poll $i/6 — '$SYSTEM_NAME' not visible yet."
+                done
+                if [ -n "$PROJECT_ID_RW" ] && [ "$PROJECT_ID_RW" != "null" ]; then
+                  echo "PASS: adopted the project created by the timed-out call: $PROJECT_ID_RW"
+                else
+                  echo "FAIL: projectCreate returned no id and no '$SYSTEM_NAME' project became visible." >&2
+                  echo "      Railway may still have created it (504 mid-create). Check Railway for an orphan '$SYSTEM_NAME' project; decommission it, then re-run — do NOT let a duplicate accrue." >&2
+                  exit 1
+                fi
+              fi
             fi
 
             # Persist immediately so future runs (and the rest of THIS run
