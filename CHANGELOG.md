@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 53b — chore: one-shot workflow to capture the test bot token default
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | chore | `seed-test-bot-token.yml` (manual `workflow_dispatch`, broker WIF): copies the latest `n8n-telegram-bot-token` from a test project into `n8n-telegram-bot-token-test` in control SM — server-side, value never logged, idempotent. One-click capture that activates the Stage 53 auto-seed. |
+
 ## Stage 53 — feat: test systems auto-seed the per-system Telegram bot token
 
 | PR | Type | Summary |
