@@ -475,6 +475,27 @@ jobs:
           # both into DNS_RECORDS_JSON so the Cloudflare loop publishes
           # everything Railway requires.
           echo "=== Railway: find-or-create custom domain ${DOMAIN} ==="
+
+          # Phase D PR 3: after the domain swap, ${DOMAIN} lives on the Caddy
+          # service, not n8n. A re-run must NOT re-attach it to n8n (Railway
+          # rejects "domain already in use"). Detect the migrated state first;
+          # if migrated, leave the domain on Caddy and emit no DNS work here (the
+          # Cloudflare step becomes a no-op, the existing CNAME -> Caddy persists,
+          # and the cert-wait step still probes ${DOMAIN}, served by Caddy).
+          MIGRATED_TO_CADDY=false
+          CADDY_ID_SM=$(gcloud secrets versions access latest \
+            --secret=caddy-railway-service-id --project="$PROJECT_ID" 2>/dev/null || echo "")
+          if [ -n "$CADDY_ID_SM" ] && [ "$CADDY_ID_SM" != "null" ]; then
+            cresp=$(_gql 'query($id: String!) { service(id: $id) { serviceInstances { edges { node { environmentId domains { customDomains { domain } } } } } } }' \
+              "$(jq -cn --arg id "$CADDY_ID_SM" '{id: $id}')" 2>/dev/null || echo '{}')
+            on_caddy=$(printf '%s' "$cresp" | jq -r --arg eid "$ENV_ID" --arg d "$DOMAIN" \
+              '[(.data.service.serviceInstances.edges // [])[] | select(.node.environmentId==$eid) | (.node.domains.customDomains // [])[] | select(.domain==$d)] | length' 2>/dev/null || echo 0)
+            if [ "${on_caddy:-0}" != "0" ]; then
+              MIGRATED_TO_CADDY=true
+              echo "INFO: ${DOMAIN} already on Caddy (migrated, PR 3) — n8n stays private; skipping the n8n domain attach."
+            fi
+          fi
+
           resp=$(_gql 'query($id: String!) {
               service(id: $id) {
                 serviceInstances {
@@ -500,7 +521,14 @@ jobs:
              | .[0] // {}')
           CUSTOM_DOMAIN_ID=$(printf '%s' "$STATUS_JSON" | jq -r '.id // ""')
 
-          if [ -n "$CUSTOM_DOMAIN_ID" ]; then
+          if [ "$MIGRATED_TO_CADDY" = "true" ]; then
+            # Domain is on Caddy — do not attach to n8n. Empty STATUS_JSON makes
+            # DNS_RECORDS_JSON below resolve to [] so the Cloudflare step is a
+            # no-op and the existing CNAME (-> Caddy) is left untouched.
+            echo "INFO: leaving ${DOMAIN} on Caddy; n8n custom-domain attach skipped."
+            CUSTOM_DOMAIN_ID=""
+            STATUS_JSON='{}'
+          elif [ -n "$CUSTOM_DOMAIN_ID" ]; then
             echo "INFO: custom domain $DOMAIN exists on Railway (id=$CUSTOM_DOMAIN_ID)."
           else
             # CustomDomainCreateInput required fields (confirmed via __type
@@ -1894,6 +1922,183 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           echo "PASS: n8n Public API key minted + stored in ${PROJECT_ID} SM."
 
+      - name: Migrate public domain to Caddy (Phase D PR 3)
+        env:
+          SYSTEM_NAME: ${{ vars.SYSTEM_NAME }}
+        run: |
+          set -euo pipefail
+          # Move n8n-<system>.or-infra.com off the n8n service and onto Caddy, so all
+          # public traffic flows through the gateway (HMAC on /webhook/*, n8n's own
+          # auth on everything else) and n8n keeps no public domain. Uses the IDs
+          # exported earlier (RAILWAY_TOKEN, PROJECT_ID_RW, ENV_ID, N8N_ID, CADDY_ID,
+          # CADDY_URL, CF_*). Idempotent: a re-run on an already-migrated system is a
+          # no-op. Brief downtime (up to a few minutes) while Railway issues the LE
+          # cert for the domain on Caddy.
+          DOMAIN="n8n-${SYSTEM_NAME}.or-infra.com"
+
+          _gql() {
+            local q="$1" v="${2:-}"; [ -n "$v" ] || v='{}'
+            local resp; resp=$(curl -sS -X POST "$RAILWAY_GQL" \
+              -H "Authorization: Bearer ${RAILWAY_TOKEN}" -H "Content-Type: application/json" \
+              -d "$(jq -cn --arg q "$q" --argjson v "$v" '{query:$q,variables:$v}')")
+            if printf '%s' "$resp" | jq -e '.errors' >/dev/null 2>&1; then
+              echo "::warning::Railway GraphQL errors: $(printf '%s' "$resp" | jq -c '.errors')" >&2
+            fi
+            printf '%s' "$resp"
+          }
+          _probe_tls_cn() {
+            echo | timeout 5 openssl s_client -connect "${DOMAIN}:443" -servername "${DOMAIN}" 2>/dev/null \
+              | openssl x509 -noout -subject 2>/dev/null \
+              | sed -n 's|.*CN *= *\([^,]*\).*|\1|p' || true
+          }
+          _domain_id_on() {
+            local sid="$1" resp
+            resp=$(_gql 'query($id: String!) { service(id: $id) { serviceInstances { edges { node { environmentId domains { customDomains { id domain } } } } } } }' \
+              "$(jq -cn --arg id "$sid" '{id:$id}')" 2>/dev/null || echo '{}')
+            printf '%s' "$resp" | jq -r --arg eid "$ENV_ID" --arg d "$DOMAIN" \
+              '[(.data.service.serviceInstances.edges // [])[] | select(.node.environmentId==$eid) | (.node.domains.customDomains // [])[] | select(.domain==$d) | .id] | .[0] // ""' 2>/dev/null || echo ""
+          }
+          _caddy_create_input() {
+            jq -cn --arg pid "$PROJECT_ID_RW" --arg eid "$ENV_ID" --arg sid "$CADDY_ID" --arg d "$DOMAIN" \
+              '{i:{projectId:$pid,environmentId:$eid,serviceId:$sid,domain:$d}}'
+          }
+
+          # 3.1 Pre-flight: Caddy healthy on its temp URL (refuse to swap if not).
+          ch=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "https://${CADDY_URL}/health" || echo 000)
+          [ "$ch" = "200" ] || { echo "FAIL: pre-flight Caddy /health on https://${CADDY_URL} = $ch — refusing to touch the public domain" >&2; exit 1; }
+          echo "PASS: pre-flight Caddy /health 200."
+
+          # 3.2 Pre-flight: n8n reachable on the public domain (directly if not yet
+          # migrated, or through Caddy if already). /healthz is a non-webhook path.
+          nh=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "https://${DOMAIN}/healthz" || echo 000)
+          [ "$nh" = "200" ] || { echo "FAIL: pre-flight n8n https://${DOMAIN}/healthz = $nh — refusing to swap" >&2; exit 1; }
+          echo "PASS: pre-flight n8n /healthz 200."
+
+          # 3.3 Determine current ownership of the domain.
+          N8N_DOMAIN_ID=$(_domain_id_on "$N8N_ID")
+          CADDY_DOMAIN_ID=$(_domain_id_on "$CADDY_ID")
+          echo "Ownership: n8n='${N8N_DOMAIN_ID}' caddy='${CADDY_DOMAIN_ID}'"
+
+          if [ -n "$CADDY_DOMAIN_ID" ] && [ -z "$N8N_DOMAIN_ID" ]; then
+            echo "INFO: ${DOMAIN} already on Caddy and not on n8n — already migrated (no-op)."
+          else
+            CADDY_CNAME_TARGET=""; CADDY_VERIFY_TOKEN=""
+            # 3.4 Attach the domain to Caddy. Railway rejects a second attach of the
+            # same hostname ("in use"); if so, detach from n8n first, then retry.
+            if [ -z "$CADDY_DOMAIN_ID" ]; then
+              cresp=$(_gql 'mutation($i: CustomDomainCreateInput!){ customDomainCreate(input:$i){ id status { dnsRecords { hostlabel recordType requiredValue } verificationToken } } }' "$(_caddy_create_input)")
+              CADDY_DOMAIN_ID=$(printf '%s' "$cresp" | jq -r '.data.customDomainCreate.id // ""')
+              if [ -z "$CADDY_DOMAIN_ID" ] && [ -n "$N8N_DOMAIN_ID" ]; then
+                echo "INFO: attach-to-Caddy failed while n8n still holds ${DOMAIN}; detaching from n8n first."
+                _gql 'mutation($id:String!){ customDomainDelete(id:$id) }' "$(jq -cn --arg id "$N8N_DOMAIN_ID" '{id:$id}')" >/dev/null
+                N8N_DOMAIN_ID=""; sleep 5
+                cresp=$(_gql 'mutation($i: CustomDomainCreateInput!){ customDomainCreate(input:$i){ id status { dnsRecords { hostlabel recordType requiredValue } verificationToken } } }' "$(_caddy_create_input)")
+                CADDY_DOMAIN_ID=$(printf '%s' "$cresp" | jq -r '.data.customDomainCreate.id // ""')
+              fi
+              [ -n "$CADDY_DOMAIN_ID" ] || { echo "FAIL: could not attach ${DOMAIN} to Caddy; resp=$cresp" >&2; exit 1; }
+              echo "PASS: ${DOMAIN} attached to Caddy (id=${CADDY_DOMAIN_ID})."
+              CADDY_CNAME_TARGET=$(printf '%s' "$cresp" | jq -r '.data.customDomainCreate.status.dnsRecords // [] | map(select(.recordType=="DNS_RECORD_TYPE_CNAME")) | .[0].requiredValue // ""')
+              CADDY_VERIFY_TOKEN=$(printf '%s' "$cresp" | jq -r '.data.customDomainCreate.status.verificationToken // ""')
+            else
+              echo "INFO: ${DOMAIN} already attached to Caddy (id=${CADDY_DOMAIN_ID}); re-reading its DNS target."
+              cresp=$(_gql 'query($id: String!) { service(id: $id) { serviceInstances { edges { node { environmentId domains { customDomains { domain status { dnsRecords { hostlabel recordType requiredValue } verificationToken } } } } } } } }' "$(jq -cn --arg id "$CADDY_ID" '{id:$id}')")
+              CADDY_CNAME_TARGET=$(printf '%s' "$cresp" | jq -r --arg eid "$ENV_ID" --arg d "$DOMAIN" '[(.data.service.serviceInstances.edges // [])[] | select(.node.environmentId==$eid) | (.node.domains.customDomains // [])[] | select(.domain==$d)][0].status.dnsRecords // [] | map(select(.recordType=="DNS_RECORD_TYPE_CNAME")) | .[0].requiredValue // ""')
+              CADDY_VERIFY_TOKEN=$(printf '%s' "$cresp" | jq -r --arg eid "$ENV_ID" --arg d "$DOMAIN" '[(.data.service.serviceInstances.edges // [])[] | select(.node.environmentId==$eid) | (.node.domains.customDomains // [])[] | select(.domain==$d)][0].status.verificationToken // ""')
+            fi
+
+            # 3.5 Repoint the Cloudflare CNAME (+ verify TXT) to Caddy's target. Mint a
+            # scoped 1h DNS:Edit token (group 4755a26e…=Zone:DNS:Edit), update, revoke.
+            if [ -n "$CADDY_CNAME_TARGET" ]; then
+              EXPIRES=$(date -u -d '+1 hour' +%Y-%m-%dT%H:%M:%SZ)
+              tkresp=$(curl -sS -X POST "${CF_API}/user/tokens" -H "Authorization: Bearer ${CF_TOKEN_CREATOR}" -H "Content-Type: application/json" \
+                -d "$(jq -cn --arg name "swap-${SYSTEM_NAME}" --arg zone "$CF_ZONE_ID" --arg exp "$EXPIRES" '{name:$name,policies:[{effect:"allow",resources:{("com.cloudflare.api.account.zone."+$zone):"*"},permission_groups:[{id:"4755a26eedb94da69e1066d98aa820be"}]}],expires_on:$exp}')")
+              DNS_TOKEN=$(printf '%s' "$tkresp" | jq -r '.result.value // empty')
+              DNS_TOKEN_ID=$(printf '%s' "$tkresp" | jq -r '.result.id // empty')
+              [ -n "$DNS_TOKEN" ] || { echo "FAIL: could not mint CF DNS token; resp=$tkresp" >&2; exit 1; }
+              echo "::add-mask::${DNS_TOKEN}"
+              trap 'curl -sS -X DELETE "${CF_API}/user/tokens/${DNS_TOKEN_ID}" -H "Authorization: Bearer ${CF_TOKEN_CREATOR}" >/dev/null 2>&1 || true' EXIT
+              look=$(curl -sS "${CF_API}/zones/${CF_ZONE_ID}/dns_records?type=CNAME&name=${DOMAIN}" -H "Authorization: Bearer ${DNS_TOKEN}")
+              rid=$(printf '%s' "$look" | jq -r '.result[0].id // ""')
+              body=$(jq -cn --arg name "$DOMAIN" --arg content "$CADDY_CNAME_TARGET" '{type:"CNAME",name:$name,content:$content,ttl:1,proxied:false,comment:"managed-by=or-factory-master gateway"}')
+              if [ -z "$rid" ]; then
+                curl -sS -X POST "${CF_API}/zones/${CF_ZONE_ID}/dns_records" -H "Authorization: Bearer ${DNS_TOKEN}" -H "Content-Type: application/json" -d "$body" >/dev/null
+              else
+                curl -sS -X PUT "${CF_API}/zones/${CF_ZONE_ID}/dns_records/${rid}" -H "Authorization: Bearer ${DNS_TOKEN}" -H "Content-Type: application/json" -d "$body" >/dev/null
+              fi
+              echo "PASS: CF CNAME ${DOMAIN} -> ${CADDY_CNAME_TARGET}"
+              if [ -n "$CADDY_VERIFY_TOKEN" ]; then
+                TXTVAL="railway-verify=$(printf '%s' "$CADDY_VERIFY_TOKEN" | sed 's/^railway-verify=//')"
+                tlook=$(curl -sS "${CF_API}/zones/${CF_ZONE_ID}/dns_records?type=TXT&name=_railway-verify.${DOMAIN}" -H "Authorization: Bearer ${DNS_TOKEN}")
+                trid=$(printf '%s' "$tlook" | jq -r '.result[0].id // ""')
+                tbody=$(jq -cn --arg name "_railway-verify.${DOMAIN}" --arg content "$TXTVAL" '{type:"TXT",name:$name,content:$content,ttl:1,comment:"managed-by=or-factory-master gateway"}')
+                if [ -z "$trid" ]; then
+                  curl -sS -X POST "${CF_API}/zones/${CF_ZONE_ID}/dns_records" -H "Authorization: Bearer ${DNS_TOKEN}" -H "Content-Type: application/json" -d "$tbody" >/dev/null
+                else
+                  curl -sS -X PUT "${CF_API}/zones/${CF_ZONE_ID}/dns_records/${trid}" -H "Authorization: Bearer ${DNS_TOKEN}" -H "Content-Type: application/json" -d "$tbody" >/dev/null
+                fi
+                echo "PASS: CF TXT _railway-verify.${DOMAIN} set."
+              fi
+            else
+              echo "::warning::no CNAME target from Caddy customDomain — leaving Cloudflare unchanged"
+            fi
+
+            # 3.6 Detach the domain from n8n (now that Caddy holds it) — n8n goes private.
+            if [ -n "$N8N_DOMAIN_ID" ]; then
+              _gql 'mutation($id:String!){ customDomainDelete(id:$id) }' "$(jq -cn --arg id "$N8N_DOMAIN_ID" '{id:$id}')" >/dev/null
+              echo "PASS: detached ${DOMAIN} from n8n (id=${N8N_DOMAIN_ID}) — n8n has no public domain now."
+            fi
+          fi
+
+          # 3.7 Wait for the LE cert to be ISSUED for ${DOMAIN} on Caddy (hard-fail
+          # after ~10 min). A genuinely-stuck cert is recovered by re-running deploy
+          # (idempotent: the domain is already on Caddy, so it just re-polls).
+          ok=false
+          for i in $(seq 1 60); do
+            cn=$(_probe_tls_cn)
+            if [ "${cn:-}" = "${DOMAIN}" ]; then echo "PASS: LE cert issued for ${DOMAIN} on Caddy (poll ${i}/60)."; ok=true; break; fi
+            echo "[swap cert poll ${i}/60] CN=${cn:-<none>}; sleeping 10s..."
+            sleep 10
+          done
+          [ "$ok" = "true" ] || { echo "FAIL: ${DOMAIN} cert not issued on Caddy after ~10 min." >&2; exit 1; }
+
+      - name: Verify gateway end-to-end + summary (Phase D PR 3)
+        env:
+          SYSTEM_NAME: ${{ vars.SYSTEM_NAME }}
+        run: |
+          set -euo pipefail
+          DOMAIN="n8n-${SYSTEM_NAME}.or-infra.com"
+          echo "=== Phase D PR 3 end-to-end smoke on https://${DOMAIN} (now fronted by Caddy) ==="
+
+          # n8n UI/API reachable through Caddy (non-webhook fallback proxies to n8n).
+          UH=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "https://${DOMAIN}/healthz" || echo 000)
+          [ "$UH" = "200" ] || { echo "FAIL: https://${DOMAIN}/healthz via Caddy = $UH (expected 200 — Caddy should proxy non-webhook paths to n8n)" >&2; exit 1; }
+          echo "PASS: n8n reachable through Caddy (/healthz 200)."
+
+          # /webhook without HMAC -> 401 (the gate is now on the PUBLIC domain).
+          WH=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 -X POST "https://${DOMAIN}/webhook/agent-router" -H 'Content-Type: application/json' --data '{"text":"swap smoke"}' || echo 000)
+          [ "$WH" = "401" ] || { echo "FAIL: https://${DOMAIN}/webhook without HMAC = $WH (expected 401)" >&2; exit 1; }
+          echo "PASS: public /webhook without HMAC -> 401."
+
+          # /webhook with a valid HMAC -> reaches n8n (non-5xx, not 401).
+          PAYLOAD='{"text":"swap smoke"}'
+          SIG=$(printf '%s' "$PAYLOAD" | openssl dgst -sha256 -hmac "$HMAC_SECRET" | awk '{print $NF}')
+          WH2=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 -X POST "https://${DOMAIN}/webhook/agent-router" -H 'Content-Type: application/json' -H "X-Hub-Signature-256: sha256=${SIG}" --data "$PAYLOAD" || echo 000)
+          { [ "$WH2" != "000" ] && [ "$WH2" -lt 500 ] && [ "$WH2" != "401" ]; } || { echo "FAIL: public /webhook with valid HMAC = $WH2 (expected non-5xx and not 401)" >&2; exit 1; }
+          echo "PASS: public /webhook with valid HMAC -> $WH2 (reached n8n through Caddy)."
+
+          {
+            echo "## ✅ Domain swap הושלם (Phase D, PR 3)"
+            echo ""
+            echo "| רכיב | מצב |"
+            echo "|---|---|"
+            echo "| ${DOMAIN} | ✅ עובר דרך Caddy |"
+            echo "| n8n public URL | ❌ הוסר (פנימי בלבד) |"
+            echo "| תעודת LE על Caddy | ✅ ISSUED |"
+            echo "| HMAC על /webhook | ✅ פועל (401 ללא חתימה; ${WH2} עם חתימה) |"
+            echo "| n8n UI/API דרך Caddy | ✅ זמין (healthz ${UH}) |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "PASS: Phase D PR 3 swap verified (ui=${UH}, webhook-no-hmac=${WH}, webhook-hmac=${WH2})."
+
       - name: Persist Railway IDs to system SM
         env:
           PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
@@ -1944,5 +2149,5 @@ jobs:
             echo ""
             echo "**DEPLOY COMPLETE.** Visit https://${DOMAIN} — first load opens n8n owner-account setup. Allow 1-3 min after first run for Let's Encrypt cert."
             echo ""
-            echo "Phase D PR 2: a Caddy gateway now runs at https://${CADDY_URL} (HMAC + per-IP rate limit on \`/webhook/*\`). n8n still serves its public domain directly — routing \`${DOMAIN}\` through Caddy lands in PR 3."
+            echo "Phase D: \`${DOMAIN}\` is served through the **Caddy gateway** — HMAC + per-IP rate limit on \`/webhook/*\`, n8n's own auth on everything else; n8n has no public domain (reachable only via Caddy over the private network). Caddy temp URL (for ops): https://${CADDY_URL}."
           } >> "$GITHUB_STEP_SUMMARY"
