@@ -31,7 +31,7 @@
           "messageValues": [
             {
               "type": "SystemMessagePromptTemplate",
-              "message": "You are an intent classifier for an operations assistant. Classify the user message into exactly one intent: ops, code, research, infra, or unknown.\n- ops: operations, monitoring, status, deployments, restarts, logs, service health.\n- code: writing, editing, reviewing, or explaining code.\n- research: open-ended questions, summaries, information lookup.\n- infra: provisioning or changing infrastructure (DNS, secrets, cloud resources).\n- unknown: ambiguous, empty, or anything not clearly in the set above.\nReturn ONLY a single-line JSON object and nothing else (no markdown, no code fences, no prose): {\"intent\":\"<one of ops|code|research|infra|unknown>\",\"confidence\":<number between 0 and 1>}. If unsure, use intent unknown with a low confidence."
+              "message": "You are an intent classifier for an operations assistant. Classify the user message into exactly one intent: ops, code, research, infra, or unknown.\n- ops: operations, monitoring, status, deployments, restarts, logs, service health.\n- code: writing, editing, reviewing, or explaining code.\n- research: open-ended questions, summaries, information lookup.\n- infra: provisioning or changing infrastructure (DNS, secrets, cloud resources).\n- unknown: ambiguous, empty, or anything not clearly in the set above.\nReply with just the single best category word and nothing else."
             }
           ]
         }
