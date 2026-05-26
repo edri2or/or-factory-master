@@ -137,6 +137,26 @@ jobs:
           [ -n "$CRED_ID" ] || _soft_exit0 "ה-credential '${CRED_NAME}' לא נמצא ב-n8n — הרץ קודם את deploy-railway-cloudflare.yml"
           echo "INFO: OpenRouter credential id=${CRED_ID}"
 
+          # Stage 51b: the ops-agent has an HTTP Request tool that calls this system's
+          # OWN n8n Public API. Create/reuse an httpHeaderAuth credential from the
+          # n8n-api-key (minted at deploy) so the tool authenticates server-side and the
+          # key never lands in the workflow JSON. Reuse the same /rest/credentials list
+          # (/tmp/ar-creds.json) for the find-by-name idempotency check.
+          N8N_DOMAIN="n8n-${SYSTEM_NAME}.or-infra.com"
+          N8N_API_KEY=$(_sm_read "n8n-api-key" || echo "")
+          [ -n "$N8N_API_KEY" ] || _soft_exit0 "n8n-api-key חסר ב-SM — הרץ קודם את deploy-railway-cloudflare.yml (הוא ממנט אותו)"
+          echo "::add-mask::${N8N_API_KEY}"
+          N8N_CRED_NAME="n8n Public API (X-N8N-API-KEY)"
+          CRED_N8N_API_ID=$(jq -r --arg n "$N8N_CRED_NAME" '[(.data // .) | .[]? | select(.name==$n)][0].id // empty' /tmp/ar-creds.json)
+          if [ -z "$CRED_N8N_API_ID" ]; then
+            N8N_CRED_BODY=$(jq -cn --arg n "$N8N_CRED_NAME" --arg k "$N8N_API_KEY" '{name:$n, type:"httpHeaderAuth", data:{name:"X-N8N-API-KEY", value:$k}}')
+            HTTP=$(_napi POST "$BASE/rest/credentials" /tmp/ar-cred-n8n.json "$N8N_CRED_BODY")
+            { [ "$HTTP" = "200" ] || [ "$HTTP" = "201" ]; } || { head -c 300 /tmp/ar-cred-n8n.json >&2 || true; _soft_exit0 "POST /rest/credentials (httpHeaderAuth) נכשל (HTTP $HTTP)"; }
+            CRED_N8N_API_ID=$(jq -r '.data.id // .id' /tmp/ar-cred-n8n.json)
+          fi
+          [ -n "$CRED_N8N_API_ID" ] && [ "$CRED_N8N_API_ID" != "null" ] || _soft_exit0 "לא התקבל id ל-credential של n8n API"
+          echo "INFO: n8n API credential id=${CRED_N8N_API_ID}"
+
           # Upsert one workflow by name (PATCH if exists else POST), then activate.
           # $1=workflow name  $2=path to placeholder-resolved JSON  ->  echoes the WF id.
           _upsert_wf() {
@@ -171,7 +191,10 @@ jobs:
             wf_name="${spec%%|*}"; tmp="${spec#*|}"; file="${tmp%%|*}"; slot="${tmp##*|}"
             src="${WF_DIR}/${file}"
             [ -f "$src" ] || _soft_exit0 "קובץ ${file} לא נמצא בריפו"
-            sed "s#@@CRED_OPENROUTER_ID@@#${CRED_ID}#g" "$src" > "/tmp/ar-prep-${file}"
+            sed -e "s#@@CRED_OPENROUTER_ID@@#${CRED_ID}#g" \
+                -e "s#@@CRED_N8N_API_ID@@#${CRED_N8N_API_ID}#g" \
+                -e "s#@@N8N_DOMAIN@@#${N8N_DOMAIN}#g" \
+                "$src" > "/tmp/ar-prep-${file}"
             ID=$(_upsert_wf "$wf_name" "/tmp/ar-prep-${file}" no) || _soft_exit0 "כשל ביצירת/עדכון ${wf_name}"
             [ -n "$ID" ] && [ "$ID" != "null" ] || _soft_exit0 "לא התקבל id עבור ${wf_name}"
             case "$slot" in
