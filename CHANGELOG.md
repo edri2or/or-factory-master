@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 62 — chore: verify broker SA can read the observability secrets
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | chore | One-shot `.github/workflows/_verify-observability-secrets.yml` (`workflow_dispatch`, deleted in the Phase A foundation PR): confirms the broker SA can read the six observability secrets from `or-factory-master-control` SM (Axiom, Better Stack, Linear ×2, Telegram ×2) — masks each value, prints length only, never echoes it. Pinned actions, `permissions: {}`, runs on `main` only. Phase A pre-flight before the `emit-event.sh` foundation PR. |
+
 ## Stage 61 — fix: Railway projectCreate 504-safe recovery (no orphan, no duplicate)
 
 | PR | Type | Summary |
