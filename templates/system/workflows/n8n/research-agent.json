@@ -1,0 +1,72 @@
+{
+  "name": "factory-master: research-agent",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": { "inputSource": "passthrough" },
+      "id": "e0000000-0000-0000-0000-000000000001",
+      "name": "When Executed by Another Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 320]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.sanitized }}",
+        "messages": {
+          "messageValues": [
+            {
+              "type": "SystemMessagePromptTemplate",
+              "message": "You are the RESEARCH sub-agent for a self-hosted automation system. You handle open-ended questions, explanations, summaries, and information lookup. Give clear, well-structured, accurate answers and say so plainly when something is uncertain or outside your knowledge. You currently have no web-search or browsing tool — answer from your own knowledge only and do not claim to have looked anything up live. Be concise. Answer in the user's language (Hebrew or English, detected from the input). Never invent URLs or secrets."
+            }
+          ]
+        }
+      },
+      "id": "e0000000-0000-0000-0000-000000000002",
+      "name": "Research Reply",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.5,
+      "position": [480, 320]
+    },
+    {
+      "parameters": {
+        "model": "anthropic/claude-haiku-4.5",
+        "options": { "temperature": 0.3 }
+      },
+      "id": "e0000000-0000-0000-0000-000000000003",
+      "name": "OpenRouter Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [480, 540],
+      "credentials": { "openRouterApi": { "id": "@@CRED_OPENROUTER_ID@@", "name": "OpenRouter (factory-master)" } }
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "e1000000-0000-0000-0000-000000000001",
+              "name": "reply",
+              "type": "string",
+              "value": "={{ $json.text || $json.output }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "e0000000-0000-0000-0000-000000000004",
+      "name": "Format Reply",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [720, 320]
+    }
+  ],
+  "connections": {
+    "When Executed by Another Workflow": { "main": [[{ "node": "Research Reply", "type": "main", "index": 0 }]] },
+    "OpenRouter Chat Model": { "ai_languageModel": [[{ "node": "Research Reply", "type": "ai_languageModel", "index": 0 }]] },
+    "Research Reply": { "main": [[{ "node": "Format Reply", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" }
+}

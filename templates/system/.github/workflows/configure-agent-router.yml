@@ -4,8 +4,8 @@ name: Configure Agent Router in n8n
 # Manual dispatch only. Builds the multi-agent "Agent Router" in this system's
 # self-hosted n8n from the committed workflow JSONs (workflows/n8n/*.json):
 # a router (Webhook -> sanitize -> classify -> switch -> Execute Sub-workflow ->
-# egress -> respond) plus ops + unknown sub-workflows. The existing
-# "factory-master: OpenRouter auto-router demo" workflow is left untouched.
+# egress -> respond) plus ops + code + research + infra + unknown sub-workflows.
+# The existing "factory-master: OpenRouter auto-router demo" workflow is untouched.
 #
 # Idempotent: every workflow is found by name (PATCH) before being created
 # (POST), mirroring deploy-railway-cloudflare.yml's OpenRouter step. Soft-fail:
@@ -183,11 +183,20 @@ jobs:
             printf '%s' "$wid"
           }
 
-          # 4. Sub-workflows FIRST (unknown, then ops) so we know their IDs for the router.
+          # 4. Sub-workflows FIRST (so we know their IDs for the router). The new
+          #    code/research/infra agents carry only @@CRED_OPENROUTER_ID@@; the
+          #    @@CRED_N8N_API_ID@@/@@N8N_DOMAIN@@ substitutions are harmless no-ops on
+          #    them (they have no n8n-API tool) — only ops actually carries those tokens.
           SUB_UNKNOWN_WF_ID=""
           SUB_OPS_WF_ID=""
+          SUB_CODE_WF_ID=""
+          SUB_RESEARCH_WF_ID=""
+          SUB_INFRA_WF_ID=""
           for spec in "factory-master: unknown-agent|unknown-agent.json|UNKNOWN" \
-                      "factory-master: ops-agent|ops-agent.json|OPS"; do
+                      "factory-master: ops-agent|ops-agent.json|OPS" \
+                      "factory-master: code-agent|code-agent.json|CODE" \
+                      "factory-master: research-agent|research-agent.json|RESEARCH" \
+                      "factory-master: infra-agent|infra-agent.json|INFRA"; do
             wf_name="${spec%%|*}"; tmp="${spec#*|}"; file="${tmp%%|*}"; slot="${tmp##*|}"
             src="${WF_DIR}/${file}"
             [ -f "$src" ] || _soft_exit0 "קובץ ${file} לא נמצא בריפו"
@@ -198,22 +207,25 @@ jobs:
             ID=$(_upsert_wf "$wf_name" "/tmp/ar-prep-${file}" no) || _soft_exit0 "כשל ביצירת/עדכון ${wf_name}"
             [ -n "$ID" ] && [ "$ID" != "null" ] || _soft_exit0 "לא התקבל id עבור ${wf_name}"
             case "$slot" in
-              UNKNOWN) SUB_UNKNOWN_WF_ID="$ID" ;;
-              OPS)     SUB_OPS_WF_ID="$ID" ;;
+              UNKNOWN)  SUB_UNKNOWN_WF_ID="$ID" ;;
+              OPS)      SUB_OPS_WF_ID="$ID" ;;
+              CODE)     SUB_CODE_WF_ID="$ID" ;;
+              RESEARCH) SUB_RESEARCH_WF_ID="$ID" ;;
+              INFRA)    SUB_INFRA_WF_ID="$ID" ;;
             esac
             echo "PASS: ${wf_name} → id=${ID}"
           done
 
-          # 5. Router LAST — substitute cred + the two live sub IDs; blank the
-          #    not-yet-implemented code/research/infra placeholders (added in Stage 51b).
+          # 5. Router LAST — substitute cred + all five live sub IDs (Stage 51b wires
+          #    code/research/infra; the placeholders are no longer blanked).
           ROUTER_SRC="${WF_DIR}/agent-router.json"
           [ -f "$ROUTER_SRC" ] || _soft_exit0 "agent-router.json לא נמצא בריפו"
           sed -e "s#@@CRED_OPENROUTER_ID@@#${CRED_ID}#g" \
               -e "s#@@SUB_OPS_WF_ID@@#${SUB_OPS_WF_ID}#g" \
               -e "s#@@SUB_UNKNOWN_WF_ID@@#${SUB_UNKNOWN_WF_ID}#g" \
-              -e "s#@@SUB_CODE_WF_ID@@##g" \
-              -e "s#@@SUB_RESEARCH_WF_ID@@##g" \
-              -e "s#@@SUB_INFRA_WF_ID@@##g" \
+              -e "s#@@SUB_CODE_WF_ID@@#${SUB_CODE_WF_ID}#g" \
+              -e "s#@@SUB_RESEARCH_WF_ID@@#${SUB_RESEARCH_WF_ID}#g" \
+              -e "s#@@SUB_INFRA_WF_ID@@#${SUB_INFRA_WF_ID}#g" \
               "$ROUTER_SRC" > /tmp/ar-prep-router.json
           ROUTER_ID=$(_upsert_wf "factory-master: Agent Router" "/tmp/ar-prep-router.json" yes) \
             || _soft_exit0 "כשל ביצירת/עדכון Agent Router"
@@ -255,11 +267,16 @@ jobs:
             echo ""
             echo "| רכיב | ערך |"
             echo "|---|---|"
-            echo "| Agent Router | \`${ROUTER_ID}\` |"
+            echo "| Agent Router | \`${ROUTER_ID}\` (פעיל) |"
             echo "| ops-agent | \`${SUB_OPS_WF_ID}\` (לא-פעיל by design — sub-workflow) |"
+            echo "| code-agent | \`${SUB_CODE_WF_ID}\` (לא-פעיל by design — sub-workflow) |"
+            echo "| research-agent | \`${SUB_RESEARCH_WF_ID}\` (לא-פעיל by design — sub-workflow) |"
+            echo "| infra-agent | \`${SUB_INFRA_WF_ID}\` (לא-פעיל by design — sub-workflow) |"
             echo "| unknown-agent | \`${SUB_UNKNOWN_WF_ID}\` (לא-פעיל by design — sub-workflow) |"
             echo "| Classifier | \`openai/gpt-5-nano\` |"
-            echo "| ops model | \`anthropic/claude-haiku-4.5\` |"
+            echo "| ops/code/research model | \`anthropic/claude-haiku-4.5\` |"
+            echo "| infra model | \`openai/gpt-5-mini\` |"
+            echo "| sub-agents | 5 (כולם לא-פעילים by design — מופעלים ע\"י ה-router דרך Execute Sub-workflow) |"
             echo "| Webhook | ${BASE}/webhook/agent-router |"
             if [ "${HTTP:-}" = "200" ] && [ -n "${REPLY}" ]; then
               echo "| בדיקת עשן | ✅ HTTP 200 |"
@@ -273,4 +290,4 @@ jobs:
             echo "curl -X POST ${BASE}/webhook/agent-router -H 'Content-Type: application/json' -d '{\"text\":\"מה מצב השרתים?\"}'"
             echo "\`\`\`"
           } >> "$GITHUB_STEP_SUMMARY"
-          echo "PASS: agent-router configured (router=${ROUTER_ID}, ops=${SUB_OPS_WF_ID}, unknown=${SUB_UNKNOWN_WF_ID})."
+          echo "PASS: agent-router configured (router=${ROUTER_ID}, ops=${SUB_OPS_WF_ID}, code=${SUB_CODE_WF_ID}, research=${SUB_RESEARCH_WF_ID}, infra=${SUB_INFRA_WF_ID}, unknown=${SUB_UNKNOWN_WF_ID}; 5 sub-agents inactive by design)."

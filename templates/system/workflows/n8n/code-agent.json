@@ -1,0 +1,72 @@
+{
+  "name": "factory-master: code-agent",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": { "inputSource": "passthrough" },
+      "id": "d0000000-0000-0000-0000-000000000001",
+      "name": "When Executed by Another Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 320]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.sanitized }}",
+        "messages": {
+          "messageValues": [
+            {
+              "type": "SystemMessagePromptTemplate",
+              "message": "You are the CODE sub-agent for a self-hosted automation system. You handle requests to write, edit, review, debug, or explain code. Give correct, working code and keep explanations short and to the point. State assumptions briefly when the request is underspecified. You have no tools and cannot run code, read the repository, or make changes — reason from the text of the request only. Be concise. Answer in the user's language (Hebrew or English, detected from the input). Never invent URLs or secrets."
+            }
+          ]
+        }
+      },
+      "id": "d0000000-0000-0000-0000-000000000002",
+      "name": "Code Reply",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.5,
+      "position": [480, 320]
+    },
+    {
+      "parameters": {
+        "model": "anthropic/claude-haiku-4.5",
+        "options": { "temperature": 0.3 }
+      },
+      "id": "d0000000-0000-0000-0000-000000000003",
+      "name": "OpenRouter Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [480, 540],
+      "credentials": { "openRouterApi": { "id": "@@CRED_OPENROUTER_ID@@", "name": "OpenRouter (factory-master)" } }
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "d1000000-0000-0000-0000-000000000001",
+              "name": "reply",
+              "type": "string",
+              "value": "={{ $json.text || $json.output }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "d0000000-0000-0000-0000-000000000004",
+      "name": "Format Reply",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [720, 320]
+    }
+  ],
+  "connections": {
+    "When Executed by Another Workflow": { "main": [[{ "node": "Code Reply", "type": "main", "index": 0 }]] },
+    "OpenRouter Chat Model": { "ai_languageModel": [[{ "node": "Code Reply", "type": "ai_languageModel", "index": 0 }]] },
+    "Code Reply": { "main": [[{ "node": "Format Reply", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" }
+}
