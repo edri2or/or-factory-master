@@ -66,6 +66,25 @@ But: as the system grows (real Cloud Run services, real data, real cost), restar
 
 **Trigger to start:** first time someone has to wait more than 10 minutes to recover from a failed real-system provision.
 
+## Phase D — feat: per-system Caddy gateway (in progress)
+
+Today every system exposes n8n's webhook straight to the internet at `n8n-<system>.or-infra.com` — no edge auth, no rate limiting, no HMAC. n8n is an active target: CVE-2026-21858 "Ni8mare" (CVSS 10.0, unauthenticated webhook RCE) was patched in 1.121.0, but 8+ critical n8n CVEs in three months make another vector statistically likely, and NIST SP 800-228 calls for gateway-level protection. Phase D puts a per-system **Caddy 2** reverse proxy in front of n8n as a third Railway service (alongside Postgres + n8n). Caddy owns the public `n8n-<system>.or-infra.com` domain, verifies an HMAC-SHA256 signature on `/webhook/*` with a constant-time compare (per-system secret `webhook-hmac-secret` in SM), rate-limits per source IP, and forwards verified traffic to n8n over Railway's private network (`n8n.railway.internal:5678`). n8n keeps no public domain.
+
+Built with a small custom Caddy handler module (`hmacguard`, constant-time `hmac.Equal`) plus `mholt/caddy-ratelimit`, compiled via `xcaddy` — the only off-the-shelf HMAC plugin (`abiosoft/caddy-hmac`) is unmaintained and compares non-constant-time.
+
+Shipped as four atomic PRs, each merged + verified before the next (per CLAUDE.md "build manually, verify each step"):
+
+- **PR 1** — `templates/system/` gains the `Caddyfile`, `Dockerfile.caddy`, and the `caddy/hmacguard` module + docs. **Zero behaviour change** — no workflow references them yet.
+- **PR 2** — `deploy-railway-cloudflare.yml` creates Caddy as a third service on a temporary `*.up.railway.app` URL; n8n stays public. Caddy verified in isolation (3 smoke checks).
+- **PR 3** — domain swap: `n8n-<system>.or-infra.com` moves from n8n to Caddy; n8n goes private. ~30s downtime during the swap.
+- **PR 4** — docs finalization + optional migrate-existing-system skill.
+
+Existing systems are **not** auto-migrated; template edits reach only systems provisioned after merge (an existing system migrates by re-running the updated deploy workflow).
+
+## Phase E — Cloudflare Worker (Tier-2 edge, deferred)
+
+A Cloudflare Worker in front of Caddy is a legitimate second tier (WAF-style filtering at the global edge) but is **out of scope** until Phase D has proven itself. Graduation criterion: **≥ 3 systems running the Caddy gateway for ≥ 2 weeks** with zero HMAC false positives, zero HMAC false negatives, and no 5xx originating from Caddy itself. A full Cloudflare orange-cloud proxy is *not* an option — Railway won't accept externally-issued certs — so Tier-2 is specifically a Worker, not proxied DNS.
+
 ## Things we are deliberately not building
 
 The previous factory had these and they bought less than they cost:

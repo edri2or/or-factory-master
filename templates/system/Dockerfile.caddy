@@ -1,0 +1,19 @@
+# Custom Caddy image for the per-system gateway (Phase D).
+# Multi-stage: xcaddy builds a Caddy binary with the rate-limit plugin and the
+# local constant-time HMAC handler module, then we ship it on the slim alpine image.
+#
+# Railway must be pointed at this non-default Dockerfile via the service variable
+# RAILWAY_DOCKERFILE_PATH=Dockerfile.caddy (set by deploy-railway-cloudflare.yml in PR 2).
+FROM caddy:2.11-builder AS builder
+
+# Local module source; xcaddy uses the "=path" form as a replace directive.
+COPY caddy/hmacguard /src/hmacguard
+
+RUN xcaddy build \
+	--with github.com/mholt/caddy-ratelimit \
+	--with github.com/edri2or/caddy-hmacguard=/src/hmacguard
+
+FROM caddy:2.11-alpine
+COPY --from=builder /usr/bin/caddy /usr/bin/caddy
+COPY Caddyfile /etc/caddy/Caddyfile
+# The base image's entrypoint runs: caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
