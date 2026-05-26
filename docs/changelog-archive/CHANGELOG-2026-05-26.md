@@ -2,6 +2,13 @@
 
 Older `CHANGELOG.md` entries moved here to keep the main file under the 20 KB scan-friendly cap (enforced by `scripts/check-changelog-size.sh`). Ordering preserved (newest archived stage first).
 
+## Stage 51a — feat: agent can dispatch + verify the Agent Router end-to-end (MCP)
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | feature | `services/mcp-server/src/tools.ts`: added `configure-agent-router.yml` to the `dispatch_workflow` allowlist (`DISPATCHABLE_WORKFLOWS`) so the agent can wire the router into a system's n8n itself instead of the operator clicking "Run workflow". It's a per-system, idempotent, soft-fail n8n-config workflow (no GCP/SM writes), so it fits the same risk class as `deploy-railway-cloudflare.yml`. CLAUDE.md allowlist enumerations synced. |
+| TBD | feature | `services/mcp-server/src/{probe.ts,tools.ts}`: `probe_endpoint` now supports `method=POST` + `body` + `content_type` + `timeout_ms` (≤60 s), so a verifier can fire a factory webhook end-to-end (e.g. `POST /webhook/agent-router` with a Hebrew prompt) and read the reply — the agent can now self-verify the router instead of relying on the in-workflow smoke probe (whose result only reaches the job summary, which has no REST API). The SSRF host allowlist (`*.or-infra.com` / `*.up.railway.app` / `*.run.app`, https-only) is unchanged and still gates every request. Both require a one-time MCP redeploy (`deploy-mcp-server.yml`) to take effect. |
+
 ## Stage 51a — fix: configure-agent-router checkout needs `contents: read`
 
 | PR | Type | Summary |

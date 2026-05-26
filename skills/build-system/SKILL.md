@@ -58,7 +58,7 @@ After the run completes successfully:
 
 After `provision-system.yml` succeeds:
 
-1. Dispatch `deploy-railway-cloudflare.yml` via the `dispatch_workflow` MCP tool (`repo=<system_name>`, `workflow_id=deploy-railway-cloudflare.yml`, `ref=main`) once the user is ready. The workflow auto-runs Postgres + n8n + Cloudflare + LE cert + owner-setup.
+1. Dispatch `deploy-railway-cloudflare.yml` via the `dispatch_workflow` MCP tool (`repo=<system_name>`, `workflow_id=deploy-railway-cloudflare.yml`, `ref=main`) once the user is ready. The workflow auto-runs Postgres + n8n + Cloudflare + LE cert + owner-setup, then provisions a **Caddy gateway** (third Railway service) and swaps the public domain onto it — n8n goes private; `/webhook/*` is HMAC-gated (constant-time) + per-IP rate-limited at the edge, while the n8n UI/`/rest/*` pass through Caddy guarded by n8n's own auth. Idempotent: re-running is a no-op (no Caddy redeploy).
 2. The URL is **`https://n8n-<system_name>.or-infra.com`** (single-level subdomain — multi-level doesn't get an LE cert through Railway's customDomain).
 3. Owner credentials:
    - email: `admin@<system_name>.or-infra.com`
