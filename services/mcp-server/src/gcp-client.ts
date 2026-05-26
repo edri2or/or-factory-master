@@ -54,6 +54,20 @@ export async function gcpFetchPost(url: string, body: unknown = {}): Promise<unk
 // Exported for new clients that need direct GCP access (e.g. gcp-logging-client).
 export { getToken as getGcpAccessToken };
 
+// Read a secret's plaintext VALUE (latest enabled version) via the Secret
+// Manager access endpoint. Used by service-API clients (e.g. the n8n Public API
+// key in n8n-client). Auth: ADC + the runtime SA's secretAccessor on the
+// system's secret (granted per-system by provision-system.yml). Throws
+// NotFoundError when the secret/version is absent so callers can surface a
+// clear "run deploy first" message rather than leaking a 404.
+export async function getSecretValue(projectId: string, name: string): Promise<string> {
+  const url = `https://secretmanager.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/secrets/${encodeURIComponent(name)}/versions/latest:access`;
+  const resp = (await gcpFetch(url)) as { payload?: { data?: string } };
+  const b64 = resp?.payload?.data;
+  if (!b64) throw new Error(`secret ${name} in ${projectId}: empty payload`);
+  return Buffer.from(b64, 'base64').toString('utf8');
+}
+
 export interface GcpProject {
   projectId: string;
   name?: string;

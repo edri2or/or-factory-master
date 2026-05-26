@@ -694,6 +694,7 @@ jobs:
             railway-n8n-volume-id
             n8n-telegram-bot-token
             n8n-telegram-chat-id
+            n8n-api-key
           )
           RUNTIME_SA="runtime-sa@${GCP_PROJECT}.iam.gserviceaccount.com"
           DEPLOY_SA="deploy-sa@${GCP_PROJECT}.iam.gserviceaccount.com"
@@ -725,7 +726,16 @@ jobs:
               --member="serviceAccount:${DEPLOY_SA}" \
               --quiet >/dev/null
           done
-          echo "PASS: all ${#RUNTIME_SHELLS[@]} runtime secret shells ready."
+          # Grant the broker SA (the MCP server's runtime identity) read access to
+          # n8n-api-key only — so the MCP n8n observability tools (list_n8n_workflows,
+          # inspect_n8n_execution) can call the system's n8n Public API. Mirrors the
+          # openrouter-key-hash grant above. NOT granted on the other runtime shells.
+          gcloud secrets add-iam-policy-binding "n8n-api-key" \
+            --project="$GCP_PROJECT" \
+            --role="roles/secretmanager.secretAccessor" \
+            --member="serviceAccount:factory-master-broker@or-factory-master-control.iam.gserviceaccount.com" \
+            --quiet >/dev/null 2>&1 || true
+          echo "PASS: all ${#RUNTIME_SHELLS[@]} runtime secret shells ready (+ broker grant on n8n-api-key)."
 
           # Seed n8n-telegram-chat-id from the factory-admin telegram-chat-id. The
           # per-system n8n bot is a DIFFERENT bot (its token is filled in manually)

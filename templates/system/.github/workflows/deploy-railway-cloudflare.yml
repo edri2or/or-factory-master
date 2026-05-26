@@ -1580,6 +1580,101 @@ jobs:
 
           curl -sS -o /dev/null -b "$COOKIE_JAR" -X POST "$BASE/rest/logout" || true
 
+      - name: Mint n8n Public API key (for the MCP observability tools)
+        env:
+          PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          SYSTEM_NAME: ${{ vars.SYSTEM_NAME }}
+        run: |
+          set -euo pipefail
+          # Mint an n8n Public API key (/api/v1, header X-N8N-API-KEY) and store it in
+          # this system's SM as `n8n-api-key`, so the factory MCP can read EXACT n8n
+          # state (workflow active-flags, execution status/errors) via list_n8n_workflows
+          # / inspect_n8n_execution — instead of scraping logs. Headless: the internal
+          # POST /rest/api-keys (owner-cookie auth) returns the plaintext `rawApiKey`
+          # once; we capture + store it. Idempotent (skip if a value already exists,
+          # since rawApiKey can't be re-fetched) and soft-fail (never break the deploy —
+          # this is observability, not the system itself).
+          BASE="https://n8n-${SYSTEM_NAME}.or-infra.com"
+          KEY_LABEL="factory-master-mcp"
+          _sm_read() { gcloud secrets versions access latest --secret="$1" --project="$PROJECT_ID" 2>/dev/null; }
+          _warn() { { echo "## ⚠️ מינטינג מפתח n8n API דילג"; echo "$1"; echo "ה-deploy נחשב מוצלח — אפשר להריץ מחדש."; } >> "$GITHUB_STEP_SUMMARY"; echo "WARN: n8n api-key mint skipped — $1" >&2; }
+
+          if [ -n "$(_sm_read n8n-api-key || true)" ]; then
+            echo "INFO: n8n-api-key already present in SM — skipping mint (rawApiKey is not re-fetchable)."
+            exit 0
+          fi
+          N8N_OWNER_EMAIL=$(_sm_read n8n-owner-email || echo "")
+          N8N_OWNER_PASSWORD=$(_sm_read n8n-owner-password || echo "")
+          if [ -z "$N8N_OWNER_EMAIL" ] || [ -z "$N8N_OWNER_PASSWORD" ]; then _warn "n8n-owner-email/password חסרים ב-SM"; exit 0; fi
+          echo "::add-mask::${N8N_OWNER_PASSWORD}"
+
+          COOKIE_JAR=$(mktemp)
+          trap 'rm -f "$COOKIE_JAR" /tmp/nk-*.json' EXIT
+          _login() {
+            curl -sS -o /tmp/nk-login.json -w '%{http_code}' --max-time 15 -c "$COOKIE_JAR" \
+              -X POST "$BASE/rest/login" -H "Content-Type: application/json" \
+              -d "$(jq -cn --arg f "$1" --arg e "$N8N_OWNER_EMAIL" --arg p "$N8N_OWNER_PASSWORD" '{($f):$e, password:$p}')" || echo "000"
+          }
+          _napi() {
+            local method="$1" url="$2" out="$3" data="${4:-}" i http
+            for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
+              if [ -n "$data" ]; then
+                http=$(curl -sS -o "$out" -w '%{http_code}' --max-time 20 -b "$COOKIE_JAR" -X "$method" -H "Content-Type: application/json" -d "$data" "$url" || echo "000")
+              else
+                http=$(curl -sS -o "$out" -w '%{http_code}' --max-time 20 -b "$COOKIE_JAR" -X "$method" "$url" || echo "000")
+              fi
+              [ "$http" != "000" ] && { printf '%s' "$http"; return 0; }
+              sleep 5
+            done
+            printf '000'
+          }
+
+          HTTP="000"
+          for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
+            HTTP=$(_login "emailOrLdapLoginId"); [ "$HTTP" = "200" ] || HTTP=$(_login "email")
+            [ "$HTTP" = "200" ] && break; sleep 5
+          done
+          [ "$HTTP" = "200" ] || { _warn "התחברות ל-n8n נכשלה (HTTP $HTTP)"; exit 0; }
+
+          # Drop a stale orphan key with our label (SM had no value) so we can recreate
+          # and capture a fresh rawApiKey.
+          if _napi GET "$BASE/rest/api-keys" /tmp/nk-list.json >/dev/null; then
+            OLD_ID=$(jq -r --arg l "$KEY_LABEL" '[(.data // .) | .[]? | select(.label==$l)][0].id // empty' /tmp/nk-list.json 2>/dev/null || echo "")
+            [ -n "$OLD_ID" ] && { _napi DELETE "$BASE/rest/api-keys/${OLD_ID}" /tmp/nk-del.json >/dev/null || true; }
+          fi
+
+          # Create the key. Try a minimal body; if rejected, retry with the instance's
+          # full scope list (some builds require `scopes`).
+          BODY=$(jq -cn --arg l "$KEY_LABEL" '{label:$l, expiresAt:null}')
+          HTTP=$(_napi POST "$BASE/rest/api-keys" /tmp/nk-new.json "$BODY")
+          if [ "$HTTP" != "200" ] && [ "$HTTP" != "201" ]; then
+            if _napi GET "$BASE/rest/api-keys/scopes" /tmp/nk-scopes.json >/dev/null; then
+              SCOPES=$(jq -c '(.data // .)' /tmp/nk-scopes.json 2>/dev/null || echo "")
+              if [ -n "$SCOPES" ] && [ "$SCOPES" != "null" ]; then
+                BODY=$(jq -cn --arg l "$KEY_LABEL" --argjson sc "$SCOPES" '{label:$l, expiresAt:null, scopes:$sc}')
+                HTTP=$(_napi POST "$BASE/rest/api-keys" /tmp/nk-new.json "$BODY")
+              fi
+            fi
+          fi
+          if [ "$HTTP" != "200" ] && [ "$HTTP" != "201" ]; then
+            head -c 300 /tmp/nk-new.json >&2 || true; echo >&2
+            _warn "POST /rest/api-keys החזיר HTTP $HTTP"
+            curl -sS -o /dev/null -b "$COOKIE_JAR" -X POST "$BASE/rest/logout" || true; exit 0
+          fi
+          RAW=$(jq -r '.data.rawApiKey // .rawApiKey // .data.apiKey // .apiKey // empty' /tmp/nk-new.json)
+          if [ -z "$RAW" ] || [ "$RAW" = "null" ]; then
+            _warn "התגובה לא הכילה rawApiKey"
+            curl -sS -o /dev/null -b "$COOKIE_JAR" -X POST "$BASE/rest/logout" || true; exit 0
+          fi
+          echo "::add-mask::${RAW}"
+          printf '%s' "$RAW" | gcloud secrets versions add n8n-api-key --project="$PROJECT_ID" --data-file=- >/dev/null
+          curl -sS -o /dev/null -b "$COOKIE_JAR" -X POST "$BASE/rest/logout" || true
+          {
+            echo "## ✅ מפתח n8n API נוצר ונשמר"
+            echo "נשמר ב-SM כ-\`n8n-api-key\` (label \`${KEY_LABEL}\`). ה-MCP ישתמש בו ל-\`list_n8n_workflows\` / \`inspect_n8n_execution\`."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "PASS: n8n Public API key minted + stored in ${PROJECT_ID} SM."
+
       - name: Persist Railway IDs to system SM
         env:
           PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
