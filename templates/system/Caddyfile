@@ -1,0 +1,75 @@
+# Per-system gateway (Phase D) — public face of this system's n8n.
+#
+# Built into a custom Caddy image (see Dockerfile.caddy) via xcaddy with:
+#   - github.com/mholt/caddy-ratelimit  — per-source-IP rate limiting
+#   - caddy/hmacguard (local module)    — constant-time HMAC-SHA256 verification
+#
+# Plugin-choice rationale (mission "approach (a) vs (b)"): the only off-the-shelf
+# HMAC plugin (abiosoft/caddy-hmac) is unmaintained (~9 stars) and can only compare
+# via a NON-constant-time Caddyfile matcher, which violates the constant-time
+# requirement. We therefore use a small custom handler module (Go hmac.Equal,
+# constant-time) for HMAC, plus mholt/caddy-ratelimit (the de-facto module, by
+# Caddy's author) for rate limiting. forward_auth/exec were rejected because they
+# cannot verify an HMAC computed over the request BODY.
+#
+# Behaviour:
+#   :{$PORT}            Railway sets $PORT; defaults to 8080. No auto_https (Railway
+#                       terminates TLS at its edge). admin API disabled.
+#   /health             -> 200 "ok"           (Railway healthcheck)
+#   /webhook/*          -> rate-limit per IP, then HMAC verify, then proxy to n8n
+#                          over Railway's private network. 401 on bad/missing HMAC,
+#                          429 on rate-limit exceed.
+#   any other path      -> 404
+{
+	admin off
+	auto_https off
+
+	# Custom handler directives are not in Caddy's standard order; pin their order
+	# explicitly so rate-limit runs first, then HMAC verify, then the proxy. Each
+	# `order` must reference a directive already placed, so anchor hmac_guard to the
+	# standard reverse_proxy first, then place rate_limit relative to hmac_guard.
+	order hmac_guard before reverse_proxy
+	order rate_limit before hmac_guard
+
+	log {
+		output stdout
+		format console
+	}
+
+	# Derive the real client IP from Railway's X-Forwarded-For so the rate limit is
+	# per-client, not per-edge. trusted_proxies scope is validated against Railway's
+	# forwarding behaviour during PR 2 smoke tests.
+	servers {
+		trusted_proxies static private_ranges
+	}
+}
+
+:{$PORT:8080} {
+	@health path /health
+	handle @health {
+		respond "ok" 200
+	}
+
+	@webhook path /webhook/*
+	handle @webhook {
+		rate_limit {
+			zone webhook_per_ip {
+				key {http.request.client_ip}
+				events {$RATE_LIMIT_BURST:50}
+				window {$RATE_LIMIT_WINDOW:10s}
+			}
+		}
+
+		hmac_guard {$HMAC_SECRET}
+
+		# Preserve the original Host (Caddy otherwise rewrites it to the upstream);
+		# Caddy forwards X-Forwarded-{For,Proto,Host} to the upstream by default.
+		reverse_proxy http://n8n.railway.internal:5678 {
+			header_up Host {host}
+		}
+	}
+
+	handle {
+		respond "Not Found" 404
+	}
+}
