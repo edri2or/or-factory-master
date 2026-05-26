@@ -49,6 +49,7 @@ import { resolveSystem, condition, summarize, NotFoundError, type SystemManifest
 import { probe, isAllowedUrl, AllowlistError, type ProbeResult } from './probe.js';
 import { resolveRecord as dnsResolveRecord, SUPPORTED_DNS_TYPES, DnsAllowlistError } from './dns-helper.js';
 import { inspectCert as tlsInspectCert, TlsAllowlistError } from './tls-helper.js';
+import { n8nApiGet, N8nKeyMissingError } from './n8n-client.js';
 
 export function registerTools(server: McpServer): void {
   // Shared owner/repo params for every GitHub-backed tool. Default to the
@@ -688,6 +689,94 @@ export function registerTools(server: McpServer): void {
         secrets,
       };
       return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
+    },
+  );
+
+  server.tool(
+    'list_n8n_workflows',
+    'List a system\'s n8n workflows via the n8n Public API (/api/v1/workflows): each workflow\'s id, name, ACTIVE flag, and trigger node types. The authoritative view of which workflows exist and which are active — webhook/schedule-triggered workflows are active; sub-workflows (Execute Workflow Trigger only) are correctly inactive. Needs n8n-api-key in the system SM (minted by deploy-railway-cloudflare.yml).',
+    systemNameSchema,
+    async ({ systemName }) => {
+      try {
+        const raw = await n8nApiGet(systemName, '/workflows?limit=200');
+        const obj = raw as { data?: unknown };
+        const items: unknown[] = Array.isArray(obj.data)
+          ? (obj.data as unknown[])
+          : (Array.isArray(raw) ? (raw as unknown[]) : []);
+        const workflows = items.map((it) => {
+          const w = it as { id?: unknown; name?: unknown; active?: unknown; nodes?: unknown };
+          const nodes: Array<{ type?: unknown }> = Array.isArray(w.nodes) ? (w.nodes as Array<{ type?: unknown }>) : [];
+          const triggerTypes = nodes
+            .map((n) => (typeof n.type === 'string' ? n.type : ''))
+            .filter((t) => /trigger|webhook/i.test(t));
+          return { id: w.id ?? null, name: w.name ?? null, active: w.active === true, triggerTypes };
+        });
+        const result = {
+          system: systemName,
+          timestamp: new Date().toISOString(),
+          count: workflows.length,
+          activeCount: workflows.filter((w) => w.active).length,
+          workflows,
+        };
+        return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
+      } catch (e) {
+        const err = e instanceof N8nKeyMissingError
+          ? { error: 'n8n_key_missing', message: e.message }
+          : { error: 'n8n_api_failed', message: String(e).slice(0, 400) };
+        return { content: [{ type: 'text' as const, text: JSON.stringify(err, null, 2) }] };
+      }
+    },
+  );
+
+  server.tool(
+    'inspect_n8n_execution',
+    'Inspect n8n executions on a system via the Public API. With no executionId, lists recent executions (optionally filtered by status/workflowId) and fetches detail for the most recent match; with executionId, fetches that one. Returns status and, on failure, the failing node + error message (parsed from data.resultData.lastNodeExecuted / .error). Replaces log-scraping for diagnosing router/sub-agent failures. Needs n8n-api-key in the system SM.',
+    {
+      systemName: z.string().min(1).describe('The system name (e.g. factory-test-52a)'),
+      executionId: z.string().optional().describe('Specific execution id; if omitted, the most recent matching execution is used'),
+      status: z.enum(['success', 'error', 'waiting', 'running', 'canceled']).optional().describe('Filter the list by status (use "error" to find the latest failure)'),
+      workflowId: z.string().optional().describe('Filter the list by workflow id'),
+    },
+    async ({ systemName, executionId, status, workflowId }) => {
+      try {
+        let id = executionId;
+        if (!id) {
+          const params = new URLSearchParams({ limit: '1' });
+          if (status) params.set('status', status);
+          if (workflowId) params.set('workflowId', workflowId);
+          const listRaw = await n8nApiGet(systemName, `/executions?${params.toString()}`);
+          const list = listRaw as { data?: Array<{ id?: unknown }> };
+          const first = Array.isArray(list.data) ? list.data[0] : undefined;
+          id = first && first.id != null ? String(first.id) : undefined;
+          if (!id) {
+            return { content: [{ type: 'text' as const, text: JSON.stringify({ system: systemName, message: 'no matching execution found', filter: { status: status ?? null, workflowId: workflowId ?? null } }, null, 2) }] };
+          }
+        }
+        const detailRaw = await n8nApiGet(systemName, `/executions/${encodeURIComponent(id)}?includeData=true`);
+        const d = detailRaw as {
+          id?: unknown; status?: unknown; finished?: unknown; startedAt?: unknown; stoppedAt?: unknown; workflowId?: unknown;
+          data?: { resultData?: { lastNodeExecuted?: unknown; error?: { message?: unknown; name?: unknown } } };
+        };
+        const rd = d.data?.resultData;
+        const result = {
+          system: systemName,
+          id: d.id ?? id,
+          status: d.status ?? null,
+          finished: d.finished ?? null,
+          startedAt: d.startedAt ?? null,
+          stoppedAt: d.stoppedAt ?? null,
+          workflowId: d.workflowId ?? null,
+          failingNode: rd?.lastNodeExecuted ?? null,
+          errorName: rd?.error?.name ?? null,
+          errorMessage: rd?.error?.message ?? null,
+        };
+        return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
+      } catch (e) {
+        const err = e instanceof N8nKeyMissingError
+          ? { error: 'n8n_key_missing', message: e.message }
+          : { error: 'n8n_api_failed', message: String(e).slice(0, 400) };
+        return { content: [{ type: 'text' as const, text: JSON.stringify(err, null, 2) }] };
+      }
     },
   );
 
