@@ -91,6 +91,72 @@
               },
               "renameOutput": true,
               "outputKey": "ops"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose", "version": 2 },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "c1000000-0000-0000-0000-000000000003",
+                    "leftValue": "={{ $json.intent }}",
+                    "rightValue": "code",
+                    "operator": { "type": "string", "operation": "equals" }
+                  },
+                  {
+                    "id": "c1000000-0000-0000-0000-000000000004",
+                    "leftValue": "={{ $json.confidence }}",
+                    "rightValue": 0.7,
+                    "operator": { "type": "number", "operation": "gte" }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "code"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose", "version": 2 },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "c1000000-0000-0000-0000-000000000005",
+                    "leftValue": "={{ $json.intent }}",
+                    "rightValue": "research",
+                    "operator": { "type": "string", "operation": "equals" }
+                  },
+                  {
+                    "id": "c1000000-0000-0000-0000-000000000006",
+                    "leftValue": "={{ $json.confidence }}",
+                    "rightValue": 0.7,
+                    "operator": { "type": "number", "operation": "gte" }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "research"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose", "version": 2 },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "c1000000-0000-0000-0000-000000000007",
+                    "leftValue": "={{ $json.intent }}",
+                    "rightValue": "infra",
+                    "operator": { "type": "string", "operation": "equals" }
+                  },
+                  {
+                    "id": "c1000000-0000-0000-0000-000000000008",
+                    "leftValue": "={{ $json.confidence }}",
+                    "rightValue": 0.7,
+                    "operator": { "type": "number", "operation": "gte" }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "infra"
             }
           ]
         },
@@ -128,6 +194,42 @@
     },
     {
       "parameters": {
+        "workflowId": { "__rl": true, "value": "@@SUB_CODE_WF_ID@@", "mode": "id" },
+        "mode": "once",
+        "options": {}
+      },
+      "id": "a0000000-0000-0000-0000-00000000000b",
+      "name": "Call code Sub-workflow",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [1340, 520]
+    },
+    {
+      "parameters": {
+        "workflowId": { "__rl": true, "value": "@@SUB_RESEARCH_WF_ID@@", "mode": "id" },
+        "mode": "once",
+        "options": {}
+      },
+      "id": "a0000000-0000-0000-0000-00000000000c",
+      "name": "Call research Sub-workflow",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [1340, 620]
+    },
+    {
+      "parameters": {
+        "workflowId": { "__rl": true, "value": "@@SUB_INFRA_WF_ID@@", "mode": "id" },
+        "mode": "once",
+        "options": {}
+      },
+      "id": "a0000000-0000-0000-0000-00000000000d",
+      "name": "Call infra Sub-workflow",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [1340, 720]
+    },
+    {
+      "parameters": {
         "mode": "runOnceForAllItems",
         "jsCode": "// L5 egress validation: reject exec/eval, strip <script>, redact non-allowlisted\n// URLs, cap length.\nconst item = $input.first().json;\nlet reply = (item.reply !== undefined && item.reply !== null) ? item.reply : ((item.output !== undefined && item.output !== null) ? item.output : '');\nreply = String(reply);\nif (/exec\\s*\\(|eval\\s*\\(/i.test(reply)) {\n  return [{ json: { reply: 'Response withheld by egress policy.' } }];\n}\nreply = reply.replace(/<script[\\s\\S]*?<\\/script>/gi, '').replace(/<\\/?script[^>]*>/gi, '');\nconst ALLOW = /(^|\\.)(or-infra\\.com|openrouter\\.ai|n8n\\.io)$/i;\nreply = reply.replace(/https?:\\/\\/[^\\s<>\"')]+/gi, function (u) {\n  try { return ALLOW.test(new URL(u).hostname) ? u : '[redacted-url]'; }\n  catch (e) { return '[redacted-url]'; }\n});\nif (reply.length > 4000) { reply = reply.slice(0, 4000); }\nreturn [{ json: { reply: reply } }];"
       },
@@ -147,10 +249,16 @@
     "Route by Intent": {
       "main": [
         [{ "node": "Call ops Sub-workflow", "type": "main", "index": 0 }],
+        [{ "node": "Call code Sub-workflow", "type": "main", "index": 0 }],
+        [{ "node": "Call research Sub-workflow", "type": "main", "index": 0 }],
+        [{ "node": "Call infra Sub-workflow", "type": "main", "index": 0 }],
         [{ "node": "Call unknown Sub-workflow", "type": "main", "index": 0 }]
       ]
     },
     "Call ops Sub-workflow": { "main": [[{ "node": "Egress Validation", "type": "main", "index": 0 }]] },
+    "Call code Sub-workflow": { "main": [[{ "node": "Egress Validation", "type": "main", "index": 0 }]] },
+    "Call research Sub-workflow": { "main": [[{ "node": "Egress Validation", "type": "main", "index": 0 }]] },
+    "Call infra Sub-workflow": { "main": [[{ "node": "Egress Validation", "type": "main", "index": 0 }]] },
     "Call unknown Sub-workflow": { "main": [[{ "node": "Egress Validation", "type": "main", "index": 0 }]] }
   },
   "settings": { "executionOrder": "v1" }

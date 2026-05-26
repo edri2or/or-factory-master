@@ -101,11 +101,16 @@ curl -X DELETE "https://openrouter.ai/api/v1/keys/${HASH}" -H "Authorization: Be
 `unknown`) ומנתב ל-sub-workflow ייעודי. **ה-demo workflow הקיים
 (`factory-master: OpenRouter auto-router demo`) לא משתנה ונשאר ה-baseline.**
 
-Stage 51a מקים את הבסיס: router + sub-agents של `ops` ו-`unknown`. Stage 51b יוסיף
-`code`/`research`/`infra`; Stage 51c יוסיף את שער ה-Macro-F1 ב-CI.
+Stage 51a הקים את הבסיס: router + sub-agents של `ops` ו-`unknown`. Stage 51b מוסיף
+את `code`/`research`/`infra` (חמישה sub-agents בסך הכל; ה-router מנתב את כל חמש
+הכוונות). ה-`code`/`research`/`infra` הם tool-less בשלב זה (`chainLlm` + `Set`,
+כמו `unknown-agent`) — נקודת הבדיקה היא נכונות הניתוב (4/4 smoke probe), לא כלים
+ייעודיים. כלים ל-sub-agent (web_search ל-research; קריאה-בלבד ל-Railway/Cloudflare
+ל-infra) הם המשך נפרד; כתיבה ל-infra דורשת HITL ונדחתה. Stage 51c יוסיף את שער
+ה-Macro-F1 ב-CI (חסום עד ש-51b מאומת).
 
 **קבצים** (נדחפים לכל מערכת חדשה ע"י `provision-system.yml`):
-- `workflows/n8n/{agent-router,ops-agent,unknown-agent}.json` — ה-workflows של n8n.
+- `workflows/n8n/{agent-router,ops-agent,code-agent,research-agent,infra-agent,unknown-agent}.json` — ה-workflows של n8n.
 - `.github/workflows/configure-agent-router.yml` — workflow ב-manual dispatch שטוען
   אותם ל-n8n דרך ה-REST API. אידמפוטנטי: הרצה חוזרת מעדכנת את ה-workflows הקיימים
   לפי שם.
@@ -116,8 +121,8 @@ Stage 51a מקים את הבסיס: router + sub-agents של `ops` ו-`unknown`.
 
 **החלטות ארכיטקטוניות** (מאומתות במחקר, מתועדות ב-factory-research-context.md):
 - ה-classifier מפונן ל-`openai/gpt-5-nano` (לא `openrouter/auto` — דטרמיניזם ל-CI).
-- ה-sub-agents: `anthropic/claude-haiku-4.5` (ops; ובהמשך code/research) או
-  `openai/gpt-5-mini:exacto` (infra). ה-fallback (`unknown`) על `gpt-5-nano`.
+- ה-sub-agents: `anthropic/claude-haiku-4.5` (ops, code, research) או
+  `openai/gpt-5-mini` (infra). ה-fallback (`unknown`) על `gpt-5-nano`.
 - ה-sub-agents מופעלים דרך `Execute Sub-workflow`, לא `agentTool` (n8n issue #22489
   שובר אותו עם מודלי GPT-5/Responses API נכון למאי 2026).
 - Defense-in-depth: סניטיזציה של קלט (L2), classifier שמחזיר רק `{intent, confidence}`

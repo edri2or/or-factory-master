@@ -54,6 +54,16 @@ Sub-agent (ops | code | research | infra)
 > `Execute Sub-workflow` nodes — **not** `@n8n/n8n-nodes-langchain.agentTool`,
 > which n8n issue #22489 breaks with GPT-5 / Responses-API models (open as of
 > May 2026).
+>
+> **Sub-agent status (Stage 51b):** all five sub-agents (`ops`, `code`,
+> `research`, `infra`, `unknown`) are now implemented and wired into the router's
+> Switch (4 intent rules at confidence ≥ 0.7 + `unknown` fallback).
+> `code`/`research`/`infra` are tool-less this increment (`chainLlm` + `Set`,
+> mirroring `unknown-agent`; code/research on `anthropic/claude-haiku-4.5`, infra
+> on `openai/gpt-5-mini`) — Stage 51b's checkpoint is routing correctness (4/4
+> smoke probe), not per-agent tools. Per-agent domain tools (research
+> `web_search`; infra read-only Railway/Cloudflare) are a focused follow-up;
+> infra **write** capability needs HITL and is deferred.
 
 `is_test` sentinel: sub-agents skip [your-telegram] sends when `chat_id == 'test'`
 so the Macro-F1 probes exercise the full Router → dispatch path without spamming
