@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 51a — fix: remove maxTokens caps (gpt-5-nano reasoning starved the reply to empty)
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | fix | The egress `_diag` block on live `factory-test-51e` showed `intent:unknown, confidence:0, sanitized_len:20, sub_reply_len:0` with execution `status=success` — i.e. **both** `openai/gpt-5-nano` calls (classifier + unknown sub-agent) returned **empty completions** while the input arrived intact. Root cause: `gpt-5-nano` is a reasoning model, and the low `maxTokens` caps (100 classifier / 500 sub-agents) were consumed by hidden reasoning tokens, leaving no visible output. Removed the `maxTokens` caps from the classifier + both sub-agents (mirroring the demo workflow, which sets none and works); the egress Code node still bounds the final reply length. |
+
 ## Stage 51a — fix: sub-agents reply via Basic LLM Chain (Tools-Agent returned empty)
 
 | PR | Type | Summary |
