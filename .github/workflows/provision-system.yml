@@ -668,6 +668,7 @@ jobs:
       - name: Pre-create runtime secret shells
         env:
           GCP_PROJECT: ${{ steps.validate.outputs.gcp_project }}
+          REUSE: ${{ steps.validate.outputs.reuse }}
         run: |
           set -euo pipefail
           # The deploy workflow needs to write runtime-only secrets that
@@ -756,6 +757,28 @@ jobs:
             fi
           else
             echo "INFO: n8n-telegram-chat-id already has a version — not reseeding"
+          fi
+
+          # Seed n8n-telegram-bot-token for TEST systems (reuse mode) from the
+          # durable default kept in control SM. Real systems get their own
+          # distinct bot, so only seed under reuse. Only-when-empty: a manual
+          # override (or a reuse re-run) is never clobbered.
+          if [ "$REUSE" = "true" ]; then
+            if ! gcloud secrets versions access latest \
+                 --secret=n8n-telegram-bot-token --project="$GCP_PROJECT" >/dev/null 2>&1; then
+              if BOT=$(gcloud secrets versions access latest \
+                   --secret=n8n-telegram-bot-token-test \
+                   --project="or-factory-master-control" 2>/dev/null) && [ -n "$BOT" ]; then
+                echo "::add-mask::${BOT}"
+                printf '%s' "$BOT" | gcloud secrets versions add n8n-telegram-bot-token \
+                  --project="$GCP_PROJECT" --data-file=- --quiet
+                echo "PASS: seeded n8n-telegram-bot-token from control default (test system)"
+              else
+                echo "INFO: no n8n-telegram-bot-token-test in control SM — n8n-telegram-bot-token left for manual fill"
+              fi
+            else
+              echo "INFO: n8n-telegram-bot-token already has a version — not reseeding"
+            fi
           fi
 
       - name: Set repo variables

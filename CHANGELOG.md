@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 53 — feat: test systems auto-seed the per-system Telegram bot token
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | feature | Test systems (reuse mode) left `n8n-telegram-bot-token` an empty shell, so the operator re-pasted the same test bot token on every test provision. The token is now kept once as `n8n-telegram-bot-token-test` in control SM (added to the `copy-generic-secrets.sh` `EXCLUDE` so it never reaches a tenant project), and `provision-system.yml` gains a reuse-mode-only seed that fills `n8n-telegram-bot-token` from it when empty — masked, only-when-empty, never reseeds (mirrors the existing `n8n-telegram-chat-id` seed). Real systems are untouched (they keep getting their own distinct bot). |
+
 ## Stage 51c — feat: Macro-F1 CI gate for the Agent Router classifier
 
 | PR | Type | Summary |
