@@ -49,6 +49,11 @@
 }
 
 :{$PORT:8080} {
+	log {
+		output stdout
+		format console
+	}
+
 	@health path /health
 	handle @health {
 		respond "ok" 200

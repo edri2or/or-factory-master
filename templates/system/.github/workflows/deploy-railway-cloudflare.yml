@@ -461,7 +461,8 @@ jobs:
               WEBHOOK_URL: $weburl,
               GENERIC_TIMEZONE: $tz,
               N8N_ENCRYPTION_KEY: $key,
-              N8N_RUNNERS_ENABLED: "true"
+              N8N_RUNNERS_ENABLED: "true",
+              N8N_PROXY_HOPS: "1"
             }')"
           echo "PASS: n8n env vars set (15 vars in one upsert → single redeploy)."
 
@@ -1132,6 +1133,7 @@ jobs:
           # the Caddyfile + Dockerfile.caddy + caddy/hmacguard from Phase D PR 1.
           # Railway's GitHub integration has access to edri2or repos (verified).
           echo "=== Railway: Caddy gateway service (SM-first lookup) ==="
+          CADDY_FIRST_TIME=false
           CADDY_ID=$(gcloud secrets versions access latest \
             --secret=caddy-railway-service-id --project="$PROJECT_ID" 2>/dev/null || echo "")
           if [ -n "$CADDY_ID" ] && [ "$CADDY_ID" != "null" ]; then
@@ -1150,6 +1152,7 @@ jobs:
               [ -n "$CADDY_ID" ] && [ "$CADDY_ID" != "null" ] \
                 || { echo "FAIL: Caddy serviceCreate returned no id; resp=$resp" >&2; exit 1; }
               echo "PASS: Caddy service created from repo edri2or/${SYSTEM_NAME}: $CADDY_ID"
+              CADDY_FIRST_TIME=true
             else
               echo "INFO: Caddy service found in project: $CADDY_ID"
             fi
@@ -1159,19 +1162,26 @@ jobs:
             echo "PASS: caddy-railway-service-id persisted to SM."
           fi
 
-          # ===== Caddy env vars (idempotent collection upsert) =====
+          # ===== Caddy env vars (first-create only) =====
           # Names MUST match what the Caddyfile reads. RAILWAY_DOCKERFILE_PATH
           # points Railway at our non-default Dockerfile (the repo has no root
           # Dockerfile) so it builds the custom Caddy image instead of nixpacks.
-          echo "=== Railway: Caddy env vars (single collection upsert) ==="
-          _upsert_collection "$CADDY_ID" "$(jq -cn --arg hmac "$HMAC_SECRET" '{
-            HMAC_SECRET: $hmac,
-            RATE_LIMIT_BURST: "50",
-            RATE_LIMIT_WINDOW: "10s",
-            PORT: "8080",
-            RAILWAY_DOCKERFILE_PATH: "Dockerfile.caddy"
-          }')"
-          echo "PASS: Caddy env vars set (5 vars in one upsert → single redeploy with Dockerfile.caddy)."
+          # Guard: only upsert on first create. Re-runs skip this to avoid a
+          # needless Caddy redeploy that can trigger the Railway scheduler throttle
+          # ("Starting Container" + zero logs) and take down the live gateway.
+          if [ "$CADDY_FIRST_TIME" = "true" ]; then
+            echo "=== Railway: Caddy env vars (single collection upsert — first create) ==="
+            _upsert_collection "$CADDY_ID" "$(jq -cn --arg hmac "$HMAC_SECRET" '{
+              HMAC_SECRET: $hmac,
+              RATE_LIMIT_BURST: "50",
+              RATE_LIMIT_WINDOW: "10s",
+              PORT: "8080",
+              RAILWAY_DOCKERFILE_PATH: "Dockerfile.caddy"
+            }')"
+            echo "PASS: Caddy env vars set (5 vars in one upsert → single redeploy with Dockerfile.caddy)."
+          else
+            echo "INFO: Caddy env vars already set (service pre-existing) — skipping upsert to avoid a needless redeploy."
+          fi
 
           # ===== Caddy public subdomain (Railway-provided *.up.railway.app) =====
           # SM-first; else reuse an existing serviceDomain; else create one. No
