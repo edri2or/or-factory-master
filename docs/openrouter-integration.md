@@ -106,8 +106,14 @@ Stage 51a הקים את הבסיס: router + sub-agents של `ops` ו-`unknown`.
 הכוונות). ה-`code`/`research`/`infra` הם tool-less בשלב זה (`chainLlm` + `Set`,
 כמו `unknown-agent`) — נקודת הבדיקה היא נכונות הניתוב (4/4 smoke probe), לא כלים
 ייעודיים. כלים ל-sub-agent (web_search ל-research; קריאה-בלבד ל-Railway/Cloudflare
-ל-infra) הם המשך נפרד; כתיבה ל-infra דורשת HITL ונדחתה. Stage 51c יוסיף את שער
-ה-Macro-F1 ב-CI (חסום עד ש-51b מאומת).
+ל-infra) הם המשך נפרד; כתיבה ל-infra דורשת HITL ונדחתה. Stage 51c הוסיף את שער
+ה-Macro-F1 ב-CI — **פעיל** (לאחר ש-51b אומת חי על `factory-test-61`: ניתוב 4/4).
+השער מגן על ה-prompt של ה-classifier מפני רגרסיה: `tests/router_battery.yaml`
+(250 מקרים מתויגים, 50 לכל כוונה), `scripts/eval_router.py` (קורא את ה-prompt+model
+המדויקים מ-`agent-router.json`, מחשב macro-F1 ≥ 0.85 דרך scikit-learn), ושני
+workflows ב-`.github/workflows/eval-agent-router*.yml` (היברידי WIF-only:
+`eval-agent-router-precheck.yml` דטרמיניסטי על כל PR + `eval-agent-router.yml` מלא
+LLM ב-dispatch/push-to-main).
 
 **קבצים** (נדחפים לכל מערכת חדשה ע"י `provision-system.yml`):
 - `workflows/n8n/{agent-router,ops-agent,code-agent,research-agent,infra-agent,unknown-agent}.json` — ה-workflows של n8n.

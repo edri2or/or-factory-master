@@ -1,0 +1,271 @@
+# Stage 51c — labeled routing battery for the Agent Router intent classifier.
+#
+# 250 cases, 50 per intent (ops / code / research / infra / unknown).
+# ~60% Hebrew, ~40% English. ~20% adversarial / out-of-scope (the vague "unknown"
+# cases + intent-flavoured distractors such as "explain this Terraform" -> code,
+# "benefits of IaC" -> research). Out-of-scope / ambiguous text is labeled unknown.
+#
+# Consumed by scripts/eval_router.py to compute Macro-F1 (threshold 0.85). The
+# script runs each `text` through the REAL classifier prompt+model from
+# templates/system/workflows/n8n/agent-router.json. Stable in Git — changes go
+# through a PR (the gate re-scores on any edit here).
+
+# ---------------- ops (50): monitoring / status / deploy / restart / logs / health
+- {text: "מה הסטטוס של השרתים שלי?", expected_intent: "ops"}
+- {text: "אילו workflows פעילים כרגע?", expected_intent: "ops"}
+- {text: "תראה לי את הלוגים של השירות", expected_intent: "ops"}
+- {text: "האם n8n באוויר?", expected_intent: "ops"}
+- {text: "תפעיל מחדש את הקונטיינר של n8n", expected_intent: "ops"}
+- {text: "כמה זיכרון השרת צורך עכשיו?", expected_intent: "ops"}
+- {text: "יש לנו downtime במערכת?", expected_intent: "ops"}
+- {text: "מה מצב ה-deployment האחרון?", expected_intent: "ops"}
+- {text: "תבדוק את בריאות השירות", expected_intent: "ops"}
+- {text: "הצג לי את שגיאות הריצה האחרונות", expected_intent: "ops"}
+- {text: "האם הפריסה לפרודקשן הסתיימה בהצלחה?", expected_intent: "ops"}
+- {text: "תראה את צריכת ה-CPU של השרת", expected_intent: "ops"}
+- {text: "מתי הייתה ההפעלה מחדש האחרונה?", expected_intent: "ops"}
+- {text: "תעשה deploy לגרסה האחרונה לפרודקשן", expected_intent: "ops"}
+- {text: "כמה בקשות השרת מקבל בדקה?", expected_intent: "ops"}
+- {text: "האם יש התראות פתוחות על המערכת?", expected_intent: "ops"}
+- {text: "תבדוק אם הדאטהבייס מגיב", expected_intent: "ops"}
+- {text: "הצג לי את היסטוריית ההרצות של ה-workflow", expected_intent: "ops"}
+- {text: "השירות נראה איטי, תבדוק מה קורה", expected_intent: "ops"}
+- {text: "תראה לי את סטטוס הפריסה ב-Railway", expected_intent: "ops"}
+- {text: "האם כל המיקרו-שירותים רצים?", expected_intent: "ops"}
+- {text: "תבצע restart לשירות שנתקע", expected_intent: "ops"}
+- {text: "כמה זמן השרת למעלה (uptime)?", expected_intent: "ops"}
+- {text: "תבדוק את מצב התור של המשימות", expected_intent: "ops"}
+- {text: "הצג את הלוגים של 24 השעות האחרונות", expected_intent: "ops"}
+- {text: "האם הגיבוי האחרון הצליח?", expected_intent: "ops"}
+- {text: "מה אחוז השגיאות בשעה האחרונה?", expected_intent: "ops"}
+- {text: "תנטר את השירות ותגיד לי אם הוא קורס", expected_intent: "ops"}
+- {text: "תראה לי אילו executions נכשלו היום", expected_intent: "ops"}
+- {text: "השרת מחזיר 502, תבדוק מה הבעיה", expected_intent: "ops"}
+- {text: "Is the production service healthy right now?", expected_intent: "ops"}
+- {text: "Show me the latest error logs.", expected_intent: "ops"}
+- {text: "Restart the n8n service please.", expected_intent: "ops"}
+- {text: "What's the current CPU and memory usage?", expected_intent: "ops"}
+- {text: "Did the last deployment succeed?", expected_intent: "ops"}
+- {text: "Are there any active incidents or alerts?", expected_intent: "ops"}
+- {text: "List the workflows that are currently active.", expected_intent: "ops"}
+- {text: "Check whether the database is responding.", expected_intent: "ops"}
+- {text: "What is the average API response time today?", expected_intent: "ops"}
+- {text: "The app feels slow, can you check the metrics?", expected_intent: "ops"}
+- {text: "How long has the server been up?", expected_intent: "ops"}
+- {text: "Show the deployment status on Railway.", expected_intent: "ops"}
+- {text: "Tail the logs for the last hour.", expected_intent: "ops"}
+- {text: "Did the nightly backup complete successfully?", expected_intent: "ops"}
+- {text: "What's the error rate over the past hour?", expected_intent: "ops"}
+- {text: "Roll out the latest build to production.", expected_intent: "ops"}
+- {text: "Show me which executions failed today.", expected_intent: "ops"}
+- {text: "Is the webhook endpoint reachable?", expected_intent: "ops"}
+- {text: "Monitor the queue depth and report it.", expected_intent: "ops"}
+- {text: "Give me a health summary of all services.", expected_intent: "ops"}
+
+# ---------------- code (50): write / edit / review / explain code
+- {text: "כתוב לי פונקציה בפייתון שמחזירה את המספר ה-N בסדרת פיבונאצ'י", expected_intent: "code"}
+- {text: "תקן לי את הבאג בקוד הזה", expected_intent: "code"}
+- {text: "הסבר מה הקוד הבא עושה", expected_intent: "code"}
+- {text: "כתוב פונקציה ב-JavaScript שממיינת מערך", expected_intent: "code"}
+- {text: "תעשה refactor לפונקציה הזאת", expected_intent: "code"}
+- {text: "איך כותבים לולאה ב-Python?", expected_intent: "code"}
+- {text: "סקור לי את הקוד ותגיד אם יש בעיות", expected_intent: "code"}
+- {text: "כתוב בדיקת יחידה לפונקציה הזאת", expected_intent: "code"}
+- {text: "תמיר את הקוד הזה מ-Python ל-Go", expected_intent: "code"}
+- {text: "למה הקוד שלי זורק שגיאת null pointer?", expected_intent: "code"}
+- {text: "כתוב regex שמזהה כתובת אימייל", expected_intent: "code"}
+- {text: "תוסיף טיפול בשגיאות לפונקציה הזאת", expected_intent: "code"}
+- {text: "איך ממשים מחסנית (stack) ב-Java?", expected_intent: "code"}
+- {text: "כתוב שאילתת SQL שמחזירה את עשרת הלקוחות המובילים", expected_intent: "code"}
+- {text: "תסביר את ההבדל בין let ל-const ב-JavaScript", expected_intent: "code"}
+- {text: "כתוב סקריפט bash שמגבה תיקייה", expected_intent: "code"}
+- {text: "תאופטם את הפונקציה הזאת לביצועים", expected_intent: "code"}
+- {text: "כתוב class בפייתון שמייצג חשבון בנק", expected_intent: "code"}
+- {text: "תמצא את שגיאת התחביר בקוד שלי", expected_intent: "code"}
+- {text: "איך משתמשים ב-async ו-await ב-JavaScript?", expected_intent: "code"}
+- {text: "כתוב פונקציה רקורסיבית לחישוב עצרת", expected_intent: "code"}
+- {text: "תוסיף הערות לקוד הזה", expected_intent: "code"}
+- {text: "סקור את ה-pull request שלי", expected_intent: "code"}
+- {text: "כתוב decorator בפייתון שמודד זמן ריצה", expected_intent: "code"}
+- {text: "איך הופכים מחרוזת למספר ב-TypeScript?", expected_intent: "code"}
+- {text: "תכתוב לי דוגמה לשימוש ב-map ב-JavaScript", expected_intent: "code"}
+- {text: "למה ה-loop שלי רץ אינסוף פעמים?", expected_intent: "code"}
+- {text: "כתוב פונקציה שבודקת אם מחרוזת היא פלינדרום", expected_intent: "code"}
+- {text: "תסביר מה עושה הסקריפט bash הזה", expected_intent: "code"}
+- {text: "כתוב לי קומפוננטת React פשוטה לכפתור", expected_intent: "code"}
+- {text: "Write a Python function that reverses a linked list.", expected_intent: "code"}
+- {text: "Fix the off-by-one error in this loop.", expected_intent: "code"}
+- {text: "Explain what this snippet of code does.", expected_intent: "code"}
+- {text: "Refactor this function to be more readable.", expected_intent: "code"}
+- {text: "Write a unit test for this method.", expected_intent: "code"}
+- {text: "Convert this JavaScript code to TypeScript.", expected_intent: "code"}
+- {text: "Why does my code throw a segmentation fault?", expected_intent: "code"}
+- {text: "Write a SQL query to find duplicate rows.", expected_intent: "code"}
+- {text: "Review my code and point out any bugs.", expected_intent: "code"}
+- {text: "Write a regex that matches a phone number.", expected_intent: "code"}
+- {text: "Add error handling to this function.", expected_intent: "code"}
+- {text: "How do I implement a binary search in Java?", expected_intent: "code"}
+- {text: "Write a bash script that renames files in bulk.", expected_intent: "code"}
+- {text: "Optimize this database query for performance.", expected_intent: "code"}
+- {text: "Write a Python class for a linked-list node.", expected_intent: "code"}
+- {text: "What's the difference between == and === in JavaScript?", expected_intent: "code"}
+- {text: "Write a recursive function to compute factorial.", expected_intent: "code"}
+- {text: "Add docstrings to these functions.", expected_intent: "code"}
+- {text: "Explain what this Terraform configuration does.", expected_intent: "code"}
+- {text: "Write a function to check if a number is prime.", expected_intent: "code"}
+
+# ---------------- research (50): open-ended / summaries / information lookup
+- {text: "סכם לי בקצרה מה זה OWASP LLM Top 10", expected_intent: "research"}
+- {text: "מה זה Kubernetes ולמה משתמשים בו?", expected_intent: "research"}
+- {text: "הסבר לי מה ההבדל בין TCP ל-UDP", expected_intent: "research"}
+- {text: "מה היתרונות של ארכיטקטורת microservices?", expected_intent: "research"}
+- {text: "סכם את עקרונות ה-Zero Trust באבטחת מידע", expected_intent: "research"}
+- {text: "מה זה OAuth 2.0 ואיך הוא עובד?", expected_intent: "research"}
+- {text: "הסבר מה זה CI/CD", expected_intent: "research"}
+- {text: "מהם ההבדלים בין SQL ל-NoSQL?", expected_intent: "research"}
+- {text: "מה זה DNS ואיך הוא עובד?", expected_intent: "research"}
+- {text: "סכם לי את היתרונות והחסרונות של REST מול GraphQL", expected_intent: "research"}
+- {text: "מה זה load balancing?", expected_intent: "research"}
+- {text: "הסבר את המושג eventual consistency", expected_intent: "research"}
+- {text: "מה ההבדל בין virtualization ל-containerization?", expected_intent: "research"}
+- {text: "סכם מה זה GDPR בכמה משפטים", expected_intent: "research"}
+- {text: "מה זה rate limiting ולמה הוא חשוב?", expected_intent: "research"}
+- {text: "הסבר מה זה idempotency ב-API", expected_intent: "research"}
+- {text: "מהן השיטות הנפוצות להצפנה?", expected_intent: "research"}
+- {text: "מה זה webhook?", expected_intent: "research"}
+- {text: "סכם את עקרונות ה-SOLID בתכנות", expected_intent: "research"}
+- {text: "מה ההבדל בין authentication ל-authorization?", expected_intent: "research"}
+- {text: "מה זה CDN ואיך הוא משפר ביצועים?", expected_intent: "research"}
+- {text: "הסבר מה זה message queue", expected_intent: "research"}
+- {text: "מהם השלבים העיקריים במתודולוגיית Agile?", expected_intent: "research"}
+- {text: "מה זה JWT ומה הוא מכיל?", expected_intent: "research"}
+- {text: "סכם לי מה זה ארכיטקטורת serverless", expected_intent: "research"}
+- {text: "מה ההבדל בין thread ל-process?", expected_intent: "research"}
+- {text: "הסבר מה זה caching ולמה הוא עוזר", expected_intent: "research"}
+- {text: "מה זה API gateway?", expected_intent: "research"}
+- {text: "סכם את ההמלצות המרכזיות של NIST לסיסמאות", expected_intent: "research"}
+- {text: "מה זה reverse proxy ומתי משתמשים בו?", expected_intent: "research"}
+- {text: "Summarize the main principles of the twelve-factor app.", expected_intent: "research"}
+- {text: "What is the difference between a process and a thread?", expected_intent: "research"}
+- {text: "Explain how the TLS handshake works.", expected_intent: "research"}
+- {text: "What are the pros and cons of a monolithic architecture?", expected_intent: "research"}
+- {text: "Summarize what the OWASP Top 10 covers.", expected_intent: "research"}
+- {text: "What is eventual consistency in distributed systems?", expected_intent: "research"}
+- {text: "Explain the CAP theorem in simple terms.", expected_intent: "research"}
+- {text: "What is the purpose of a service mesh?", expected_intent: "research"}
+- {text: "Summarize the key ideas behind GraphQL.", expected_intent: "research"}
+- {text: "What is the difference between symmetric and asymmetric encryption?", expected_intent: "research"}
+- {text: "Explain what a container orchestrator does.", expected_intent: "research"}
+- {text: "What are the benefits of infrastructure as code?", expected_intent: "research"}
+- {text: "Summarize how OAuth refresh tokens work.", expected_intent: "research"}
+- {text: "What is a race condition?", expected_intent: "research"}
+- {text: "Explain the difference between latency and throughput.", expected_intent: "research"}
+- {text: "What is the role of an API gateway?", expected_intent: "research"}
+- {text: "Summarize the main types of database indexes.", expected_intent: "research"}
+- {text: "What does idempotent mean for HTTP methods?", expected_intent: "research"}
+- {text: "Explain what a webhook is and when to use one.", expected_intent: "research"}
+- {text: "What are common strategies for cache invalidation?", expected_intent: "research"}
+
+# ---------------- infra (50): provision / change infrastructure (DNS, secrets, cloud)
+- {text: "איך מוסיפים רשומת DNS מסוג CNAME ב-Cloudflare?", expected_intent: "infra"}
+- {text: "צור לי secret חדש ב-Secret Manager", expected_intent: "infra"}
+- {text: "תקצה מכונה וירטואלית חדשה ב-GCP", expected_intent: "infra"}
+- {text: "איך פותחים פורט 443 ב-firewall?", expected_intent: "infra"}
+- {text: "צור bucket חדש ב-Google Cloud Storage", expected_intent: "infra"}
+- {text: "תוסיף רשומת A שמצביעה לכתובת IP", expected_intent: "infra"}
+- {text: "איך מסובבים (rotate) מפתח API?", expected_intent: "infra"}
+- {text: "הקם דאטהבייס PostgreSQL חדש ב-Railway", expected_intent: "infra"}
+- {text: "תגדיר load balancer מול שני שרתים", expected_intent: "infra"}
+- {text: "צור service account חדש עם הרשאות קריאה", expected_intent: "infra"}
+- {text: "איך מגדירים אזור DNS חדש ב-Cloudflare?", expected_intent: "infra"}
+- {text: "תקצה volume חדש לשירות", expected_intent: "infra"}
+- {text: "הוסף משתנה סביבה לשירות בפרודקשן", expected_intent: "infra"}
+- {text: "איך יוצרים תעודת SSL עבור הדומיין?", expected_intent: "infra"}
+- {text: "צור repository חדש ב-GitHub", expected_intent: "infra"}
+- {text: "תגדיר WIF provider חדש ב-GCP", expected_intent: "infra"}
+- {text: "איך מוחקים רשומת DNS ישנה?", expected_intent: "infra"}
+- {text: "הקצה כתובת IP סטטית לשרת", expected_intent: "infra"}
+- {text: "צור מפתח SSH חדש והוסף אותו לשרת", expected_intent: "infra"}
+- {text: "תגדיר אוטו-סקיילינג לשירות", expected_intent: "infra"}
+- {text: "איך מחברים דומיין מותאם אישית ל-Railway?", expected_intent: "infra"}
+- {text: "צור secret עם הסיסמה של הדאטהבייס", expected_intent: "infra"}
+- {text: "תוסיף הרשאת IAM של secretAccessor למשתמש", expected_intent: "infra"}
+- {text: "איך מגדירים רשומת TXT לאימות דומיין?", expected_intent: "infra"}
+- {text: "הקם פרויקט GCP חדש", expected_intent: "infra"}
+- {text: "תגדיר חוקי firewall שיחסמו תעבורה נכנסת", expected_intent: "infra"}
+- {text: "צור Cloud Run service חדש", expected_intent: "infra"}
+- {text: "איך מאפשרים (enable) את ה-API של Secret Manager בפרויקט?", expected_intent: "infra"}
+- {text: "תקצה דיסק נוסף של 50 ג'יגה למכונה", expected_intent: "infra"}
+- {text: "הגדר רשומת MX עבור הדומיין", expected_intent: "infra"}
+- {text: "How do I add a CNAME record in Cloudflare?", expected_intent: "infra"}
+- {text: "Create a new secret in Secret Manager.", expected_intent: "infra"}
+- {text: "Provision a new virtual machine on GCP.", expected_intent: "infra"}
+- {text: "Open port 8080 on the firewall.", expected_intent: "infra"}
+- {text: "Create a new storage bucket.", expected_intent: "infra"}
+- {text: "Add an A record pointing to this IP address.", expected_intent: "infra"}
+- {text: "Rotate the database API key.", expected_intent: "infra"}
+- {text: "Spin up a new PostgreSQL instance on Railway.", expected_intent: "infra"}
+- {text: "Configure a load balancer across two backends.", expected_intent: "infra"}
+- {text: "Create a service account with read-only access.", expected_intent: "infra"}
+- {text: "Set up a new DNS zone in Cloudflare.", expected_intent: "infra"}
+- {text: "Attach a new volume to the service.", expected_intent: "infra"}
+- {text: "Add an environment variable to the production service.", expected_intent: "infra"}
+- {text: "Issue a TLS certificate for this domain.", expected_intent: "infra"}
+- {text: "Create a new GitHub repository.", expected_intent: "infra"}
+- {text: "Grant the secretAccessor IAM role to this account.", expected_intent: "infra"}
+- {text: "Delete the stale DNS record.", expected_intent: "infra"}
+- {text: "Allocate a static IP to the server.", expected_intent: "infra"}
+- {text: "Enable the Secret Manager API on the project.", expected_intent: "infra"}
+- {text: "Add a TXT record for domain verification.", expected_intent: "infra"}
+
+# ---------------- unknown (50): ambiguous / empty / greetings / off-domain / meta
+- {text: "שלום", expected_intent: "unknown"}
+- {text: "היי, מה נשמע?", expected_intent: "unknown"}
+- {text: "בוקר טוב!", expected_intent: "unknown"}
+- {text: "תודה רבה", expected_intent: "unknown"}
+- {text: "ביי, נתראה", expected_intent: "unknown"}
+- {text: "אוקיי", expected_intent: "unknown"}
+- {text: "כן", expected_intent: "unknown"}
+- {text: "לא יודע", expected_intent: "unknown"}
+- {text: "מי אתה?", expected_intent: "unknown"}
+- {text: "מה אתה יכול לעשות?", expected_intent: "unknown"}
+- {text: "אתה רובוט?", expected_intent: "unknown"}
+- {text: "מה השם שלך?", expected_intent: "unknown"}
+- {text: "באיזו שפה אתה מדבר?", expected_intent: "unknown"}
+- {text: "תעזור לי", expected_intent: "unknown"}
+- {text: "יש לי בעיה", expected_intent: "unknown"}
+- {text: "זה לא עובד", expected_intent: "unknown"}
+- {text: "תעשה משהו", expected_intent: "unknown"}
+- {text: "אני צריך עזרה", expected_intent: "unknown"}
+- {text: "מה לעשות?", expected_intent: "unknown"}
+- {text: "עזוב, לא משנה", expected_intent: "unknown"}
+- {text: "אני משועמם", expected_intent: "unknown"}
+- {text: "אני עייף היום", expected_intent: "unknown"}
+- {text: "...", expected_intent: "unknown"}
+- {text: "????", expected_intent: "unknown"}
+- {text: "אאאאאאא", expected_intent: "unknown"}
+- {text: "בלה בלה בלה", expected_intent: "unknown"}
+- {text: "12345 67890", expected_intent: "unknown"}
+- {text: "אבגד הוזח", expected_intent: "unknown"}
+- {text: "@@@###", expected_intent: "unknown"}
+- {text: "קשקוש שטויות", expected_intent: "unknown"}
+- {text: "hello", expected_intent: "unknown"}
+- {text: "hi there", expected_intent: "unknown"}
+- {text: "good morning", expected_intent: "unknown"}
+- {text: "thanks a lot", expected_intent: "unknown"}
+- {text: "bye", expected_intent: "unknown"}
+- {text: "ok", expected_intent: "unknown"}
+- {text: "yes", expected_intent: "unknown"}
+- {text: "who are you?", expected_intent: "unknown"}
+- {text: "what can you do?", expected_intent: "unknown"}
+- {text: "are you a human?", expected_intent: "unknown"}
+- {text: "help me please", expected_intent: "unknown"}
+- {text: "it doesn't work", expected_intent: "unknown"}
+- {text: "I need help", expected_intent: "unknown"}
+- {text: "do something", expected_intent: "unknown"}
+- {text: "nevermind", expected_intent: "unknown"}
+- {text: "I'm bored", expected_intent: "unknown"}
+- {text: "asdfghjkl", expected_intent: "unknown"}
+- {text: "blah blah blah", expected_intent: "unknown"}
+- {text: "lorem ipsum dolor", expected_intent: "unknown"}
+- {text: "??? ...", expected_intent: "unknown"}
