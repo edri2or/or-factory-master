@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 60 — docs: finalize Phase D (per-system Caddy gateway done)
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | docs | Phase D documentation finalization (PR 4), after the gateway was verified end-to-end on `factory-test-103` (fresh deploy + idempotency re-run: Caddy deployment count unchanged, public gateway serving, no `ERR_ERL_UNEXPECTED_X_FORWARDED_FOR`, Caddy access-logging). `CLAUDE.md`: the `deploy-railway-cloudflare.yml` row now describes the completed gateway — Caddy as a third Railway service owning the public domain, constant-time HMAC + per-IP rate-limit on `/webhook/*`, n8n private and proxied (UI/`/rest/*` guarded by n8n's own auth), the new per-system SM keys (`webhook-hmac-secret`, `caddy-railway-service-id`, `caddy-railway-url`), `N8N_PROXY_HOPS=1`, and the `CADDY_FIRST_TIME` re-run no-op. `docs/roadmap.md`: Phase D marked **done** (PRs 1–4 + the hardening fix ticked). `skills/build-system/SKILL.md`: the post-provision deploy handoff now notes the gateway provision + domain swap. Docs-only; no behaviour change. |
+
 ## Stage 59 — fix: gateway hardening (re-run idempotency, n8n proxy trust, Caddy access log)
 
 | PR | Type | Summary |
@@ -109,10 +115,3 @@
 | PR | Type | Summary |
 |---|---|---|
 | TBD | fix | `templates/system/workflows/n8n/agent-router.json`: the router replied with HTTP 200 but an **empty body** — caught live on factory-test-51b via the new POST-capable `probe_endpoint`. Root cause: the webhook used `responseMode: responseNode` + a `Respond to Webhook` node (`firstIncomingItem`), which returned no body, whereas the factory's proven demo-workflow pattern uses `responseMode: lastNode` and returns the final node's JSON directly (the demo webhook returns `{"output":"ok"}`). Switched the router to `lastNode` and made the `Egress Validation` Code node terminal (removed the `Respond to Webhook` node + its connection), so the HTTP response is the egress `{reply}` object. |
-
-## Stage 51a — feat: agent can dispatch + verify the Agent Router end-to-end (MCP)
-
-| PR | Type | Summary |
-|---|---|---|
-| TBD | feature | `services/mcp-server/src/tools.ts`: added `configure-agent-router.yml` to the `dispatch_workflow` allowlist (`DISPATCHABLE_WORKFLOWS`) so the agent can wire the router into a system's n8n itself instead of the operator clicking "Run workflow". It's a per-system, idempotent, soft-fail n8n-config workflow (no GCP/SM writes), so it fits the same risk class as `deploy-railway-cloudflare.yml`. CLAUDE.md allowlist enumerations synced. |
-| TBD | feature | `services/mcp-server/src/{probe.ts,tools.ts}`: `probe_endpoint` now supports `method=POST` + `body` + `content_type` + `timeout_ms` (≤60 s), so a verifier can fire a factory webhook end-to-end (e.g. `POST /webhook/agent-router` with a Hebrew prompt) and read the reply — the agent can now self-verify the router instead of relying on the in-workflow smoke probe (whose result only reaches the job summary, which has no REST API). The SSRF host allowlist (`*.or-infra.com` / `*.up.railway.app` / `*.run.app`, https-only) is unchanged and still gates every request. Both require a one-time MCP redeploy (`deploy-mcp-server.yml`) to take effect. |
