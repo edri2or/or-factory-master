@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 61 — fix: Railway projectCreate 504-safe recovery (no orphan, no duplicate)
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | fix | `templates/system/.github/workflows/deploy-railway-cloudflare.yml`: a transient Railway `projectCreate` **504** (seen live on `factory-test-102`) creates the project on Railway's side but the id never returns, so the deploy bailed (`projectCreate returned no id`) leaving an orphan that a re-run couldn't reuse — the scoped token returned 0 from `workspace(id).projects` and `projects(first:100)`, so find-by-name failed and a re-run would create a **duplicate**. Root cause: wrong query shape. Verified that `me { workspaces { projects } }` (a different resolver path) *does* list the projects this token can see. Fix: new `_find_project_by_name` helper queries the `me.workspaces` path first (then the two old shapes as fallback); the project step uses it for find-by-name, and on a `projectCreate` that returns no id it now **polls (6×10s) to adopt the project the timed-out call created** rather than failing or blind-recreating. If nothing becomes visible it fails loud with exact remediation (check for an orphan, decommission, re-run) — never creating a duplicate. Makes both 504 recovery and ordinary re-run idempotency self-healing. `bash -n` + `shellcheck --severity=error` clean. Template edit reaches newly-provisioned systems only. |
+
 ## Stage 60 — docs: finalize Phase D (per-system Caddy gateway done)
 
 | PR | Type | Summary |
@@ -102,16 +108,3 @@
 |---|---|---|
 | TBD | fix | `templates/system/workflows/n8n/{ops,unknown}-agent.json`: with the crash fixed, the router returned HTTP 200 but `{"reply":""}` on live `factory-test-51d` (execution `status=success`, sub-agent output empty). The sub-agents used the Tools Agent (`@n8n/n8n-nodes-langchain.agent`) with **no tools attached**, which returned empty output with the pinned models. Switched both sub-agents to a Basic LLM Chain (`chainLlm` — the same node the classifier proves works); `Format Reply` now reads `{{ $json.text \|\| $json.output }}`. Tools arrive in Stage 51b, which can revisit the Tools Agent then. |
 | TBD | chore | `agent-router.json`: the egress node temporarily returns a `_diag` block (`intent`, `confidence`, `sanitized_len`, `sub_keys`, `sub_reply_len`) so the live smoke body pinpoints any remaining empty-reply cause. Removed once the router is confirmed returning a non-empty reply. |
-
-## Stage 51a — fix: robust classifier (no throwing output-parser) + configure diagnostics
-
-| PR | Type | Summary |
-|---|---|---|
-| TBD | fix | `templates/system/workflows/n8n/agent-router.json`: the classifier paired `chainLlm` with a `Structured Output Parser`, which **throws** on any non-conforming model output and errored the whole router (live `factory-test-51c` returned HTTP 500, surfaced once the lastNode fix stopped masking it). Dropped the parser (`hasOutputParser:false`, removed the node + `ai_outputParser` connection); the classifier returns raw JSON and the `Build Dispatch` Code node parses it inside try/catch → defaults to `intent:unknown, confidence:0` on any failure (graceful; OWASP LLM01 bounded refusal). |
-| TBD | chore | `templates/system/.github/workflows/configure-agent-router.yml`: the smoke probe now echoes its HTTP/body and the router's last n8n execution `status` + failing node/message to **stdout** (n8n doesn't log node-level execution errors to container stdout, and `$GITHUB_STEP_SUMMARY` has no REST API), so a runtime router failure is diagnosable from the run logs alone. |
-
-## Stage 51a — fix: Agent Router returns its reply (lastNode, drop Respond-to-Webhook)
-
-| PR | Type | Summary |
-|---|---|---|
-| TBD | fix | `templates/system/workflows/n8n/agent-router.json`: the router replied with HTTP 200 but an **empty body** — caught live on factory-test-51b via the new POST-capable `probe_endpoint`. Root cause: the webhook used `responseMode: responseNode` + a `Respond to Webhook` node (`firstIncomingItem`), which returned no body, whereas the factory's proven demo-workflow pattern uses `responseMode: lastNode` and returns the final node's JSON directly (the demo webhook returns `{"output":"ok"}`). Switched the router to `lastNode` and made the `Egress Validation` Code node terminal (removed the `Respond to Webhook` node + its connection), so the HTTP response is the egress `{reply}` object. |

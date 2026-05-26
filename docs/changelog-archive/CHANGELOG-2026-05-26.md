@@ -15,6 +15,19 @@ Older `CHANGELOG.md` entries moved here to keep the main file under the 20 KB sc
 |---|---|---|
 | TBD | fix | `templates/system/.github/workflows/configure-agent-router.yml`: the job declared `permissions: id-token: write` only (copied from deploy, which has no checkout step), so `GITHUB_TOKEN` lost the default `contents: read` and `actions/checkout` failed with `remote: Repository not found` on the private system repo — caught live on the factory-test-51a E2E (run only reached the checkout step). Added `contents: read` to the job permissions. No other change. |
 
+## Stage 51a — fix: Agent Router returns its reply (lastNode, drop Respond-to-Webhook)
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | fix | `templates/system/workflows/n8n/agent-router.json`: the router replied with HTTP 200 but an **empty body** — caught live on factory-test-51b via the new POST-capable `probe_endpoint`. Root cause: the webhook used `responseMode: responseNode` + a `Respond to Webhook` node (`firstIncomingItem`), which returned no body, whereas the factory's proven demo-workflow pattern uses `responseMode: lastNode` and returns the final node's JSON directly (the demo webhook returns `{"output":"ok"}`). Switched the router to `lastNode` and made the `Egress Validation` Code node terminal (removed the `Respond to Webhook` node + its connection), so the HTTP response is the egress `{reply}` object. |
+
+## Stage 51a — fix: robust classifier (no throwing output-parser) + configure diagnostics
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | fix | `templates/system/workflows/n8n/agent-router.json`: the classifier paired `chainLlm` with a `Structured Output Parser`, which **throws** on any non-conforming model output and errored the whole router (live `factory-test-51c` returned HTTP 500, surfaced once the lastNode fix stopped masking it). Dropped the parser (`hasOutputParser:false`, removed the node + `ai_outputParser` connection); the classifier returns raw JSON and the `Build Dispatch` Code node parses it inside try/catch → defaults to `intent:unknown, confidence:0` on any failure (graceful; OWASP LLM01 bounded refusal). |
+| TBD | chore | `templates/system/.github/workflows/configure-agent-router.yml`: the smoke probe now echoes its HTTP/body and the router's last n8n execution `status` + failing node/message to **stdout** (n8n doesn't log node-level execution errors to container stdout, and `$GITHUB_STEP_SUMMARY` has no REST API), so a runtime router failure is diagnosable from the run logs alone. |
+
 ## Stage 51a — feat: Agent Router foundation (router + ops + unknown sub-agents)
 
 | PR | Type | Summary |
