@@ -36,7 +36,10 @@ echo ""
 # openrouter-management-key, which can mint/revoke inference keys account-wide).
 # Pattern-based so future *-management-key / *-provisioning-key / *-master-key
 # secrets are excluded without a point fix.
-EXCLUDE="^(factory-master-broker-app-.*|.*-management-key|.*-provisioning-key|.*-master-key)$"
+# n8n-telegram-bot-token-test is the durable default for the per-system test bot:
+# provision-system.yml reads it directly from control SM and seeds it into the
+# test system's n8n-telegram-bot-token, so it must never be bulk-copied here.
+EXCLUDE="^(factory-master-broker-app-.*|.*-management-key|.*-provisioning-key|.*-master-key|n8n-telegram-bot-token-test)$"
 
 # Secrets present in factory SM but intentionally NOT copied (shell + IAM only).
 # Empty for now — kept as a hook for future policy.
