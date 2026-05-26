@@ -443,7 +443,7 @@ jobs:
             || { echo "FAIL: push deploy workflow HTTP ${http_code}: ${body}" >&2; exit 1; }
           echo "PASS: deploy-railway-cloudflare.yml pushed to edri2or/${SYSTEM_NAME}:main"
 
-      - name: Push .claude package + Agent Router scaffold to system repo
+      - name: Push .claude package + Agent Router + Caddy gateway scaffold to system repo
         env:
           SYSTEM_NAME: ${{ inputs.system_name }}
         run: |
@@ -486,18 +486,34 @@ jobs:
           cp -r "$WF_SRC"/. "$CLONE_DIR/workflows/"
           cp "$CFG_SRC" "$CLONE_DIR/.github/workflows/configure-agent-router.yml"
 
+          # Phase D: scaffold the Caddy gateway sources so Railway can build the
+          # per-system gateway from THIS repo. deploy-railway-cloudflare.yml creates
+          # a `caddy` service with source:{repo} + RAILWAY_DOCKERFILE_PATH=Dockerfile.caddy;
+          # the Dockerfile COPYs Caddyfile + caddy/hmacguard during the build, so all
+          # three must live in the system repo or the Caddy build has nothing to build.
+          CADDYFILE_SRC="${GITHUB_WORKSPACE}/templates/system/Caddyfile"
+          CADDY_DOCKERFILE_SRC="${GITHUB_WORKSPACE}/templates/system/Dockerfile.caddy"
+          CADDY_MODULE_SRC="${GITHUB_WORKSPACE}/templates/system/caddy"
+          [ -f "$CADDYFILE_SRC" ] || { echo "FAIL: Caddyfile not found at $CADDYFILE_SRC" >&2; exit 1; }
+          [ -f "$CADDY_DOCKERFILE_SRC" ] || { echo "FAIL: Dockerfile.caddy not found at $CADDY_DOCKERFILE_SRC" >&2; exit 1; }
+          [ -d "$CADDY_MODULE_SRC/hmacguard" ] || { echo "FAIL: caddy/hmacguard module not found at $CADDY_MODULE_SRC/hmacguard" >&2; exit 1; }
+          cp "$CADDYFILE_SRC" "$CLONE_DIR/Caddyfile"
+          cp "$CADDY_DOCKERFILE_SRC" "$CLONE_DIR/Dockerfile.caddy"
+          mkdir -p "$CLONE_DIR/caddy"
+          cp -r "$CADDY_MODULE_SRC"/. "$CLONE_DIR/caddy/"
+
           git -C "$CLONE_DIR" config user.name "or-factory-master[bot]"
           git -C "$CLONE_DIR" config user.email "factory-master-broker@or-factory-master-control.iam.gserviceaccount.com"
-          git -C "$CLONE_DIR" add .claude workflows .github/workflows/configure-agent-router.yml
+          git -C "$CLONE_DIR" add .claude workflows .github/workflows/configure-agent-router.yml Caddyfile Dockerfile.caddy caddy
           # Guard the commit: a reuse-mode re-provision with byte-identical files would
           # otherwise abort this step under `set -e` ("nothing to commit").
           git -C "$CLONE_DIR" diff --cached --quiet \
-            || git -C "$CLONE_DIR" commit -q -m "ci: scaffold .claude package + Agent Router (from or-factory-master)"
+            || git -C "$CLONE_DIR" commit -q -m "ci: scaffold .claude package + Agent Router + Caddy gateway (from or-factory-master)"
           git -C "$CLONE_DIR" push -q origin HEAD:main \
             || { echo "FAIL: could not push scaffold to edri2or/${SYSTEM_NAME}:main" >&2; exit 1; }
 
           rm -rf "$CLONE_DIR"
-          echo "PASS: .claude package + Agent Router scaffold pushed to edri2or/${SYSTEM_NAME}:main (${COUNT} commands + gcp-hands-client skill + 3 n8n workflows + configure-agent-router.yml)."
+          echo "PASS: .claude package + Agent Router + Caddy gateway scaffold pushed to edri2or/${SYSTEM_NAME}:main (${COUNT} commands + gcp-hands-client skill + 3 n8n workflows + configure-agent-router.yml + Caddyfile + Dockerfile.caddy + caddy/hmacguard)."
 
       - name: Branch protection on main
         env:

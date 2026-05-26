@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 56 — fix: scaffold the Caddy gateway files into provisioned system repos (Phase D)
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | fix | Phase D PR 1 added `templates/system/{Caddyfile,Dockerfile.caddy,caddy/hmacguard}` and PR 2 builds the Caddy service from the system's own repo (`source:{repo}`), but `provision-system.yml`'s scaffold step only pushed `.claude/`, `workflows/`, `configure-agent-router.yml`, and `deploy-railway-cloudflare.yml` — so the gateway sources never reached the system repo and Railway's repo build had nothing to build. The scaffold push now also copies `Caddyfile` + `Dockerfile.caddy` + `caddy/` into the repo root (with presence guards) and stages them in the same commit, so a freshly-provisioned system carries everything the Caddy image build needs. Scaffold edit; reaches newly-provisioned systems only. |
+
 ## Stage 55 — feat: deploy creates Caddy as a third Railway service (Phase D, PR 2)
 
 | PR | Type | Summary |
