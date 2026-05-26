@@ -140,7 +140,7 @@ jobs:
           # Upsert one workflow by name (PATCH if exists else POST), then activate.
           # $1=workflow name  $2=path to placeholder-resolved JSON  ->  echoes the WF id.
           _upsert_wf() {
-            local wf_name="$1" body_file="$2" wid http
+            local wf_name="$1" body_file="$2" activate="${3:-yes}" wid http
             _napi GET "$BASE/rest/workflows" /tmp/ar-wfs.json >/dev/null
             wid=$(jq -r --arg n "$wf_name" '[(.data // .) | .[]? | select(.name==$n)][0].id // empty' /tmp/ar-wfs.json)
             if [ -n "$wid" ]; then
@@ -152,10 +152,14 @@ jobs:
               wid=$(jq -r '.data.id // .id' /tmp/ar-wf.json)
             fi
             [ -n "$wid" ] && [ "$wid" != "null" ] || return 1
-            # Activate: dedicated endpoint, fall back to PATCH active:true.
-            http=$(_napi POST "$BASE/rest/workflows/${wid}/activate" /tmp/ar-act.json)
-            { [ "$http" = "200" ] || [ "$http" = "204" ]; } \
-              || _napi PATCH "$BASE/rest/workflows/${wid}" /tmp/ar-act.json '{"active":true}' >/dev/null
+            # Activate only workflows with an activatable trigger (the router's Webhook).
+            # Sub-agents trigger via Execute Workflow Trigger — n8n can't activate those,
+            # and they don't need it (the router invokes them directly). Inactive by design.
+            if [ "$activate" = "yes" ]; then
+              http=$(_napi POST "$BASE/rest/workflows/${wid}/activate" /tmp/ar-act.json)
+              { [ "$http" = "200" ] || [ "$http" = "204" ]; } \
+                || _napi PATCH "$BASE/rest/workflows/${wid}" /tmp/ar-act.json '{"active":true}' >/dev/null
+            fi
             printf '%s' "$wid"
           }
 
@@ -168,7 +172,7 @@ jobs:
             src="${WF_DIR}/${file}"
             [ -f "$src" ] || _soft_exit0 "קובץ ${file} לא נמצא בריפו"
             sed "s#@@CRED_OPENROUTER_ID@@#${CRED_ID}#g" "$src" > "/tmp/ar-prep-${file}"
-            ID=$(_upsert_wf "$wf_name" "/tmp/ar-prep-${file}") || _soft_exit0 "כשל ביצירת/עדכון ${wf_name}"
+            ID=$(_upsert_wf "$wf_name" "/tmp/ar-prep-${file}" no) || _soft_exit0 "כשל ביצירת/עדכון ${wf_name}"
             [ -n "$ID" ] && [ "$ID" != "null" ] || _soft_exit0 "לא התקבל id עבור ${wf_name}"
             case "$slot" in
               UNKNOWN) SUB_UNKNOWN_WF_ID="$ID" ;;
@@ -188,7 +192,7 @@ jobs:
               -e "s#@@SUB_RESEARCH_WF_ID@@##g" \
               -e "s#@@SUB_INFRA_WF_ID@@##g" \
               "$ROUTER_SRC" > /tmp/ar-prep-router.json
-          ROUTER_ID=$(_upsert_wf "factory-master: Agent Router" "/tmp/ar-prep-router.json") \
+          ROUTER_ID=$(_upsert_wf "factory-master: Agent Router" "/tmp/ar-prep-router.json" yes) \
             || _soft_exit0 "כשל ביצירת/עדכון Agent Router"
           [ -n "$ROUTER_ID" ] && [ "$ROUTER_ID" != "null" ] || _soft_exit0 "לא התקבל id עבור Agent Router"
           echo "PASS: factory-master: Agent Router → id=${ROUTER_ID}"
@@ -229,8 +233,8 @@ jobs:
             echo "| רכיב | ערך |"
             echo "|---|---|"
             echo "| Agent Router | \`${ROUTER_ID}\` |"
-            echo "| ops-agent | \`${SUB_OPS_WF_ID}\` |"
-            echo "| unknown-agent | \`${SUB_UNKNOWN_WF_ID}\` |"
+            echo "| ops-agent | \`${SUB_OPS_WF_ID}\` (לא-פעיל by design — sub-workflow) |"
+            echo "| unknown-agent | \`${SUB_UNKNOWN_WF_ID}\` (לא-פעיל by design — sub-workflow) |"
             echo "| Classifier | \`openai/gpt-5-nano\` |"
             echo "| ops model | \`anthropic/claude-haiku-4.5\` |"
             echo "| Webhook | ${BASE}/webhook/agent-router |"
