@@ -39,7 +39,7 @@ to provide the missing context. Do not guess. Do not proceed with the task until
 - **Public URL**: ${PUBLIC_URL}
 - **Health check**: ${HEALTH_URL}
 - **Repo**: ${REPO_URL}
-- **Provision mode**: ${MODE} (normal = own GCP project; reuse = shared test project)
+- **Provision mode**: ${MODE} (normal = own GCP project; reuse = shared test project; adopt = existing/recovered GCP project whose id differs from the repo name — `gcpProjectId` above is the source of truth, not the repo name)
 - **Provisioned at**: ${ISO_TIMESTAMP}
 - **Factory run**: [${GITHUB_RUN_ID}](${GITHUB_RUN_URL})
 
