@@ -1,0 +1,88 @@
+name: Verify Better Stack → Telegram webhook
+
+# One-shot autonomous verification of the /bs-webhook forwarder on the MCP
+# server. POSTs a synthetic Better Stack incident payload with the gate token
+# and asserts the route relays to Telegram (telegram='ok'), plus a negative
+# check that a wrong token is rejected (401). All secrets stay in the job
+# (masked); the outcome is a single [verify-bs-webhook] line. Note: a passing
+# run sends one real (clearly-marked) test message to the Telegram channel.
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  verify:
+    name: Verify Better Stack to Telegram webhook
+    runs-on: ubuntu-latest
+    environment: production
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      id-token: write
+
+    env:
+      GCP_PROJECT: "or-factory-master-control"
+      SERVICE: "factory-master-actions-mcp"
+      REGION: "me-west1"
+      BROKER_SA: "factory-master-broker@or-factory-master-control.iam.gserviceaccount.com"
+      WIF_PROVIDER: "projects/140345952904/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
+
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
+
+      - name: Authenticate to GCP via WIF
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093  # v3.0.0
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.BROKER_SA }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db  # v3.0.1
+
+      - name: Post a synthetic incident and assert it reaches Telegram
+        run: |
+          set -uo pipefail
+
+          SECRET=$(gcloud secrets versions access latest --secret=bs-webhook-secret --project="$GCP_PROJECT" 2>/dev/null) || SECRET=""
+          [ -n "$SECRET" ] && echo "::add-mask::${SECRET}"
+          if [ -z "$SECRET" ]; then
+            echo "[verify-bs-webhook] result='blocked' reason='missing bs-webhook-secret'"
+            exit 1
+          fi
+
+          URL=$(gcloud run services describe "$SERVICE" --region="$REGION" --project="$GCP_PROJECT" --format='value(status.url)' 2>/dev/null) || URL=""
+          if [ -z "$URL" ]; then
+            echo "[verify-bs-webhook] result='fail' stage='resolve-url'"
+            exit 1
+          fi
+
+          # Negative check: a wrong token must be rejected (401).
+          bad=$(curl -sS -m 15 -o /dev/null -w '%{http_code}' -X POST \
+            -H 'Content-Type: application/json' --data '{}' \
+            "${URL}/bs-webhook?token=definitely-wrong" 2>/dev/null) || bad="000"
+          if [ "$bad" != "401" ]; then
+            echo "[verify-bs-webhook] result='fail' stage='auth-gate' reason='wrong token returned ${bad}, expected 401'"
+            exit 1
+          fi
+          echo "[verify-bs-webhook] auth_gate='ok' wrong_token_http='${bad}'"
+
+          # Positive check: a valid synthetic incident relays to Telegram.
+          body=$(mktemp)
+          payload='{"event":"created","name":"[verify-bs-webhook] synthetic test","cause":"automated verification — ignore","url":"https://example.invalid/healthz","incident_id":"verify"}'
+          http=$(curl -sS -m 20 -o "$body" -w '%{http_code}' -X POST \
+            -H 'Content-Type: application/json' --data "$payload" \
+            "${URL}/bs-webhook?token=${SECRET}" 2>/dev/null) || http="000"
+          tg=$(jq -r '.telegram // empty' "$body" 2>/dev/null) || tg=""
+          detail=$(tr -d '\r' < "$body" | tr '\n' ' ' | cut -c1-200)
+          rm -f "$body"
+          echo "[verify-bs-webhook] posted http='${http}' telegram='${tg}'"
+
+          case "$http" in 2*) ;; *) echo "[verify-bs-webhook] result='fail' stage='post' http='${http}' detail='${detail}'"; exit 1 ;; esac
+          if [ "$tg" != "ok" ]; then
+            echo "[verify-bs-webhook] result='fail' stage='telegram' telegram='${tg}' reason='route reached but Telegram send not ok (check telegram-* secrets readable by broker SA)'"
+            exit 1
+          fi
+
+          echo "[verify-bs-webhook] result='pass' telegram='ok' auth_gate='ok'"

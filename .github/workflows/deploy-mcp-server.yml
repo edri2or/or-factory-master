@@ -205,6 +205,25 @@ jobs:
             echo "PASS: cloudflare-zones-read-token created with placeholder value."
           fi
 
+      - name: Ensure bs-webhook-secret exists (mint if missing)
+        run: |
+          set -euo pipefail
+          # Shared token that gates POST /bs-webhook (Better Stack → Telegram
+          # forwarder). Minted random, same as mcp-server-admin-secret; the
+          # operator reads the value and puts it in the Better Stack webhook
+          # URL (?token=...). Reused across re-deploys.
+          if gcloud secrets describe "bs-webhook-secret" \
+               --project="${GCP_PROJECT}" >/dev/null 2>&1; then
+            echo "INFO: bs-webhook-secret exists; reusing."
+          else
+            printf '%s' "$(openssl rand -hex 32)" | gcloud secrets create "bs-webhook-secret" \
+              --project="${GCP_PROJECT}" \
+              --replication-policy=automatic \
+              --labels="owner=factory-master,purpose=bs-webhook" \
+              --data-file=-
+            echo "PASS: bs-webhook-secret minted (no trailing newline)."
+          fi
+
       - name: Best-effort grant runtime SA access to sentry-api-key
         run: |
           set -uo pipefail
@@ -292,7 +311,7 @@ jobs:
               --port=3000 \
               --timeout=300 \
               --set-env-vars="PUBLIC_BASE_URL=${PUBLIC_BASE_URL}" \
-              --set-secrets="MCP_ADMIN_SECRET=mcp-server-admin-secret:latest,BEARER_SIGNING_KEY=mcp-server-bearer-signing-key:latest,GITHUB_APP_ID=factory-master-broker-app-id:latest,GITHUB_APP_PRIVATE_KEY=factory-master-broker-app-private-key:latest,GITHUB_APP_INSTALLATION_ID=factory-master-broker-app-installation-id:latest,RAILWAY_API_TOKEN=railway-api-token:latest,CLOUDFLARE_API_TOKEN=cloudflare-token-creator:latest,CLOUDFLARE_ZONE_ID=cloudflare-zone-id-or-infra:latest,CLOUDFLARE_ZONES_READ_TOKEN=cloudflare-zones-read-token:latest,SENTRY_DSN=sentry-api-key:latest" \
+              --set-secrets="MCP_ADMIN_SECRET=mcp-server-admin-secret:latest,BEARER_SIGNING_KEY=mcp-server-bearer-signing-key:latest,GITHUB_APP_ID=factory-master-broker-app-id:latest,GITHUB_APP_PRIVATE_KEY=factory-master-broker-app-private-key:latest,GITHUB_APP_INSTALLATION_ID=factory-master-broker-app-installation-id:latest,RAILWAY_API_TOKEN=railway-api-token:latest,CLOUDFLARE_API_TOKEN=cloudflare-token-creator:latest,CLOUDFLARE_ZONE_ID=cloudflare-zone-id-or-infra:latest,CLOUDFLARE_ZONES_READ_TOKEN=cloudflare-zones-read-token:latest,SENTRY_DSN=sentry-api-key:latest,BS_WEBHOOK_SECRET=bs-webhook-secret:latest" \
               --labels="owner=factory-master,purpose=mcp-server" \
               --quiet 2>&1
           }

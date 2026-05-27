@@ -239,7 +239,13 @@ read_github_actions_run_logs(job_id=<id>, grep="\[linear\]")  # תוצאת Linea
     Linear (`error\|critical` או `action_required`, dedup 24ש + labels). ה-image לא כולל `scripts/`,
     לכן מימוש מחדש ב-TS ולא shell-out. חמשת הסודות נקראים ב-runtime מ-`or-factory-master-control`
     דרך `getSecretValue` (ה-broker SA, אותו principal שמריץ את הסקריפט ב-CI). soft-fail לכל יעד בנפרד.
-  - ⬜ ניתוב Telegram דרך Better Stack.
+  - ✅ ניתוב Better Stack → Telegram — ל-Better Stack אין ערוץ Telegram מובנה, אז ה-uptime monitors
+    (email-only מ-Stage 78) שולחים outgoing webhook ל-`POST /bs-webhook` ב-MCP server, שמעביר ל-Telegram.
+    הראוט מאומת ע"י `?token=` מול `BS_WEBHOOK_SECRET` (constant-time; 503 אם אין סוד, 401 על אי-התאמה),
+    קורא את `telegram-*` ב-runtime (broker SA), ותמיד מחזיר 2xx תוך 30ש. אימות אוטונומי: `_verify-bs-webhook.yml`.
+    **הגדרה ידנית ב-Better Stack** (פעם אחת): קרא את `bs-webhook-secret` מ-SM → Integrations → Exporting data →
+    Webhook (Incident) → URL `https://<mcp-url>/bs-webhook?token=<secret>`, גוף:
+    `{"event":"$EVENT","name":"$NAME","cause":"$CAUSE","url":"$URL","incident_id":"$INCIDENT_ID"}` → חבר ל-monitors.
   - ✅ Sentry ל-JS/TS — ה-MCP server (`services/mcp-server/`) מאותחל דרך `src/instrument.ts`
     (`@sentry/node`, נטען ב-`node --import` לפני שאר הקוד) + `Sentry.setupExpressErrorHandler`.
     errors-only (`tracesSampleRate: 0`), ה-DSN מ-`sentry-api-key` (mount כ-`SENTRY_DSN`),

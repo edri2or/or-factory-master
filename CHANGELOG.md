@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 83 — feat: observability Phase D — route Better Stack → Telegram via /bs-webhook
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | feature | Closes Phase D item 2. Better Stack has no native Telegram channel, so its per-system uptime monitors (email-only since Stage 78) now POST an outgoing webhook to a new secret-gated `POST /bs-webhook` on the MCP server, which relays the incident to Telegram — closing the gap where sub-minute downtime never reached Telegram (only the 6h `system-runtime-audit.yml` did). The route (`services/mcp-server/src/index.ts`) gates a `?token=` query constant-time against a new `BS_WEBHOOK_SECRET` env (503 if unset, 401 on mismatch), parses the incident template, and forwards via a new `sendTelegramMessage()` in `observability-client.ts` (reads `telegram-*` at runtime as the broker SA — no new mounted Telegram secret); always answers 2xx within Better Stack's 30s budget. `deploy-mcp-server.yml` mints `bs-webhook-secret` and mounts `BS_WEBHOOK_SECRET`. New `_verify-bs-webhook.yml` autonomously proves the forwarder (synthetic incident → `telegram='ok'`, plus a wrong-token→401 gate check). Operator wires the Better Stack webhook (URL + token + body template) per `docs/observability.md`. Requires an MCP redeploy. Stages 62–64 rotated to the changelog archive. |
+
 ## Stage 82 — fix: make the Sentry verification deterministic (capture+flush+event_id)
 
 | PR | Type | Summary |
@@ -108,22 +114,4 @@
 |---|---|---|
 | TBD | fix | `scripts/emit-event.sh`: switch the Axiom ingest host from `api.axiom.co` (US) to `api.eu.axiom.co` (EU). The Stage 64 error-body logging revealed the exact cause — `HTTP 400 "ingest is only allowed into datasets in the primary region: dataset region: cloud.eu-central-1.aws, deployment region: cloud.us-east-1.aws"` — i.e. the org + `factory-events` dataset live in EU, so ingest must hit the EU data-plane host. Auth/console stay on the global US control plane, which is why the token authenticated against the US host (401→404→400 progression). One-line host change; closes the Axiom leg of the observability pilot. |
 
-## Stage 64 — fix: log Axiom's error body on ingest failure
-
-| PR | Type | Summary |
-|---|---|---|
-| TBD | fix | `scripts/emit-event.sh`: the Axiom ingest call discarded the response body (`-o /dev/null`), so a non-2xx surfaced only as `http='CODE'` with no reason. Now captures the body and prints `[event] axiom='failed' http='CODE' detail='…'` (truncated to one line; the token is in the header, so no secret leaks). Turns an opaque 4xx into a diagnosable one — prompted by a live `http='400'` on the pilot after the token (401) and dataset (404) issues were resolved. Soft-fail unchanged. |
-
-## Stage 63 — feat: observability foundation (Phase A)
-
-| PR | Type | Summary |
-|---|---|---|
-| TBD | feature | Observability foundation (**Phase A**, infrastructure only): `scripts/emit-event.sh` + `scripts/lib/event-formatter.sh` + `scripts/lib/linear-issue.sh` emit one OTel-SemConv-shaped event and fan it out **soft-fail** to **Axiom** (always; `factory-events` dataset), **Telegram** (severity `warning\|error\|critical`, unchanged channel), and **Linear** (severity `error\|critical` or `action_required=true`; 24h dedup, `auto-created` label, operator's existing `linear-api-key` — no separate bot user). Each destination fails independently and a structured `[event] …` safety-net line is always printed. New `.github/workflows/observability-pilot.yml` (manual `workflow_dispatch`) smoke-tests the pipeline end-to-end; Hebrew docs in `docs/observability.md`. Removes the one-shot `_verify-observability-secrets.yml` (Stage 62) now that broker-SA read access is confirmed. No existing workflow/script/template touched. Older stages (≤55) moved to `docs/changelog-archive/`. |
-
-## Stage 62 — chore: verify broker SA can read the observability secrets
-
-| PR | Type | Summary |
-|---|---|---|
-| TBD | chore | One-shot `.github/workflows/_verify-observability-secrets.yml` (`workflow_dispatch`, deleted in the Phase A foundation PR): confirms the broker SA can read the six observability secrets from `or-factory-master-control` SM (Axiom, Better Stack, Linear ×2, Telegram ×2) — masks each value, prints length only, never echoes it. Pinned actions, `permissions: {}`, runs on `main` only. Phase A pre-flight before the `emit-event.sh` foundation PR. |
-
-> Older stages (Stage 61 and earlier) are archived in [`docs/changelog-archive/CHANGELOG.md`](docs/changelog-archive/CHANGELOG.md).
+> Older stages (Stage 64 and earlier) are archived in [`docs/changelog-archive/CHANGELOG.md`](docs/changelog-archive/CHANGELOG.md).
