@@ -554,6 +554,120 @@ jobs:
           rm -rf "$CLONE_DIR"
           echo "PASS: .claude package + Agent Router + Caddy gateway scaffold pushed to edri2or/${SYSTEM_NAME}:main (${COUNT} commands + gcp-hands-client skill + 3 n8n workflows + configure-agent-router.yml + Caddyfile + Dockerfile.caddy + caddy/hmacguard)."
 
+      - name: Push system orientation docs (AGENTS.md + CLAUDE.md) to system repo
+        continue-on-error: true
+        env:
+          SYSTEM_NAME: ${{ inputs.system_name }}
+          GCP_PROJECT: ${{ steps.validate.outputs.gcp_project }}
+          REUSE: ${{ steps.validate.outputs.reuse }}
+        run: |
+          set -uo pipefail
+          # Soft-fail by design: a failure here must NEVER fail a provision.
+          # No `set -e`; explicit exit 0 on every error branch (continue-on-error
+          # on the step is the second safety net).
+
+          AGENTS_TMPL="${GITHUB_WORKSPACE}/templates/system/AGENTS.md.template"
+          CLAUDE_TMPL="${GITHUB_WORKSPACE}/templates/system/CLAUDE.md.template"
+          if [ ! -f "$AGENTS_TMPL" ] || [ ! -f "$CLAUDE_TMPL" ]; then
+            echo "WARN: orientation template missing — skipping" >&2
+            {
+              echo "## ⚠️ Push orientation docs נדלג"
+              echo "תבנית חסרה ב-\`templates/system/\` — ה-provision המשיך תקין."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          # Compute dynamic values
+          PROJECT_NUMBER=$(gcloud projects describe "$GCP_PROJECT" \
+            --format="value(projectNumber)" 2>/dev/null) || {
+            echo "WARN: could not resolve PROJECT_NUMBER — skipping" >&2
+            exit 0
+          }
+          ISO_TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          PUBLIC_URL="https://n8n-${SYSTEM_NAME}.or-infra.com/"
+          HEALTH_URL="https://n8n-${SYSTEM_NAME}.or-infra.com/healthz"
+          REPO_URL="https://github.com/edri2or/${SYSTEM_NAME}"
+          GITHUB_RUN_URL="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          WIF_PROVIDER="projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
+          MODE="normal"
+          [ "$REUSE" = "true" ] && MODE="reuse"
+
+          # Enumerate generic secrets from factory SM. The EXCLUDE regex MUST stay
+          # in sync with scripts/copy-generic-secrets.sh — same source of truth.
+          EXCLUDE='^(factory-master-broker-app-.*|.*-management-key|.*-provisioning-key|.*-master-key|n8n-telegram-bot-token-test)$'
+          GENERIC_SECRETS=$(gcloud secrets list \
+            --project=or-factory-master-control \
+            --format="value(name)" 2>/dev/null \
+            | awk -F'/' '{print $NF}' \
+            | grep -vE "$EXCLUDE" \
+            | sort \
+            | sed 's/^/- `/;s/$/`/')
+          if [ -z "$GENERIC_SECRETS" ]; then
+            GENERIC_SECRETS="- *(listing failed; see factory SM directly)*"
+          fi
+
+          # Render templates with envsubst. The explicit allow-list ensures we
+          # NEVER substitute any other $variable that happens to appear in a
+          # template (defensive; today's template has only our placeholders).
+          export SYSTEM_NAME GCP_PROJECT PROJECT_NUMBER ISO_TIMESTAMP
+          export PUBLIC_URL HEALTH_URL REPO_URL
+          export GITHUB_RUN_ID GITHUB_RUN_URL WIF_PROVIDER MODE GENERIC_SECRETS
+
+          OUT_AGENTS=$(mktemp)
+          OUT_CLAUDE=$(mktemp)
+          trap 'rm -f "$OUT_AGENTS" "$OUT_CLAUDE"' EXIT
+
+          ALLOWLIST='${SYSTEM_NAME} ${GCP_PROJECT} ${PROJECT_NUMBER} ${ISO_TIMESTAMP} ${PUBLIC_URL} ${HEALTH_URL} ${REPO_URL} ${GITHUB_RUN_ID} ${GITHUB_RUN_URL} ${WIF_PROVIDER} ${MODE} ${GENERIC_SECRETS}'
+          envsubst "$ALLOWLIST" < "$AGENTS_TMPL" > "$OUT_AGENTS"
+          envsubst '${SYSTEM_NAME}' < "$CLAUDE_TMPL" > "$OUT_CLAUDE"
+
+          # Sanity check: warn (don't fail) on any unresolved ${VAR} in the output.
+          if grep -qE '\$\{[A-Z_]+\}' "$OUT_AGENTS"; then
+            echo "WARN: unresolved placeholders in rendered AGENTS.md:" >&2
+            grep -oE '\$\{[A-Z_]+\}' "$OUT_AGENTS" | sort -u >&2
+          fi
+
+          # Clone, copy, commit, push (Pattern B — same as the .claude scaffold step above).
+          # APP_TOKEN is set by an earlier step (Resolve broker App credentials) and is
+          # already masked via ::add-mask:: so `set -x` would not leak it; keep tracing off anyway.
+          CLONE_DIR=$(mktemp -d)
+          if ! git clone --depth 1 \
+               "https://x-access-token:${APP_TOKEN}@github.com/edri2or/${SYSTEM_NAME}.git" \
+               "$CLONE_DIR" 2>/dev/null; then
+            echo "WARN: could not clone edri2or/${SYSTEM_NAME} — skipping" >&2
+            rm -rf "$CLONE_DIR"
+            exit 0
+          fi
+
+          cp "$OUT_AGENTS" "$CLONE_DIR/AGENTS.md"
+          cp "$OUT_CLAUDE" "$CLONE_DIR/CLAUDE.md"
+
+          git -C "$CLONE_DIR" config user.name "or-factory-master[bot]"
+          git -C "$CLONE_DIR" config user.email "factory-master-broker@or-factory-master-control.iam.gserviceaccount.com"
+          git -C "$CLONE_DIR" add AGENTS.md CLAUDE.md
+
+          # Defensive idempotency (repo is fresh per run, but matches step 14 pattern).
+          if git -C "$CLONE_DIR" diff --cached --quiet; then
+            echo "INFO: orientation files identical — nothing to commit"
+            rm -rf "$CLONE_DIR"
+            exit 0
+          fi
+
+          if ! git -C "$CLONE_DIR" commit -q -m "ci: scaffold system orientation docs (from or-factory-master)"; then
+            echo "WARN: commit failed — skipping" >&2
+            rm -rf "$CLONE_DIR"
+            exit 0
+          fi
+
+          if ! git -C "$CLONE_DIR" push -q origin HEAD:main 2>/dev/null; then
+            echo "WARN: push failed — skipping" >&2
+            rm -rf "$CLONE_DIR"
+            exit 0
+          fi
+
+          rm -rf "$CLONE_DIR"
+          echo "PASS: AGENTS.md + CLAUDE.md pushed to edri2or/${SYSTEM_NAME}:main"
+
       - name: Branch protection on main
         env:
           SYSTEM_NAME: ${{ inputs.system_name }}
