@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 66 — chore: one-shot Axiom setup workflow (scoped ingest token)
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | chore | One-shot `.github/workflows/_axiom-setup.yml` (`workflow_dispatch`, deleted after use): reads `axiom-pat` (a Personal Access Token) from SM via the broker SA (WIF) and, server-side, probes Axiom (org/region/method), creates a **scoped API token** (`ingest`+`query` on `factory-events`) via `POST /v2/tokens`, verifies it can ingest, and stores it as the latest `axiom-api-key` version. Resolves the pilot's Axiom 403: a PAT requires the `x-axiom-org-id` header for ingest, whereas a scoped API token works with `Authorization: Bearer` alone — which is exactly what `emit-event.sh` sends. Prints only http codes/ids/lengths; token values masked, never logged. |
+
 ## Stage 65 — fix: Axiom ingest targets the EU region host
 
 | PR | Type | Summary |
