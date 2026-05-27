@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 67 — fix: Axiom setup workflow ingests at the EU edge host
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | fix | `_axiom-setup.yml`: server-side probes proved the pilot's Axiom failures were a multi-region issue — PATs can't ingest (only `xaat-` API tokens can), and the `factory-events` dataset sits on an EU **edge deployment** (`cloud.eu-central-1.aws`), so ingest must target the edge host `eu-central-1.aws.edge.axiom.co`, not `api.eu.axiom.co` (403) or `api.axiom.co` (400 region). The workflow now derives the edge host from the org's `defaultEdgeDeployment`, mints the scoped API token on the control plane, verifies ingest at the edge host (both path shapes), and stores it as the latest `axiom-api-key`. `emit-event.sh` gets pointed at the edge host next, once the workflow confirms the exact URL. |
+
 ## Stage 66 — chore: one-shot Axiom setup workflow (scoped ingest token)
 
 | PR | Type | Summary |

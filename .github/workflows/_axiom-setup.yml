@@ -1,12 +1,17 @@
 name: Axiom Setup (one-shot)
 
 # One-shot: reads axiom-pat (a Personal Access Token) from SM via the broker
-# SA (WIF) and, entirely server-side, (1) probes Axiom to determine the org,
-# region, and working ingest method, (2) creates a scoped API token with
-# ingest+query on the factory-events dataset via POST /v2/tokens, (3) verifies
-# that token can ingest, and (4) stores it as a new version of axiom-api-key.
-# Prints only http codes, org ids, response keys, and lengths — never token
-# values (all masked). Deleted once it has done its job.
+# SA (WIF) and, entirely server-side:
+#   1. reads the org's default edge deployment (e.g. cloud.eu-central-1.aws)
+#      from the US control plane and derives the edge ingest host
+#      (eu-central-1.aws.edge.axiom.co);
+#   2. creates a scoped API token (xaat-, ingest+query on factory-events) via
+#      POST /v2/tokens on the control plane (PATs cannot ingest; API tokens can);
+#   3. verifies that API token can ingest at the edge host (tries both ingest
+#      path shapes);
+#   4. stores the working token as the latest axiom-api-key version.
+# Prints only http codes, ids, hosts, and lengths — token values are masked.
+# Deleted once it has done its job.
 
 on:
   workflow_dispatch:
@@ -34,12 +39,11 @@ jobs:
       - name: Set up gcloud
         uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db  # v3.0.1
 
-      - name: Probe Axiom, create scoped token, store it
+      - name: Mint scoped Axiom ingest token and store it
         env:
           ORG: "factory-or-gftv"
           DATASET: "factory-events"
-          EU: "https://api.eu.axiom.co"
-          US: "https://api.axiom.co"
+          CTRL: "https://api.axiom.co"
         run: |
           set -uo pipefail
           PROJECT="or-factory-master-control"
@@ -52,63 +56,50 @@ jobs:
           TS=$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)
           EVENT='[{"_time":"'"$TS"'","otel.event.name":"factory.axiom.setup","severity_text":"info","_diag":true}]'
 
-          probe() {  # probe LABEL curl-args...
-            local label="$1"; shift
-            local bf http
-            bf=$(mktemp)
-            http=$(curl -sS -m 15 -o "$bf" -w '%{http_code}' "$@") || http="000"
-            echo "[probe] ${label} => http=${http} body=$(tr -d '\r\n' < "$bf" | cut -c1-300)"
-            rm -f "$bf"
-          }
+          # 1) Read org + default edge deployment from the US control plane.
+          obf=$(mktemp)
+          ohttp=$(curl -sS -m 15 -o "$obf" -w '%{http_code}' "${CTRL}/v1/orgs" -H "Authorization: Bearer ${PAT}") || ohttp="000"
+          EDGEDEP=$(jq -r --arg o "$ORG" '.[] | select(.id==$o) | .defaultEdgeDeployment // empty' < "$obf" 2>/dev/null)
+          echo "[orgs] http=${ohttp} org=${ORG} defaultEdgeDeployment=${EDGEDEP:-<none>}"
+          rm -f "$obf"
+          if [ -z "$EDGEDEP" ]; then echo "FAIL: could not read defaultEdgeDeployment for ${ORG}"; exit 1; fi
+          # cloud.eu-central-1.aws -> eu-central-1.aws.edge.axiom.co
+          EDGEHOST="$(printf '%s' "$EDGEDEP" | sed 's/^cloud\.//').edge.axiom.co"
+          echo "[edge] derived ingest host: https://${EDGEHOST}"
 
-          echo "===== 1) discover orgs (PAT, no org-id) ====="
-          probe "GET ${EU}/v1/orgs" -H "Authorization: Bearer ${PAT}" "${EU}/v1/orgs"
-          probe "GET ${US}/v1/orgs" -H "Authorization: Bearer ${PAT}" "${US}/v1/orgs"
-
-          echo "===== 2) ingest probes (dataset=${DATASET}, org=${ORG}) ====="
-          probe "ingest EU +orgid"   -X POST "${EU}/v1/datasets/${DATASET}/ingest" -H "Authorization: Bearer ${PAT}" -H "X-Axiom-Org-Id: ${ORG}" -H "Content-Type: application/json" --data "${EVENT}"
-          probe "ingest US +orgid"   -X POST "${US}/v1/datasets/${DATASET}/ingest" -H "Authorization: Bearer ${PAT}" -H "X-Axiom-Org-Id: ${ORG}" -H "Content-Type: application/json" --data "${EVENT}"
-          probe "ingest EU no-orgid" -X POST "${EU}/v1/datasets/${DATASET}/ingest" -H "Authorization: Bearer ${PAT}" -H "Content-Type: application/json" --data "${EVENT}"
-
-          echo "===== 3) create scoped API token (ingest+query on ${DATASET}) ====="
+          # 2) Create a scoped API token (xaat-) on the control plane.
           TOKBODY=$(jq -cn --arg ds "$DATASET" \
             '{name:"factory-emitter-ingest", description:"factory observability emitter — ingest+query on factory-events", datasetCapabilities:{($ds):{ingest:["create"],query:["read"]}}, orgCapabilities:{}}')
-          NEWTOK=""
-          for HOST in "$EU" "$US"; do
-            cbf=$(mktemp)
-            chttp=$(curl -sS -m 15 -o "$cbf" -w '%{http_code}' -X POST "${HOST}/v2/tokens" \
-              -H "Authorization: Bearer ${PAT}" -H "X-Axiom-Org-Id: ${ORG}" -H "Content-Type: application/json" \
-              --data "${TOKBODY}") || chttp="000"
-            echo "[create ${HOST}] http=${chttp} keys=$(jq -rc 'keys' < "$cbf" 2>/dev/null || echo n/a) id=$(jq -r '.id // empty' < "$cbf" 2>/dev/null)"
-            NEWTOK=$(jq -r '.token // .rawToken // .apiToken // empty' < "$cbf" 2>/dev/null)
-            rm -f "$cbf"
-            [ -n "$NEWTOK" ] && { echo "[create] token captured from ${HOST}"; break; }
-          done
-
-          if [ -z "$NEWTOK" ]; then
-            echo "RESULT: no token created — inspect the probe bodies above (payload/org/region) and iterate. Nothing stored."
-            exit 0
-          fi
+          cbf=$(mktemp)
+          chttp=$(curl -sS -m 15 -o "$cbf" -w '%{http_code}' -X POST "${CTRL}/v2/tokens" \
+            -H "Authorization: Bearer ${PAT}" -H "X-Axiom-Org-Id: ${ORG}" -H "Content-Type: application/json" \
+            --data "${TOKBODY}") || chttp="000"
+          echo "[create-token] http=${chttp} id=$(jq -r '.id // empty' < "$cbf" 2>/dev/null)"
+          NEWTOK=$(jq -r '.token // .rawToken // .apiToken // empty' < "$cbf" 2>/dev/null)
+          rm -f "$cbf"
+          if [ -z "$NEWTOK" ]; then echo "FAIL: token creation returned no token (http=${chttp})"; exit 1; fi
           echo "::add-mask::${NEWTOK}"
           echo "new token: length=${#NEWTOK} prefix=$(printf '%s' "$NEWTOK" | cut -c1-5)"
 
-          echo "===== 4) verify new token ingests (Bearer only, EU) ====="
-          vbf=$(mktemp)
-          vhttp=$(curl -sS -m 15 -o "$vbf" -w '%{http_code}' -X POST "${EU}/v1/datasets/${DATASET}/ingest" \
-            -H "Authorization: Bearer ${NEWTOK}" -H "Content-Type: application/json" --data "${EVENT}") || vhttp="000"
-          echo "[verify new-token ingest EU] http=${vhttp} body=$(tr -d '\r\n' < "$vbf" | cut -c1-200)"
-          rm -f "$vbf"
+          # 3) Verify the API token can ingest at the EDGE host (try both shapes).
+          WORKING=""
+          for url in "https://${EDGEHOST}/v1/datasets/${DATASET}/ingest" "https://${EDGEHOST}/v1/ingest/${DATASET}"; do
+            vbf=$(mktemp)
+            vhttp=$(curl -sS -m 15 -o "$vbf" -w '%{http_code}' -X POST "$url" \
+              -H "Authorization: Bearer ${NEWTOK}" -H "Content-Type: application/json" --data "${EVENT}") || vhttp="000"
+            echo "[verify] ${url} => http=${vhttp} body=$(tr -d '\r\n' < "$vbf" | cut -c1-200)"
+            rm -f "$vbf"
+            case "$vhttp" in 2*) WORKING="$url"; break ;; esac
+          done
 
-          case "$vhttp" in
-            2*)
-              if printf '%s' "$NEWTOK" | gcloud secrets versions add axiom-api-key --project="$PROJECT" --data-file=- >/dev/null 2>&1; then
-                echo "RESULT: ✅ scoped token created, ingest verified (http=${vhttp}), and stored as latest axiom-api-key. Re-run observability-pilot (info) — expect axiom='ok'."
-              else
-                echo "RESULT: ⚠️ token created + ingest verified, but writing axiom-api-key FAILED (broker SA likely lacks secretmanager.secretVersionAdder). Grant it, or store manually."
-              fi
-              ;;
-            *)
-              echo "RESULT: ⚠️ token created but its ingest returned http=${vhttp} (not 2xx). Not stored — inspect body above."
-              ;;
-          esac
+          # 4) Store the token if a working ingest endpoint was found.
+          if [ -n "$WORKING" ]; then
+            if printf '%s' "$NEWTOK" | gcloud secrets versions add axiom-api-key --project="$PROJECT" --data-file=- >/dev/null 2>&1; then
+              echo "RESULT: ✅ stored xaat- token as latest axiom-api-key. WORKING_INGEST_URL=${WORKING}"
+            else
+              echo "RESULT: ⚠️ ingest works at ${WORKING} but writing axiom-api-key FAILED (broker SA lacks secretmanager.secretVersionAdder). Grant it, then re-run."
+            fi
+          else
+            echo "RESULT: ⚠️ token created but no edge ingest endpoint returned 2xx — inspect [verify] bodies above."
+          fi
           echo "===== done ====="
