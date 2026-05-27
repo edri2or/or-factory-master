@@ -687,6 +687,7 @@ jobs:
           SYSTEM_NAME: ${{ inputs.system_name }}
           GCP_PROJECT: ${{ steps.validate.outputs.gcp_project }}
           REUSE: ${{ steps.validate.outputs.reuse }}
+          ADOPT: ${{ steps.validate.outputs.adopt }}
         run: |
           set -uo pipefail
           # Soft-fail by design: a failure here must NEVER fail a provision.
@@ -718,6 +719,7 @@ jobs:
           WIF_PROVIDER="projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
           MODE="normal"
           [ "$REUSE" = "true" ] && MODE="reuse"
+          [ "$ADOPT" = "true" ] && MODE="adopt"
 
           # Enumerate generic secrets from factory SM. The EXCLUDE regex MUST stay
           # in sync with scripts/copy-generic-secrets.sh — same source of truth.

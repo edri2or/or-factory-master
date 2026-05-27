@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 88 — fix: adopt-mode completeness — register-system-app + orientation-doc MODE
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | fix | Two adopt-mode gaps surfaced while provisioning the first real adopt system (`adhd-agent` onto recovered `factory-test-7`). **(1)** `register-system-app.yml` only had `shared_gcp_project` (test-pattern guard), so a real adopt system whose GCP project id ≠ repo name had no clean way to point the App's SM secrets at the right project — it worked for `factory-test-7` only because that id happens to match the test pattern. Added an `adopt_gcp_project` input (mutually exclusive with `shared_gcp_project`; refuses control projects + `factory-test-25`; accepts any valid project id) that sets `SYS_PROJECT`, so `github-app-{id,private-key,installation-id}` + the `deploy-sa`/`runtime-sa` grants land in the recovered project while the repo, App name, receiver, and `APP_*` repo vars stay `system_name`. **(2)** `provision-system.yml`'s "Push system orientation docs" step computed `MODE` as only `normal`/`reuse`, so an adopt system's scaffolded `AGENTS.md` was mislabeled `provisionMode: normal` — misleading the in-system Claude Code agent into thinking its GCP project was freshly created rather than recovered (the `gcpProjectId` was already correct — `factory-test-7` — since the step uses the `gcp_project` output). Added the `adopt` case (+ `ADOPT` env) and extended `AGENTS.md.template`'s parenthetical to explain adopt (gcpProjectId is the source of truth, not the repo name). `CLAUDE.md` + `register-system-app` SKILL updated. `bash -n` + `yamllint` clean. Stages 71–72 rotated to the changelog archive. |
+
 ## Stage 87 — fix: adopt-mode billing link retries the post-undelete IAM propagation window
 
 | PR | Type | Summary |
@@ -90,16 +96,4 @@
 |---|---|---|
 | TBD | feature | Observability **Phase C**, part 2: deployed systems self-emit. `scripts/emit-event.sh` now reads its SM project from `${EMIT_SM_PROJECT:-or-factory-master-control}` (backward-compatible — factory-side callers unchanged). `provision-system.yml` scaffolds `scripts/emit-event.sh` + `scripts/lib/` into each new system repo. `templates/system/.github/workflows/deploy-railway-cloudflare.yml` gains three soft-fail (`continue-on-error`) steps — `factory.deploy.started` (after SM read), `factory.deploy.completed` (after Summary), `factory.deploy.failed` (`if: failure()`) — all `--layer=system`, reading the system's OWN SM (where `copy-generic-secrets.sh` already places `axiom-api-key`/`telegram-*`/`linear-*`). Reaches newly-provisioned systems only; each step guards on the emitter's presence (older scaffolds no-op). The per-system Better Stack monitor is **deferred** — `better-stack-api-key` is a telemetry token and needs Uptime-API confirmation first. Docs (`CLAUDE.md`, `docs/observability.md`) updated. |
 
-## Stage 72 — fix: runtime-audit probe misread connection failures as unhealthy
-
-| PR | Type | Summary |
-|---|---|---|
-| TBD | fix | `system-runtime-audit.yml`: `curl -w '%{http_code}'` already prints `000` on a connection failure, but the probe also had `\|\| echo "000"`, concatenating to `"000000"` — which missed the `000)` not-deployed branch and fell through to "unhealthy". So a not-deployed leftover (`factory-test-24`) wrongly emitted `factory.runtime_audit.failed` (spurious Telegram + Linear issue). Fix: drop the `\|\| echo` and default with `code="${code:-000}"`, so `000` → not-deployed (no alert) as intended. Caught on the first live dispatch. |
-
-## Stage 71 — feat: observability Phase C — system-runtime-audit
-
-| PR | Type | Summary |
-|---|---|---|
-| TBD | feature | Observability **Phase C** (generated-systems visibility), part 1. New `.github/workflows/system-runtime-audit.yml` — read-only cron every 6h (`:15`, staggered off factory-health-audit) + manual dispatch. Lists each real system (`gcloud projects list --filter=parent.id=123180924297`), HTTP-probes `https://n8n-<system>.or-infra.com/healthz` (universal across Caddy + pre-Caddy), and emits per-system `factory.runtime_audit.ok` (info → Axiom) / `factory.runtime_audit.failed` (error + action_required → Axiom + Telegram + Linear) via `scripts/emit-event.sh`, classifying `2xx`=healthy, `000`=not-deployed (logged, no alert), other=unhealthy. Adds a `factory.runtime_audit.summary` (info → Axiom) with per-run counts. Reuse-mode test systems (shared `factory-test-25`) aren't folder-listed — a noted v1 limitation. Deploy-template emit + per-system Better Stack monitors are deferred to PR-C2. Reuses the Phase A emitter unchanged. |
-
-> Older stages (Stage 70 and earlier) are archived in [`docs/changelog-archive/CHANGELOG.md`](docs/changelog-archive/CHANGELOG.md).
+> Older stages (Stage 72 and earlier) are archived in [`docs/changelog-archive/CHANGELOG.md`](docs/changelog-archive/CHANGELOG.md).

@@ -5,7 +5,10 @@ Register a per-system GitHub App, narrowly scoped to a single system repo. Runs 
 ## Pre-flight
 
 Before doing anything:
-1. Confirm with the user the system is already provisioned. **If it was provisioned in reuse mode (a test system), pass the same `shared_gcp_project=factory-test-25`** here too — the App's SM secrets + `deploy-sa`/`runtime-sa` grants then land in the shared project, while the repo, App name, App scope, and `APP_*` repo vars stay `system_name`. (See CLAUDE.md → "Test systems vs. real systems".)
+1. Confirm with the user the system is already provisioned, and **match the mode `build-system` used**:
+   - **Reuse mode (test system)** → pass the same `shared_gcp_project=factory-test-25`.
+   - **Adopt mode (real system on a recovered project)** → pass `adopt_gcp_project=<the project id provision used>` (the project id differs from `system_name`).
+   Either way the App's SM secrets + `deploy-sa`/`runtime-sa` grants land in that GCP project, while the repo, App name, App scope, and `APP_*` repo vars stay `system_name`. (See CLAUDE.md → "Test systems vs. real systems".)
 2. Get `system_name`. Validate the same regex as `build-system`:
    - `^[a-z][a-z0-9-]{4,28}[a-z0-9]$`, 6–30 chars.
 3. Read-only existence + collision checks:
@@ -20,6 +23,7 @@ Before doing anything:
 1. Confirm with the user, then dispatch via the `dispatch_workflow` MCP tool: `workflow_id=register-system-app.yml`, `ref=main`, with:
    - **Normal:** `inputs={system_name:<name>}`.
    - **Reuse (test):** `inputs={system_name:<name>, shared_gcp_project:factory-test-25}`.
+   - **Adopt (real, recovered project):** `inputs={system_name:<name>, adopt_gcp_project:<project-id>}`. Mutually exclusive with `shared_gcp_project`.
    It triggers the run as the org-wide broker App and returns the `run_id`.
 2. **The 2 browser clicks are still the operator's** — dispatching only *starts* the run; the operator must complete GitHub App creation within ~10 min (the run sends the receiver URL via Telegram and polls for the credentials):
    - Click 1: GitHub shows "Create GitHub App" — click it.

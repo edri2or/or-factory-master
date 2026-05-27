@@ -2,6 +2,18 @@
 
 Older stages were moved out of the root `CHANGELOG.md` to keep it under the 20 KB CI cap (`scripts/check-changelog-size.sh`). The newest stages live in [`../../CHANGELOG.md`](../../CHANGELOG.md).
 
+## Stage 72 — fix: runtime-audit probe misread connection failures as unhealthy
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | fix | `system-runtime-audit.yml`: `curl -w '%{http_code}'` already prints `000` on a connection failure, but the probe also had `\|\| echo "000"`, concatenating to `"000000"` — which missed the `000)` not-deployed branch and fell through to "unhealthy". So a not-deployed leftover (`factory-test-24`) wrongly emitted `factory.runtime_audit.failed` (spurious Telegram + Linear issue). Fix: drop the `\|\| echo` and default with `code="${code:-000}"`, so `000` → not-deployed (no alert) as intended. Caught on the first live dispatch. |
+
+## Stage 71 — feat: observability Phase C — system-runtime-audit
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | feature | Observability **Phase C** (generated-systems visibility), part 1. New `.github/workflows/system-runtime-audit.yml` — read-only cron every 6h (`:15`, staggered off factory-health-audit) + manual dispatch. Lists each real system (`gcloud projects list --filter=parent.id=123180924297`), HTTP-probes `https://n8n-<system>.or-infra.com/healthz` (universal across Caddy + pre-Caddy), and emits per-system `factory.runtime_audit.ok` (info → Axiom) / `factory.runtime_audit.failed` (error + action_required → Axiom + Telegram + Linear) via `scripts/emit-event.sh`, classifying `2xx`=healthy, `000`=not-deployed (logged, no alert), other=unhealthy. Adds a `factory.runtime_audit.summary` (info → Axiom) with per-run counts. Reuse-mode test systems (shared `factory-test-25`) aren't folder-listed — a noted v1 limitation. Deploy-template emit + per-system Better Stack monitors are deferred to PR-C2. Reuses the Phase A emitter unchanged. |
+
 ## Stage 70 — feat: observability Phase B — instrument provision-system
 
 | PR | Type | Summary |
