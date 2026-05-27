@@ -531,11 +531,14 @@ jobs:
           # Observability emitter (Phase C): ship emit-event.sh + libs so the system's
           # own deploy can emit factory.deploy.* events (reads the system's SM via EMIT_SM_PROJECT).
           EMITTER_SRC="${GITHUB_WORKSPACE}/scripts/emit-event.sh"
+          EMITTER_DEPLOY_SRC="${GITHUB_WORKSPACE}/scripts/emit-deploy.sh"
           EMITTER_LIB_SRC="${GITHUB_WORKSPACE}/scripts/lib"
           [ -f "$EMITTER_SRC" ] || { echo "FAIL: emit-event.sh not found at $EMITTER_SRC" >&2; exit 1; }
+          [ -f "$EMITTER_DEPLOY_SRC" ] || { echo "FAIL: emit-deploy.sh not found at $EMITTER_DEPLOY_SRC" >&2; exit 1; }
           [ -d "$EMITTER_LIB_SRC" ] || { echo "FAIL: scripts/lib not found at $EMITTER_LIB_SRC" >&2; exit 1; }
           mkdir -p "$CLONE_DIR/scripts/lib"
           cp "$EMITTER_SRC" "$CLONE_DIR/scripts/emit-event.sh"
+          cp "$EMITTER_DEPLOY_SRC" "$CLONE_DIR/scripts/emit-deploy.sh"
           cp "$EMITTER_LIB_SRC"/*.sh "$CLONE_DIR/scripts/lib/"
 
           git -C "$CLONE_DIR" config user.name "or-factory-master[bot]"
