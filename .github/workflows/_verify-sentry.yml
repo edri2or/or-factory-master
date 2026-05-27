@@ -99,50 +99,56 @@ jobs:
           fi
 
           # --- trigger a uniquely-marked error, with a decoy Authorization
-          #     header + body sentinel so the scrubber has something to strip ---
+          #     header + body sentinel so the scrubber has something to strip.
+          #     The route captures explicitly + flushes + returns the event_id,
+          #     so we read it back by id (deterministic, no tag-search lag). ---
           MARKER="verify-$(date +%s)-${RANDOM}"
-          trig=$(curl -sS -m 15 -o /dev/null -w '%{http_code}' -X POST \
+          trigbody=$(mktemp)
+          trig=$(curl -sS -m 20 -o "$trigbody" -w '%{http_code}' -X POST \
             -H "X-Admin-Secret: ${ADMIN}" \
             -H "Authorization: Bearer SCRUB_ME_AUTH" \
             -H "Content-Type: application/json" \
             --data '{"sentinel":"SCRUB_ME_BODY"}' \
             "${URL}/debug/sentry-test?marker=${MARKER}" 2>/dev/null) || trig="000"
-          echo "[verify-sentry] triggered marker='${MARKER}' http='${trig}'"
           if [ "$trig" = "403" ]; then
             echo "[verify-sentry] result='fail' stage='trigger' reason='admin secret rejected (403)'"
+            rm -f "$trigbody"; exit 1
+          fi
+          EVENT_ID=$(jq -r '.event_id // empty' "$trigbody" 2>/dev/null) || EVENT_ID=""
+          INITIALIZED=$(jq -r '.initialized // empty' "$trigbody" 2>/dev/null) || INITIALIZED=""
+          FLUSHED=$(jq -r '.flushed // empty' "$trigbody" 2>/dev/null) || FLUSHED=""
+          rm -f "$trigbody"
+          echo "[verify-sentry] triggered marker='${MARKER}' http='${trig}' initialized='${INITIALIZED}' flushed='${FLUSHED}' event_id='${EVENT_ID}'"
+
+          if [ "$INITIALIZED" != "true" ]; then
+            echo "[verify-sentry] result='fail' stage='sdk-disabled' reason='server reports Sentry not initialized — SENTRY_DSN (sentry-api-key) not a valid DSN at runtime or not picked up by the deployed revision'"
+            exit 1
+          fi
+          if [ -z "$EVENT_ID" ]; then
+            echo "[verify-sentry] result='fail' stage='trigger' reason='no event_id in response (http=${trig})'"
             exit 1
           fi
 
-          # --- poll the Sentry API for the event carrying our marker tag ---
-          EVENT_ID=""
-          ev=$(mktemp)
+          # --- fetch the exact event by id (retry for ingest/processing lag) ---
+          det=$(mktemp)
+          found="no"
           for _ in $(seq 1 20); do
             sleep 6
-            http=$(curl -sS -m 20 -o "$ev" -w '%{http_code}' \
+            http=$(curl -sS -m 20 -o "$det" -w '%{http_code}' \
               -H "Authorization: Bearer ${TOKEN}" \
-              "${API}/projects/${ORG_SLUG}/${PROJ_SLUG}/events/?query=verify_marker%3A${MARKER}" 2>/dev/null) || http="000"
-            case "$http" in 2*) ;; *) continue ;; esac
-            EVENT_ID=$(jq -r 'if type=="array" then (.[0].eventID // .[0].id // empty) else empty end' "$ev" 2>/dev/null) || EVENT_ID=""
-            [ -n "$EVENT_ID" ] && break
+              "${API}/projects/${ORG_SLUG}/${PROJ_SLUG}/events/${EVENT_ID}/" 2>/dev/null) || http="000"
+            case "$http" in 2*) found="yes"; break ;; esac
           done
-          rm -f "$ev"
 
-          if [ -z "$EVENT_ID" ]; then
-            echo "[verify-sentry] result='fail' stage='read-back' reason='event with marker not found within ~2m — DSN likely invalid (SDK disabled) or ingest failing'"
+          if [ "$found" != "yes" ]; then
+            rm -f "$det"
+            echo "[verify-sentry] result='fail' stage='read-back' event_id='${EVENT_ID}' reason='event accepted by SDK (flushed=${FLUSHED}) but not retrievable from the API within ~2m — ingest rejected it or project mismatch'"
             exit 1
           fi
           echo "[verify-sentry] event_found event_id='${EVENT_ID}'"
 
-          # --- fetch the full event and assert the scrubber stripped secrets ---
-          det=$(mktemp)
-          http=$(curl -sS -m 20 -o "$det" -w '%{http_code}' \
-            -H "Authorization: Bearer ${TOKEN}" \
-            "${API}/projects/${ORG_SLUG}/${PROJ_SLUG}/events/${EVENT_ID}/" 2>/dev/null) || http="000"
-          case "$http" in
-            2*) ;;
-            *) echo "[verify-sentry] result='fail' stage='fetch-event' http='${http}'"; rm -f "$det"; exit 1 ;;
-          esac
-
+          # --- assert the beforeSend scrubber stripped the decoy secrets from
+          #     the event we just fetched (Authorization header + body sentinel) ---
           leak="no"
           grep -qi 'SCRUB_ME_AUTH\|SCRUB_ME_BODY' "$det" && leak="yes"
           authleak=$(jq -r '[.. | objects | select(has("headers")) | .headers] | tostring' "$det" 2>/dev/null | grep -ci '"authorization"' || true)

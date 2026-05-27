@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 82 — fix: make the Sentry verification deterministic (capture+flush+event_id)
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | fix | The Stage 81 harness got to `read-back` then failed to find the event by tag-search — the `verify_marker` tag set via `getCurrentScope()` didn't reliably reach the error-handler-captured event, and on Cloud Run `min-instances=0` a fire-and-forget send can be cut off. `/debug/sentry-test` now **captures the exception explicitly** with the tag (`captureException(err, { tags })`), **awaits `Sentry.flush(3000)`** (guarantees transmission before the response), and returns `{ event_id, initialized, flushed }`. `_verify-sentry.yml` reads the `event_id` from the response and **fetches that exact event by id** (no tag-search lag), and uses `initialized` to report a distinct `sdk-disabled` result (DSN not loaded by the running revision) vs a real ingest failure. Verified locally: disabled SDK returns `initialized:false`; 403 gate intact. Requires an MCP redeploy. |
+
 ## Stage 81 — test: autonomous end-to-end Sentry verification harness
 
 | PR | Type | Summary |

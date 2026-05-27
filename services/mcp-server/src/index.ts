@@ -95,23 +95,29 @@ app.get('/health', (_req: Request, res: Response) => {
   res.json({ status: 'ok', service: 'factory-actions-mcp' });
 });
 
-// Admin-gated Sentry connectivity probe: throws so the Express error handler
-// reports it to Sentry. Verifies error delivery end-to-end without exposing
-// anything on public traffic (same admin-secret gate as /token). Accepts a
-// `marker` (query) that is set as the `verify_marker` tag + embedded in the
-// message, so _verify-sentry.yml can locate the exact event it triggered and
-// read it back from the Sentry API. app.all so the verifier can POST a body
-// (exercising the beforeSend body scrubber).
-app.all('/debug/sentry-test', (req: Request, _res: Response) => {
+// Admin-gated Sentry connectivity probe. Captures a marked exception EXPLICITLY
+// (not via throw) so _verify-sentry.yml gets a deterministic outcome:
+//   - the verify_marker tag is attached directly (no scope-propagation guesswork),
+//   - Sentry.flush() is awaited so the event is transmitted before the response
+//     (critical on Cloud Run min-instances=0, where a fire-and-forget send can be
+//     cut off when the instance idles),
+//   - the response returns the server-generated event_id + initialized/flushed,
+//     so the verifier can fetch the exact event by id (no tag-search lag) and can
+//     tell a disabled SDK apart from a failed ingest.
+// app.all so the verifier can POST a body (exercising the beforeSend scrubber).
+app.all('/debug/sentry-test', async (req: Request, res: Response) => {
   const provided = (req.headers['x-admin-secret'] as string | undefined) ?? '';
   if (!secretMatches(provided)) {
-    _res.status(403).json({ error: 'unauthorized' });
+    res.status(403).json({ error: 'unauthorized' });
     return;
   }
   const q = req.query.marker;
   const marker = typeof q === 'string' && q.length > 0 ? q : 'none';
-  Sentry.getCurrentScope().setTag('verify_marker', marker);
-  throw new Error(`sentry-verify ${marker}`);
+  const eventId = Sentry.captureException(new Error(`sentry-verify ${marker}`), {
+    tags: { verify_marker: marker },
+  });
+  const flushed = await Sentry.flush(3000);
+  res.status(500).json({ ok: false, marker, event_id: eventId, initialized: Sentry.isInitialized(), flushed });
 });
 
 // Diagnostic — returns recent requests. Accepts X-Admin-Secret or Bearer.
