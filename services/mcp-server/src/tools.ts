@@ -50,6 +50,7 @@ import { probe, isAllowedUrl, AllowlistError, type ProbeResult } from './probe.j
 import { resolveRecord as dnsResolveRecord, SUPPORTED_DNS_TYPES, DnsAllowlistError } from './dns-helper.js';
 import { inspectCert as tlsInspectCert, TlsAllowlistError } from './tls-helper.js';
 import { n8nApiGet, N8nKeyMissingError } from './n8n-client.js';
+import { emitEvent, type EmitEventInput } from './observability-client.js';
 
 export function registerTools(server: McpServer): void {
   // Shared owner/repo params for every GitHub-backed tool. Default to the
@@ -395,6 +396,42 @@ export function registerTools(server: McpServer): void {
         timestamp: new Date().toISOString(),
       };
       return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
+    },
+  );
+
+  server.tool(
+    'emit_event',
+    "Emit one observability event into the factory pipeline — the same OTel-shaped event + soft-fail fan-out as scripts/emit-event.sh, reimplemented in TypeScript (the image ships no scripts/). Fans out to Axiom (always), Telegram (severity warning|error|critical), and Linear (severity error|critical OR action_required=true, with 24h dedup + managed labels). The 5 destination secrets are read at runtime from or-factory-master-control as the broker SA. Each destination fails independently; the call never errors. WRITE-ish: an error/critical/action_required event will create or comment a Linear issue and a warning+ event will send Telegram — use info for silent (Axiom-only) telemetry.",
+    {
+      name: z.string().describe("OTel event name, e.g. 'factory.agent.note' (dotted, lower-snake)."),
+      severity: z.enum(['info', 'warning', 'error', 'critical']).describe('info → Axiom only; warning+ → also Telegram; error/critical → also Linear.'),
+      layer: z.enum(['factory', 'system']).optional().default('factory').describe("Event layer (default 'factory')."),
+      system: z.string().optional().describe('System this event is about (sets factory.system_name). Omit for control-plane/global events.'),
+      workflow: z.string().optional().default('mcp:emit_event').describe("Source label (factory.workflow); also drives the Linear source-* label. Default 'mcp:emit_event'."),
+      run_id: z.string().optional().describe('Correlation id (factory.run_id). Defaults to an ISO timestamp.'),
+      action_required: z.boolean().optional().default(false).describe('When true, routes to Linear even for info/warning severity.'),
+      body: z.record(z.string(), z.unknown()).optional().describe('Arbitrary structured detail (event.body). Default {}.'),
+    },
+    async ({ name, severity, layer, system, workflow, run_id, action_required, body }) => {
+      const input: EmitEventInput = {
+        name,
+        severity,
+        layer: layer ?? 'factory',
+        system,
+        workflow: workflow ?? 'mcp:emit_event',
+        runId: run_id ?? new Date().toISOString(),
+        actionRequired: action_required ?? false,
+        body,
+      };
+      try {
+        const result = await emitEvent(input);
+        return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
+      } catch (e) {
+        // emitEvent is soft-fail and should not throw, but guard anyway.
+        return {
+          content: [{ type: 'text' as const, text: JSON.stringify({ error: 'emit_failed', detail: String(e).slice(0, 400) }, null, 2) }],
+        };
+      }
     },
   );
 

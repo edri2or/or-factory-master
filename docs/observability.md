@@ -232,7 +232,14 @@ read_github_actions_run_logs(job_id=<id>, grep="\[linear\]")  # תוצאת Linea
   - ✅ Better Stack monitor אוטומטי לכל מערכת חדשה — ב-`provision-system.yml` דרך `scripts/create-uptime-monitor.sh`,
     soft-fail, idempotent (לא יוצר כפול אם כבר קיים), עם הגנה על תקרת free tier (10 monitors). Email-only alerts;
     SMS/Telegram נשארים דרך `system-runtime-audit.yml`. (הטוקן `better-stack-api-key` אומת מול ה-Uptime API ב-Stage 77.)
-- **Phase D — Refinement**: ניתוב Telegram דרך Better Stack; כלי MCP `emit_event`; הוספת
-  Sentry לקוד JS/TS.
+- **Phase D — Refinement** (בעבודה):
+  - ✅ כלי MCP `emit_event` — הסוכן פולט event ישירות לצינור. כלי write ב-MCP server
+    (`services/mcp-server/src/tools.ts`) מעל פורט TypeScript של ה-fan-out (`observability-client.ts`),
+    parity מלא עם `scripts/emit-event.sh`: Axiom (תמיד), Telegram (`warning\|error\|critical`),
+    Linear (`error\|critical` או `action_required`, dedup 24ש + labels). ה-image לא כולל `scripts/`,
+    לכן מימוש מחדש ב-TS ולא shell-out. חמשת הסודות נקראים ב-runtime מ-`or-factory-master-control`
+    דרך `getSecretValue` (ה-broker SA, אותו principal שמריץ את הסקריפט ב-CI). soft-fail לכל יעד בנפרד.
+  - ⬜ ניתוב Telegram דרך Better Stack.
+  - ⬜ הוספת Sentry לקוד JS/TS.
 
 per-system runtime health שייך ל-Phase C, לא ל-Phase B.
