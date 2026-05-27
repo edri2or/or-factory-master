@@ -246,6 +246,10 @@ read_github_actions_run_logs(job_id=<id>, grep="\[linear\]")  # תוצאת Linea
     **הגדרה ידנית ב-Better Stack** (פעם אחת): קרא את `bs-webhook-secret` מ-SM → Integrations → Exporting data →
     Webhook (Incident) → URL `https://<mcp-url>/bs-webhook?token=<secret>`, גוף:
     `{"event":"$EVENT","name":"$NAME","cause":"$CAUSE","url":"$URL","incident_id":"$INCIDENT_ID"}` → חבר ל-monitors.
+    **הערה — paywall:** outgoing webhooks ב-Better Stack הם בתשלום, והחשבון ב-Free, אז `/bs-webhook` **רדום-מוכן**
+    (יעבוד מיד עם שדרוג; sub-minute אמיתי). הנתיב **הפעיל בחינם**: `bs-incidents-to-telegram.yml` (cron כל ~5 דק')
+    עושה polling ל-API הקריאה של ה-incidents (זמין ב-Free) ומעביר ל-Telegram, dedup דרך watermark ב-SM
+    (`bs-telegram-watermark`). זיהוי תת-דקתי של BS מגיע ל-Telegram תוך ~5 דק' (במקום 6 שעות).
   - ✅ Sentry ל-JS/TS — ה-MCP server (`services/mcp-server/`) מאותחל דרך `src/instrument.ts`
     (`@sentry/node`, נטען ב-`node --import` לפני שאר הקוד) + `Sentry.setupExpressErrorHandler`.
     errors-only (`tracesSampleRate: 0`), ה-DSN מ-`sentry-api-key` (mount כ-`SENTRY_DSN`),
