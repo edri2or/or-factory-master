@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 79 — feat: observability Phase D — MCP `emit_event` tool
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | feature | Observability **Phase D**, item 1 of 3: the agent can now emit events into the pipeline directly. New MCP write tool `emit_event` (`services/mcp-server/src/tools.ts`) backed by a TypeScript port of the bash fan-out in new `services/mcp-server/src/observability-client.ts` — full parity with `scripts/emit-event.sh`: builds the OTel-SemConv event and fans out **soft-fail** to Axiom (always), Telegram (`warning\|error\|critical`), and Linear (`error\|critical` or `action_required`, 24h dedup + managed labels + `source-*` mapping ported from `scripts/lib/linear-issue.sh`). The image ships no `scripts/`, so it's reimplemented in TS, not shelled out. The 5 destination secrets are read at runtime from `or-factory-master-control` via the existing `getSecretValue()` (the runtime broker SA already reads them in CI) — no `--set-secrets`/deploy-config change. Each destination fails independently; the tool never throws. Severity gating preserved (info = Axiom-only/silent). Requires a redeploy of the MCP Cloud Run service to go live. |
+
 ## Stage 78 — feat: per-system Better Stack uptime monitor (closes Phase C deferral)
 
 | PR | Type | Summary |
