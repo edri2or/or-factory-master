@@ -4,24 +4,22 @@
   "nodes": [
     {
       "parameters": {
-        "updates": ["message", "callback_query", "edited_message"],
-        "additionalFields": {
-          "restrictToChatIds": "@@CHAT_ID@@",
-          "secretToken": "@@TG_WEBHOOK_SECRET@@"
-        }
+        "httpMethod": "POST",
+        "path": "telegram-in/inbound",
+        "responseMode": "onReceived",
+        "options": {}
       },
       "id": "10000000-0000-0000-0000-000000000001",
-      "name": "Telegram Trigger",
-      "type": "n8n-nodes-base.telegramTrigger",
-      "typeVersion": 1.2,
+      "name": "Telegram Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
       "position": [220, 320],
-      "webhookId": "tg-inbound",
-      "credentials": { "telegramApi": { "id": "@@CRED_TELEGRAM_ID@@", "name": "Telegram (factory-master)" } }
+      "webhookId": "tg-inbound-telegram"
     },
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "// Normalize message | edited_message | callback_query into one shape.\nconst u = $input.first().json;\nconst cb = u.callback_query || null;\nconst msg = u.message || u.edited_message || (cb && cb.message) || {};\nconst isCallback = !!cb;\nlet text = isCallback ? (cb.data || '') : (msg.text || msg.caption || '');\ntext = String(text);\nconst chatId = (msg.chat && msg.chat.id) || (cb && cb.from && cb.from.id) || '';\nconst updateId = (u.update_id !== undefined && u.update_id !== null) ? u.update_id : 0;\nreturn [{ json: { update_id: updateId, chat_id: chatId, message_id: (msg.message_id || null), text: text, kind: isCallback ? 'callback_query' : (u.edited_message ? 'edited_message' : 'message') } }];"
+        "jsCode": "// The Webhook node delivers the raw Telegram update under .body. Normalize\n// message | edited_message | callback_query into one shape, and DROP anything\n// not from the single authorized operator chat (replaces the Telegram Trigger's\n// restrictToChatIds; Caddy already validated the secret token at the edge).\n// @@CHAT_ID@@ is substituted at install time.\nconst u = ($input.first().json && $input.first().json.body) || $input.first().json || {};\nconst cb = u.callback_query || null;\nconst msg = u.message || u.edited_message || (cb && cb.message) || {};\nconst isCallback = !!cb;\nlet text = isCallback ? (cb.data || '') : (msg.text || msg.caption || '');\ntext = String(text).trim();\nconst chatId = (msg.chat && msg.chat.id) || (cb && cb.from && cb.from.id) || '';\nif (String(chatId) !== '@@CHAT_ID@@') { return []; }\nif (!text) { return []; }\nreturn [{ json: { text: text, chat_id: chatId, kind: isCallback ? 'callback_query' : (u.edited_message ? 'edited_message' : 'message') } }];"
       },
       "id": "10000000-0000-0000-0000-000000000002",
       "name": "Extract & Normalize",
@@ -31,163 +29,39 @@
     },
     {
       "parameters": {
-        "operation": "executeQuery",
-        "query": "INSERT INTO tg_updates_seen (update_id) VALUES ({{ $json.update_id }}) ON CONFLICT (update_id) DO NOTHING RETURNING update_id;",
-        "options": {}
-      },
-      "id": "10000000-0000-0000-0000-000000000003",
-      "name": "Dedupe Update",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.5,
-      "position": [660, 320],
-      "credentials": { "postgres": { "id": "@@CRED_POSTGRES_ID@@", "name": "Postgres (n8n)" } }
-    },
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "SELECT\n  (SELECT profile FROM style_profile WHERE chat_id = {{ $('Extract & Normalize').item.json.chat_id }}) AS style,\n  (SELECT json_agg(t) FROM (SELECT message FROM n8n_chat_histories WHERE session_id = 'tg:' || {{ $('Extract & Normalize').item.json.chat_id }} ORDER BY id DESC LIMIT 20) t) AS memory,\n  (SELECT json_agg(p) FROM (SELECT id, action, params FROM pending_actions WHERE chat_id = {{ $('Extract & Normalize').item.json.chat_id }} AND status = 'awaiting') p) AS pending;",
-        "options": {}
-      },
-      "id": "10000000-0000-0000-0000-000000000004",
-      "name": "Load Context",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.5,
-      "position": [880, 320],
-      "credentials": { "postgres": { "id": "@@CRED_POSTGRES_ID@@", "name": "Postgres (n8n)" } }
-    },
-    {
-      "parameters": {
         "method": "POST",
         "url": "https://@@N8N_DOMAIN@@/webhook/agent-router",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ text: $('Extract & Normalize').item.json.text, chat_id: $('Extract & Normalize').item.json.chat_id, memory: $json.memory, style: $json.style, pending: $json.pending }) }}",
-        "options": {}
+        "jsonBody": "={{ JSON.stringify({ text: $json.text }) }}",
+        "options": { "timeout": 120000 }
       },
-      "id": "10000000-0000-0000-0000-000000000005",
+      "id": "10000000-0000-0000-0000-000000000003",
       "name": "Call Agent Router",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1100, 320]
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose", "version": 2 },
-          "combinator": "and",
-          "conditions": [
-            {
-              "id": "11000000-0000-0000-0000-000000000001",
-              "leftValue": "={{ $json.requires_review }}",
-              "rightValue": true,
-              "operator": { "type": "boolean", "operation": "true", "singleValue": true }
-            }
-          ]
-        },
-        "options": {}
-      },
-      "id": "10000000-0000-0000-0000-000000000006",
-      "name": "Requires Review?",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.2,
-      "position": [1320, 320]
-    },
-    {
-      "parameters": {
-        "resource": "message",
-        "operation": "sendAndWait",
-        "chatId": "@@CHAT_ID@@",
-        "message": "={{ 'הבוט מבקש לבצע פעולה:\\n' + ($json.reply || '') }}",
-        "responseType": "approval",
-        "approvalOptions": {
-          "values": {
-            "approvalType": "double",
-            "buttonApprovalLabel": "✅ אישור",
-            "buttonDisapprovalLabel": "❌ ביטול"
-          }
-        },
-        "options": {}
-      },
-      "id": "10000000-0000-0000-0000-000000000007",
-      "name": "Approval (Send & Wait)",
-      "type": "n8n-nodes-base.telegram",
-      "typeVersion": 1.2,
-      "position": [1540, 200],
-      "credentials": { "telegramApi": { "id": "@@CRED_TELEGRAM_ID@@", "name": "Telegram (factory-master)" } }
-    },
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "INSERT INTO audit_log (chat_id, action, params, decision) VALUES ({{ $('Extract & Normalize').item.json.chat_id }}, {{ JSON.stringify($('Call Agent Router').item.json.action || 'unknown') }}, {{ JSON.stringify(($('Call Agent Router').item.json.tool_calls) || {}) }}::jsonb, {{ JSON.stringify($json.data && $json.data.approved ? 'approved' : 'denied') }});",
-        "options": {}
-      },
-      "id": "10000000-0000-0000-0000-000000000008",
-      "name": "Record Audit",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.5,
-      "position": [1760, 200],
-      "credentials": { "postgres": { "id": "@@CRED_POSTGRES_ID@@", "name": "Postgres (n8n)" } }
+      "position": [660, 320]
     },
     {
       "parameters": {
         "resource": "message",
         "operation": "sendMessage",
         "chatId": "@@CHAT_ID@@",
-        "text": "={{ '🤖 ' + (($json.data && $json.data.approved) ? 'הפעולה בוצעה.' : 'הפעולה בוטלה.') }}",
+        "text": "={{ '🤖 ' + (($json.reply !== undefined && $json.reply !== null && String($json.reply) !== '') ? $json.reply : 'אין לי תשובה כרגע — נסה שוב בעוד רגע.') }}",
         "additionalFields": {}
       },
-      "id": "10000000-0000-0000-0000-000000000009",
-      "name": "Send Action Result",
-      "type": "n8n-nodes-base.telegram",
-      "typeVersion": 1.2,
-      "position": [1980, 200],
-      "credentials": { "telegramApi": { "id": "@@CRED_TELEGRAM_ID@@", "name": "Telegram (factory-master)" } }
-    },
-    {
-      "parameters": {
-        "resource": "message",
-        "operation": "sendMessage",
-        "chatId": "@@CHAT_ID@@",
-        "text": "={{ '🤖 ' + ($json.reply || '') }}",
-        "additionalFields": {}
-      },
-      "id": "10000000-0000-0000-0000-00000000000a",
+      "id": "10000000-0000-0000-0000-000000000004",
       "name": "Send Reply",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
-      "position": [1540, 440],
+      "position": [880, 320],
       "credentials": { "telegramApi": { "id": "@@CRED_TELEGRAM_ID@@", "name": "Telegram (factory-master)" } }
-    },
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "INSERT INTO n8n_chat_histories (session_id, message)\nVALUES\n  ('tg:' || {{ $('Extract & Normalize').item.json.chat_id }}, jsonb_build_object('type','human','data', jsonb_build_object('content', {{ JSON.stringify($('Extract & Normalize').item.json.text) }}))),\n  ('tg:' || {{ $('Extract & Normalize').item.json.chat_id }}, jsonb_build_object('type','ai','data', jsonb_build_object('content', {{ JSON.stringify($('Call Agent Router').item.json.reply || '') }})));\nINSERT INTO spend_log (model, prompt_tokens, completion_tokens, cost_usd)\nVALUES (\n  {{ JSON.stringify(($('Call Agent Router').item.json.usage && $('Call Agent Router').item.json.usage.model) || 'router') }},\n  {{ ($('Call Agent Router').item.json.usage && $('Call Agent Router').item.json.usage.prompt_tokens) || 0 }},\n  {{ ($('Call Agent Router').item.json.usage && $('Call Agent Router').item.json.usage.completion_tokens) || 0 }},\n  {{ ($('Call Agent Router').item.json.usage && $('Call Agent Router').item.json.usage.cost) || 0 }}\n);",
-        "options": {}
-      },
-      "id": "10000000-0000-0000-0000-00000000000b",
-      "name": "Persist Conversation",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.5,
-      "position": [2200, 320],
-      "credentials": { "postgres": { "id": "@@CRED_POSTGRES_ID@@", "name": "Postgres (n8n)" } }
     }
   ],
   "connections": {
-    "Telegram Trigger": { "main": [[{ "node": "Extract & Normalize", "type": "main", "index": 0 }]] },
-    "Extract & Normalize": { "main": [[{ "node": "Dedupe Update", "type": "main", "index": 0 }]] },
-    "Dedupe Update": { "main": [[{ "node": "Load Context", "type": "main", "index": 0 }]] },
-    "Load Context": { "main": [[{ "node": "Call Agent Router", "type": "main", "index": 0 }]] },
-    "Call Agent Router": { "main": [[{ "node": "Requires Review?", "type": "main", "index": 0 }]] },
-    "Requires Review?": {
-      "main": [
-        [{ "node": "Approval (Send & Wait)", "type": "main", "index": 0 }],
-        [{ "node": "Send Reply", "type": "main", "index": 0 }]
-      ]
-    },
-    "Approval (Send & Wait)": { "main": [[{ "node": "Record Audit", "type": "main", "index": 0 }]] },
-    "Record Audit": { "main": [[{ "node": "Send Action Result", "type": "main", "index": 0 }]] },
-    "Send Action Result": { "main": [[{ "node": "Persist Conversation", "type": "main", "index": 0 }]] },
-    "Send Reply": { "main": [[{ "node": "Persist Conversation", "type": "main", "index": 0 }]] }
+    "Telegram Webhook": { "main": [[{ "node": "Extract & Normalize", "type": "main", "index": 0 }]] },
+    "Extract & Normalize": { "main": [[{ "node": "Call Agent Router", "type": "main", "index": 0 }]] },
+    "Call Agent Router": { "main": [[{ "node": "Send Reply", "type": "main", "index": 0 }]] }
   },
   "settings": { "executionOrder": "v1" }
 }
