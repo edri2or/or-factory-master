@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 64 — fix: log Axiom's error body on ingest failure
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | fix | `scripts/emit-event.sh`: the Axiom ingest call discarded the response body (`-o /dev/null`), so a non-2xx surfaced only as `http='CODE'` with no reason. Now captures the body and prints `[event] axiom='failed' http='CODE' detail='…'` (truncated to one line; the token is in the header, so no secret leaks). Turns an opaque 4xx into a diagnosable one — prompted by a live `http='400'` on the pilot after the token (401) and dataset (404) issues were resolved. Soft-fail unchanged. |
+
 ## Stage 63 — feat: observability foundation (Phase A)
 
 | PR | Type | Summary |

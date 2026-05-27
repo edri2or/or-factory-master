@@ -83,15 +83,22 @@ EVENT_JSON=$(format_otel_event "$NAME" "$SEVERITY" "$LAYER" "$WORKFLOW" "$RUN_ID
 
 # --- Axiom: always ---
 if [ -n "$AXIOM_API_KEY" ]; then
-  axiom_http=$(curl -sS -m 10 -o /dev/null -w '%{http_code}' -X POST \
+  axiom_body=$(mktemp)
+  axiom_http=$(curl -sS -m 10 -o "$axiom_body" -w '%{http_code}' -X POST \
     "https://api.axiom.co/v1/datasets/factory-events/ingest" \
     -H "Authorization: Bearer ${AXIOM_API_KEY}" \
     -H "Content-Type: application/json" \
     --data "[${EVENT_JSON}]" 2>/dev/null) || axiom_http="000"
   case "$axiom_http" in
     2*) echo "[event] axiom='ok' http='${axiom_http}'" ;;
-    *)  echo "[event] axiom='failed' http='${axiom_http}'" ;;
+    *)
+      # Surface Axiom's error body (no secret — the token is in the header) on
+      # one truncated line, so a 4xx is diagnosable from the GH Actions log.
+      axiom_detail=$(tr -d '\r' < "$axiom_body" | tr '\n' ' ' | cut -c1-300)
+      echo "[event] axiom='failed' http='${axiom_http}' detail='${axiom_detail}'"
+      ;;
   esac
+  rm -f "$axiom_body"
 else
   echo "[event] axiom='skipped' reason='no-key'"
 fi
