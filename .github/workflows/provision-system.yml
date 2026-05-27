@@ -1027,6 +1027,8 @@ jobs:
           #   - railway-* pointers persisted from Railway's API responses
           #   - webhook-hmac-secret + caddy-railway-{service-id,url} (Phase D
           #     gateway: per-system HMAC secret + Caddy service id/URL)
+          #   - n8n-telegram-webhook-secret (Phase F: per-system secret token
+          #     Caddy checks on /webhook/telegram-in/*; minted by the deploy)
           # deploy-sa has roles/secretmanager.secretVersionManager at project
           # level — that includes versions.add but NOT secrets.create. Create
           # the shells here, as the broker SA (which has roles/owner), so the
@@ -1046,6 +1048,7 @@ jobs:
             n8n-telegram-chat-id
             n8n-api-key
             webhook-hmac-secret
+            n8n-telegram-webhook-secret
             caddy-railway-service-id
             caddy-railway-url
           )
@@ -1131,6 +1134,21 @@ jobs:
             else
               echo "INFO: n8n-telegram-bot-token already has a version — not reseeding"
             fi
+          fi
+
+          # Mint n8n-telegram-webhook-secret (Phase F): the per-system secret token
+          # Caddy checks on /webhook/telegram-in/* and that PR-3's setWebhook
+          # registers with Telegram — both read this SM secret, so it must exist
+          # before the first deploy/configure. The broker SA (roles/owner) mints it
+          # here; idempotent only-when-empty so a re-provision never rotates it (a
+          # new value would break an already-registered webhook).
+          if ! gcloud secrets versions access latest \
+               --secret=n8n-telegram-webhook-secret --project="$GCP_PROJECT" >/dev/null 2>&1; then
+            openssl rand -hex 32 | gcloud secrets versions add n8n-telegram-webhook-secret \
+              --project="$GCP_PROJECT" --data-file=- --quiet
+            echo "PASS: minted n8n-telegram-webhook-secret"
+          else
+            echo "INFO: n8n-telegram-webhook-secret already has a version — not rotating"
           fi
 
       - name: Set repo variables

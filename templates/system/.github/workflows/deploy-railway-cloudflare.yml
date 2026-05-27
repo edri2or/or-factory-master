@@ -1215,14 +1215,19 @@ jobs:
           # ("Starting Container" + zero logs) and take down the live gateway.
           if [ "$CADDY_FIRST_TIME" = "true" ]; then
             echo "=== Railway: Caddy env vars (single collection upsert — first create) ==="
-            _upsert_collection "$CADDY_ID" "$(jq -cn --arg hmac "$HMAC_SECRET" '{
+            # Phase F: include the per-system Telegram webhook secret (minted at
+            # provision) so Caddy authenticates /webhook/telegram-in/* without HMAC.
+            # Soft: if absent the path stays fail-closed (401), never fail-open.
+            TG_SECRET=$(gcloud secrets versions access latest --secret=n8n-telegram-webhook-secret --project="$PROJECT_ID" 2>/dev/null || true)
+            TG_ON=n; [ -z "$TG_SECRET" ] || { echo "::add-mask::$TG_SECRET"; TG_ON=y; }
+            _upsert_collection "$CADDY_ID" "$(jq -cn --arg hmac "$HMAC_SECRET" --arg tg "${TG_SECRET:-}" '{
               HMAC_SECRET: $hmac,
               RATE_LIMIT_BURST: "50",
               RATE_LIMIT_WINDOW: "10s",
               PORT: "8080",
               RAILWAY_DOCKERFILE_PATH: "Dockerfile.caddy"
-            }')"
-            echo "PASS: Caddy env vars set (5 vars in one upsert → single redeploy with Dockerfile.caddy)."
+            } + (if $tg=="" then {} else {N8N_TELEGRAM_WEBHOOK_SECRET:$tg} end)')"
+            echo "PASS: Caddy env vars set (telegram=${TG_ON}; single upsert → single redeploy)."
           else
             echo "INFO: Caddy env vars already set (service pre-existing) — skipping upsert to avoid a needless redeploy."
           fi
