@@ -1,0 +1,100 @@
+name: System Runtime Audit
+
+# Read-only runtime heartbeat for the systems the factory has DEPLOYED. Every 6h
+# (and on manual dispatch) it lists each real system (its own GCP project under
+# the Systems folder), HTTP-probes the public n8n endpoint, and emits a
+# per-system event via scripts/emit-event.sh:
+#   - 2xx  -> factory.runtime_audit.ok      (info  -> Axiom)
+#   - 4xx/5xx -> factory.runtime_audit.failed (error + action_required -> Axiom + Telegram + Linear)
+#   - 000 (DNS/conn fail) -> not deployed -> logged only, no alert.
+# Plus a factory.runtime_audit.summary (info -> Axiom) with per-run counts.
+# Probes /healthz (universal: Caddy proxies it to n8n; pre-Caddy systems serve
+# it directly). Reuse-mode TEST systems share factory-test-25 and are not
+# folder-listed — a known v1 limitation.
+
+on:
+  schedule:
+    - cron: "15 */6 * * *"   # every 6h at :15 (staggered off factory-health-audit's :00)
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  audit:
+    name: System runtime audit
+    runs-on: ubuntu-latest
+    environment: production
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
+
+      - name: Authenticate to GCP via WIF
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093  # v3.0.0
+        with:
+          workload_identity_provider: "projects/140345952904/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
+          service_account: "factory-master-broker@or-factory-master-control.iam.gserviceaccount.com"
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db  # v3.0.1
+
+      - name: Probe deployed systems and emit
+        env:
+          FOLDER: "123180924297"
+        run: |
+          set -uo pipefail
+          SYSTEMS=$(gcloud projects list --filter="parent.id=${FOLDER}" --format='value(projectId)' 2>/dev/null || echo "")
+          TOTAL=0; HEALTHY=0; UNHEALTHY=0; NOTDEPLOYED=0; UNHEALTHY_LIST=""
+
+          for sys in $SYSTEMS; do
+            # The shared test backend is not itself a deployed system.
+            [ "$sys" = "factory-test-25" ] && continue
+            TOTAL=$((TOTAL + 1))
+            URL="https://n8n-${sys}.or-infra.com/healthz"
+            code=$(curl -sS -m 15 -o /dev/null -w '%{http_code}' "$URL" 2>/dev/null || echo "000")
+            case "$code" in
+              2*)
+                HEALTHY=$((HEALTHY + 1))
+                echo "[runtime] ${sys}: healthy (http=${code})"
+                bash scripts/emit-event.sh \
+                  --name="factory.runtime_audit.ok" --severity="info" --layer="system" \
+                  --workflow="system-runtime-audit.yml" --run-id="${GITHUB_RUN_ID}" \
+                  --system="${sys}" \
+                  --body="$(jq -cn --arg u "$URL" --arg c "$code" '{endpoint:$u, http:$c}')" || true
+                ;;
+              000)
+                NOTDEPLOYED=$((NOTDEPLOYED + 1))
+                echo "[runtime] ${sys}: no live endpoint (http=000) — not-deployed, no alert"
+                ;;
+              *)
+                UNHEALTHY=$((UNHEALTHY + 1)); UNHEALTHY_LIST="${UNHEALTHY_LIST}${sys}(${code}) "
+                echo "[runtime] ${sys}: UNHEALTHY (http=${code})"
+                bash scripts/emit-event.sh \
+                  --name="factory.runtime_audit.failed" --severity="error" --layer="system" \
+                  --workflow="system-runtime-audit.yml" --run-id="${GITHUB_RUN_ID}" \
+                  --system="${sys}" --action-required="true" \
+                  --body="$(jq -cn --arg u "$URL" --arg c "$code" '{endpoint:$u, http:$c}')" || true
+                ;;
+            esac
+          done
+
+          bash scripts/emit-event.sh \
+            --name="factory.runtime_audit.summary" --severity="info" --layer="factory" \
+            --workflow="system-runtime-audit.yml" --run-id="${GITHUB_RUN_ID}" \
+            --body="$(jq -cn --argjson t "$TOTAL" --argjson h "$HEALTHY" --argjson u "$UNHEALTHY" --argjson n "$NOTDEPLOYED" '{total:$t, healthy:$h, unhealthy:$u, not_deployed:$n}')" || true
+
+          if [ -z "$UNHEALTHY_LIST" ]; then OVERALL="✅ אין מערכות לא-תקינות"; else OVERALL="🚨 ${UNHEALTHY_LIST}"; fi
+          {
+            echo "## בדיקת Runtime למערכות — $(date -u +%Y-%m-%dT%H:%MZ)"
+            echo ""
+            echo "| מדד | ערך |"
+            echo "|---|---|"
+            echo "| נבדקו (בעלות פרויקט GCP) | ${TOTAL} |"
+            echo "| תקינות | ${HEALTHY} |"
+            echo "| לא-תקינות | ${UNHEALTHY} |"
+            echo "| לא-פרוסות (אין endpoint) | ${NOTDEPLOYED} |"
+            echo "| סטטוס | ${OVERALL} |"
+          } >> "$GITHUB_STEP_SUMMARY"
