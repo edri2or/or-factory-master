@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 91 — feat: Caddy /webhook/telegram-in/* exemption + per-system Telegram webhook secret
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | feature | **PR 2/4 of Phase F — the highest-risk PR (touches the Caddy edge that fronts every webhook).** `templates/system/Caddyfile` gains a `/webhook/telegram-in/*` exemption: two `handle` blocks placed BEFORE the existing `@webhook` HMAC handler (handle blocks evaluate in source order, first match wins) — `@telegram_authed` (path + exact `X-Telegram-Bot-Api-Secret-Token` header match against `{$N8N_TELEGRAM_WEBHOOK_SECRET}`) reverse-proxies to n8n; `@telegram_unauthed` (path only) returns 401. Telegram cannot compute the factory HMAC, so it authenticates with its own secret-token header; an empty env ⇒ the path is fail-closed (401), never fail-open. The existing `/webhook/*` HMAC + rate-limit handler and the `hmacguard` module are untouched; `Dockerfile.caddy` needs no change (Caddy reads `{$VAR}` at runtime). The per-system `n8n-telegram-webhook-secret` is pre-created as a runtime shell **and minted** (`openssl rand -hex 32`, idempotent only-when-empty) in `provision-system.yml` by the broker SA — deploy-sa has `versions.add` but not `secrets.create`, and minting at provision means the value exists before the first deploy/configure read (single source for both Caddy and PR-3's setWebhook). `deploy-railway-cloudflare.yml` reads it and includes it in the first-create Caddy env collection (omitted when absent → fail-closed; no separate step, ~0.4 KB added to stay under the 128 KiB workflow cap). No active listener yet — PR 3 installs `tg-inbound`. Idempotent + soft-fail throughout; the secret is never rotated once set (a new value would break an already-registered webhook). |
+
 ## Stage 90 — feat: add Telegram chat-bot workflow templates (tg-inbound, tg-proactive, style-refresh)
 
 | PR | Type | Summary |
@@ -72,10 +78,4 @@
 |---|---|---|
 | TBD | feature | Observability **Phase D**, item 1 of 3: the agent can now emit events into the pipeline directly. New MCP write tool `emit_event` (`services/mcp-server/src/tools.ts`) backed by a TypeScript port of the bash fan-out in new `services/mcp-server/src/observability-client.ts` — full parity with `scripts/emit-event.sh`: builds the OTel-SemConv event and fans out **soft-fail** to Axiom (always), Telegram (`warning\|error\|critical`), and Linear (`error\|critical` or `action_required`, 24h dedup + managed labels + `source-*` mapping ported from `scripts/lib/linear-issue.sh`). The image ships no `scripts/`, so it's reimplemented in TS, not shelled out. The 5 destination secrets are read at runtime from `or-factory-master-control` via the existing `getSecretValue()` (the runtime broker SA already reads them in CI) — no `--set-secrets`/deploy-config change. Each destination fails independently; the tool never throws. Severity gating preserved (info = Axiom-only/silent). Requires a redeploy of the MCP Cloud Run service to go live. |
 
-## Stage 78 — feat: per-system Better Stack uptime monitor (closes Phase C deferral)
-
-| PR | Type | Summary |
-|---|---|---|
-| TBD | feature | Closes the Phase C deferral from Stage 73 — `better-stack-api-key` is confirmed to work against the Uptime API (Stage 77 probe: HTTP 200, 1 existing monitor). New `scripts/create-uptime-monitor.sh`: idempotent (URL filter on list_monitors, exact-match on `.attributes.url`), free-tier-cap aware (skips at ≥10 existing monitors), soft-fail with structured `[uptime-monitor]` stdout (`created`/`already_exists`/`skipped`/`failed`/`rejected`). `provision-system.yml` gains one `if: success()` + `continue-on-error` step before `factory.provision.completed`, creating an HTTP-status monitor at `https://n8n-<system>.or-infra.com/healthz` (check_frequency=30s, request_timeout=15s, email-only alerts; SMS/Telegram stay on the 6h `system-runtime-audit.yml` layer). Reaches newly-provisioned systems only — no backfill. Removes the one-shot `_probe-better-stack-uptime.yml`. `docs/observability.md` §9 Phase C item moved to done; §5 secret note updated. Stages 56–58 rotated to `docs/changelog-archive/CHANGELOG.md` to stay under the 20 KB cap. |
-
-> Older stages (Stage 77 and earlier) are archived in [`docs/changelog-archive/CHANGELOG.md`](docs/changelog-archive/CHANGELOG.md).
+> Older stages (Stage 78 and earlier) are archived in [`docs/changelog-archive/CHANGELOG.md`](docs/changelog-archive/CHANGELOG.md).
