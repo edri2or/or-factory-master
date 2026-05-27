@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 78 — feat: per-system Better Stack uptime monitor (closes Phase C deferral)
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | feature | Closes the Phase C deferral from Stage 73 — `better-stack-api-key` is confirmed to work against the Uptime API (Stage 77 probe: HTTP 200, 1 existing monitor). New `scripts/create-uptime-monitor.sh`: idempotent (URL filter on list_monitors, exact-match on `.attributes.url`), free-tier-cap aware (skips at ≥10 existing monitors), soft-fail with structured `[uptime-monitor]` stdout (`created`/`already_exists`/`skipped`/`failed`/`rejected`). `provision-system.yml` gains one `if: success()` + `continue-on-error` step before `factory.provision.completed`, creating an HTTP-status monitor at `https://n8n-<system>.or-infra.com/healthz` (check_frequency=30s, request_timeout=15s, email-only alerts; SMS/Telegram stay on the 6h `system-runtime-audit.yml` layer). Reaches newly-provisioned systems only — no backfill. Removes the one-shot `_probe-better-stack-uptime.yml`. `docs/observability.md` §9 Phase C item moved to done; §5 secret note updated. Stages 56–58 rotated to `docs/changelog-archive/CHANGELOG.md` to stay under the 20 KB cap. |
+
 ## Stage 77 — chore: one-shot probe for better-stack-api-key against the Uptime API
 
 | PR | Type | Summary |
@@ -114,22 +120,4 @@
 |---|---|---|
 | TBD | fix | Three targeted fixes after Phase D PR 3 end-to-end testing on `factory-test-101`. (1) **Caddy re-run idempotency** (`CADDY_FIRST_TIME` guard): the "Provision Caddy" step called `_upsert_collection` unconditionally every run; on the re-run it re-upserted identical env vars, triggering a new Caddy deployment that got stuck (Railway scheduler throttle — "Starting Container" + zero logs), removing the healthy deployment and returning `403 host_not_allowed` on every public URL. Fix mirrors the existing `PG_FIRST_TIME` pattern: `CADDY_FIRST_TIME=false` at step start, `CADDY_FIRST_TIME=true` only on `serviceCreate`, upsert wrapped in `if [ "$CADDY_FIRST_TIME" = "true" ]` — re-runs skip the upsert and leave the live gateway untouched. (2) **n8n proxy trust** (`N8N_PROXY_HOPS: "1"`): n8n behind Caddy logged `ERR_ERL_UNEXPECTED_X_FORWARDED_FOR` because express-rate-limit saw `X-Forwarded-For` but `trust proxy` was off. Adding `N8N_PROXY_HOPS: "1"` to the n8n env upsert clears the error and gives n8n the correct client IP. (3) **Caddy per-site access log**: the global `log` block only configured the Caddy runtime logger; per-request access logs were missing (hampered debugging). Added a `log { output stdout; format console }` block inside the `:{$PORT:8080}` site block. Validated with `caddy fmt` + `caddy validate --config Caddyfile --adapter caddyfile`. Template edits reach newly-provisioned systems only. |
 
-## Stage 58 — feat: swap the public domain from n8n to Caddy (Phase D PR 3)
-
-| PR | Type | Summary |
-|---|---|---|
-| TBD | feature | Final Phase D wiring. `deploy-railway-cloudflare.yml` moves `n8n-<system>.or-infra.com` off n8n onto the Caddy service so all public traffic flows through the gateway; n8n keeps no public domain. New idempotent steps after the n8n setup: pre-flight (Caddy `/health` + n8n `/healthz`, hard-fail before touching the domain) → determine ownership → `customDomainCreate` on Caddy (detach-from-n8n-first if Railway rejects "domain in use") → repoint the Cloudflare CNAME + `_railway-verify` TXT to Caddy → detach from n8n → wait for LE cert ISSUED on Caddy → end-to-end smoke (public `/webhook` no-HMAC→401, valid-HMAC→reaches n8n, n8n UI/`/healthz` reachable via Caddy). The Provision step gained a guard so a migrated re-run never re-attaches the domain to n8n. **Caddyfile**: the non-webhook fallback now `reverse_proxy`s to n8n (n8n's own auth guards the UI + `/rest/*`; only `/webhook/*` is HMAC-gated), so the operator UI, the deploy's own `/rest/*` steps, and `configure-agent-router.yml` keep working once Caddy fronts the domain. Brief downtime during cert issuance. Template edit reaches newly-provisioned systems only. |
-
-## Stage 57 — fix: push the large deploy workflow via file, not CLI args (Phase D)
-
-| PR | Type | Summary |
-|---|---|---|
-| TBD | fix | PR 2 grew `deploy-railway-cloudflare.yml` past ~110 KB; its base64 (~147 KB) exceeds Linux's ~128 KB single-arg cap, so `provision-system.yml`'s scaffold-push step died with `jq: Argument list too long` (caught live on `gateway-test-1`). Now passes the base64 to `jq --rawfile` and the body to `curl --data-binary @file` — size-robust. |
-
-## Stage 56 — fix: scaffold the Caddy gateway files into provisioned system repos (Phase D)
-
-| PR | Type | Summary |
-|---|---|---|
-| TBD | fix | Phase D PR 1 added `templates/system/{Caddyfile,Dockerfile.caddy,caddy/hmacguard}` and PR 2 builds the Caddy service from the system's own repo (`source:{repo}`), but `provision-system.yml`'s scaffold step only pushed `.claude/`, `workflows/`, `configure-agent-router.yml`, and `deploy-railway-cloudflare.yml` — so the gateway sources never reached the system repo and Railway's repo build had nothing to build. The scaffold push now also copies `Caddyfile` + `Dockerfile.caddy` + `caddy/` into the repo root (with presence guards) and stages them in the same commit, so a freshly-provisioned system carries everything the Caddy image build needs. Scaffold edit; reaches newly-provisioned systems only. |
-
-> Older stages (Stage 55 and earlier) are archived in [`docs/changelog-archive/CHANGELOG.md`](docs/changelog-archive/CHANGELOG.md).
+> Older stages (Stage 58 and earlier) are archived in [`docs/changelog-archive/CHANGELOG.md`](docs/changelog-archive/CHANGELOG.md).
