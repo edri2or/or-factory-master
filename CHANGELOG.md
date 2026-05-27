@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 89 — feat: scaffold CI governance (branch protection + required checks) into every system
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | feature | Every provisioned system now enforces the same governance as or-factory-master: **PR-only merge to `main` + 4 required green CI checks + a documentation policy**. New `templates/system/.github/workflows/{changelog-check,pipeline-tests,secret-scan,supply-chain-check}.yml` (system-adapted: pipeline-tests lints `scripts/*.sh` + `.github/workflows/` only; changelog-check drops the factory-only skills-mirror step), `templates/system/.yamllint` (relaxed + line-length disable — needed so yamllint passes the large deploy workflow), and a seed `templates/system/CHANGELOG.md`. `provision-system.yml`'s scaffold step now also copies those 4 workflows + `.yamllint` + `CHANGELOG.md` into the system repo and the **8 portable** check scripts (`lib.sh`, `check-changelog-updated.sh`, `check-changelog-size.sh`, `scan-for-secrets.sh`, `check-actions-pinned.sh`, `check-workflow-permissions.sh`, `check-no-pull-request-target.sh`, `check-no-privileged-pr-workflows.sh`) from the factory's own `scripts/` (single source of truth; `check-skills-mirror.sh` is factory-specific and excluded); the `git add` list gains `.github/workflows` (whole dir) + `.yamllint` + `CHANGELOG.md`. The "Branch protection on main" step now sets `required_status_checks{strict:true, contexts:["Changelog gates","shellcheck + yamllint","Scan for committed secrets","Supply chain gates"]}` alongside the existing PR-required (0 approvals) + no force-push/deletion. The already-scaffolded workflows (deploy, configure-agent-router) pass all gates (SHA-pinned, `workflow_dispatch`-only, no `pull_request_target`/`write-all`). `CLAUDE.md` provision row updated. `adhd-agent` (provisioned before this) gets the same bundle applied via a one-off PR. Stages 73–74 rotated to the changelog archive. |
+
 ## Stage 88 — fix: adopt-mode completeness — register-system-app + orientation-doc MODE
 
 | PR | Type | Summary |
@@ -84,16 +90,4 @@
 |---|---|---|
 | TBD | fix | **Regression fix for Stage 73/74.** `templates/system/.github/workflows/deploy-railway-cloudflare.yml` had no `actions/checkout`, so the `factory.deploy.*` emit steps ran in an empty workspace — `bash scripts/emit-deploy.sh` exited 127 (`No such file or directory`), since the scaffolded `scripts/emit-deploy.sh` + `scripts/emit-event.sh` were never on disk (Railway pulls the repo itself; the runner never did). Adds `actions/checkout` (pinned `93cb6efe…` v5.0.1) as the deploy job's first step so the shipped scripts are in the workspace for the emit steps. Soft-fail unchanged (`continue-on-error` + the wrapper's presence guard). Template now **130,016 B** (~1 KB under GitHub's 128 KiB cap). Caught on the first live deploy of `or-test-obsdeploy2`. |
 
-## Stage 74 — fix: keep the deploy workflow under GitHub's 128 KiB cap
-
-| PR | Type | Summary |
-|---|---|---|
-| TBD | fix | **Regression fix for Stage 73.** The inline `factory.deploy.*` emit steps grew `templates/system/.github/workflows/deploy-railway-cloudflare.yml` from 129,067 → 131,155 bytes — past GitHub's **128 KiB (131,072-byte) per-workflow-file limit** — so GitHub silently refused to register the workflow and newly-provisioned systems could not dispatch a deploy (confirmed live: `factory-test-24` at 129,067 B registers; `or-test-obsdeploy` at 131,155 B never does). Moves the emit logic into a tiny shipped `scripts/emit-deploy.sh`; the deploy template now has three one-line steps (`bash scripts/emit-deploy.sh {started,completed,failed}`), bringing it to **129,778 B** (~1.3 KB under the cap). `provision-system.yml` scaffolds `emit-deploy.sh` alongside `emit-event.sh`. Behaviour unchanged; soft-fail preserved. |
-
-## Stage 73 — feat: observability Phase C — deploy emits (systems self-report)
-
-| PR | Type | Summary |
-|---|---|---|
-| TBD | feature | Observability **Phase C**, part 2: deployed systems self-emit. `scripts/emit-event.sh` now reads its SM project from `${EMIT_SM_PROJECT:-or-factory-master-control}` (backward-compatible — factory-side callers unchanged). `provision-system.yml` scaffolds `scripts/emit-event.sh` + `scripts/lib/` into each new system repo. `templates/system/.github/workflows/deploy-railway-cloudflare.yml` gains three soft-fail (`continue-on-error`) steps — `factory.deploy.started` (after SM read), `factory.deploy.completed` (after Summary), `factory.deploy.failed` (`if: failure()`) — all `--layer=system`, reading the system's OWN SM (where `copy-generic-secrets.sh` already places `axiom-api-key`/`telegram-*`/`linear-*`). Reaches newly-provisioned systems only; each step guards on the emitter's presence (older scaffolds no-op). The per-system Better Stack monitor is **deferred** — `better-stack-api-key` is a telemetry token and needs Uptime-API confirmation first. Docs (`CLAUDE.md`, `docs/observability.md`) updated. |
-
-> Older stages (Stage 72 and earlier) are archived in [`docs/changelog-archive/CHANGELOG.md`](docs/changelog-archive/CHANGELOG.md).
+> Older stages (Stage 74 and earlier) are archived in [`docs/changelog-archive/CHANGELOG.md`](docs/changelog-archive/CHANGELOG.md).

@@ -1,0 +1,34 @@
+name: Changelog Check
+
+# Documentation policy for this system repo (scaffolded by or-factory-master).
+# Fails PRs and merges that touch code (.sh / .json / .yml / .yaml) without
+# adding a matching CHANGELOG.md entry, and fails when CHANGELOG.md grows
+# past the size cap.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  changelog:
+    name: Changelog gates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
+        with:
+          # check-changelog-updated.sh reads `git diff HEAD~1 HEAD`. On
+          # push-to-main this is the merge commit (the full PR diff). On
+          # pull_request this is the synthetic merge commit GitHub creates.
+          # Both need at least 2 commits in history.
+          fetch-depth: 2
+
+      - name: Check changelog updated
+        run: bash scripts/check-changelog-updated.sh
+
+      - name: Check changelog size
+        run: bash scripts/check-changelog-size.sh
