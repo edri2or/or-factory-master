@@ -54,7 +54,10 @@ jobs:
             [ "$sys" = "factory-test-25" ] && continue
             TOTAL=$((TOTAL + 1))
             URL="https://n8n-${sys}.or-infra.com/healthz"
-            code=$(curl -sS -m 15 -o /dev/null -w '%{http_code}' "$URL" 2>/dev/null || echo "000")
+            # curl's -w '%{http_code}' already prints 000 on a connection failure;
+            # don't append another (|| echo 000 -> "000000", misread as unhealthy).
+            code=$(curl -sS -m 15 -o /dev/null -w '%{http_code}' "$URL" 2>/dev/null) || true
+            code="${code:-000}"
             case "$code" in
               2*)
                 HEALTHY=$((HEALTHY + 1))
