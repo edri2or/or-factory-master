@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 64 — fix: Axiom ingest targets the EU region host
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | fix | `scripts/emit-event.sh`: the Axiom ingest call hit the US host `api.axiom.co`, but the operator's Axiom workspace + `factory-events` dataset are in **EU**. After the `axiom-api-key` value was corrected, ingest still 404'd (dataset not found in the US region). Switched the host to `api.eu.axiom.co`. The pilot's soft-fail design surfaced this cleanly without ever failing a run: `axiom='failed' http='401'` (bad token) → `http='404'` (token fixed, wrong region) → `http='200'` expected after this fix. |
+
 ## Stage 63 — feat: observability foundation (Phase A)
 
 | PR | Type | Summary |

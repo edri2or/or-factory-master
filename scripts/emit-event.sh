@@ -81,10 +81,10 @@ _read_secret TELEGRAM_CHAT_ID     telegram-chat-id
 EVENT_JSON=$(format_otel_event "$NAME" "$SEVERITY" "$LAYER" "$WORKFLOW" "$RUN_ID" "$SYSTEM" "$ACTION_REQUIRED" "$BODY") \
   || { echo "[event] action='rejected' reason='formatter'"; exit 0; }
 
-# --- Axiom: always ---
+# --- Axiom: always (EU region host — the workspace + factory-events dataset live in EU) ---
 if [ -n "$AXIOM_API_KEY" ]; then
   axiom_http=$(curl -sS -m 10 -o /dev/null -w '%{http_code}' -X POST \
-    "https://api.axiom.co/v1/datasets/factory-events/ingest" \
+    "https://api.eu.axiom.co/v1/datasets/factory-events/ingest" \
     -H "Authorization: Bearer ${AXIOM_API_KEY}" \
     -H "Content-Type: application/json" \
     --data "[${EVENT_JSON}]" 2>/dev/null) || axiom_http="000"
