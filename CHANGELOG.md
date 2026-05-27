@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 85 — feat: scaffold per-system orientation docs (AGENTS.md + CLAUDE.md)
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | feature | New step in `provision-system.yml` between "Push .claude package…" and "Branch protection on main": creates `AGENTS.md` (~80 lines, Backstage-style YAML frontmatter with `apiVersion/kind:System/metadata/spec` + markdown sections covering Identity, Service Accounts and WIF, What was provisioned, Secrets in GCP SM by category, External Resources, Forbidden Actions, and a Purpose placeholder with `TODO(human):` + explicit STOP instruction) and a thin `CLAUDE.md` that imports `@AGENTS.md` (Claude Code reads CLAUDE.md natively; AGENTS.md is the cross-tool standard per agents.md Linux Foundation). Templates live at `templates/system/AGENTS.md.template` and `templates/system/CLAUDE.md.template`; substitution via `envsubst` with explicit variable allow-list (`SYSTEM_NAME`, `GCP_PROJECT`, `PROJECT_NUMBER`, `ISO_TIMESTAMP`, `PUBLIC_URL`, `HEALTH_URL`, `REPO_URL`, `GITHUB_RUN_ID`, `GITHUB_RUN_URL`, `WIF_PROVIDER`, `MODE`, `GENERIC_SECRETS`). Generic secret list enumerated at runtime from `or-factory-master-control` SM using the same EXCLUDE regex as `copy-generic-secrets.sh` (no drift); 15 runtime shells + 2 OpenRouter keys hardcoded in template. Step is `continue-on-error: true` (soft-fail per spec) with `set -uo pipefail` (no `-e`); every error branch exits 0 explicitly. Sanity-check `grep` warns on unresolved `${VAR}` after substitution (non-fatal). Pushes via clone-modify-push using the broker App token (same Pattern B as step 14), with the standard `git diff --cached --quiet \|\| commit` idempotency idiom. Solves the "blind agent" problem where new system repos arrived with only a 17-byte README and no identity/state/capabilities doc (verified on `edri2or/factory-test-42`). Reaches newly-provisioned systems only — existing systems unaffected (migration out of scope). |
+
 ## Stage 84 — feat: free path — poll Better Stack incidents API → Telegram (cron)
 
 | PR | Type | Summary |
@@ -102,22 +108,4 @@
 |---|---|---|
 | TBD | fix | `scripts/emit-event.sh`: point Axiom ingest at the **edge** endpoint `https://eu-central-1.aws.edge.axiom.co/v1/ingest/factory-events` — verified live by `_axiom-setup.yml` (`{"ingested":1,"failed":0}`). The `factory-events` dataset is on the EU edge deployment, which serves only the `/v1/ingest/<dataset>` path (the `/v1/datasets/<ds>/ingest` shape 404s there) and accepts only `xaat-` API tokens (now stored in `axiom-api-key`; PATs can't ingest). Removes the one-shot `.github/workflows/_axiom-setup.yml` now that it has minted + stored the token. Closes the Axiom leg of the observability pilot (DoD #2). |
 
-## Stage 67 — fix: Axiom setup workflow ingests at the EU edge host
-
-| PR | Type | Summary |
-|---|---|---|
-| TBD | fix | `_axiom-setup.yml`: server-side probes proved the pilot's Axiom failures were a multi-region issue — PATs can't ingest (only `xaat-` API tokens can), and the `factory-events` dataset sits on an EU **edge deployment** (`cloud.eu-central-1.aws`), so ingest must target the edge host `eu-central-1.aws.edge.axiom.co`, not `api.eu.axiom.co` (403) or `api.axiom.co` (400 region). The workflow now derives the edge host from the org's `defaultEdgeDeployment`, mints the scoped API token on the control plane, verifies ingest at the edge host (both path shapes), and stores it as the latest `axiom-api-key`. `emit-event.sh` gets pointed at the edge host next, once the workflow confirms the exact URL. |
-
-## Stage 66 — chore: one-shot Axiom setup workflow (scoped ingest token)
-
-| PR | Type | Summary |
-|---|---|---|
-| TBD | chore | One-shot `.github/workflows/_axiom-setup.yml` (`workflow_dispatch`, deleted after use): reads `axiom-pat` (a Personal Access Token) from SM via the broker SA (WIF) and, server-side, probes Axiom (org/region/method), creates a **scoped API token** (`ingest`+`query` on `factory-events`) via `POST /v2/tokens`, verifies it can ingest, and stores it as the latest `axiom-api-key` version. Resolves the pilot's Axiom 403: a PAT requires the `x-axiom-org-id` header for ingest, whereas a scoped API token works with `Authorization: Bearer` alone — which is exactly what `emit-event.sh` sends. Prints only http codes/ids/lengths; token values masked, never logged. |
-
-## Stage 65 — fix: Axiom ingest targets the EU region host
-
-| PR | Type | Summary |
-|---|---|---|
-| TBD | fix | `scripts/emit-event.sh`: switch the Axiom ingest host from `api.axiom.co` (US) to `api.eu.axiom.co` (EU). The Stage 64 error-body logging revealed the exact cause — `HTTP 400 "ingest is only allowed into datasets in the primary region: dataset region: cloud.eu-central-1.aws, deployment region: cloud.us-east-1.aws"` — i.e. the org + `factory-events` dataset live in EU, so ingest must hit the EU data-plane host. Auth/console stay on the global US control plane, which is why the token authenticated against the US host (401→404→400 progression). One-line host change; closes the Axiom leg of the observability pilot. |
-
-> Older stages (Stage 64 and earlier) are archived in [`docs/changelog-archive/CHANGELOG.md`](docs/changelog-archive/CHANGELOG.md).
+> Older stages (Stage 67 and earlier) are archived in [`docs/changelog-archive/CHANGELOG.md`](docs/changelog-archive/CHANGELOG.md).
