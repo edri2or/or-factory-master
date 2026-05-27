@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 86 — feat: adopt mode — provision a real system onto a recovered GCP project
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | feature | New `adopt_gcp_project` input on `provision-system.yml` provisions a **real** system onto an existing/recovered GCP project instead of creating a new one — a workaround for the exhausted project-creation quota (active + soft-deleted both count for ~30 days, so `gcloud projects create` is blocked; undeleting a soft-deleted project consumes **no** additional quota since it already counts). Adopt mode: the preflight `undelete`s the project if `DELETE_REQUESTED` (polls to ACTIVE) and fails loud if absent (it **never** creates); re-links billing idempotently; keeps **real per-system WIF** (the create-pool/provider + deploy-sa binding steps now target `gcp_project` instead of `system_name`, and an `update-oidc` re-pins the provider's attribute-condition to the new repo since an adopted project may carry a provider pinned to its prior repo); and wipes the project's secrets **once** via `clean-project-secrets.sh --adopt` (new flag — refuses control projects + `factory-test-25` but allows any other project id, vs the default test-pattern lock) so generics re-copy fresh and a new OpenRouter key is minted. `gcp_project` decouples from `system_name`: the immutable project id stays the old one, the repo is `system_name`. Mutually exclusive with `shared_gcp_project`. Normal + reuse modes are byte-identical (the `--project` switch to `gcp_project` is a no-op when it equals `system_name`; the adopt-only blocks are gated on `adopt=='true'`). New read-only `list-recoverable-projects.yml` (`workflow_dispatch`, main-only, broker WIF) enumerates `DELETE_REQUESTED` projects so an operator can pick one to adopt — not on the `dispatch_workflow` allowlist (operator dispatches from the UI; result read via run logs). `CLAUDE.md` (routing table + Workflows table) and `skills/build-system/SKILL.md` document adopt mode. Stages 68–70 rotated to `docs/changelog-archive/CHANGELOG.md` to stay under the 20 KB cap. |
+
 ## Stage 85 — feat: scaffold per-system orientation docs (AGENTS.md + CLAUDE.md)
 
 | PR | Type | Summary |
@@ -90,22 +96,4 @@
 |---|---|---|
 | TBD | feature | Observability **Phase C** (generated-systems visibility), part 1. New `.github/workflows/system-runtime-audit.yml` — read-only cron every 6h (`:15`, staggered off factory-health-audit) + manual dispatch. Lists each real system (`gcloud projects list --filter=parent.id=123180924297`), HTTP-probes `https://n8n-<system>.or-infra.com/healthz` (universal across Caddy + pre-Caddy), and emits per-system `factory.runtime_audit.ok` (info → Axiom) / `factory.runtime_audit.failed` (error + action_required → Axiom + Telegram + Linear) via `scripts/emit-event.sh`, classifying `2xx`=healthy, `000`=not-deployed (logged, no alert), other=unhealthy. Adds a `factory.runtime_audit.summary` (info → Axiom) with per-run counts. Reuse-mode test systems (shared `factory-test-25`) aren't folder-listed — a noted v1 limitation. Deploy-template emit + per-system Better Stack monitors are deferred to PR-C2. Reuses the Phase A emitter unchanged. |
 
-## Stage 70 — feat: observability Phase B — instrument provision-system
-
-| PR | Type | Summary |
-|---|---|---|
-| TBD | feature | Observability **Phase B**, part 2 of 2. Instruments `provision-system.yml` with soft-fail (`continue-on-error`) emit steps via `scripts/emit-event.sh`: `factory.provision.started` (info, after creds resolved), `factory.provision.completed` (info, after Summary, with `{mode, gcp_project, duration_s}`), and `factory.provision.failed` (error + `action_required` → Axiom + Telegram + Linear, via `if: failure()`). Adds a "Mark start time" step after checkout for duration. Inputs flow via `env:` (never interpolated into the script line). No provisioning logic changed; every emit step is `continue-on-error` so a dead destination never affects a provision. `CLAUDE.md` provision row updated. |
-
-## Stage 69 — feat: observability Phase B — audit emits + factory-health-audit cron
-
-| PR | Type | Summary |
-|---|---|---|
-| TBD | feature | Observability **Phase B** (coverage), part 1 of 2. `audit-openrouter-orphan-keys.yml` gains an `Emit observability event` step (`if: always()`, `continue-on-error`): every run emits `factory.openrouter_audit.{clean,action_needed,deletions}` via `scripts/emit-event.sh` (Axiom always; Linear on actionable findings via `action_required`; `info` severity so the existing rich Hebrew Telegram alert is never duplicated). New `.github/workflows/factory-health-audit.yml` — read-only factory-level heartbeat every 6h (+ manual dispatch): confirms `or-factory-master-control` is ACTIVE, the critical SM secrets exist, counts system projects under the Systems folder, and emits `factory.health.ok` (info → Axiom) or `factory.health.degraded` (error + action_required → Axiom + Telegram + Linear). `CLAUDE.md` Workflows table + `docs/observability.md` §9 updated. `provision-system.yml` instrumentation lands in part 2 (separate PR). |
-
-## Stage 68 — fix: emitter ingests to the Axiom EU edge endpoint; drop setup workflow
-
-| PR | Type | Summary |
-|---|---|---|
-| TBD | fix | `scripts/emit-event.sh`: point Axiom ingest at the **edge** endpoint `https://eu-central-1.aws.edge.axiom.co/v1/ingest/factory-events` — verified live by `_axiom-setup.yml` (`{"ingested":1,"failed":0}`). The `factory-events` dataset is on the EU edge deployment, which serves only the `/v1/ingest/<dataset>` path (the `/v1/datasets/<ds>/ingest` shape 404s there) and accepts only `xaat-` API tokens (now stored in `axiom-api-key`; PATs can't ingest). Removes the one-shot `.github/workflows/_axiom-setup.yml` now that it has minted + stored the token. Closes the Axiom leg of the observability pilot (DoD #2). |
-
-> Older stages (Stage 67 and earlier) are archived in [`docs/changelog-archive/CHANGELOG.md`](docs/changelog-archive/CHANGELOG.md).
+> Older stages (Stage 70 and earlier) are archived in [`docs/changelog-archive/CHANGELOG.md`](docs/changelog-archive/CHANGELOG.md).
