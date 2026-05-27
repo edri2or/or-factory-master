@@ -97,14 +97,21 @@ app.get('/health', (_req: Request, res: Response) => {
 
 // Admin-gated Sentry connectivity probe: throws so the Express error handler
 // reports it to Sentry. Verifies error delivery end-to-end without exposing
-// anything on public traffic (same admin-secret gate as /token).
-app.get('/debug/sentry-test', (req: Request, _res: Response) => {
+// anything on public traffic (same admin-secret gate as /token). Accepts a
+// `marker` (query) that is set as the `verify_marker` tag + embedded in the
+// message, so _verify-sentry.yml can locate the exact event it triggered and
+// read it back from the Sentry API. app.all so the verifier can POST a body
+// (exercising the beforeSend body scrubber).
+app.all('/debug/sentry-test', (req: Request, _res: Response) => {
   const provided = (req.headers['x-admin-secret'] as string | undefined) ?? '';
   if (!secretMatches(provided)) {
     _res.status(403).json({ error: 'unauthorized' });
     return;
   }
-  throw new Error('sentry-test: deliberate error from /debug/sentry-test');
+  const q = req.query.marker;
+  const marker = typeof q === 'string' && q.length > 0 ? q : 'none';
+  Sentry.getCurrentScope().setTag('verify_marker', marker);
+  throw new Error(`sentry-verify ${marker}`);
 });
 
 // Diagnostic — returns recent requests. Accepts X-Admin-Secret or Bearer.

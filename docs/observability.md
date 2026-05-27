@@ -245,5 +245,8 @@ read_github_actions_run_logs(job_id=<id>, grep="\[linear\]")  # תוצאת Linea
     errors-only (`tracesSampleRate: 0`), ה-DSN מ-`sentry-api-key` (mount כ-`SENTRY_DSN`),
     no-op כשאין DSN. `beforeSend` מנקה Authorization/cookie/X-Admin-Secret ואת גוף הבקשה כדי
     שסודות לא ידלפו. ה-`bootstrap-receiver` (Python, לא פעיל) לא מנוטר.
+    אימות אוטומטי מקצה-לקצה: `_verify-sentry.yml` יורה שגיאה מסומנת דרך `/debug/sentry-test`,
+    קורא את ה-event בחזרה מ-Sentry API (סוד `sentry-auth-token` — read-only, נפרד מה-DSN שהוא
+    write-only), ומוודא שה-event נחת ושה-Authorization/body נוקו. פלט: `[verify-sentry] result='pass'`.
 
 per-system runtime health שייך ל-Phase C, לא ל-Phase B.
