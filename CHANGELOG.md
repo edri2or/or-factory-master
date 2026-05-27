@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 93 — fix: tg-inbound calls the router internally (the public path is Caddy HMAC-gated)
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | fix | Caught on the live test of `factory-test-tgbot1`: `tg-inbound`'s "Call Agent Router" node POSTed to the **public** `https://<domain>/webhook/agent-router`, which Caddy HMAC-gates (→ 401, same as the `configure-agent-router` smoke probe's `http=401`), so the workflow errored before replying. Fix: call n8n **internally** at `http://localhost:5678/webhook/agent-router` (the `tg-inbound` HTTP node runs in the n8n container, so this bypasses the Caddy edge — the standard internal-webhook pattern) and set the node `onError: continueRegularOutput` so a router hiccup degrades to the bot's fallback reply instead of a silent failure. `@@N8N_DOMAIN@@` is no longer used by tg-inbound (its configure sed becomes a harmless no-op). The rest of provision → deploy → configure verified clean end-to-end on the live test system (Telegram credential + `tg-inbound` active + `setWebhook` registered). |
+
 ## Stage 92 — feat: activate the Telegram chat bot (Phase F core — Telegram → router → reply)
 
 | PR | Type | Summary |
@@ -66,10 +72,4 @@
 |---|---|---|
 | TBD | fix | The Stage 81 harness got to `read-back` then failed to find the event by tag-search — the `verify_marker` tag set via `getCurrentScope()` didn't reliably reach the error-handler-captured event, and on Cloud Run `min-instances=0` a fire-and-forget send can be cut off. `/debug/sentry-test` now **captures the exception explicitly** with the tag (`captureException(err, { tags })`), **awaits `Sentry.flush(3000)`** (guarantees transmission before the response), and returns `{ event_id, initialized, flushed }`. `_verify-sentry.yml` reads the `event_id` from the response and **fetches that exact event by id** (no tag-search lag), and uses `initialized` to report a distinct `sdk-disabled` result (DSN not loaded by the running revision) vs a real ingest failure. Verified locally: disabled SDK returns `initialized:false`; 403 gate intact. Requires an MCP redeploy. |
 
-## Stage 81 — test: autonomous end-to-end Sentry verification harness
-
-| PR | Type | Summary |
-|---|---|---|
-| TBD | test | Lets the agent prove the Stage 80 Sentry integration works end-to-end **autonomously** — no operator UI/manual checks. `/debug/sentry-test` (`services/mcp-server/src/index.ts`) upgraded to `app.all`, takes a `marker` query → sets a `verify_marker` tag + embeds it in the thrown error, so a specific event is locatable. New one-shot `.github/workflows/_verify-sentry.yml` (`workflow_dispatch`, `main`-only, WIF broker SA): reads (masked) `mcp-server-admin-secret` + `sentry-auth-token` + the DSN, derives the Sentry API base + project id from the DSN, resolves org/project slug, fires a uniquely-marked error (with a decoy `Authorization` header + body sentinel), **polls the Sentry API until the event lands**, then asserts the `beforeSend` scrubber stripped the `Authorization` header + body. Emits a single `[verify-sentry] result='pass|fail|blocked' …` line (no secrets). The new read-scoped `sentry-auth-token` SM secret is a one-time operator credential handoff (the DSN is write-only — it cannot read events back); reading Cloud Run logs was ruled out (broker SA lacks `logging.viewer` and cannot self-grant it). Requires an MCP redeploy for the route change. |
-
-> Older stages (Stage 80 and earlier) are archived in [`docs/changelog-archive/CHANGELOG.md`](docs/changelog-archive/CHANGELOG.md).
+> Older stages (Stage 81 and earlier) are archived in [`docs/changelog-archive/CHANGELOG.md`](docs/changelog-archive/CHANGELOG.md).
