@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 81 — test: autonomous end-to-end Sentry verification harness
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | test | Lets the agent prove the Stage 80 Sentry integration works end-to-end **autonomously** — no operator UI/manual checks. `/debug/sentry-test` (`services/mcp-server/src/index.ts`) upgraded to `app.all`, takes a `marker` query → sets a `verify_marker` tag + embeds it in the thrown error, so a specific event is locatable. New one-shot `.github/workflows/_verify-sentry.yml` (`workflow_dispatch`, `main`-only, WIF broker SA): reads (masked) `mcp-server-admin-secret` + `sentry-auth-token` + the DSN, derives the Sentry API base + project id from the DSN, resolves org/project slug, fires a uniquely-marked error (with a decoy `Authorization` header + body sentinel), **polls the Sentry API until the event lands**, then asserts the `beforeSend` scrubber stripped the `Authorization` header + body. Emits a single `[verify-sentry] result='pass|fail|blocked' …` line (no secrets). The new read-scoped `sentry-auth-token` SM secret is a one-time operator credential handoff (the DSN is write-only — it cannot read events back); reading Cloud Run logs was ruled out (broker SA lacks `logging.viewer` and cannot self-grant it). Requires an MCP redeploy for the route change. |
+
 ## Stage 80 — feat: observability Phase D — Sentry error tracking on the MCP server
 
 | PR | Type | Summary |
