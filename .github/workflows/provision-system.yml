@@ -258,8 +258,32 @@ jobs:
           # idempotently — re-linking the already-linked account is a no-op. The
           # project ID is immutable, so the adopted project keeps its old id; the
           # `managed-by` label is (re)applied so it shows as factory-managed.
-          gcloud beta billing projects link "$GCP_PROJECT" \
-            --billing-account="014D0F-AC8E0F-5A7EE7"
+          #
+          # Right after undelete the broker's IAM on the project (restored owner /
+          # folder-inherited billing.projectManager) is in the policy but takes
+          # ~30-60s to become EFFECTIVE for the billing API, so the first link can
+          # fail with "does not have permission ... (or it may not exist)". Retry
+          # only on that propagation class (see CLAUDE.md "Propagation patterns").
+          _link_billing() {
+            local err i
+            for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
+              if err=$(gcloud beta billing projects link "$GCP_PROJECT" \
+                   --billing-account="014D0F-AC8E0F-5A7EE7" 2>&1); then
+                printf '%s\n' "$err"
+                return 0
+              fi
+              printf '%s\n' "$err" >&2
+              if printf '%s' "$err" | grep -qiE "does not have permission|PERMISSION_DENIED|may not exist"; then
+                echo "Retry ${i}/12 for billing link (sleeping 10s — post-undelete IAM propagation)..." >&2
+                sleep 10
+                continue
+              fi
+              return 1
+            done
+            echo "FAIL: billing link still denied after 12 attempts" >&2
+            return 1
+          }
+          _link_billing
           gcloud projects update "$GCP_PROJECT" \
             --update-labels="managed-by=or-factory-master,adopted=true" --quiet || true
           echo "PASS: billing linked on $GCP_PROJECT (adopt mode)."

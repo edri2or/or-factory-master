@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 87 — fix: adopt-mode billing link retries the post-undelete IAM propagation window
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | fix | The Stage 86 "Link billing (adopt mode)" step failed on the first live adopt run (`adhd-agent` onto recovered `factory-test-7`): the preflight `undelete` succeeded and restored the project (incl. the broker's `roles/owner` binding), but `gcloud beta billing projects link` fired ~1s later and got `does not have permission to access projects instance [factory-test-7] (or it may not exist)` — the restored/folder-inherited IAM was in the policy but not yet **effective** for the billing API (the eventual-consistency window documented in CLAUDE.md "Propagation patterns"). Normal mode never hits this because the broker creates+owns the project synchronously. Fix: wrap the adopt billing link in a `_link_billing` retry (12×10s) that retries only on the propagation error class (`does not have permission` / `PERMISSION_DENIED` / `may not exist`) and surfaces anything else immediately — mirroring the existing `_bind` / `_wif_op` helpers. Waiting out the window also clears the path for the subsequent project-touching steps. No behavior change for normal/reuse modes. |
+
 ## Stage 86 — feat: adopt mode — provision a real system onto a recovered GCP project
 
 | PR | Type | Summary |
