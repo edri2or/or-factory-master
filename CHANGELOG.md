@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 65 — fix: Axiom ingest targets the EU region host
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | fix | `scripts/emit-event.sh`: switch the Axiom ingest host from `api.axiom.co` (US) to `api.eu.axiom.co` (EU). The Stage 64 error-body logging revealed the exact cause — `HTTP 400 "ingest is only allowed into datasets in the primary region: dataset region: cloud.eu-central-1.aws, deployment region: cloud.us-east-1.aws"` — i.e. the org + `factory-events` dataset live in EU, so ingest must hit the EU data-plane host. Auth/console stay on the global US control plane, which is why the token authenticated against the US host (401→404→400 progression). One-line host change; closes the Axiom leg of the observability pilot. |
+
 ## Stage 64 — fix: log Axiom's error body on ingest failure
 
 | PR | Type | Summary |
