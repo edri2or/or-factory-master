@@ -214,13 +214,18 @@ read_github_actions_run_logs(job_id=<id>, grep="\[linear\]")  # תוצאת Linea
 
 ---
 
-## 9. מתווה Phase B/C/D (עתידי — לא בוצע)
+## 9. מתווה Phase B/C/D
 
-- **Phase B — Coverage**: refactor של `audit-openrouter-orphan-keys.yml` לקרוא ל-emit-event;
-  קריאות emit בנקודות מפתח ב-`provision-system.yml`; חדש `factory-health-audit.yml` (cron).
+- **Phase B — Coverage** (בעבודה):
+  - ✅ `audit-openrouter-orphan-keys.yml` פולט `factory.openrouter_audit.{clean,action_needed,deletions}`
+    בכל ריצה (Axiom תמיד; Linear על ממצא שדורש פעולה). ה-Telegram העשיר בעברית נשמר כפי שהיה;
+    ה-emit ב-severity `info` כדי לא לשלוח Telegram כפול.
+  - ✅ חדש `factory-health-audit.yml` — heartbeat ברמת ה-factory כל 6 שעות:
+    `factory.health.ok` (info → Axiom) או `factory.health.degraded` (error+action → Axiom+Telegram+Linear).
+  - ⬜ קריאות emit בנקודות מפתח ב-`provision-system.yml` (`factory.provision.{started,completed,failed}`) — PR נפרד.
 - **Phase C — Generated systems visibility**: חדש `system-runtime-audit.yml`; יצירת
   Better Stack monitor אוטומטית למערכת חדשה; קריאות emit ב-`deploy-railway-cloudflare.yml`.
 - **Phase D — Refinement**: ניתוב Telegram דרך Better Stack; כלי MCP `emit_event`; הוספת
   Sentry לקוד JS/TS.
 
-Phase A מסתיימת כאן. אין להתחיל את Phase B ללא החלטה נפרדת של המפעיל.
+per-system runtime health שייך ל-Phase C, לא ל-Phase B.

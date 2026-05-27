@@ -1,0 +1,92 @@
+name: Factory Health Audit
+
+# Read-only factory-level health heartbeat. Every 6 hours (and on manual
+# dispatch) it confirms the control plane is intact — control project ACTIVE,
+# the critical Secret Manager secrets present, system-project count — and emits
+# one event via scripts/emit-event.sh: factory.health.ok (info → Axiom) when all
+# good, or factory.health.degraded (error + action_required → Axiom + Telegram +
+# Linear) when a critical check fails. Per-system runtime health is Phase C.
+
+on:
+  schedule:
+    - cron: "0 */6 * * *"   # every 6h at :00 (00/06/12/18 UTC)
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  health:
+    name: Factory health audit
+    runs-on: ubuntu-latest
+    environment: production
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
+
+      - name: Authenticate to GCP via WIF
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093  # v3.0.0
+        with:
+          workload_identity_provider: "projects/140345952904/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
+          service_account: "factory-master-broker@or-factory-master-control.iam.gserviceaccount.com"
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db  # v3.0.1
+
+      - name: Check factory health and emit
+        env:
+          PROJECT: "or-factory-master-control"
+          FOLDER: "123180924297"
+        run: |
+          set -uo pipefail
+          FAILURES=""
+
+          # 1) control project ACTIVE
+          STATE=$(gcloud projects describe "$PROJECT" --format='value(lifecycleState)' 2>/dev/null || echo "UNKNOWN")
+          [ "$STATE" = "ACTIVE" ] || FAILURES="${FAILURES}control-project=${STATE}; "
+
+          # 2) critical secrets present with an enabled version
+          REQUIRED="axiom-api-key better-stack-api-key linear-api-key linear-team-id telegram-bot-token telegram-chat-id factory-master-broker-app-id factory-master-broker-app-private-key factory-master-broker-app-installation-id railway-api-token openrouter-management-key cloudflare-token-creator cloudflare-account-id cloudflare-zone-id-or-infra"
+          MISSING=""
+          for s in $REQUIRED; do
+            v=$(gcloud secrets versions list "$s" --project="$PROJECT" --filter='state:enabled' --format='value(name)' --limit=1 2>/dev/null || echo "")
+            [ -n "$v" ] || MISSING="${MISSING}${s} "
+          done
+          [ -z "$MISSING" ] || FAILURES="${FAILURES}missing-secrets=[${MISSING% }]; "
+
+          # 3) system-project count under the Systems folder (informational)
+          SYSCOUNT=$(gcloud projects list --filter="parent.id=${FOLDER}" --format='value(projectId)' 2>/dev/null | wc -l | tr -d ' ')
+          [ -n "$SYSCOUNT" ] || SYSCOUNT=0
+
+          if [ -z "$FAILURES" ]; then
+            NAME="factory.health.ok"; SEV="info"; ACTREQ="false"
+            BODY=$(jq -cn --argjson sys "$SYSCOUNT" --arg state "$STATE" '{control_project:$state, systems:$sys}')
+          else
+            NAME="factory.health.degraded"; SEV="error"; ACTREQ="true"
+            BODY=$(jq -cn --argjson sys "$SYSCOUNT" --arg state "$STATE" --arg fail "$FAILURES" '{control_project:$state, systems:$sys, failures:$fail}')
+          fi
+
+          bash scripts/emit-event.sh \
+            --name="$NAME" \
+            --severity="$SEV" \
+            --layer="factory" \
+            --workflow="factory-health-audit.yml" \
+            --run-id="${GITHUB_RUN_ID}" \
+            --action-required="$ACTREQ" \
+            --body="$BODY"
+
+          if [ -z "$MISSING" ]; then SEC_TXT="כולם קיימים"; else SEC_TXT="חסרים: ${MISSING}"; fi
+          if [ -z "$FAILURES" ]; then OVERALL="✅ תקין"; else OVERALL="🚨 ${FAILURES}"; fi
+          {
+            echo "## בדיקת בריאות Factory — $(date -u +%Y-%m-%dT%H:%MZ)"
+            echo ""
+            echo "| בדיקה | תוצאה |"
+            echo "|---|---|"
+            echo "| control project | ${STATE} |"
+            echo "| secrets קריטיים | ${SEC_TXT} |"
+            echo "| מספר מערכות (folder) | ${SYSCOUNT} |"
+            echo "| סטטוס כללי | ${OVERALL} |"
+          } >> "$GITHUB_STEP_SUMMARY"

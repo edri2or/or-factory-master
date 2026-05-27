@@ -312,3 +312,32 @@ jobs:
             -d "$(jq -cn --arg chat "$TG_CHAT" --arg text "$MSG" \
               '{chat_id:$chat, text:$text, parse_mode:"Markdown"}')" \
             > /dev/null || echo "WARN: Telegram send failed (non-fatal)"
+
+      - name: Emit observability event
+        if: always()
+        continue-on-error: true
+        # Durable record of every audit run to Axiom; on actionable findings also
+        # opens/updates a Linear issue (action_required). severity stays 'info' so
+        # this does NOT re-send Telegram — the rich Hebrew alert above already did.
+        run: |
+          set -uo pipefail
+          ACTIONABLE="${AUDIT_ACTIONABLE:-0}"
+          DRY="${AUDIT_DRY_RUN:-true}"
+          if [ "$ACTIONABLE" -gt 0 ] && [ "$DRY" = "true" ]; then
+            NAME="factory.openrouter_audit.action_needed"; ACTREQ="true"
+            BODY=$(jq -cn --argjson o "${AUDIT_ORPHANS:-0}" --argjson s "${AUDIT_STALE:-0}" --argjson u "${AUDIT_UNCERTAIN:-0}" --argjson k "${AUDIT_KEPT:-0}" --argjson a "${AUDIT_ACTIONABLE:-0}" '{orphans:$o,stale:$s,uncertain:$u,kept:$k,actionable:$a}')
+          elif [ "${AUDIT_DELETED:-0}" -gt 0 ] || [ "${AUDIT_DELETE_ERRORS:-0}" -gt 0 ]; then
+            NAME="factory.openrouter_audit.deletions"; ACTREQ="false"
+            BODY=$(jq -cn --argjson d "${AUDIT_DELETED:-0}" --argjson e "${AUDIT_DELETE_ERRORS:-0}" '{deleted:$d,errors:$e}')
+          else
+            NAME="factory.openrouter_audit.clean"; ACTREQ="false"
+            BODY=$(jq -cn --argjson o "${AUDIT_ORPHANS:-0}" --argjson s "${AUDIT_STALE:-0}" --argjson k "${AUDIT_KEPT:-0}" '{orphans:$o,stale:$s,kept:$k}')
+          fi
+          bash scripts/emit-event.sh \
+            --name="$NAME" \
+            --severity="info" \
+            --layer="factory" \
+            --workflow="audit-openrouter-orphan-keys.yml" \
+            --run-id="${GITHUB_RUN_ID}" \
+            --action-required="$ACTREQ" \
+            --body="$BODY"
