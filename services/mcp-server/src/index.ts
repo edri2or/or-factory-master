@@ -1,3 +1,5 @@
+import './instrument.js'; // Sentry.init — must run before anything else
+import * as Sentry from '@sentry/node';
 import express, { type Request, type Response } from 'express';
 import { createHash, randomBytes, timingSafeEqual } from 'crypto';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -91,6 +93,18 @@ app.use((req: Request, res: Response, next) => {
 
 app.get('/health', (_req: Request, res: Response) => {
   res.json({ status: 'ok', service: 'factory-actions-mcp' });
+});
+
+// Admin-gated Sentry connectivity probe: throws so the Express error handler
+// reports it to Sentry. Verifies error delivery end-to-end without exposing
+// anything on public traffic (same admin-secret gate as /token).
+app.get('/debug/sentry-test', (req: Request, _res: Response) => {
+  const provided = (req.headers['x-admin-secret'] as string | undefined) ?? '';
+  if (!secretMatches(provided)) {
+    _res.status(403).json({ error: 'unauthorized' });
+    return;
+  }
+  throw new Error('sentry-test: deliberate error from /debug/sentry-test');
 });
 
 // Diagnostic — returns recent requests. Accepts X-Admin-Secret or Bearer.
@@ -300,6 +314,9 @@ app.all('/mcp', async (req: Request, res: Response) => {
     await server.close().catch(() => undefined);
   }
 });
+
+// Must be registered after all routes so it sees errors thrown by handlers.
+Sentry.setupExpressErrorHandler(app);
 
 app.listen(PORT, () => {
   console.log(`factory-actions-mcp listening on port ${PORT} | base URL: ${BASE_URL}`);

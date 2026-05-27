@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 80 — feat: observability Phase D — Sentry error tracking on the MCP server
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | feature | Observability **Phase D**, item 3 of 3: error tracking for the live TypeScript service. New `services/mcp-server/src/instrument.ts` runs `Sentry.init()` (`@sentry/node` v10) — loaded via `node --import ./dist/instrument.js` in the Dockerfile (and imported first in `index.ts` for `npm start`), so init precedes all other modules. `index.ts` adds `Sentry.setupExpressErrorHandler(app)` after the routes; `@sentry/node`'s default integrations also capture `uncaughtException`/`unhandledRejection`. **Errors-only** (`tracesSampleRate: 0`); **no-ops when no DSN** (`SENTRY_DSN` must start with `https://`), so it's safe to merge/deploy dormant. A `beforeSend` scrubber strips `Authorization`/`cookie`/`X-Admin-Secret` headers and the request body before sending (this server handles bearer tokens + the admin secret), with `sendDefaultPii:false`. The DSN comes from the existing `sentry-api-key` secret, mounted as `SENTRY_DSN` in `deploy-mcp-server.yml` (+ a best-effort `secretAccessor` grant since that secret may be out-of-band). Admin-gated `GET /debug/sentry-test` added to verify delivery end-to-end. Only the MCP server is instrumented; the inactive Python `bootstrap-receiver` is skipped. Requires a redeploy to go live. Stages 59–61 rotated to `docs/changelog-archive/CHANGELOG.md` to stay under the 20 KB cap. |
+
 ## Stage 79 — feat: observability Phase D — MCP `emit_event` tool
 
 | PR | Type | Summary |
@@ -108,22 +114,4 @@
 |---|---|---|
 | TBD | chore | One-shot `.github/workflows/_verify-observability-secrets.yml` (`workflow_dispatch`, deleted in the Phase A foundation PR): confirms the broker SA can read the six observability secrets from `or-factory-master-control` SM (Axiom, Better Stack, Linear ×2, Telegram ×2) — masks each value, prints length only, never echoes it. Pinned actions, `permissions: {}`, runs on `main` only. Phase A pre-flight before the `emit-event.sh` foundation PR. |
 
-## Stage 61 — fix: Railway projectCreate 504-safe recovery (no orphan, no duplicate)
-
-| PR | Type | Summary |
-|---|---|---|
-| TBD | fix | `templates/system/.github/workflows/deploy-railway-cloudflare.yml`: a transient Railway `projectCreate` **504** (seen live on `factory-test-102`) creates the project on Railway's side but the id never returns, so the deploy bailed (`projectCreate returned no id`) leaving an orphan that a re-run couldn't reuse — the scoped token returned 0 from `workspace(id).projects` and `projects(first:100)`, so find-by-name failed and a re-run would create a **duplicate**. Root cause: wrong query shape. Verified that `me { workspaces { projects } }` (a different resolver path) *does* list the projects this token can see. Fix: new `_find_project_by_name` helper queries the `me.workspaces` path first (then the two old shapes as fallback); the project step uses it for find-by-name, and on a `projectCreate` that returns no id it now **polls (6×10s) to adopt the project the timed-out call created** rather than failing or blind-recreating. If nothing becomes visible it fails loud with exact remediation (check for an orphan, decommission, re-run) — never creating a duplicate. Makes both 504 recovery and ordinary re-run idempotency self-healing. `bash -n` + `shellcheck --severity=error` clean. Template edit reaches newly-provisioned systems only. |
-
-## Stage 60 — docs: finalize Phase D (per-system Caddy gateway done)
-
-| PR | Type | Summary |
-|---|---|---|
-| TBD | docs | Phase D documentation finalization (PR 4), after the gateway was verified end-to-end on `factory-test-103` (fresh deploy + idempotency re-run: Caddy deployment count unchanged, public gateway serving, no `ERR_ERL_UNEXPECTED_X_FORWARDED_FOR`, Caddy access-logging). `CLAUDE.md`: the `deploy-railway-cloudflare.yml` row now describes the completed gateway — Caddy as a third Railway service owning the public domain, constant-time HMAC + per-IP rate-limit on `/webhook/*`, n8n private and proxied (UI/`/rest/*` guarded by n8n's own auth), the new per-system SM keys (`webhook-hmac-secret`, `caddy-railway-service-id`, `caddy-railway-url`), `N8N_PROXY_HOPS=1`, and the `CADDY_FIRST_TIME` re-run no-op. `docs/roadmap.md`: Phase D marked **done** (PRs 1–4 + the hardening fix ticked). `skills/build-system/SKILL.md`: the post-provision deploy handoff now notes the gateway provision + domain swap. Docs-only; no behaviour change. |
-
-## Stage 59 — fix: gateway hardening (re-run idempotency, n8n proxy trust, Caddy access log)
-
-| PR | Type | Summary |
-|---|---|---|
-| TBD | fix | Three targeted fixes after Phase D PR 3 end-to-end testing on `factory-test-101`. (1) **Caddy re-run idempotency** (`CADDY_FIRST_TIME` guard): the "Provision Caddy" step called `_upsert_collection` unconditionally every run; on the re-run it re-upserted identical env vars, triggering a new Caddy deployment that got stuck (Railway scheduler throttle — "Starting Container" + zero logs), removing the healthy deployment and returning `403 host_not_allowed` on every public URL. Fix mirrors the existing `PG_FIRST_TIME` pattern: `CADDY_FIRST_TIME=false` at step start, `CADDY_FIRST_TIME=true` only on `serviceCreate`, upsert wrapped in `if [ "$CADDY_FIRST_TIME" = "true" ]` — re-runs skip the upsert and leave the live gateway untouched. (2) **n8n proxy trust** (`N8N_PROXY_HOPS: "1"`): n8n behind Caddy logged `ERR_ERL_UNEXPECTED_X_FORWARDED_FOR` because express-rate-limit saw `X-Forwarded-For` but `trust proxy` was off. Adding `N8N_PROXY_HOPS: "1"` to the n8n env upsert clears the error and gives n8n the correct client IP. (3) **Caddy per-site access log**: the global `log` block only configured the Caddy runtime logger; per-request access logs were missing (hampered debugging). Added a `log { output stdout; format console }` block inside the `:{$PORT:8080}` site block. Validated with `caddy fmt` + `caddy validate --config Caddyfile --adapter caddyfile`. Template edits reach newly-provisioned systems only. |
-
-> Older stages (Stage 58 and earlier) are archived in [`docs/changelog-archive/CHANGELOG.md`](docs/changelog-archive/CHANGELOG.md).
+> Older stages (Stage 61 and earlier) are archived in [`docs/changelog-archive/CHANGELOG.md`](docs/changelog-archive/CHANGELOG.md).
