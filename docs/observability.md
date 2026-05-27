@@ -216,15 +216,18 @@ read_github_actions_run_logs(job_id=<id>, grep="\[linear\]")  # תוצאת Linea
 
 ## 9. מתווה Phase B/C/D
 
-- **Phase B — Coverage** (בעבודה):
+- **Phase B — Coverage** (✅ הושלם):
   - ✅ `audit-openrouter-orphan-keys.yml` פולט `factory.openrouter_audit.{clean,action_needed,deletions}`
     בכל ריצה (Axiom תמיד; Linear על ממצא שדורש פעולה). ה-Telegram העשיר בעברית נשמר כפי שהיה;
     ה-emit ב-severity `info` כדי לא לשלוח Telegram כפול.
   - ✅ חדש `factory-health-audit.yml` — heartbeat ברמת ה-factory כל 6 שעות:
     `factory.health.ok` (info → Axiom) או `factory.health.degraded` (error+action → Axiom+Telegram+Linear).
-  - ⬜ קריאות emit בנקודות מפתח ב-`provision-system.yml` (`factory.provision.{started,completed,failed}`) — PR נפרד.
-- **Phase C — Generated systems visibility**: חדש `system-runtime-audit.yml`; יצירת
-  Better Stack monitor אוטומטית למערכת חדשה; קריאות emit ב-`deploy-railway-cloudflare.yml`.
+  - ✅ קריאות emit ב-`provision-system.yml` (`factory.provision.{started,completed,failed}`, soft-fail).
+- **Phase C — Generated systems visibility** (בעבודה):
+  - ✅ חדש `system-runtime-audit.yml` — heartbeat runtime למערכות פרוסות כל 6 שעות: probe ל-`/healthz`
+    הציבורי, ופליטת `factory.runtime_audit.{ok,failed,summary}` (per-system, `layer=system`).
+  - ⬜ קריאות emit ב-`deploy-railway-cloudflare.yml` (template; מגיע למערכות חדשות) + Better Stack
+    monitor אוטומטי לכל מערכת — PR נפרד (PR-C2).
 - **Phase D — Refinement**: ניתוב Telegram דרך Better Stack; כלי MCP `emit_event`; הוספת
   Sentry לקוד JS/TS.
 
