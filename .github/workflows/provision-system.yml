@@ -668,9 +668,31 @@ jobs:
           cp "$EMITTER_DEPLOY_SRC" "$CLONE_DIR/scripts/emit-deploy.sh"
           cp "$EMITTER_LIB_SRC"/*.sh "$CLONE_DIR/scripts/lib/"
 
+          # Governance bundle: ship the CI gates + doc policy so every system enforces
+          # PR-only + green-CI on main (the "Branch protection on main" step below sets
+          # these as required status checks). 4 workflows + .yamllint + CHANGELOG.md seed
+          # from templates/system/; the portable check scripts come from the factory's
+          # own scripts/ (single source of truth — check-skills-mirror.sh is
+          # factory-specific and intentionally NOT shipped).
+          CI_WF_SRC="${GITHUB_WORKSPACE}/templates/system/.github/workflows"
+          for wf in changelog-check pipeline-tests secret-scan supply-chain-check; do
+            [ -f "$CI_WF_SRC/${wf}.yml" ] || { echo "FAIL: CI workflow template $CI_WF_SRC/${wf}.yml not found" >&2; exit 1; }
+            cp "$CI_WF_SRC/${wf}.yml" "$CLONE_DIR/.github/workflows/${wf}.yml"
+          done
+          [ -f "${GITHUB_WORKSPACE}/templates/system/.yamllint" ] || { echo "FAIL: templates/system/.yamllint not found" >&2; exit 1; }
+          cp "${GITHUB_WORKSPACE}/templates/system/.yamllint" "$CLONE_DIR/.yamllint"
+          # Seed CHANGELOG.md only if absent (fresh repo: it is) so the doc gate has a baseline.
+          [ -f "$CLONE_DIR/CHANGELOG.md" ] || cp "${GITHUB_WORKSPACE}/templates/system/CHANGELOG.md" "$CLONE_DIR/CHANGELOG.md"
+          for sc in lib check-changelog-updated check-changelog-size scan-for-secrets \
+                    check-actions-pinned check-workflow-permissions \
+                    check-no-pull-request-target check-no-privileged-pr-workflows; do
+            [ -f "${GITHUB_WORKSPACE}/scripts/${sc}.sh" ] || { echo "FAIL: scripts/${sc}.sh not found" >&2; exit 1; }
+            cp "${GITHUB_WORKSPACE}/scripts/${sc}.sh" "$CLONE_DIR/scripts/${sc}.sh"
+          done
+
           git -C "$CLONE_DIR" config user.name "or-factory-master[bot]"
           git -C "$CLONE_DIR" config user.email "factory-master-broker@or-factory-master-control.iam.gserviceaccount.com"
-          git -C "$CLONE_DIR" add .claude workflows .github/workflows/configure-agent-router.yml Caddyfile Dockerfile.caddy caddy scripts
+          git -C "$CLONE_DIR" add .claude workflows .github/workflows Caddyfile Dockerfile.caddy caddy scripts .yamllint CHANGELOG.md
           # Guard the commit: a reuse-mode re-provision with byte-identical files would
           # otherwise abort this step under `set -e` ("nothing to commit").
           git -C "$CLONE_DIR" diff --cached --quiet \
@@ -679,7 +701,7 @@ jobs:
             || { echo "FAIL: could not push scaffold to edri2or/${SYSTEM_NAME}:main" >&2; exit 1; }
 
           rm -rf "$CLONE_DIR"
-          echo "PASS: .claude package + Agent Router + Caddy gateway scaffold pushed to edri2or/${SYSTEM_NAME}:main (${COUNT} commands + gcp-hands-client skill + 3 n8n workflows + configure-agent-router.yml + Caddyfile + Dockerfile.caddy + caddy/hmacguard)."
+          echo "PASS: .claude package + Agent Router + Caddy gateway + CI governance bundle pushed to edri2or/${SYSTEM_NAME}:main (${COUNT} commands + gcp-hands-client skill + 3 n8n workflows + configure-agent-router.yml + Caddyfile + Dockerfile.caddy + caddy/hmacguard + 4 CI workflows + 8 check scripts + .yamllint + CHANGELOG.md)."
 
       - name: Push system orientation docs (AGENTS.md + CLAUDE.md) to system repo
         continue-on-error: true
@@ -802,9 +824,22 @@ jobs:
           SYSTEM_NAME: ${{ inputs.system_name }}
         run: |
           set -euo pipefail
-          # auto_init created an initial commit; main exists. Add protection.
+          # auto_init created an initial commit; main exists. Add protection:
+          # PR required (0 approvals — a solo owner can still merge), no direct
+          # push, no force-push/deletion, and the 4 scaffolded CI checks must be
+          # green before merge. The CI workflows were pushed to main in the
+          # scaffold step above, so these contexts resolve. `strict:true` means
+          # the PR branch must be up to date with main before merging.
           BODY=$(jq -cn '{
-            required_status_checks: null,
+            required_status_checks: {
+              strict: true,
+              contexts: [
+                "Changelog gates",
+                "shellcheck + yamllint",
+                "Scan for committed secrets",
+                "Supply chain gates"
+              ]
+            },
             enforce_admins: false,
             required_pull_request_reviews: {
               required_approving_review_count: 0,
