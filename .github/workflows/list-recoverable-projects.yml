@@ -1,0 +1,75 @@
+name: List Recoverable GCP Projects (read-only)
+
+# Manual dispatch only. READ-ONLY: enumerates soft-deleted (DELETE_REQUESTED)
+# GCP projects the broker SA can see, so an operator can pick one to ADOPT
+# (provision-system.yml -> adopt_gcp_project) instead of creating a new project
+# when the org is at its project-creation quota (active + soft-deleted both
+# count toward the cap for ~30 days). Touches nothing — no create, no delete,
+# no undelete. Authenticates as the broker SA via WIF, so it must run on main.
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  list:
+    name: List recoverable projects
+    runs-on: ubuntu-latest
+    environment: production
+    # Broker WIF CEL pins ref=refs/heads/main; running off other branches will fail to auth.
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      id-token: write   # WIF OIDC token
+
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
+
+      - name: Authenticate to GCP via WIF
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093  # v3.0.0
+        with:
+          workload_identity_provider: "projects/140345952904/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
+          service_account: "factory-master-broker@or-factory-master-control.iam.gserviceaccount.com"
+
+      - name: List soft-deleted (recoverable) projects
+        run: |
+          set -euo pipefail
+
+          echo "=== Soft-deleted (DELETE_REQUESTED) projects — recoverable via adopt ==="
+          DELETED=$(gcloud projects list \
+            --filter='lifecycleState:DELETE_REQUESTED' \
+            --format='table(projectId,projectNumber,parent.id,createTime)' 2>/dev/null || true)
+          if [ -z "$DELETED" ]; then
+            echo "(none visible — nothing recoverable, or the broker SA cannot enumerate them;"
+            echo " fall back to: gcloud projects list --filter='lifecycleState:DELETE_REQUESTED' in Cloud Shell)"
+          else
+            printf '%s\n' "$DELETED"
+          fi
+
+          echo ""
+          echo "=== Active projects under the Systems folder (123180924297) ==="
+          gcloud projects list \
+            --filter='parent.id=123180924297 AND lifecycleState:ACTIVE' \
+            --format='table(projectId,projectNumber,createTime)' 2>/dev/null \
+            || echo "(active folder listing failed)"
+
+          ACTIVE_TOTAL=$(gcloud projects list \
+            --filter='lifecycleState:ACTIVE' --format='value(projectId)' 2>/dev/null | wc -l | tr -d ' ')
+          DELREQ_TOTAL=$(gcloud projects list \
+            --filter='lifecycleState:DELETE_REQUESTED' --format='value(projectId)' 2>/dev/null | wc -l | tr -d ' ')
+          echo ""
+          echo "SUMMARY: active=${ACTIVE_TOTAL} delete_requested=${DELREQ_TOTAL} (both count toward the project quota for ~30 days)"
+
+          {
+            echo "## Recoverable GCP projects"
+            echo ""
+            echo "### Soft-deleted (DELETE_REQUESTED) — recoverable via \`provision-system.yml\` \`adopt_gcp_project\`"
+            echo '```'
+            printf '%s\n' "${DELETED:-(none visible)}"
+            echo '```'
+            echo ""
+            echo "Active total: **${ACTIVE_TOTAL}** · Delete-requested total: **${DELREQ_TOTAL}**"
+            echo ""
+            echo "To adopt one for a REAL system: dispatch \`provision-system.yml\` with \`system_name=<new-repo>\` and \`adopt_gcp_project=<projectId>\` (the project id is immutable — the new system's GCP project keeps that id; the repo is \`system_name\`)."
+          } >> "$GITHUB_STEP_SUMMARY"

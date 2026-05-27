@@ -5,9 +5,10 @@ Build a new system from scratch — GCP project + GitHub repo + SAs + WIF + secr
 ## Pre-flight
 
 Before doing anything:
-1. **Decide the mode — real vs test** (see CLAUDE.md → "Test systems vs. real systems"):
+1. **Decide the mode — real vs test vs adopt** (see CLAUDE.md → "Test systems vs. real systems"):
    - **Real / persistent system** ("create a system") → **normal mode**: a new GCP project is created (consumes project quota).
    - **Test system** ("create a test system") → **reuse mode**: pass `shared_gcp_project=factory-test-25`. No new project — it's reused; its secrets are wiped + reseeded each run (clean slate; only the latest test round is SM-backed). 0 quota. State this consequence to the user.
+   - **Real system when the project-creation quota is exhausted** → **adopt mode**: pass `adopt_gcp_project=<recovered-or-existing-project-id>`. No `projects create` (which is what's blocked at quota); the workflow undeletes the project if it's soft-deleted, re-links billing, builds real per-system WIF, and wipes its secrets ONCE (a deliberate repurpose, not a per-run wipe). The project id is immutable — the new system's GCP project keeps that old id while the repo stays `system_name`. To find a recoverable project, the user dispatches `list-recoverable-projects.yml` first (read-only). Must NOT be a control project or `factory-test-25`.
    - If the request is ambiguous, ask the user which they mean.
 2. Get `system_name` from the user (it is the GitHub repo name; in normal mode also the GCP project ID). Validate locally:
    - Lowercase ASCII letters, digits, hyphens only.
@@ -17,12 +18,13 @@ Before doing anything:
    - If the user proposed an uppercase or out-of-range name, suggest a normalized version and ask before continuing.
 
 3. Verify state via read-only MCP tools:
-   - GitHub repo (both modes): `edri2or/<system_name>` must NOT exist — the repo is always fresh. The workflow's preflight enforces this and aborts on collision.
-   - GCP project — **normal mode**: `<system_name>` must NOT exist (`list_gcp_projects`). **Reuse mode**: `factory-test-25` must EXIST and be ACTIVE (the workflow preflight checks this).
+   - GitHub repo (all modes): `edri2or/<system_name>` must NOT exist — the repo is always fresh. The workflow's preflight enforces this and aborts on collision.
+   - GCP project — **normal mode**: `<system_name>` must NOT exist (`list_gcp_projects`). **Reuse mode**: `factory-test-25` must EXIST and be ACTIVE (the workflow preflight checks this). **Adopt mode**: `adopt_gcp_project` must be either ACTIVE or soft-deleted (DELETE_REQUESTED) — `list_gcp_projects` shows only ACTIVE ones, so for a soft-deleted candidate rely on `list-recoverable-projects.yml`; the workflow preflight undeletes it and fails if it's absent.
 
-4. Show the user a summary and **ask for explicit go-ahead** (test or real):
+4. Show the user a summary and **ask for explicit go-ahead** (test, real, or adopt):
    - Normal: "I'm about to create GCP project `<name>`, GitHub repo `edri2or/<name>`, and copy the generic secrets. OK to proceed?"
    - Reuse: "I'm about to provision test system `<name>` reusing GCP project `factory-test-25` (no new project, 0 quota), create repo `edri2or/<name>`, and wipe + reseed the shared project's secrets. OK to proceed?"
+   - Adopt: "I'm about to provision REAL system `<name>` onto recovered GCP project `<adopt_gcp_project>` (undelete if needed, no new project — works around the quota), create repo `edri2or/<name>`, and wipe its old secrets ONCE before reseeding. The GCP project keeps its old id. OK to proceed?"
 
 ## Dispatch
 
@@ -30,6 +32,7 @@ Before doing anything:
 2. Dispatch via the `dispatch_workflow` MCP tool: `workflow_id=provision-system.yml`, `ref=main`, with:
    - **Normal:** `inputs={system_name:<name>}`.
    - **Reuse (test):** `inputs={system_name:<name>, shared_gcp_project:factory-test-25}`.
+   - **Adopt (real, quota workaround):** `inputs={system_name:<name>, adopt_gcp_project:<recovered-project-id>}`. Mutually exclusive with `shared_gcp_project`.
    It triggers the run as the org-wide broker App (no PAT) and returns the `run_id` + `run_url`.
 
 ## Watch

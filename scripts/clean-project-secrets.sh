@@ -15,17 +15,41 @@
 # control project's broker App credentials.
 set -euo pipefail
 
-PROJECT="${1:-}"
-[ -n "$PROJECT" ] || { echo "Usage: $0 <gcp-project-id>" >&2; exit 1; }
+# --adopt: one-time clean of a REAL system's recovered/adopted project (a
+# deliberate repurpose, gated upstream by provision-system.yml's adopt mode).
+# Allows any non-control project except factory-test-25; the default (no flag)
+# stays locked to the test patterns.
+ADOPT=false
+if [ "${1:-}" = "--adopt" ]; then
+  ADOPT=true
+  shift
+fi
 
+PROJECT="${1:-}"
+[ -n "$PROJECT" ] || { echo "Usage: $0 [--adopt] <gcp-project-id>" >&2; exit 1; }
+
+# Absolute refusal in BOTH modes: never wipe a control project's broker creds.
 case "$PROJECT" in
   or-factory-master-control|factory-control-9piybr)
     echo "FAIL: refusing to wipe secrets in control project '$PROJECT'" >&2; exit 1 ;;
 esac
 
-if ! [[ "$PROJECT" =~ ^(factory-test-|v2-test-|or-test-)[a-z0-9-]+$ ]]; then
-  echo "FAIL: '$PROJECT' is not an allowed test project (factory-test-*/v2-test-*/or-test-*)" >&2
-  exit 1
+if [ "$ADOPT" = true ]; then
+  # Adopt mode: protect the active shared reuse backend, and require a valid
+  # GCP project-id shape — but allow any (non-control) project to be repurposed.
+  case "$PROJECT" in
+    factory-test-25)
+      echo "FAIL: refusing to wipe factory-test-25 (active shared reuse backend)" >&2; exit 1 ;;
+  esac
+  if ! [[ "$PROJECT" =~ ^[a-z][a-z0-9-]{4,28}[a-z0-9]$ ]]; then
+    echo "FAIL: '$PROJECT' is not a valid GCP project id (6-30 chars, ^[a-z][a-z0-9-]{4,28}[a-z0-9]\$)" >&2
+    exit 1
+  fi
+else
+  if ! [[ "$PROJECT" =~ ^(factory-test-|v2-test-|or-test-)[a-z0-9-]+$ ]]; then
+    echo "FAIL: '$PROJECT' is not an allowed test project (factory-test-*/v2-test-*/or-test-*)" >&2
+    exit 1
+  fi
 fi
 
 echo "=== Clean secrets: $PROJECT ==="
