@@ -86,16 +86,9 @@ jobs:
       - name: Emit deploy started
         continue-on-error: true
         env:
-          EMIT_SM_PROJECT: ${{ vars.GCP_PROJECT_ID }}
+          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
           SYSTEM_NAME: ${{ vars.SYSTEM_NAME }}
-        run: |
-          set -uo pipefail
-          [ -f scripts/emit-event.sh ] || { echo "INFO: emit-event.sh not in repo (older scaffold) — skipping"; exit 0; }
-          bash scripts/emit-event.sh \
-            --name="factory.deploy.started" --severity="info" --layer="system" \
-            --workflow="deploy-railway-cloudflare.yml" --run-id="${GITHUB_RUN_ID}" \
-            --system="${SYSTEM_NAME}" \
-            --body="$(jq -cn --arg s "$SYSTEM_NAME" '{system:$s}')"
+        run: bash scripts/emit-deploy.sh started
 
       - name: Resolve or generate n8n encryption key + owner credentials
         env:
@@ -2211,28 +2204,14 @@ jobs:
       - name: Emit deploy completed
         continue-on-error: true
         env:
-          EMIT_SM_PROJECT: ${{ vars.GCP_PROJECT_ID }}
+          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
           SYSTEM_NAME: ${{ vars.SYSTEM_NAME }}
-        run: |
-          set -uo pipefail
-          [ -f scripts/emit-event.sh ] || { echo "INFO: emit-event.sh not in repo (older scaffold) — skipping"; exit 0; }
-          bash scripts/emit-event.sh \
-            --name="factory.deploy.completed" --severity="info" --layer="system" \
-            --workflow="deploy-railway-cloudflare.yml" --run-id="${GITHUB_RUN_ID}" \
-            --system="${SYSTEM_NAME}" \
-            --body="$(jq -cn --arg s "$SYSTEM_NAME" --arg d "https://n8n-${SYSTEM_NAME}.or-infra.com" '{system:$s, url:$d}')"
+        run: bash scripts/emit-deploy.sh completed
 
       - name: Emit deploy failed
         if: failure()
         continue-on-error: true
         env:
-          EMIT_SM_PROJECT: ${{ vars.GCP_PROJECT_ID }}
+          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
           SYSTEM_NAME: ${{ vars.SYSTEM_NAME }}
-        run: |
-          set -uo pipefail
-          [ -f scripts/emit-event.sh ] || { echo "INFO: emit-event.sh not in repo (older scaffold) — skipping"; exit 0; }
-          bash scripts/emit-event.sh \
-            --name="factory.deploy.failed" --severity="error" --layer="system" \
-            --workflow="deploy-railway-cloudflare.yml" --run-id="${GITHUB_RUN_ID}" \
-            --system="${SYSTEM_NAME}" --action-required="true" \
-            --body="$(jq -cn --arg s "$SYSTEM_NAME" '{system:$s}')"
+        run: bash scripts/emit-deploy.sh failed
