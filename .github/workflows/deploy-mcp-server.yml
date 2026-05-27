@@ -205,10 +205,30 @@ jobs:
             echo "PASS: cloudflare-zones-read-token created with placeholder value."
           fi
 
-      # No "Grant runtime SA secretAccessor / project-level read / actAs"
+      - name: Best-effort grant runtime SA access to sentry-api-key
+        run: |
+          set -uo pipefail
+          # The other mounted secrets were broker-created in bootstrap Stages
+          # 3/4, so the runtime SA already reads them. sentry-api-key (the
+          # Sentry DSN) may have been created out-of-band, so grant
+          # secretAccessor idempotently to be safe. Best-effort: if the SA
+          # lacks setIamPolicy here it almost certainly already has read access
+          # via a project-level binding (like the sibling observability
+          # secrets emit-event.sh reads), so don't fail the deploy.
+          if gcloud secrets add-iam-policy-binding "sentry-api-key" \
+               --project="${GCP_PROJECT}" \
+               --member="serviceAccount:${RUNTIME_SA_EMAIL}" \
+               --role="roles/secretmanager.secretAccessor" \
+               --quiet >/dev/null 2>&1; then
+            echo "PASS: ensured runtime SA secretAccessor on sentry-api-key."
+          else
+            echo "INFO: could not modify sentry-api-key IAM; assuming existing project-level access."
+          fi
+
+      # No other "Grant runtime SA secretAccessor / project-level read / actAs"
       # steps — broker SA is the runtime SA (see env-block note), and the
-      # broker already has access to every secret it mounts (it created them
-      # in Stages 3/4 of bootstrap-record) and the cloud-resource APIs it
+      # broker already has access to every other secret it mounts (it created
+      # them in Stages 3/4 of bootstrap-record) and the cloud-resource APIs it
       # needs. The actAs self-grant for Cloud Run deploy is provided by the
       # broker SA's IAM policy from Stage 2.
 
@@ -272,7 +292,7 @@ jobs:
               --port=3000 \
               --timeout=300 \
               --set-env-vars="PUBLIC_BASE_URL=${PUBLIC_BASE_URL}" \
-              --set-secrets="MCP_ADMIN_SECRET=mcp-server-admin-secret:latest,BEARER_SIGNING_KEY=mcp-server-bearer-signing-key:latest,GITHUB_APP_ID=factory-master-broker-app-id:latest,GITHUB_APP_PRIVATE_KEY=factory-master-broker-app-private-key:latest,GITHUB_APP_INSTALLATION_ID=factory-master-broker-app-installation-id:latest,RAILWAY_API_TOKEN=railway-api-token:latest,CLOUDFLARE_API_TOKEN=cloudflare-token-creator:latest,CLOUDFLARE_ZONE_ID=cloudflare-zone-id-or-infra:latest,CLOUDFLARE_ZONES_READ_TOKEN=cloudflare-zones-read-token:latest" \
+              --set-secrets="MCP_ADMIN_SECRET=mcp-server-admin-secret:latest,BEARER_SIGNING_KEY=mcp-server-bearer-signing-key:latest,GITHUB_APP_ID=factory-master-broker-app-id:latest,GITHUB_APP_PRIVATE_KEY=factory-master-broker-app-private-key:latest,GITHUB_APP_INSTALLATION_ID=factory-master-broker-app-installation-id:latest,RAILWAY_API_TOKEN=railway-api-token:latest,CLOUDFLARE_API_TOKEN=cloudflare-token-creator:latest,CLOUDFLARE_ZONE_ID=cloudflare-zone-id-or-infra:latest,CLOUDFLARE_ZONES_READ_TOKEN=cloudflare-zones-read-token:latest,SENTRY_DSN=sentry-api-key:latest" \
               --labels="owner=factory-master,purpose=mcp-server" \
               --quiet 2>&1
           }

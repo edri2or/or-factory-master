@@ -240,6 +240,10 @@ read_github_actions_run_logs(job_id=<id>, grep="\[linear\]")  # תוצאת Linea
     לכן מימוש מחדש ב-TS ולא shell-out. חמשת הסודות נקראים ב-runtime מ-`or-factory-master-control`
     דרך `getSecretValue` (ה-broker SA, אותו principal שמריץ את הסקריפט ב-CI). soft-fail לכל יעד בנפרד.
   - ⬜ ניתוב Telegram דרך Better Stack.
-  - ⬜ הוספת Sentry לקוד JS/TS.
+  - ✅ Sentry ל-JS/TS — ה-MCP server (`services/mcp-server/`) מאותחל דרך `src/instrument.ts`
+    (`@sentry/node`, נטען ב-`node --import` לפני שאר הקוד) + `Sentry.setupExpressErrorHandler`.
+    errors-only (`tracesSampleRate: 0`), ה-DSN מ-`sentry-api-key` (mount כ-`SENTRY_DSN`),
+    no-op כשאין DSN. `beforeSend` מנקה Authorization/cookie/X-Admin-Secret ואת גוף הבקשה כדי
+    שסודות לא ידלפו. ה-`bootstrap-receiver` (Python, לא פעיל) לא מנוטר.
 
 per-system runtime health שייך ל-Phase C, לא ל-Phase B.
