@@ -18,7 +18,11 @@
 # call's exit code is checked explicitly so one failure never aborts the rest.
 set -uo pipefail
 
-PROJECT="or-factory-master-control"
+# Which Secret Manager project to read the destination secrets from. Defaults
+# to the control project (factory-side callers). A deployed SYSTEM sets
+# EMIT_SM_PROJECT to its own project, where copy-generic-secrets.sh placed
+# axiom-api-key / telegram-* / linear-* at provision time.
+PROJECT="${EMIT_SM_PROJECT:-or-factory-master-control}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # shellcheck source=scripts/lib/event-formatter.sh

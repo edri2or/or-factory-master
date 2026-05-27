@@ -226,8 +226,11 @@ read_github_actions_run_logs(job_id=<id>, grep="\[linear\]")  # תוצאת Linea
 - **Phase C — Generated systems visibility** (בעבודה):
   - ✅ חדש `system-runtime-audit.yml` — heartbeat runtime למערכות פרוסות כל 6 שעות: probe ל-`/healthz`
     הציבורי, ופליטת `factory.runtime_audit.{ok,failed,summary}` (per-system, `layer=system`).
-  - ⬜ קריאות emit ב-`deploy-railway-cloudflare.yml` (template; מגיע למערכות חדשות) + Better Stack
-    monitor אוטומטי לכל מערכת — PR נפרד (PR-C2).
+  - ✅ קריאות emit ב-`deploy-railway-cloudflare.yml` (`factory.deploy.{started,completed,failed}`,
+    `layer=system`, soft-fail). ה-emitter נשלח לתוך כל מערכת חדשה דרך ה-scaffold וקורא את ה-SM של
+    המערכת (`EMIT_SM_PROJECT`). מגיע למערכות שיוקצו מכאן והלאה בלבד.
+  - ⬜ Better Stack monitor אוטומטי לכל מערכת — דחוי (הטוקן `better-stack-api-key` הוגדר כ-telemetry;
+    צריך לוודא שהוא תקף ל-Uptime monitors API לפני הטמעה).
 - **Phase D — Refinement**: ניתוב Telegram דרך Better Stack; כלי MCP `emit_event`; הוספת
   Sentry לקוד JS/TS.
 
