@@ -7,12 +7,26 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { registerTools } from './tools.js';
 import { verifyGitHubOidc } from './oidc-verifier.js';
 import { signBearer, verifyBearer, revokeBearer } from './bearer.js';
+import { sendTelegramMessage } from './observability-client.js';
 
 const PORT = Number(process.env.PORT ?? 3000);
 const ADMIN_SECRET = process.env.MCP_ADMIN_SECRET;
 if (!ADMIN_SECRET) throw new Error('MCP_ADMIN_SECRET env var is required');
 
 const ADMIN_SECRET_HASH = createHash('sha256').update(ADMIN_SECRET).digest();
+
+// Optional shared secret for the Better Stack → Telegram webhook forwarder
+// (/bs-webhook). Absent → the route returns 503 (feature dormant until deployed
+// with the secret mounted).
+const BS_WEBHOOK_SECRET = process.env.BS_WEBHOOK_SECRET;
+const BS_WEBHOOK_SECRET_HASH = BS_WEBHOOK_SECRET
+  ? createHash('sha256').update(BS_WEBHOOK_SECRET).digest()
+  : null;
+function bsTokenMatches(provided: string | undefined): boolean {
+  if (!BS_WEBHOOK_SECRET_HASH) return false;
+  const hash = createHash('sha256').update(provided ?? '').digest();
+  return timingSafeEqual(hash, BS_WEBHOOK_SECRET_HASH);
+}
 
 // PUBLIC_BASE_URL: Cloud Run (injected by deploy workflow from status.url).
 // RAILWAY_PUBLIC_DOMAIN: Railway parallel deploy (ADR 139 blue-green; retired
@@ -118,6 +132,43 @@ app.all('/debug/sentry-test', async (req: Request, res: Response) => {
   });
   const flushed = await Sentry.flush(3000);
   res.status(500).json({ ok: false, marker, event_id: eventId, initialized: Sentry.isInitialized(), flushed });
+});
+
+// Better Stack → Telegram forwarder. Better Stack has no native Telegram channel,
+// so its uptime monitors POST here (Integrations → Exporting data → Webhook) and
+// we relay to Telegram. Gated by a URL token (?token=) compared constant-time
+// against BS_WEBHOOK_SECRET. Always answers 2xx within Better Stack's 30s budget
+// (so it never retry-storms); the Telegram outcome is in the response body.
+app.all('/bs-webhook', async (req: Request, res: Response) => {
+  if (!BS_WEBHOOK_SECRET_HASH) {
+    res.status(503).json({ error: 'bs_webhook_disabled' });
+    return;
+  }
+  const token = typeof req.query.token === 'string' ? req.query.token : '';
+  if (!bsTokenMatches(token)) {
+    res.status(401).json({ error: 'unauthorized' });
+    return;
+  }
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const str = (v: unknown): string => (typeof v === 'string' ? v : v == null ? '' : JSON.stringify(v));
+  const event = str(body['event']).toLowerCase();
+  const emoji = event.includes('resolv') ? '🟢' : event.includes('ack') ? '🟡' : '🔴';
+  const name = str(body['name']);
+  const cause = str(body['cause']);
+  const url = str(body['url']);
+  const incidentId = str(body['incident_id']);
+  let text: string;
+  if (name || cause || url || incidentId) {
+    text =
+      `${emoji} Better Stack${event ? ` (${event})` : ''}\n` +
+      `${name || 'incident'}${cause ? ` — ${cause}` : ''}` +
+      `${url ? `\n${url}` : ''}${incidentId ? `\n#${incidentId}` : ''}`;
+  } else {
+    // Unknown template shape — forward a compact dump so nothing is lost.
+    text = `${emoji} Better Stack incident\n${JSON.stringify(body).slice(0, 800)}`;
+  }
+  const tg = await sendTelegramMessage(text);
+  res.status(200).json({ ok: true, telegram: tg.status, http: tg.http ?? null });
 });
 
 // Diagnostic — returns recent requests. Accepts X-Admin-Secret or Bearer.

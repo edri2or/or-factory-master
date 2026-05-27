@@ -106,22 +106,16 @@ async function ingestAxiom(eventJson: string, key: string): Promise<AxiomResult>
   }
 }
 
-// Mirrors scripts/emit-event.sh:114-133. Caller gates on severity.
-async function sendTelegram(input: EmitEventInput, token: string, chatId: string): Promise<TelegramResult> {
+// Low-level Telegram Bot API send.
+async function postTelegram(token: string, chatId: string, text: string): Promise<TelegramResult> {
   if (!token || !chatId) return { status: 'skipped', reason: 'no-secret' };
-  const emoji = input.severity === 'critical' ? '🔥' : input.severity === 'error' ? '🚨' : '⚠️';
-  const msg =
-    `${emoji} ${input.name}\n` +
-    `System: ${input.system || 'control plane'}\n` +
-    `Workflow: ${input.workflow} (run ${input.runId})\n` +
-    `Severity: ${input.severity}`;
   try {
     const resp = await fetchWithTimeout(
       `https://api.telegram.org/bot${token}/sendMessage`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({ chat_id: chatId, text: msg }).toString(),
+        body: new URLSearchParams({ chat_id: chatId, text }).toString(),
       },
       10000,
     );
@@ -129,6 +123,28 @@ async function sendTelegram(input: EmitEventInput, token: string, chatId: string
   } catch {
     return { status: 'failed', http: 0 };
   }
+}
+
+// Mirrors scripts/emit-event.sh:114-133. Caller gates on severity.
+async function sendTelegram(input: EmitEventInput, token: string, chatId: string): Promise<TelegramResult> {
+  const emoji = input.severity === 'critical' ? '🔥' : input.severity === 'error' ? '🚨' : '⚠️';
+  const text =
+    `${emoji} ${input.name}\n` +
+    `System: ${input.system || 'control plane'}\n` +
+    `Workflow: ${input.workflow} (run ${input.runId})\n` +
+    `Severity: ${input.severity}`;
+  return postTelegram(token, chatId, text);
+}
+
+// Send a free-form Telegram message, reading the bot token + chat id from the
+// control project's Secret Manager at runtime (broker SA). Used by the
+// /bs-webhook forwarder. Returns 'skipped' if a secret can't be read.
+export async function sendTelegramMessage(text: string): Promise<TelegramResult> {
+  const [token, chatId] = await Promise.all([
+    readSecretSoft('telegram-bot-token'),
+    readSecretSoft('telegram-chat-id'),
+  ]);
+  return postTelegram(token, chatId, text);
 }
 
 // Managed-label colours — scripts/lib/linear-issue.sh:18-28.
