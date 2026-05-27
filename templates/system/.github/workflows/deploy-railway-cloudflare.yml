@@ -38,6 +38,7 @@ jobs:
     # WIF CEL pins ref=refs/heads/main; running off other branches will fail to auth.
     if: github.ref == 'refs/heads/main'
     permissions:
+      contents: read    # actions/checkout reads the repo (the shipped emit scripts)
       id-token: write   # WIF OIDC token
 
     steps:

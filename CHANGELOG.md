@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 76 — fix: grant the deploy job `contents: read` so checkout can clone
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | fix | **Completes Stage 75.** Adding `actions/checkout` (Stage 75) was necessary but not sufficient: the deploy job's `permissions:` block declared only `id-token: write`, and once any permission is named GitHub drops every unlisted scope to `none` — so the run's `GITHUB_TOKEN` had just `metadata: read` and checkout got `remote: Repository not found` / `fatal: repository '…/factory-test-42/' not found` (a 404 standing in for 403). Checkout failed → all real steps skipped → `Emit deploy started` skipped and `Emit deploy failed` hit exit 127 (scripts never on disk). Caught on the live deploy of `factory-test-42` (run 26514615666). Adds `contents: read` to the deploy job's permissions so `actions/checkout` can clone the repo. Template now **130,101 B** (~0.9 KB under the 128 KiB cap). |
+
 ## Stage 75 — fix: deploy checks out the repo so the shipped emit scripts are present
 
 | PR | Type | Summary |
