@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 90 — feat: add Telegram chat-bot workflow templates (tg-inbound, tg-proactive, style-refresh)
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | feature | **Additive only — first of 4 PRs that turn every new system's Telegram bot into a smart chat agent (Phase F).** Adds 3 new n8n workflow JSONs under `templates/system/workflows/n8n/`: **`tg-inbound.json`** (Telegram Trigger → normalize message/callback/edited → `tg_updates_seen` dedupe → load `style_profile`+last-20 `n8n_chat_histories`+`pending_actions` → POST the existing `/webhook/agent-router` → HITL `Send and Wait` approval for mutating actions, else direct reply → `n8n_chat_histories`+`spend_log`+`audit_log` persist), **`tg-proactive.json`** (Schedule `0 8 * * *` → aggregate 24h `audit_log`/`spend_log` + n8n API error executions → Haiku 4.5 daily summary → Telegram 🟢), and **`style-refresh.json`** (Schedule `0 3 * * 0` → last-50 messages → Haiku 4.5 extract style JSON → validate/fallback → UPSERT `style_profile`). All three follow the existing `@@…@@` placeholder + credential-reference convention; new tokens introduced for later substitution: `@@CRED_TELEGRAM_ID@@`, `@@CRED_POSTGRES_ID@@`, `@@CHAT_ID@@`, `@@TG_WEBHOOK_SECRET@@`, `@@SYSTEM_NAME@@` (they reuse the existing `@@CRED_OPENROUTER_ID@@`/`@@N8N_DOMAIN@@`/`@@CRED_N8N_API_ID@@`). **No behaviour change for any system: `configure-agent-router.yml` does not install or activate these yet, the agent JSONs are untouched, the Caddyfile is untouched, and no system references them — they are inert template files until PR 3 wires them. `agent-router.json` (classifier + Macro-F1 gate) is deliberately not touched.** |
+
 ## Stage 89 — feat: scaffold CI governance (branch protection + required checks) into every system
 
 | PR | Type | Summary |
@@ -72,22 +78,4 @@
 |---|---|---|
 | TBD | feature | Closes the Phase C deferral from Stage 73 — `better-stack-api-key` is confirmed to work against the Uptime API (Stage 77 probe: HTTP 200, 1 existing monitor). New `scripts/create-uptime-monitor.sh`: idempotent (URL filter on list_monitors, exact-match on `.attributes.url`), free-tier-cap aware (skips at ≥10 existing monitors), soft-fail with structured `[uptime-monitor]` stdout (`created`/`already_exists`/`skipped`/`failed`/`rejected`). `provision-system.yml` gains one `if: success()` + `continue-on-error` step before `factory.provision.completed`, creating an HTTP-status monitor at `https://n8n-<system>.or-infra.com/healthz` (check_frequency=30s, request_timeout=15s, email-only alerts; SMS/Telegram stay on the 6h `system-runtime-audit.yml` layer). Reaches newly-provisioned systems only — no backfill. Removes the one-shot `_probe-better-stack-uptime.yml`. `docs/observability.md` §9 Phase C item moved to done; §5 secret note updated. Stages 56–58 rotated to `docs/changelog-archive/CHANGELOG.md` to stay under the 20 KB cap. |
 
-## Stage 77 — chore: one-shot probe for better-stack-api-key against the Uptime API
-
-| PR | Type | Summary |
-|---|---|---|
-| TBD | chore | Unblocks the Phase C deferral from Stage 73. One-shot `.github/workflows/_probe-better-stack-uptime.yml` (`workflow_dispatch`, `main`-only, WIF broker SA): reads + masks `better-stack-api-key`, GETs `uptime.betterstack.com/api/v2/monitors`, emits `[probe] better_stack_uptime='ok|token_unauthorized|failed'` + Hebrew summary, always exits 0. Confirms the telemetry token also authenticates against the Uptime API before the per-system monitor feature is built. Deleted in the follow-up PR. |
-
-## Stage 76 — fix: grant the deploy job `contents: read` so checkout can clone
-
-| PR | Type | Summary |
-|---|---|---|
-| TBD | fix | **Completes Stage 75.** Adding `actions/checkout` (Stage 75) was necessary but not sufficient: the deploy job's `permissions:` block declared only `id-token: write`, and once any permission is named GitHub drops every unlisted scope to `none` — so the run's `GITHUB_TOKEN` had just `metadata: read` and checkout got `remote: Repository not found` / `fatal: repository '…/factory-test-42/' not found` (a 404 standing in for 403). Checkout failed → all real steps skipped → `Emit deploy started` skipped and `Emit deploy failed` hit exit 127 (scripts never on disk). Caught on the live deploy of `factory-test-42` (run 26514615666). Adds `contents: read` to the deploy job's permissions so `actions/checkout` can clone the repo. Template now **130,101 B** (~0.9 KB under the 128 KiB cap). |
-
-## Stage 75 — fix: deploy checks out the repo so the shipped emit scripts are present
-
-| PR | Type | Summary |
-|---|---|---|
-| TBD | fix | **Regression fix for Stage 73/74.** `templates/system/.github/workflows/deploy-railway-cloudflare.yml` had no `actions/checkout`, so the `factory.deploy.*` emit steps ran in an empty workspace — `bash scripts/emit-deploy.sh` exited 127 (`No such file or directory`), since the scaffolded `scripts/emit-deploy.sh` + `scripts/emit-event.sh` were never on disk (Railway pulls the repo itself; the runner never did). Adds `actions/checkout` (pinned `93cb6efe…` v5.0.1) as the deploy job's first step so the shipped scripts are in the workspace for the emit steps. Soft-fail unchanged (`continue-on-error` + the wrapper's presence guard). Template now **130,016 B** (~1 KB under GitHub's 128 KiB cap). Caught on the first live deploy of `or-test-obsdeploy2`. |
-
-> Older stages (Stage 74 and earlier) are archived in [`docs/changelog-archive/CHANGELOG.md`](docs/changelog-archive/CHANGELOG.md).
+> Older stages (Stage 77 and earlier) are archived in [`docs/changelog-archive/CHANGELOG.md`](docs/changelog-archive/CHANGELOG.md).

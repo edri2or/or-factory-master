@@ -1,0 +1,104 @@
+{
+  "name": "factory-master: style-refresh",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "rule": { "interval": [{ "field": "cronExpression", "expression": "0 3 * * 0" }] }
+      },
+      "id": "30000000-0000-0000-0000-000000000001",
+      "name": "Weekly Sun 03:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [220, 320]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT message FROM n8n_chat_histories WHERE session_id = 'tg:' || {{ '@@CHAT_ID@@' }} ORDER BY id DESC LIMIT 50;",
+        "options": {}
+      },
+      "id": "30000000-0000-0000-0000-000000000002",
+      "name": "Read Recent Messages",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [440, 320],
+      "credentials": { "postgres": { "id": "@@CRED_POSTGRES_ID@@", "name": "Postgres (n8n)" } }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Collapse the up-to-50 history rows into a single text blob for the model.\nconst rows = $input.all();\nconst lines = [];\nfor (const r of rows) {\n  const m = r.json.message;\n  let content = '';\n  try {\n    const obj = (typeof m === 'string') ? JSON.parse(m) : m;\n    content = (obj && obj.data && obj.data.content) ? obj.data.content : '';\n  } catch (e) { content = String(m || ''); }\n  if (content) { lines.push(String(content)); }\n}\nreturn [{ json: { transcript: lines.join('\\n') } }];"
+      },
+      "id": "30000000-0000-0000-0000-000000000003",
+      "name": "Collect Messages",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [660, 320]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.transcript }}",
+        "messages": {
+          "messageValues": [
+            {
+              "type": "SystemMessagePromptTemplate",
+              "message": "Extract a JSON style profile from these chat messages. Schema: { \"language_primary\": string, \"formality\": string, \"avg_reply_length_words\": number, \"emoji_use\": string, \"humor\": string, \"technical_depth\": string, \"address_form\": string, \"anti_patterns\": [string] }. Return ONLY the JSON object, no markdown, no code fences, no prose."
+            }
+          ]
+        }
+      },
+      "id": "30000000-0000-0000-0000-000000000004",
+      "name": "Extract Style",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.5,
+      "position": [880, 320]
+    },
+    {
+      "parameters": {
+        "model": "anthropic/claude-haiku-4.5",
+        "options": { "temperature": 0 }
+      },
+      "id": "30000000-0000-0000-0000-000000000005",
+      "name": "OpenRouter Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [820, 540],
+      "credentials": { "openRouterApi": { "id": "@@CRED_OPENROUTER_ID@@", "name": "OpenRouter (factory-master)" } }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Parse the model's JSON robustly; fall back to a safe default profile.\nconst raw = String($input.first().json.text != null ? $input.first().json.text : ($input.first().json.output != null ? $input.first().json.output : ''));\nconst fallback = { language_primary: 'he', formality: 'casual', avg_reply_length_words: 35, emoji_use: 'moderate', humor: 'dry', technical_depth: 'high', address_form: 'second person, informal', anti_patterns: ['verbose preambles', 'corporate hedging'] };\nlet profile = fallback;\ntry {\n  const m = raw.match(/\\{[\\s\\S]*\\}/);\n  if (m) {\n    const parsed = JSON.parse(m[0]);\n    if (parsed && typeof parsed === 'object') { profile = parsed; }\n  }\n} catch (e) { profile = fallback; }\nreturn [{ json: { profile: profile } }];"
+      },
+      "id": "30000000-0000-0000-0000-000000000006",
+      "name": "Validate JSON",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1100, 320]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO style_profile (chat_id, profile, refreshed_at)\nVALUES ({{ '@@CHAT_ID@@' }}, {{ JSON.stringify(JSON.stringify($json.profile)) }}::jsonb, NOW())\nON CONFLICT (chat_id) DO UPDATE SET profile = EXCLUDED.profile, refreshed_at = NOW();",
+        "options": {}
+      },
+      "id": "30000000-0000-0000-0000-000000000007",
+      "name": "Upsert Style Profile",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1320, 320],
+      "credentials": { "postgres": { "id": "@@CRED_POSTGRES_ID@@", "name": "Postgres (n8n)" } }
+    }
+  ],
+  "connections": {
+    "Weekly Sun 03:00": { "main": [[{ "node": "Read Recent Messages", "type": "main", "index": 0 }]] },
+    "Read Recent Messages": { "main": [[{ "node": "Collect Messages", "type": "main", "index": 0 }]] },
+    "Collect Messages": { "main": [[{ "node": "Extract Style", "type": "main", "index": 0 }]] },
+    "OpenRouter Chat Model": { "ai_languageModel": [[{ "node": "Extract Style", "type": "ai_languageModel", "index": 0 }]] },
+    "Extract Style": { "main": [[{ "node": "Validate JSON", "type": "main", "index": 0 }]] },
+    "Validate JSON": { "main": [[{ "node": "Upsert Style Profile", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" }
+}
