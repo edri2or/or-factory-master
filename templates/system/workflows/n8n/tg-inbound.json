@@ -30,7 +30,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://@@N8N_DOMAIN@@/webhook/agent-router",
+        "url": "http://localhost:5678/webhook/agent-router",
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ text: $json.text }) }}",
@@ -40,7 +40,8 @@
       "name": "Call Agent Router",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [660, 320]
+      "position": [660, 320],
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
