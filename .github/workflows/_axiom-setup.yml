@@ -1,0 +1,114 @@
+name: Axiom Setup (one-shot)
+
+# One-shot: reads axiom-pat (a Personal Access Token) from SM via the broker
+# SA (WIF) and, entirely server-side, (1) probes Axiom to determine the org,
+# region, and working ingest method, (2) creates a scoped API token with
+# ingest+query on the factory-events dataset via POST /v2/tokens, (3) verifies
+# that token can ingest, and (4) stores it as a new version of axiom-api-key.
+# Prints only http codes, org ids, response keys, and lengths — never token
+# values (all masked). Deleted once it has done its job.
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    environment: production
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
+
+      - name: Authenticate to GCP via WIF
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093  # v3.0.0
+        with:
+          workload_identity_provider: "projects/140345952904/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
+          service_account: "factory-master-broker@or-factory-master-control.iam.gserviceaccount.com"
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db  # v3.0.1
+
+      - name: Probe Axiom, create scoped token, store it
+        env:
+          ORG: "factory-or-gftv"
+          DATASET: "factory-events"
+          EU: "https://api.eu.axiom.co"
+          US: "https://api.axiom.co"
+        run: |
+          set -uo pipefail
+          PROJECT="or-factory-master-control"
+
+          PAT=$(gcloud secrets versions access latest --secret="axiom-pat" --project="$PROJECT" 2>/dev/null) || PAT=""
+          if [ -z "$PAT" ]; then echo "FAIL: axiom-pat unreadable or empty"; exit 1; fi
+          echo "::add-mask::${PAT}"
+          echo "axiom-pat: length=${#PAT} prefix=$(printf '%s' "$PAT" | cut -c1-5)"
+
+          TS=$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)
+          EVENT='[{"_time":"'"$TS"'","otel.event.name":"factory.axiom.setup","severity_text":"info","_diag":true}]'
+
+          probe() {  # probe LABEL curl-args...
+            local label="$1"; shift
+            local bf http
+            bf=$(mktemp)
+            http=$(curl -sS -m 15 -o "$bf" -w '%{http_code}' "$@") || http="000"
+            echo "[probe] ${label} => http=${http} body=$(tr -d '\r\n' < "$bf" | cut -c1-300)"
+            rm -f "$bf"
+          }
+
+          echo "===== 1) discover orgs (PAT, no org-id) ====="
+          probe "GET ${EU}/v1/orgs" -H "Authorization: Bearer ${PAT}" "${EU}/v1/orgs"
+          probe "GET ${US}/v1/orgs" -H "Authorization: Bearer ${PAT}" "${US}/v1/orgs"
+
+          echo "===== 2) ingest probes (dataset=${DATASET}, org=${ORG}) ====="
+          probe "ingest EU +orgid"   -X POST "${EU}/v1/datasets/${DATASET}/ingest" -H "Authorization: Bearer ${PAT}" -H "X-Axiom-Org-Id: ${ORG}" -H "Content-Type: application/json" --data "${EVENT}"
+          probe "ingest US +orgid"   -X POST "${US}/v1/datasets/${DATASET}/ingest" -H "Authorization: Bearer ${PAT}" -H "X-Axiom-Org-Id: ${ORG}" -H "Content-Type: application/json" --data "${EVENT}"
+          probe "ingest EU no-orgid" -X POST "${EU}/v1/datasets/${DATASET}/ingest" -H "Authorization: Bearer ${PAT}" -H "Content-Type: application/json" --data "${EVENT}"
+
+          echo "===== 3) create scoped API token (ingest+query on ${DATASET}) ====="
+          TOKBODY=$(jq -cn --arg ds "$DATASET" \
+            '{name:"factory-emitter-ingest", description:"factory observability emitter — ingest+query on factory-events", datasetCapabilities:{($ds):{ingest:["create"],query:["read"]}}, orgCapabilities:{}}')
+          NEWTOK=""
+          for HOST in "$EU" "$US"; do
+            cbf=$(mktemp)
+            chttp=$(curl -sS -m 15 -o "$cbf" -w '%{http_code}' -X POST "${HOST}/v2/tokens" \
+              -H "Authorization: Bearer ${PAT}" -H "X-Axiom-Org-Id: ${ORG}" -H "Content-Type: application/json" \
+              --data "${TOKBODY}") || chttp="000"
+            echo "[create ${HOST}] http=${chttp} keys=$(jq -rc 'keys' < "$cbf" 2>/dev/null || echo n/a) id=$(jq -r '.id // empty' < "$cbf" 2>/dev/null)"
+            NEWTOK=$(jq -r '.token // .rawToken // .apiToken // empty' < "$cbf" 2>/dev/null)
+            rm -f "$cbf"
+            [ -n "$NEWTOK" ] && { echo "[create] token captured from ${HOST}"; break; }
+          done
+
+          if [ -z "$NEWTOK" ]; then
+            echo "RESULT: no token created — inspect the probe bodies above (payload/org/region) and iterate. Nothing stored."
+            exit 0
+          fi
+          echo "::add-mask::${NEWTOK}"
+          echo "new token: length=${#NEWTOK} prefix=$(printf '%s' "$NEWTOK" | cut -c1-5)"
+
+          echo "===== 4) verify new token ingests (Bearer only, EU) ====="
+          vbf=$(mktemp)
+          vhttp=$(curl -sS -m 15 -o "$vbf" -w '%{http_code}' -X POST "${EU}/v1/datasets/${DATASET}/ingest" \
+            -H "Authorization: Bearer ${NEWTOK}" -H "Content-Type: application/json" --data "${EVENT}") || vhttp="000"
+          echo "[verify new-token ingest EU] http=${vhttp} body=$(tr -d '\r\n' < "$vbf" | cut -c1-200)"
+          rm -f "$vbf"
+
+          case "$vhttp" in
+            2*)
+              if printf '%s' "$NEWTOK" | gcloud secrets versions add axiom-api-key --project="$PROJECT" --data-file=- >/dev/null 2>&1; then
+                echo "RESULT: ✅ scoped token created, ingest verified (http=${vhttp}), and stored as latest axiom-api-key. Re-run observability-pilot (info) — expect axiom='ok'."
+              else
+                echo "RESULT: ⚠️ token created + ingest verified, but writing axiom-api-key FAILED (broker SA likely lacks secretmanager.secretVersionAdder). Grant it, or store manually."
+              fi
+              ;;
+            *)
+              echo "RESULT: ⚠️ token created but its ingest returned http=${vhttp} (not 2xx). Not stored — inspect body above."
+              ;;
+          esac
+          echo "===== done ====="
