@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 70 — feat: observability Phase B — instrument provision-system
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | feature | Observability **Phase B**, part 2 of 2. Instruments `provision-system.yml` with soft-fail (`continue-on-error`) emit steps via `scripts/emit-event.sh`: `factory.provision.started` (info, after creds resolved), `factory.provision.completed` (info, after Summary, with `{mode, gcp_project, duration_s}`), and `factory.provision.failed` (error + `action_required` → Axiom + Telegram + Linear, via `if: failure()`). Adds a "Mark start time" step after checkout for duration. Inputs flow via `env:` (never interpolated into the script line). No provisioning logic changed; every emit step is `continue-on-error` so a dead destination never affects a provision. `CLAUDE.md` provision row updated. |
+
 ## Stage 69 — feat: observability Phase B — audit emits + factory-health-audit cron
 
 | PR | Type | Summary |

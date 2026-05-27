@@ -33,6 +33,9 @@ jobs:
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
 
+      - name: Mark start time (for provision duration)
+        run: echo "START_EPOCH=$(date +%s)" >> "$GITHUB_ENV"
+
       - name: Validate inputs
         id: validate
         env:
@@ -111,6 +114,22 @@ jobs:
           } >> "$GITHUB_ENV"
 
           shred -u /tmp/broker-app-key.pem 2>/dev/null || rm -f /tmp/broker-app-key.pem
+
+      - name: Emit provision started
+        continue-on-error: true
+        env:
+          SYSTEM_NAME: ${{ inputs.system_name }}
+          REUSE: ${{ steps.validate.outputs.reuse }}
+        run: |
+          set -uo pipefail
+          bash scripts/emit-event.sh \
+            --name="factory.provision.started" \
+            --severity="info" \
+            --layer="factory" \
+            --workflow="provision-system.yml" \
+            --run-id="${GITHUB_RUN_ID}" \
+            --system="${SYSTEM_NAME}" \
+            --body="$(jq -cn --arg mode "${REUSE}" '{mode: (if $mode == "true" then "reuse" else "normal" end)}')"
 
       - name: Preflight — verify repo and project state
         env:
@@ -863,3 +882,40 @@ jobs:
             echo ""
             echo "**Next step**: dispatch \`deploy-railway-cloudflare.yml\` in \`edri2or/${SYSTEM_NAME}\` to deploy n8n + Postgres + DNS."
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Emit provision completed
+        continue-on-error: true
+        env:
+          SYSTEM_NAME: ${{ inputs.system_name }}
+          REUSE: ${{ steps.validate.outputs.reuse }}
+          GCP_PROJECT: ${{ steps.validate.outputs.gcp_project }}
+        run: |
+          set -uo pipefail
+          DURATION=$(( $(date +%s) - ${START_EPOCH:-$(date +%s)} ))
+          bash scripts/emit-event.sh \
+            --name="factory.provision.completed" \
+            --severity="info" \
+            --layer="factory" \
+            --workflow="provision-system.yml" \
+            --run-id="${GITHUB_RUN_ID}" \
+            --system="${SYSTEM_NAME}" \
+            --body="$(jq -cn --arg mode "${REUSE}" --arg gcp "${GCP_PROJECT}" --argjson dur "${DURATION}" '{mode: (if $mode == "true" then "reuse" else "normal" end), gcp_project: $gcp, duration_s: $dur}')"
+
+      - name: Emit provision failed
+        if: failure()
+        continue-on-error: true
+        env:
+          SYSTEM_NAME: ${{ inputs.system_name }}
+          REUSE: ${{ steps.validate.outputs.reuse }}
+          GCP_PROJECT: ${{ steps.validate.outputs.gcp_project }}
+        run: |
+          set -uo pipefail
+          bash scripts/emit-event.sh \
+            --name="factory.provision.failed" \
+            --severity="error" \
+            --layer="factory" \
+            --workflow="provision-system.yml" \
+            --run-id="${GITHUB_RUN_ID}" \
+            --system="${SYSTEM_NAME}" \
+            --action-required="true" \
+            --body="$(jq -cn --arg mode "${REUSE:-}" --arg gcp "${GCP_PROJECT:-}" '{mode: (if $mode == "true" then "reuse" else "normal" end), gcp_project: $gcp}')"
