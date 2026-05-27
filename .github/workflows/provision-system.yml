@@ -896,6 +896,16 @@ jobs:
             echo "**Next step**: dispatch \`deploy-railway-cloudflare.yml\` in \`edri2or/${SYSTEM_NAME}\` to deploy n8n + Postgres + DNS."
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Create Better Stack uptime monitor
+        if: success()
+        continue-on-error: true
+        env:
+          SYSTEM_NAME: ${{ inputs.system_name }}
+        run: |
+          bash scripts/create-uptime-monitor.sh \
+            --system="${SYSTEM_NAME}" \
+            --url="https://n8n-${SYSTEM_NAME}.or-infra.com/healthz"
+
       - name: Emit provision completed
         continue-on-error: true
         env:

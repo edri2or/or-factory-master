@@ -155,7 +155,7 @@ read_github_actions_run_logs(job_id=<id>, grep="\[linear\]")  # תוצאת Linea
 | סוד | תפקיד |
 |---|---|
 | `axiom-api-key` | טוקן ingest ל-Axiom (יעד ה-event store) |
-| `better-stack-api-key` | טוקן Better Stack (שמור ל-Phase C/D; לא בשימוש ב-Phase A) |
+| `better-stack-api-key` | טוקן Better Stack — **מאומת מול ה-Uptime API** (Stage 77 probe: HTTP 200). בשימוש ב-`provision-system.yml` דרך `scripts/create-uptime-monitor.sh` ליצירת uptime monitor לכל מערכת חדשה |
 | `linear-api-key` | מפתח ה-API האישי של המפעיל ל-Linear |
 | `linear-team-id` | מזהה ה-team היעד ב-Linear (`or-infra-linear`, ה-UUID) |
 | `telegram-bot-token` | בוט ה-Telegram הקיים (לא שונה) |
@@ -229,8 +229,9 @@ read_github_actions_run_logs(job_id=<id>, grep="\[linear\]")  # תוצאת Linea
   - ✅ קריאות emit ב-`deploy-railway-cloudflare.yml` (`factory.deploy.{started,completed,failed}`,
     `layer=system`, soft-fail). ה-emitter נשלח לתוך כל מערכת חדשה דרך ה-scaffold וקורא את ה-SM של
     המערכת (`EMIT_SM_PROJECT`). מגיע למערכות שיוקצו מכאן והלאה בלבד.
-  - ⬜ Better Stack monitor אוטומטי לכל מערכת — דחוי (הטוקן `better-stack-api-key` הוגדר כ-telemetry;
-    צריך לוודא שהוא תקף ל-Uptime monitors API לפני הטמעה).
+  - ✅ Better Stack monitor אוטומטי לכל מערכת חדשה — ב-`provision-system.yml` דרך `scripts/create-uptime-monitor.sh`,
+    soft-fail, idempotent (לא יוצר כפול אם כבר קיים), עם הגנה על תקרת free tier (10 monitors). Email-only alerts;
+    SMS/Telegram נשארים דרך `system-runtime-audit.yml`. (הטוקן `better-stack-api-key` אומת מול ה-Uptime API ב-Stage 77.)
 - **Phase D — Refinement**: ניתוב Telegram דרך Better Stack; כלי MCP `emit_event`; הוספת
   Sentry לקוד JS/TS.
 
