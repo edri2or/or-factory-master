@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 84 — feat: free path — poll Better Stack incidents API → Telegram (cron)
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | feature | Better Stack outgoing webhooks (Stage 83 `/bs-webhook`) turned out to need a **paid plan**; the account is on Free. But the Better Stack **incidents READ API works on Free**, so new `.github/workflows/bs-incidents-to-telegram.yml` (schedule `*/5` + `workflow_dispatch`, `main`-only, WIF broker SA) polls `GET /api/v2/incidents` and relays new/resolved incidents to Telegram — fast downtime → Telegram at zero cost, no new infra, leveraging Better Stack's sub-minute multi-region detection (far better than the 6h `system-runtime-audit`). Dedup via a Secret Manager **`bs-telegram-watermark`** (created/versioned by the broker; first run sets a baseline and alerts nothing, so the historical backlog isn't replayed); the watermark advances only on a successful fetch, so schedule jitter never drops incidents. Reads `better-stack-api-key` + `telegram-*` as the broker SA (masked); soft-fail throughout (`[bs-incidents]` stdout). The Stage 83 `/bs-webhook` route stays dormant-but-ready for an eventual paid upgrade (true sub-minute). |
+
 ## Stage 83 — feat: observability Phase D — route Better Stack → Telegram via /bs-webhook
 
 | PR | Type | Summary |
