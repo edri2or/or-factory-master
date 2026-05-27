@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 68 — fix: emitter ingests to the Axiom EU edge endpoint; drop setup workflow
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | fix | `scripts/emit-event.sh`: point Axiom ingest at the **edge** endpoint `https://eu-central-1.aws.edge.axiom.co/v1/ingest/factory-events` — verified live by `_axiom-setup.yml` (`{"ingested":1,"failed":0}`). The `factory-events` dataset is on the EU edge deployment, which serves only the `/v1/ingest/<dataset>` path (the `/v1/datasets/<ds>/ingest` shape 404s there) and accepts only `xaat-` API tokens (now stored in `axiom-api-key`; PATs can't ingest). Removes the one-shot `.github/workflows/_axiom-setup.yml` now that it has minted + stored the token. Closes the Axiom leg of the observability pilot (DoD #2). |
+
 ## Stage 67 — fix: Axiom setup workflow ingests at the EU edge host
 
 | PR | Type | Summary |
