@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 77 — chore: one-shot probe for better-stack-api-key against the Uptime API
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | chore | Unblocks the Phase C deferral from Stage 73. One-shot `.github/workflows/_probe-better-stack-uptime.yml` (`workflow_dispatch`, `main`-only, WIF broker SA): reads + masks `better-stack-api-key`, GETs `uptime.betterstack.com/api/v2/monitors`, emits `[probe] better_stack_uptime='ok|token_unauthorized|failed'` + Hebrew summary, always exits 0. Confirms the telemetry token also authenticates against the Uptime API before the per-system monitor feature is built. Deleted in the follow-up PR. |
+
 ## Stage 76 — fix: grant the deploy job `contents: read` so checkout can clone
 
 | PR | Type | Summary |

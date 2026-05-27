@@ -1,0 +1,85 @@
+name: Probe Better Stack Uptime API
+
+# One-shot probe. Confirms whether the existing better-stack-api-key secret
+# authenticates against the Better Stack Uptime API (uptime.betterstack.com/api/v2).
+# Result is conveyed via a structured [probe] stdout line + a Hebrew step summary.
+# Always exits 0 — this is a probe, not a gate. Deleted in the follow-up feature PR.
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  probe:
+    name: Probe Better Stack Uptime API
+    runs-on: ubuntu-latest
+    environment: production
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      id-token: write
+
+    env:
+      GCP_PROJECT: "or-factory-master-control"
+      BROKER_SA: "factory-master-broker@or-factory-master-control.iam.gserviceaccount.com"
+      WIF_PROVIDER: "projects/140345952904/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
+
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
+
+      - name: Authenticate to GCP via WIF
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093  # v3.0.0
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.BROKER_SA }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db  # v3.0.1
+
+      - name: Probe Uptime API with better-stack-api-key
+        run: |
+          set -uo pipefail
+
+          BS_TOKEN=""
+          if BS_TOKEN=$(gcloud secrets versions access latest \
+              --secret=better-stack-api-key --project="${GCP_PROJECT}" 2>/dev/null) \
+              && [ -n "$BS_TOKEN" ]; then
+            echo "::add-mask::${BS_TOKEN}"
+          else
+            echo "[probe] better_stack_uptime='no_token' detail='secret read failed'"
+            echo "❌ קריאת הסוד better-stack-api-key נכשלה." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          http=$(curl -sS -m 10 -o /tmp/bs_resp.txt -w '%{http_code}' \
+            -H "Authorization: Bearer ${BS_TOKEN}" \
+            https://uptime.betterstack.com/api/v2/monitors 2>/dev/null) || http="000"
+
+          case "$http" in
+            2*)
+              count=$(jq '.data | length' /tmp/bs_resp.txt 2>/dev/null) || count="?"
+              echo "[probe] better_stack_uptime='ok' http='${http}' existing_monitors_count='${count}'"
+              {
+                echo "✅ ה-token עובד מול Uptime API. ניתן להמשיך ל-Step 2A. נמצאו ${count} monitors קיימים."
+              } >> "$GITHUB_STEP_SUMMARY"
+              ;;
+            401|403)
+              echo "[probe] better_stack_uptime='token_unauthorized' http='${http}'"
+              {
+                echo "⚠️ ה-token הקיים החזיר HTTP ${http} מול Uptime API — כלומר הוא Telemetry-only או לא תקף."
+                echo ""
+                echo "צריך token חדש שעובד מול Uptime API. אפשרויות:"
+                echo "1. Better Stack → Settings → API tokens → Team-based tokens → סעיף **Uptime API tokens** (לא Telemetry) → Create new token."
+                echo "2. או לחלופין הפק **Global API token** (עובד לכל מוצרי Better Stack)."
+                echo "ואז שמור אותו ב-Secret Manager בפרויקט or-factory-master-control תחת השם **better-stack-uptime-key**, ועדכן אותי."
+              } >> "$GITHUB_STEP_SUMMARY"
+              ;;
+            *)
+              detail=$(tr -d '\r' < /tmp/bs_resp.txt | tr '\n' ' ' | cut -c1-300)
+              echo "[probe] better_stack_uptime='failed' http='${http}' detail='${detail}'"
+              echo "❌ קריאה ל-Better Stack נכשלה (HTTP ${http}). ייתכן שזו תקלת רשת — נסה שוב." >> "$GITHUB_STEP_SUMMARY"
+              ;;
+          esac
+
+          exit 0
