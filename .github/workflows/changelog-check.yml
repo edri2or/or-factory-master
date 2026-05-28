@@ -35,3 +35,6 @@ jobs:
 
       - name: Check skills mirror in sync
         run: bash scripts/check-skills-mirror.sh
+
+      - name: Check devplan updated
+        run: bash scripts/check-devplan-updated.sh
