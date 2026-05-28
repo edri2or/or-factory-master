@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 94 — docs: Telegram chat bot (Phase F) + suppress n8n attribution footer
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | docs | PR 4/4 of Phase F — documentation + one cosmetic polish, after the bot was verified end-to-end on a live test system (Telegram → real system-aware answer). New `docs/telegram-chat-bot.md` (Hebrew, analogous to `openrouter-integration.md`): the two-bot architecture (chat bot `n8n-telegram-bot-token` + alerts bot `telegram-bot-token`, shared `chat_id`), the inbound flow (Telegram → `setWebhook` → Caddy `/webhook/telegram-in/*` exemption → `tg-inbound` Webhook → internal `localhost:5678` router call → reply), the secrets, **what v1 ships vs what's deferred** (persistent Postgres memory, style learning + `style-refresh`, daily `tg-proactive`, dedup/spend, HITL writes — all need live DB discovery), the single manual action (bot-token paste), troubleshooting, and migration. `docs/openrouter-integration.md` gains §8 (Telegram chat integration); `docs/roadmap.md` gains **Phase F** (analogous to Phase D, with the 5 architecture adaptations + PR/hotfix history); `templates/system/AGENTS.md.template` updated (Agent Router → "Agent Router + Telegram Chat Bot", `n8n-telegram-webhook-secret` added to runtime shells, two-bot note). Polish: `tg-inbound`'s Send Reply sets `appendAttribution: false`, so the bot's messages no longer carry the "This message was sent automatically with n8n" footer. No behaviour change beyond the footer. |
+
 ## Stage 93 — fix: tg-inbound calls the router internally (the public path is Caddy HMAC-gated)
 
 | PR | Type | Summary |
@@ -66,10 +72,4 @@
 |---|---|---|
 | TBD | feature | Closes Phase D item 2. Better Stack has no native Telegram channel, so its per-system uptime monitors (email-only since Stage 78) now POST an outgoing webhook to a new secret-gated `POST /bs-webhook` on the MCP server, which relays the incident to Telegram — closing the gap where sub-minute downtime never reached Telegram (only the 6h `system-runtime-audit.yml` did). The route (`services/mcp-server/src/index.ts`) gates a `?token=` query constant-time against a new `BS_WEBHOOK_SECRET` env (503 if unset, 401 on mismatch), parses the incident template, and forwards via a new `sendTelegramMessage()` in `observability-client.ts` (reads `telegram-*` at runtime as the broker SA — no new mounted Telegram secret); always answers 2xx within Better Stack's 30s budget. `deploy-mcp-server.yml` mints `bs-webhook-secret` and mounts `BS_WEBHOOK_SECRET`. New `_verify-bs-webhook.yml` autonomously proves the forwarder (synthetic incident → `telegram='ok'`, plus a wrong-token→401 gate check). Operator wires the Better Stack webhook (URL + token + body template) per `docs/observability.md`. Requires an MCP redeploy. Stages 62–64 rotated to the changelog archive. |
 
-## Stage 82 — fix: make the Sentry verification deterministic (capture+flush+event_id)
-
-| PR | Type | Summary |
-|---|---|---|
-| TBD | fix | The Stage 81 harness got to `read-back` then failed to find the event by tag-search — the `verify_marker` tag set via `getCurrentScope()` didn't reliably reach the error-handler-captured event, and on Cloud Run `min-instances=0` a fire-and-forget send can be cut off. `/debug/sentry-test` now **captures the exception explicitly** with the tag (`captureException(err, { tags })`), **awaits `Sentry.flush(3000)`** (guarantees transmission before the response), and returns `{ event_id, initialized, flushed }`. `_verify-sentry.yml` reads the `event_id` from the response and **fetches that exact event by id** (no tag-search lag), and uses `initialized` to report a distinct `sdk-disabled` result (DSN not loaded by the running revision) vs a real ingest failure. Verified locally: disabled SDK returns `initialized:false`; 403 gate intact. Requires an MCP redeploy. |
-
-> Older stages (Stage 81 and earlier) are archived in [`docs/changelog-archive/CHANGELOG.md`](docs/changelog-archive/CHANGELOG.md).
+> Older stages (Stage 82 and earlier) are archived in [`docs/changelog-archive/CHANGELOG.md`](docs/changelog-archive/CHANGELOG.md).

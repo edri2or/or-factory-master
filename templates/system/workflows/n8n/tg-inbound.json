@@ -49,7 +49,7 @@
         "operation": "sendMessage",
         "chatId": "@@CHAT_ID@@",
         "text": "={{ '🤖 ' + (($json.reply !== undefined && $json.reply !== null && String($json.reply) !== '') ? $json.reply : 'אין לי תשובה כרגע — נסה שוב בעוד רגע.') }}",
-        "additionalFields": {}
+        "additionalFields": { "appendAttribution": false }
       },
       "id": "10000000-0000-0000-0000-000000000004",
       "name": "Send Reply",

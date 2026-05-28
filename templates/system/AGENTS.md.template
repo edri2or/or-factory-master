@@ -59,7 +59,7 @@ The factory has set up the following components for this system:
 - **Caddy gateway** in front of n8n, enforcing HMAC-SHA256 on `/webhook/*` and per-IP rate limits
 - **Cloudflare DNS** + Let's Encrypt certificate (DNS-only mode)
 - **`.claude/`** package — slash commands and skills (incl. `gcp-hands-client`)
-- **Agent Router** — n8n workflows + `configure-agent-router.yml` for multi-agent routing
+- **Agent Router + Telegram Chat Bot** — n8n workflows + `configure-agent-router.yml`. The router classifies/routes to ops/code/research/infra/unknown sub-agents; `tg-inbound` brings Telegram messages in (generic Webhook at `/webhook/telegram-in/inbound`, exempt from Caddy HMAC and authed by Telegram's `X-Telegram-Bot-Api-Secret-Token`) → the router → reply. The `unknown-agent` is a smart general + system-aware chat agent. Two physically-separate Telegram bots share one `chat_id`: the **chat bot** (`n8n-telegram-bot-token`) and the **alerts bot** (`telegram-bot-token`, used by `emit-event.sh`). See `docs/telegram-chat-bot.md`.
 - **Observability emitter** — `scripts/emit-event.sh` ships factory.deploy.* events to Axiom/Telegram/Linear
 
 ## Secrets in GCP Secret Manager (names only — never echo, print, or log values)
@@ -86,6 +86,7 @@ ${GENERIC_SECRETS}
 - `n8n-telegram-chat-id`
 - `n8n-api-key`
 - `webhook-hmac-secret`
+- `n8n-telegram-webhook-secret`
 - `caddy-railway-service-id`
 - `caddy-railway-url`
 
