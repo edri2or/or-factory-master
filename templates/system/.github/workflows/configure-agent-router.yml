@@ -406,6 +406,38 @@ jobs:
             fi
           fi
 
+          # 5d. Phase F follow-up (PR 4/5): install + activate tg-proactive — daily
+          #     08:00 UTC summary that aggregates 24h audit_log + spend_log + reads
+          #     style_profile (PR 3) + last-20 errors from the n8n Public API, asks
+          #     Claude Haiku 4.5 for 3-5 bullet points matching the operator's style,
+          #     and sends 🟢 to Telegram. Gated on PG + Telegram both wired.
+          PROACT_WF_ID=""
+          if [ -n "$CRED_POSTGRES_ID" ] && [ "$CRED_POSTGRES_ID" != "null" ] \
+             && [ -n "$CRED_TELEGRAM_ID" ] && [ "$CRED_TELEGRAM_ID" != "null" ] \
+             && [ -n "$CHAT_ID" ]; then
+            PROACT_SRC="${WF_DIR}/tg-proactive.json"
+            if [ -f "$PROACT_SRC" ]; then
+              sed -e "s#@@CRED_POSTGRES_ID@@#${CRED_POSTGRES_ID}#g" \
+                  -e "s#@@CRED_OPENROUTER_ID@@#${CRED_ID}#g" \
+                  -e "s#@@CRED_N8N_API_ID@@#${CRED_N8N_API_ID}#g" \
+                  -e "s#@@CRED_TELEGRAM_ID@@#${CRED_TELEGRAM_ID}#g" \
+                  -e "s#@@CHAT_ID@@#${CHAT_ID}#g" \
+                  -e "s#@@SYSTEM_NAME@@#${SYSTEM_NAME}#g" \
+                  -e "s#@@N8N_DOMAIN@@#${N8N_DOMAIN}#g" \
+                  "$PROACT_SRC" > /tmp/ar-prep-tg-proactive.json
+              PROACT_WF_ID=$(_upsert_wf "factory-master: tg-proactive" /tmp/ar-prep-tg-proactive.json yes) \
+                || PROACT_WF_ID=""
+              if [ -n "$PROACT_WF_ID" ] && [ "$PROACT_WF_ID" != "null" ]; then
+                echo "PASS: factory-master: tg-proactive → id=${PROACT_WF_ID} (פעיל, cron 0 8 * * * — יומי 08:00 UTC)"
+              else
+                echo "WARN: tg-proactive install failed" >&2
+                PROACT_WF_ID=""
+              fi
+            else
+              echo "WARN: tg-proactive.json not found in repo — skipping" >&2
+            fi
+          fi
+
           # 5b. Phase F: install + activate tg-inbound (Telegram Webhook → router →
           #     reply) and register Telegram's webhook at the Caddy /webhook/telegram-in
           #     path, authenticated by the per-system secret token (Caddy validates the
@@ -494,6 +526,9 @@ jobs:
               echo "| Postgres | credential \`${CRED_POSTGRES_ID}\` + טבלאות (db-setup \`${DB_SETUP_ID:-?}\`) |"
               if [ -n "${STYLE_WF_ID:-}" ] && [ "${STYLE_WF_ID:-}" != "null" ]; then
                 echo "| style-refresh | \`${STYLE_WF_ID}\` (פעיל, cron 0 3 * * 0 — שבועי, יום ראשון 03:00 UTC) |"
+              fi
+              if [ -n "${PROACT_WF_ID:-}" ] && [ "${PROACT_WF_ID:-}" != "null" ]; then
+                echo "| tg-proactive | \`${PROACT_WF_ID}\` (פעיל, cron 0 8 * * * — יומי 08:00 UTC, סיכום 24ש' לטלגרם) |"
               fi
             else
               echo "| Postgres | ⚠️ דולג — לא נשלפו פרטי חיבור מ-Railway (זיכרון/סגנון/סיכום מושבתים) |"

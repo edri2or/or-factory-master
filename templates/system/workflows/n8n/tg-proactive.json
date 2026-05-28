@@ -76,7 +76,7 @@
         "operation": "sendMessage",
         "chatId": "@@CHAT_ID@@",
         "text": "={{ '🟢 ' + ($json.text || $json.output || '') }}",
-        "additionalFields": {}
+        "additionalFields": { "appendAttribution": false }
       },
       "id": "20000000-0000-0000-0000-000000000006",
       "name": "Send Proactive",
