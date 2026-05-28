@@ -21,7 +21,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 |---|---|---|---|
 | 1 | חוקר קריאה-בלבד (workflow) | completed | `.github/workflows/oil-autofix-investigate.yml` |
 | 2 | פעמון Linear + סינון רעש (triage) | completed | `services/mcp-server/src/*`, `deploy-mcp-server.yml`, `oil-autofix-investigate.yml` |
-| 3 | הצעת תיקון כ-PR טיוטה | pending | `.github/workflows/oil-autofix-investigate.yml` |
+| 3 | הצעת תיקון כ-PR טיוטה | completed | `.github/workflows/oil-autofix-investigate.yml`, `scripts/oil-autofix-validate.sh` |
 | 4 | סביבת אישור + job יישום ממתין | pending | `.github/workflows/oil-autofix-investigate.yml` + Environment `oil-autofix` |
 | 5 | גשר אישור טלגרם (✅/❌ → מיזוג) | pending | `services/mcp-server/src/*`, `deploy-mcp-server.yml` |
 | 6 | אימות פוסט-תיקון + סגירת תיק | pending | `.github/workflows/oil-autofix-investigate.yml` |
@@ -80,9 +80,17 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 - [ ] הפרה כלשהי או ביטחון נמוך → אבחנה כ-comment + escalation, בלי PR.
 - [ ] קישור ה-PR נכתב ב-comment ב-Linear; אומת ש-PR טיוטה עובר את 4 הבדיקות.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם. החוקר הורחב: אחרי האבחנה, אם הסיווג `actionable-bug` בביטחון
+≥0.8 והבאג בקוד הפקטורי עצמו — סוכן-כתיבה (ללא Bash/אינטרנט) מייצר תיקון קטן + בדיקת-bash; שער
+דטרמיניסטי (`scripts/oil-autofix-validate.sh`) מאמת ≤2 קבצים/~100 שורות, נתיבים אסורים, ללא
+סודות, ובדיקה שנכשלת-לפני/עוברת-אחרי המורצת בסביבה מנוקה אחרי הסרת ה-credentials; ורק אז נפתח
+**PR טיוטה** (broker-App token מצומצם לריפו אחד) עם קישור ב-Linear. אחרת — הסלמה כ-comment, בלי
+PR. לעולם לא ממזג (שלב 4-5). שער-הבטיחות נבדק מקומית ב-6 תרחישים; אימות-ההסלמה החי על main אחרי המיזוג.
 
-**שינוי תוכנית:** —
+**שינוי תוכנית:** נוסף `scripts/oil-autofix-validate.sh` (השער הדטרמיניסטי) כקובץ נפרד — כך
+shellcheck בודק אותו ב-CI והוא נבדק ביחידה מקומית. v1 פותח תיקונים רק על `or-factory-master`
+(תקלות מערכת מוסלמות — תיקון ברמת התבנית). הסוכן לא מקבל Bash; ה-workflow מריץ את הבדיקה ופותח
+את ה-PR; ה-credentials של GCP מוסרים לפני הרצת קוד שה-AI כתב.
 
 ---
 
@@ -144,3 +152,4 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 
 - שלב 1 הושלם — "החוקר" (workflow קריאה-בלבד) נבנה, עבר את כל בדיקות ה-CI, ומוזג (PR #164). אימות חי הועבר ל-PR 2.
 - שלב 2 הושלם — ה"פעמון" מ-Linear חובר: תקלה חדשה מדליקה עכשיו את החוקר לבד, ורישום ה-webhook מתבצע אוטומטית בכל פריסה. בדרך גילינו ותיקנו באג שמנע מהחוקר לרוץ כשהמערכת (ולא בן-אדם) מפעילה אותו.
+- שלב 3 הושלם — כשהחוקר מזהה באג קטן ובטוח בקוד של הפקטורי, הוא עכשיו גם **מכין תיקון ופותח אותו כ-PR טיוטה** (לא ממוזג לבד — מחכה לאישור). אם התיקון מסוכן, גדול, או שאי-אפשר להוכיח אותו בבדיקה — הוא פשוט מסביר ומסלים אליך, בלי לגעת בקוד. שמנו שכבות אבטחה כדי שה-AI לא יוכל לעשות נזק.
