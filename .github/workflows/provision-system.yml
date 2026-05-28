@@ -668,6 +668,14 @@ jobs:
           cp "$EMITTER_DEPLOY_SRC" "$CLONE_DIR/scripts/emit-deploy.sh"
           cp "$EMITTER_LIB_SRC"/*.sh "$CLONE_DIR/scripts/lib/"
 
+          # generate-app-token.sh — lets a system workflow mint a short-lived App
+          # installation token from the per-system App key in its own SM (single
+          # source of truth; the same file the factory itself uses). See the shipped
+          # .github/workflows/mint-app-token-example.yml for the end-to-end pattern.
+          GEN_TOKEN_SRC="${GITHUB_WORKSPACE}/scripts/generate-app-token.sh"
+          [ -f "$GEN_TOKEN_SRC" ] || { echo "FAIL: generate-app-token.sh not found at $GEN_TOKEN_SRC" >&2; exit 1; }
+          cp "$GEN_TOKEN_SRC" "$CLONE_DIR/scripts/generate-app-token.sh"
+
           # Governance bundle: ship the CI gates + doc policy so every system enforces
           # PR-only + green-CI on main (the "Branch protection on main" step below sets
           # these as required status checks). 4 workflows + .yamllint + CHANGELOG.md seed
@@ -701,7 +709,7 @@ jobs:
             || { echo "FAIL: could not push scaffold to edri2or/${SYSTEM_NAME}:main" >&2; exit 1; }
 
           rm -rf "$CLONE_DIR"
-          echo "PASS: .claude package + Agent Router + Caddy gateway + CI governance bundle pushed to edri2or/${SYSTEM_NAME}:main (${COUNT} commands + gcp-hands-client skill + 3 n8n workflows + configure-agent-router.yml + Caddyfile + Dockerfile.caddy + caddy/hmacguard + 4 CI workflows + 8 check scripts + .yamllint + CHANGELOG.md)."
+          echo "PASS: .claude package + Agent Router + Caddy gateway + CI governance bundle pushed to edri2or/${SYSTEM_NAME}:main (${COUNT} commands + gcp-hands-client skill + 3 n8n workflows + configure-agent-router.yml + Caddyfile + Dockerfile.caddy + caddy/hmacguard + generate-app-token.sh + 4 CI workflows + 8 check scripts + .yamllint + CHANGELOG.md)."
 
       - name: Push system orientation docs (AGENTS.md + CLAUDE.md) to system repo
         continue-on-error: true
