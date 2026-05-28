@@ -57,7 +57,7 @@ async function fetchWithTimeout(url: string, init: RequestInit, ms: number): Pro
 // Read a control-project secret; empty string on any failure (soft-fail, mirrors
 // emit-event.sh's `[event] secret=… read='failed'`). trimEnd matches bash's
 // command-substitution stripping of trailing newlines.
-async function readSecretSoft(name: string): Promise<string> {
+export async function readSecretSoft(name: string): Promise<string> {
   try {
     const v = await getSecretValue(CONTROL_PROJECT, name);
     return v.trimEnd();
@@ -157,7 +157,7 @@ const LABEL_COLORS: Record<string, string> = {
   'severity-critical': '#9F1239',
 };
 
-async function linearGql<T>(token: string, query: string, variables: Record<string, unknown>): Promise<T> {
+export async function linearGql<T>(token: string, query: string, variables: Record<string, unknown>): Promise<T> {
   const resp = await fetchWithTimeout(
     LINEAR_API_URL,
     {

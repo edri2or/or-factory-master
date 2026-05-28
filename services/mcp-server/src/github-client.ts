@@ -161,6 +161,26 @@ export async function dispatchWorkflow(
   }
 }
 
+// Trigger a repository_dispatch event (the inbound trigger the OIL investigator
+// workflow listens for: on.repository_dispatch.types=[oil-investigate]). Same
+// broker-App auth as dispatchWorkflow; the /dispatches endpoint returns 204 with
+// no body. Needs the App's contents:write — the broker has it (it writes repo
+// content during provisioning).
+export async function dispatchRepositoryEvent(
+  eventType: string,
+  clientPayload: Record<string, unknown>,
+  owner: string = DEFAULT_OWNER,
+  repo: string = DEFAULT_REPO,
+): Promise<void> {
+  const resp = await ghFetchRepo(owner, repo, '/dispatches', {
+    method: 'POST',
+    body: JSON.stringify({ event_type: eventType, client_payload: clientPayload }),
+  });
+  if (resp.status !== 204) {
+    throw new Error(`repository_dispatch ${owner}/${repo} ${eventType} → ${resp.status}: ${await resp.text()}`);
+  }
+}
+
 // Most recent workflow_dispatch run for a workflow file on a branch. Used right
 // after dispatchWorkflow to return an actionable run id/url. Returns null if no
 // run is visible yet (GitHub takes a beat to materialize the run after dispatch).

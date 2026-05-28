@@ -19,8 +19,8 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
-| 1 | חוקר קריאה-בלבד (workflow) | in-progress | `.github/workflows/oil-autofix-investigate.yml` |
-| 2 | פעמון Linear + סינון רעש (triage) + רשת-ביטחון | pending | `services/mcp-server/src/*`, `.github/workflows/oil-autofix-reconcile.yml`, `deploy-mcp-server.yml` |
+| 1 | חוקר קריאה-בלבד (workflow) | completed | `.github/workflows/oil-autofix-investigate.yml` |
+| 2 | פעמון Linear + סינון רעש (triage) | in-progress | `services/mcp-server/src/*`, `deploy-mcp-server.yml` |
 | 3 | הצעת תיקון כ-PR טיוטה | pending | `.github/workflows/oil-autofix-investigate.yml` |
 | 4 | סביבת אישור + job יישום ממתין | pending | `.github/workflows/oil-autofix-investigate.yml` + Environment `oil-autofix` |
 | 5 | גשר אישור טלגרם (✅/❌ → מיזוג) | pending | `services/mcp-server/src/*`, `deploy-mcp-server.yml` |
@@ -40,25 +40,31 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 - [ ] כותב אבחנה (סיווג + confidence + שורש) כתגובה ב-Linear; ללא קוד, ללא PR, ללא שינוי סטטוס.
 - [ ] עובר את 4 בדיקות ה-CI; אומת ע"י `workflow_dispatch` על OIL-16 → תגובה הופיעה בתיק.
 
-**הערת התקדמות אחרונה:** הקוד נכתב ונדחף; ה-PR פתוח. ממתין ל-CI ירוק, ואז מיזוג +
-הרצה ידנית על OIL-16 לאימות (הרצת ה-Claude עולה מעט — אושר בתוכנית).
+**הערת התקדמות אחרונה:** הושלם ומוזג (PR #164). אומת סטטית + 4 בדיקות CI ירוקות. האימות
+החי (הרצה על OIL-16) הועבר ל-PR 2.
 
-**שינוי תוכנית:** —
+**שינוי תוכנית:** האימות החי נדחה ל-PR 2 — ב-PR 1 לא הייתה דרך אוטונומית להדליק את
+ה-workflow (כלי ההפעלה של הפקטורי מוגבל לרשימה סגורה), והטוקן הקלאסיק הזמני פג תוקף. ב-PR 2
+נבנית ההדלקה האוטומטית (Linear→repository_dispatch) + החוקר נוסף ל-allowlist, ואז האימות החי
+מתבצע שם.
 
 ---
 
-### שלב 2 — פעמון Linear + סינון רעש (triage) + רשת-ביטחון
+### שלב 2 — פעמון Linear + סינון רעש (triage)
 
 **Acceptance:**
-- [ ] endpoint `/linear-webhook` ב-MCP server מאמת חתימה (`Linear-Signature` HMAC על raw body) + timestamp.
-- [ ] triage זול: כללים קודם (`factory.pilot.test`→test; `info`→maintenance **לפני** `action_required`; `action_required:false`→skip), ואז Haiku לעמומים.
-- [ ] רק `actionable-bug`/`transient-infra` מפעילים `repository_dispatch` לחוקר.
-- [ ] `oil-autofix-reconcile.yml` (cron ~6ש) כרשת-ביטחון לתיק שפוספס.
-- [ ] אומת מקצה-לקצה על תקלת בדיקה; עדיין ללא כתיבה. מסנן את OIL-12/OIL-13.
+- [ ] endpoint `/linear-webhook` ב-MCP server מאמת חתימת `Linear-Signature` (HMAC על raw body) + replay-window.
+- [ ] triage חוקים בלבד (סדר קובע: `factory.pilot.test`→test; `info`→maintenance לפני `action_required`; `action_required:false`→skip). זיהוי תיק-פקטורי לפי ה-OTel JSON בגוף התיק.
+- [ ] רק תיק actionable מפעיל `repository_dispatch(oil-investigate)`; ה-investigator נוסף ל-allowlist של `dispatch_workflow`.
+- [ ] סוד `linear-webhook-secret` מעוגן ב-deploy; `/oil-register-webhook` רושם את ה-webhook ב-Linear (אידמפוטנטי).
+- [ ] אומת חי: תקלת בדיקה → webhook → החוקר רץ ואבחנה מופיעה בתיק (כולל האימות שנדחה מ-PR 1). מסנן את OIL-12/OIL-13.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הקוד נכתב ונדחף; ה-PR פתוח (typecheck + CI). הפעלה חיה ממתינה
+לפריסת ה-MCP (חד-פעמית — טוקן תקין או לחיצת deploy), ואז רישום ה-webhook + אימות.
 
-**שינוי תוכנית:** —
+**שינוי תוכנית:** הוקטן והתמקד: (1) ה-reconciler (רשת-ביטחון) הוצא ל-PR קטן נפרד; (2) Haiku
+ב-triage נדחה (מיותר — החוקר מסווג לעומק; החוקים מסננים את הרעש); (3) זיהוי תיק-פקטורי לפי
+ה-OTel JSON ולא לפי תווית (ה-payload של Linear לא תמיד נושא שמות תוויות); (4) JWT ב-payload נדחה.
 
 ---
 
@@ -132,4 +138,4 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 
 > שורה פשוטה אחת לכל שלב שהסתיים — בשפה ש-Or מבין, בלי ז'רגון.
 
-- (מתמלא תוך כדי, כשכל שלב מסתיים ומאומת.)
+- שלב 1 הושלם — "החוקר" (workflow קריאה-בלבד) נבנה, עבר את כל בדיקות ה-CI, ומוזג (PR #164). אימות חי הועבר ל-PR 2.

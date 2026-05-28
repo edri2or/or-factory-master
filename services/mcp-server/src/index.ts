@@ -8,6 +8,7 @@ import { registerTools } from './tools.js';
 import { verifyGitHubOidc } from './oidc-verifier.js';
 import { signBearer, verifyBearer, revokeBearer } from './bearer.js';
 import { sendTelegramMessage } from './observability-client.js';
+import { handleLinearWebhook, registerLinearWebhook } from './oil-autofix.js';
 
 const PORT = Number(process.env.PORT ?? 3000);
 const ADMIN_SECRET = process.env.MCP_ADMIN_SECRET;
@@ -80,7 +81,10 @@ const REQ_LOG_MAX = 50;
 // ── Express app ───────────────────────────────────────────────────────────────
 
 const app = express();
-app.use(express.json());
+// Capture the raw body so signature-verifying webhooks (e.g. /linear-webhook,
+// which checks an HMAC over the exact bytes) can re-hash it; req.body stays the
+// parsed JSON for every other route.
+app.use(express.json({ verify: (req, _res, buf) => { (req as unknown as { rawBody?: Buffer }).rawBody = buf; } }));
 app.use(express.urlencoded({ extended: true }));
 
 app.use((req: Request, res: Response, next) => {
@@ -169,6 +173,34 @@ app.all('/bs-webhook', async (req: Request, res: Response) => {
   }
   const tg = await sendTelegramMessage(text);
   res.status(200).json({ ok: true, telegram: tg.status, http: tg.http ?? null });
+});
+
+// Linear → OIL auto-fix "bell". Linear POSTs here when an OIL issue is created
+// (outbound webhook). We verify the Linear-Signature HMAC over the raw body,
+// drop noise with deterministic rules, and repository_dispatch the read-only
+// investigator for real actionable failures. Always 2xx unless the signature is
+// bad, so Linear never retry-storms or auto-disables the webhook.
+app.post('/linear-webhook', async (req: Request, res: Response) => {
+  try {
+    const r = await handleLinearWebhook(req);
+    res.status(r.status).json(r.body);
+  } catch (e) {
+    process.stdout.write(`[linear-webhook] error: ${String(e).slice(0, 300)}\n`);
+    res.status(200).json({ error: 'internal', detail: String(e).slice(0, 200) });
+  }
+});
+
+// One-time, idempotent registration of the Linear outbound webhook →
+// /linear-webhook. Admin-gated (X-Admin-Secret) so the operator/agent can
+// register without the Linear UI. Safe to call repeatedly.
+app.post('/oil-register-webhook', async (req: Request, res: Response) => {
+  const provided = (req.headers['x-admin-secret'] as string | undefined) ?? '';
+  if (!secretMatches(provided)) {
+    res.status(403).json({ error: 'unauthorized' });
+    return;
+  }
+  const r = await registerLinearWebhook(BASE_URL);
+  res.status(r.status).json(r.body);
 });
 
 // Diagnostic — returns recent requests. Accepts X-Admin-Secret or Bearer.

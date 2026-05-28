@@ -224,6 +224,27 @@ jobs:
             echo "PASS: bs-webhook-secret minted (no trailing newline)."
           fi
 
+      - name: Ensure linear-webhook-secret exists (mint if missing)
+        run: |
+          set -euo pipefail
+          # HMAC signing secret that gates POST /linear-webhook (Linear → OIL
+          # auto-fix bell). Minted random, same as bs-webhook-secret. The same
+          # value is handed to Linear when the outbound webhook is registered
+          # (POST /oil-register-webhook reads it from the mounted env). Reused
+          # across re-deploys. Broker SA already holds project-level
+          # secretAccessor, so no extra IAM grant is needed.
+          if gcloud secrets describe "linear-webhook-secret" \
+               --project="${GCP_PROJECT}" >/dev/null 2>&1; then
+            echo "INFO: linear-webhook-secret exists; reusing."
+          else
+            printf '%s' "$(openssl rand -hex 32)" | gcloud secrets create "linear-webhook-secret" \
+              --project="${GCP_PROJECT}" \
+              --replication-policy=automatic \
+              --labels="owner=factory-master,purpose=linear-webhook" \
+              --data-file=-
+            echo "PASS: linear-webhook-secret minted (no trailing newline)."
+          fi
+
       - name: Best-effort grant runtime SA access to sentry-api-key
         run: |
           set -uo pipefail
@@ -311,7 +332,7 @@ jobs:
               --port=3000 \
               --timeout=300 \
               --set-env-vars="PUBLIC_BASE_URL=${PUBLIC_BASE_URL}" \
-              --set-secrets="MCP_ADMIN_SECRET=mcp-server-admin-secret:latest,BEARER_SIGNING_KEY=mcp-server-bearer-signing-key:latest,GITHUB_APP_ID=factory-master-broker-app-id:latest,GITHUB_APP_PRIVATE_KEY=factory-master-broker-app-private-key:latest,GITHUB_APP_INSTALLATION_ID=factory-master-broker-app-installation-id:latest,RAILWAY_API_TOKEN=railway-api-token:latest,CLOUDFLARE_API_TOKEN=cloudflare-token-creator:latest,CLOUDFLARE_ZONE_ID=cloudflare-zone-id-or-infra:latest,CLOUDFLARE_ZONES_READ_TOKEN=cloudflare-zones-read-token:latest,SENTRY_DSN=sentry-api-key:latest,BS_WEBHOOK_SECRET=bs-webhook-secret:latest" \
+              --set-secrets="MCP_ADMIN_SECRET=mcp-server-admin-secret:latest,BEARER_SIGNING_KEY=mcp-server-bearer-signing-key:latest,GITHUB_APP_ID=factory-master-broker-app-id:latest,GITHUB_APP_PRIVATE_KEY=factory-master-broker-app-private-key:latest,GITHUB_APP_INSTALLATION_ID=factory-master-broker-app-installation-id:latest,RAILWAY_API_TOKEN=railway-api-token:latest,CLOUDFLARE_API_TOKEN=cloudflare-token-creator:latest,CLOUDFLARE_ZONE_ID=cloudflare-zone-id-or-infra:latest,CLOUDFLARE_ZONES_READ_TOKEN=cloudflare-zones-read-token:latest,SENTRY_DSN=sentry-api-key:latest,BS_WEBHOOK_SECRET=bs-webhook-secret:latest,LINEAR_WEBHOOK_SECRET=linear-webhook-secret:latest" \
               --labels="owner=factory-master,purpose=mcp-server" \
               --quiet 2>&1
           }
