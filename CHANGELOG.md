@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 101 — feat: Phase F follow-up PR 4/5 — install + activate `tg-proactive` (daily 08:00 summary)
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | feature | `configure-agent-router.yml` now also installs **and activates** `templates/system/workflows/n8n/tg-proactive.json` — a daily (`0 8 * * *`, 08:00 UTC) summary that aggregates the last 24h of `audit_log` + `spend_log`, fetches the last 20 failed executions via the n8n Public API, reads `style_profile` (populated by `style-refresh` from PR 3) for tone-matching, asks Claude Haiku 4.5 for 3–5 concise bullets + one suggested action, and sends 🟢 to Telegram. Gated on Postgres credential + Telegram credential + chat id; soft-fail (any miss leaves a WARN; the router + chat bot stay up). Placeholders substituted from `configure`'s already-resolved values: `@@CRED_POSTGRES_ID@@`, `@@CRED_OPENROUTER_ID@@`, `@@CRED_N8N_API_ID@@`, `@@CRED_TELEGRAM_ID@@`, `@@CHAT_ID@@`, `@@SYSTEM_NAME@@`, `@@N8N_DOMAIN@@`. One small polish to the template: the Send Proactive node now sets `appendAttribution: false` (consistent with PR 1's tg-inbound polish in Stage 94), so the daily summary won't carry n8n's "sent via n8n" footer. PR 5 (dedup) is next. |
+
 ## Stage 100 — feat: Phase F follow-up PR 3/5 — install + activate `style-refresh`
 
 | PR | Type | Summary |
