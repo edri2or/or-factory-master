@@ -381,6 +381,31 @@ jobs:
           [ -n "$ROUTER_ID" ] && [ "$ROUTER_ID" != "null" ] || _soft_exit0 "לא התקבל id עבור Agent Router"
           echo "PASS: factory-master: Agent Router → id=${ROUTER_ID}"
 
+          # 5c. Phase F follow-up (PR 3/5): install + activate style-refresh — weekly
+          #     extraction of the operator's chat style into Postgres `style_profile`,
+          #     used by tg-proactive's daily summary (PR 4/5). Postgres-dependent: skip
+          #     if no PG credential or chat id. Soft-fail; never blocks the router.
+          STYLE_WF_ID=""
+          if [ -n "$CRED_POSTGRES_ID" ] && [ "$CRED_POSTGRES_ID" != "null" ] && [ -n "$CHAT_ID" ]; then
+            STYLE_SRC="${WF_DIR}/style-refresh.json"
+            if [ -f "$STYLE_SRC" ]; then
+              sed -e "s#@@CRED_POSTGRES_ID@@#${CRED_POSTGRES_ID}#g" \
+                  -e "s#@@CRED_OPENROUTER_ID@@#${CRED_ID}#g" \
+                  -e "s#@@CHAT_ID@@#${CHAT_ID}#g" \
+                  "$STYLE_SRC" > /tmp/ar-prep-style-refresh.json
+              STYLE_WF_ID=$(_upsert_wf "factory-master: style-refresh" /tmp/ar-prep-style-refresh.json yes) \
+                || STYLE_WF_ID=""
+              if [ -n "$STYLE_WF_ID" ] && [ "$STYLE_WF_ID" != "null" ]; then
+                echo "PASS: factory-master: style-refresh → id=${STYLE_WF_ID} (פעיל, cron 0 3 * * 0)"
+              else
+                echo "WARN: style-refresh install failed" >&2
+                STYLE_WF_ID=""
+              fi
+            else
+              echo "WARN: style-refresh.json not found in repo — skipping" >&2
+            fi
+          fi
+
           # 5b. Phase F: install + activate tg-inbound (Telegram Webhook → router →
           #     reply) and register Telegram's webhook at the Caddy /webhook/telegram-in
           #     path, authenticated by the per-system secret token (Caddy validates the
@@ -467,6 +492,9 @@ jobs:
             echo "| Webhook | ${BASE}/webhook/agent-router |"
             if [ -n "${CRED_POSTGRES_ID:-}" ] && [ "${CRED_POSTGRES_ID:-}" != "null" ]; then
               echo "| Postgres | credential \`${CRED_POSTGRES_ID}\` + טבלאות (db-setup \`${DB_SETUP_ID:-?}\`) |"
+              if [ -n "${STYLE_WF_ID:-}" ] && [ "${STYLE_WF_ID:-}" != "null" ]; then
+                echo "| style-refresh | \`${STYLE_WF_ID}\` (פעיל, cron 0 3 * * 0 — שבועי, יום ראשון 03:00 UTC) |"
+              fi
             else
               echo "| Postgres | ⚠️ דולג — לא נשלפו פרטי חיבור מ-Railway (זיכרון/סגנון/סיכום מושבתים) |"
             fi

@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 100 — feat: Phase F follow-up PR 3/5 — install + activate `style-refresh`
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | feature | After Batch 1 (PR 1/2 + the three /run fixes) was verified live on `factory-test-tgbot6` (`Postgres credential id=…` + `db-setup ran — Postgres tables ensured` + `unknown-agent` installed with `memoryPostgresChat`), `configure-agent-router.yml` now also installs **and activates** `templates/system/workflows/n8n/style-refresh.json` — a weekly (`0 3 * * 0`, Sunday 03:00 UTC) extractor that reads the last 50 messages of `n8n_chat_histories` for `tg:<chat_id>`, asks Claude Haiku 4.5 for a JSON style profile (language, formality, emoji use, anti-patterns, …) with a safe fallback, and UPSERTs into the `style_profile` table created in PR 1. Gated on Postgres credential + chat id; soft-fail (any miss skips style-refresh, the router + bot stay up). Postgres credential id, OpenRouter id, and chat id are substituted from `configure`'s already-resolved values; the template's existing placeholders need no change. PR 4 (`tg-proactive`) consumes `style_profile` to match the operator's tone. |
+
 ## Stage 99 — fix: db-setup `/run` body also needs `destinationNode` (n8n partial-execution flow)
 
 | PR | Type | Summary |
