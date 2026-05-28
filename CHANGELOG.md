@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 107 — docs: refresh Phase F handoff after Gap 2 closure (Stage 106 / PR #152)
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | docs | Sync `docs/phase-f-handoff.md` to the post-Stage-106 reality after Gap 2 was closed and verified live. **§1**: live system `factory-test-tgbot9` → `factory-test-tgbot10` (tgbot9 was decommissioned during Gap 2 verification on 2026-05-28); merged PR list extended with 151+152; Stage range `95–104` → `95–106` across both §1 and §4. **§2 row 2** (style injection) flipped to ✅ closed with a one-line evidence summary (4 real Telegram messages on tgbot10, no sub-agent leaked its technical identity), action-column emptied. **§2 row 3** (new tools for unknown-agent) expanded with a **⚠️ architectural blocker on `gcp_metadata_get`**: n8n runs on Railway, not on a GCP VM, so `http://metadata.google.internal/...` is unreachable; next session must pick (a) HTTP-tool against `factory-master-actions-mcp` Cloud Run with a new bearer token in SM, (b) drop the tool in v1, or (c) other — present tradeoffs before acting. **§3** got a new verification rule 5: template edits don't propagate to existing systems (snapshot at provision time), so verifying any post-merge template change requires a fresh provision (~15–20 min, 0 quota in reuse mode) — pattern validated in Stage 106 and now baked into the discipline. **§5** prompt stays neutral but adds a recommendation: next gap is Gap 3 (with the gcp_metadata caveat above). Header banner refreshed to reflect the post-Gap-2 state. Pure docs; no behaviour. |
+
 ## Stage 106 — feat: Phase F follow-up — style_profile injection in ops/code/research/infra sub-agents
 
 | PR | Type | Summary |
