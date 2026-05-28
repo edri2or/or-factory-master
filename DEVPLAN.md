@@ -20,7 +20,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
 | 1 | חוקר קריאה-בלבד (workflow) | completed | `.github/workflows/oil-autofix-investigate.yml` |
-| 2 | פעמון Linear + סינון רעש (triage) | in-progress | `services/mcp-server/src/*`, `deploy-mcp-server.yml` |
+| 2 | פעמון Linear + סינון רעש (triage) | completed | `services/mcp-server/src/*`, `deploy-mcp-server.yml`, `oil-autofix-investigate.yml` |
 | 3 | הצעת תיקון כ-PR טיוטה | pending | `.github/workflows/oil-autofix-investigate.yml` |
 | 4 | סביבת אישור + job יישום ממתין | pending | `.github/workflows/oil-autofix-investigate.yml` + Environment `oil-autofix` |
 | 5 | גשר אישור טלגרם (✅/❌ → מיזוג) | pending | `services/mcp-server/src/*`, `deploy-mcp-server.yml` |
@@ -59,8 +59,12 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 - [ ] סוד `linear-webhook-secret` מעוגן ב-deploy; `/oil-register-webhook` רושם את ה-webhook ב-Linear (אידמפוטנטי).
 - [ ] אומת חי: תקלת בדיקה → webhook → החוקר רץ ואבחנה מופיעה בתיק (כולל האימות שנדחה מ-PR 1). מסנן את OIL-12/OIL-13.
 
-**הערת התקדמות אחרונה:** הקוד נכתב ונדחף; ה-PR פתוח (typecheck + CI). הפעלה חיה ממתינה
-לפריסת ה-MCP (חד-פעמית — טוקן תקין או לחיצת deploy), ואז רישום ה-webhook + אימות.
+**הערת התקדמות אחרונה:** הופעל. הקוד נפרס לבד עם מיזוג PR 2 (הסוד `linear-webhook-secret`
+מוטבע בשרת החי). הבדיקה החיה על OIL-16 חשפה באג אמיתי — `claude-code-action` חסם את שחקן-ה-Bot
+של הברוקר ("non-human actor"), כך שהלולאה לא יכלה לרוץ כלל; תוקן עם `allowed_bots` (אפליקציית
+הברוקר בלבד, לא `*`). רישום ה-webhook הוטמע כשלב אידמפוטנטי (soft-fail) ב-`deploy-mcp-server.yml`,
+כי הסביבה של הסוכן חסומה ל-run.app והרישום חייב לרוץ מ-runner. שני ה-workflows נעולים ל-main, אז
+האימות החי המלא מתבצע על ריצת ה-main שאחרי המיזוג.
 
 **שינוי תוכנית:** הוקטן והתמקד: (1) ה-reconciler (רשת-ביטחון) הוצא ל-PR קטן נפרד; (2) Haiku
 ב-triage נדחה (מיותר — החוקר מסווג לעומק; החוקים מסננים את הרעש); (3) זיהוי תיק-פקטורי לפי
@@ -139,3 +143,4 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 > שורה פשוטה אחת לכל שלב שהסתיים — בשפה ש-Or מבין, בלי ז'רגון.
 
 - שלב 1 הושלם — "החוקר" (workflow קריאה-בלבד) נבנה, עבר את כל בדיקות ה-CI, ומוזג (PR #164). אימות חי הועבר ל-PR 2.
+- שלב 2 הושלם — ה"פעמון" מ-Linear חובר: תקלה חדשה מדליקה עכשיו את החוקר לבד, ורישום ה-webhook מתבצע אוטומטית בכל פריסה. בדרך גילינו ותיקנו באג שמנע מהחוקר לרוץ כשהמערכת (ולא בן-אדם) מפעילה אותו.

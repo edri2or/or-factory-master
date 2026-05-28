@@ -153,6 +153,14 @@ jobs:
         uses: anthropics/claude-code-action@787c5a0ce96a9a6cfb050ea0c8f4c05f2447c251  # v1
         with:
           anthropic_api_key: ${{ env.ANTHROPIC_API_KEY }}
+          # The loop is ALWAYS initiated by the broker GitHub App — either a
+          # manual dispatch via the factory's dispatch_workflow tool, or the
+          # repository_dispatch the MCP server fires after triage — so the actor
+          # is a Bot. claude-code-action refuses non-human actors unless they are
+          # allowlisted (it errors "Workflow initiated by non-human actor").
+          # Pin to this one App (both the bare slug and the "[bot]" login form),
+          # never "*", so no other bot can drive it; the run is read-only anyway.
+          allowed_bots: "factory-master-broker,factory-master-broker[bot]"
           prompt: |
             You are an SRE investigator for an automated build system called
             "the factory" (this repository). Investigate exactly ONE failure,

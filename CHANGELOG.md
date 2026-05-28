@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 119 — fix: OIL auto-fix Phase 1 — activation (broker-Bot actor gate + idempotent webhook self-register)
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | fix | One-time activation of the OIL auto-fix loop (DEVPLAN stage 2) plus the live verification deferred from PR 1 — which surfaced a real bug. **Investigator (`oil-autofix-investigate.yml`):** a live `workflow_dispatch` on OIL-16 (fired by the broker App via the factory `dispatch_workflow` tool) failed in ~25 s — `claude-code-action` rejects a non-human actor (`Workflow initiated by non-human actor: factory-master-broker (type: Bot)`). The loop is ALWAYS driven by the broker App — both the manual dispatch AND the production `repository_dispatch(oil-investigate)` the MCP fires after triage — so without this it could never run. Fix: `allowed_bots: "factory-master-broker,factory-master-broker[bot]"` (this one App, both login forms; never `*`; the run stays strictly read-only). **Webhook registration (`deploy-mcp-server.yml`):** the planned manual `curl POST /oil-register-webhook` can't run from the agent sandbox (egress reaches `api.github.com` but not `*.run.app`, and `probe_endpoint` can't send the `X-Admin-Secret` header). So registration is now a final, idempotent, `continue-on-error` deploy step that reads `mcp-server-admin-secret` from SM (`::add-mask::`ed) and POSTs the freshly-deployed region URL's `/oil-register-webhook` (`registerLinearWebhook` is idempotent → `created` once, `exists` after; only a non-secret webhook id/status is logged). Both workflows are `main`-pinned (`if: github.ref == 'refs/heads/main'` + the broker WIF CEL), so both fixes live-verify on the post-merge `main` run, not pre-merge. DEVPLAN stage 2 → completed. No provisioning/runtime logic touched. |
+
 ## Stage 118 — feat: OIL auto-fix Phase 1 / PR 2 — the Linear "bell" (webhook → rules triage → repository_dispatch)
 
 | PR | Type | Summary |
