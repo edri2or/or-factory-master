@@ -331,17 +331,22 @@ export function registerTools(server: McpServer): void {
   // (idempotent create/update of the Agent Router workflows via REST; soft-fail,
   // touches no GCP/SM), so the agent can wire the router itself instead of the
   // operator clicking "Run workflow".
+  // oil-autofix-investigate.yml IS allowed — the read-only OIL investigator
+  // (reads an OIL issue + the failed run's logs and posts a Linear diagnosis
+  // comment; no code/PR/state change). Allowlisting lets the agent dispatch a
+  // verification run on demand; the live loop triggers it via repository_dispatch.
   const DISPATCHABLE_WORKFLOWS = new Set([
     'provision-system.yml',
     'register-system-app.yml',
     'deploy-railway-cloudflare.yml',
     'configure-agent-router.yml',
     'decommission-test-system.yml',
+    'oil-autofix-investigate.yml',
   ]);
 
   server.tool(
     'dispatch_workflow',
-    'Trigger a workflow_dispatch event for an ALLOWLISTED factory workflow (provision-system.yml, register-system-app.yml, deploy-railway-cloudflare.yml, configure-agent-router.yml, decommission-test-system.yml). Dispatches as the org-wide broker App, so it works on or-factory-master AND any system repo (pass repo, e.g. "factory-test-24"). Polls briefly and returns the created run_id + run_url. This is the only WRITE tool on the server. configure-agent-router.yml wires the multi-agent router into a system\'s n8n (idempotent, soft-fail); decommission-test-system.yml is test-only (Railway+DNS+repo-archive, no GCP/SM); the real-system decommission-system.yml is intentionally NOT dispatchable here.',
+    'Trigger a workflow_dispatch event for an ALLOWLISTED factory workflow (provision-system.yml, register-system-app.yml, deploy-railway-cloudflare.yml, configure-agent-router.yml, decommission-test-system.yml, oil-autofix-investigate.yml). Dispatches as the org-wide broker App, so it works on or-factory-master AND any system repo (pass repo, e.g. "factory-test-24"). Polls briefly and returns the created run_id + run_url. This is the only WRITE tool on the server. configure-agent-router.yml wires the multi-agent router into a system\'s n8n (idempotent, soft-fail); decommission-test-system.yml is test-only (Railway+DNS+repo-archive, no GCP/SM); the real-system decommission-system.yml is intentionally NOT dispatchable here.',
     {
       ...repoParams,
       workflow_id: z.string().describe('Workflow file name to dispatch, e.g. provision-system.yml. Must be on the allowlist.'),
