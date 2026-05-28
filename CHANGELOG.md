@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 96 — feat: Phase F follow-up PR 2/5 — persistent Postgres chat memory
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | feature | unknown-agent's conversation memory switches from in-memory **Window Buffer** (wiped on every n8n restart) to **Postgres Chat Memory** (`@n8n/n8n-nodes-langchain.memoryPostgresChat`, session key `tg:<chat_id>`, table `n8n_chat_histories` — auto-created by the node, and also pre-created by PR 1's `db-setup`), using the `Postgres (n8n)` credential wired in PR 1. `configure-agent-router.yml` now substitutes `@@CRED_POSTGRES_ID@@` in the sub-agent install. **Graceful degradation:** if no Postgres credential was wired (PR 1's Railway fetch failed), configure rewrites unknown-agent's memory node back to the in-memory window via `jq` so the chat bot keeps working rather than pointing at an empty credential. No other workflow changed; `agent-router.json` + `tests/router_battery.yaml` untouched. Verified together with PR 1 on a live test system (next batch). |
+
 ## Stage 95 — feat: Phase F follow-up PR 1/5 — per-system Postgres credential + table bootstrap
 
 | PR | Type | Summary |
