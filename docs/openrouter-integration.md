@@ -135,3 +135,13 @@ LLM ב-dispatch/push-to-main).
   (L3), סף ביטחון 0.7 (L4), ואימות egress עם allowlist ל-URL (L5).
 - כל שלב soft-fail: כשל ב-router לעולם לא מפיל את ה-run; אזהרה בעברית ב-job summary
   ו-`exit 0` (זהה לעיקרון ה-OpenRouter בכל המפעל).
+
+## 8. Telegram Chat Integration (Phase F)
+
+הודעות טלגרם נכנסות מוזרמות אל ה-Agent Router הקיים דרך workflow חדש `tg-inbound`
+(Webhook ב-`/webhook/telegram-in/inbound`, פטור מ-HMAC ומאומת ב-header של טלגרם), כך
+שכל קריאה לבוט עוברת את אותו classifier→sub-agent ורצה על אותו מפתח Inference מבודד —
+ללא שינוי ב-classifier וב-Macro-F1 gate. ה-`unknown-agent` שודרג לצ'אטבוט כללי חכם
+(`anthropic/claude-haiku-4.5`, זיכרון חלון, כלי קריאה ל-n8n) שעונה גם כ-GPT/Gemini וגם
+על שאלות מערכת. צריכת ה-OpenRouter של הצ'אט נכנסת בקלות ב-cap של $25/חודש; מעקב עלויות
+מפורט (`spend_log`) נדחה ל-follow-up. תיעוד מלא: `docs/telegram-chat-bot.md`.

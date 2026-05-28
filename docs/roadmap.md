@@ -86,6 +86,24 @@ Existing systems are **not** auto-migrated; template edits reach only systems pr
 
 A Cloudflare Worker in front of Caddy is a legitimate second tier (WAF-style filtering at the global edge) but is **out of scope** until Phase D has proven itself. Graduation criterion: **≥ 3 systems running the Caddy gateway for ≥ 2 weeks** with zero HMAC false positives, zero HMAC false negatives, and no 5xx originating from Caddy itself. A full Cloudflare orange-cloud proxy is *not* an option — Railway won't accept externally-issued certs — so Tier-2 is specifically a Worker, not proxied DNS.
 
+## Phase F — feat: Telegram chat agent (v1 done)
+
+Every system already ships a Telegram bot token, but it was used only for **outbound** alerts (`emit-event.sh`). Phase F closes the one gap — **inbound messages** — by feeding them into the existing Agent Router, turning the bot into a smart conversational + system-aware agent. The classifier and the Macro-F1 gate (`agent-router.json`) are untouched.
+
+Two physically-separate Telegram bots share one `chat_id`: the **chat bot** (`n8n-telegram-bot-token`) and the **alerts bot** (`telegram-bot-token`). n8n's built-in Telegram Trigger registers an internal path that bypasses the Caddy gate, so `tg-inbound` uses a generic **Webhook node** at `/webhook/telegram-in/inbound` + a manual `setWebhook`; Caddy exempts that path from HMAC and authenticates Telegram's `X-Telegram-Bot-Api-Secret-Token` header instead.
+
+Shipped as atomic PRs, each merged + verified before the next:
+
+- **PR 1** ✅ — `templates/system/workflows/n8n/{tg-inbound,tg-proactive,style-refresh}.json` added (inert; nothing installs them yet).
+- **PR 2** ✅ — Caddy `/webhook/telegram-in/*` exemption + per-system `n8n-telegram-webhook-secret` (minted at provision, injected into Caddy at deploy). Highest-risk PR (the edge), isolated.
+- **PR 3** ✅ — activation: `unknown-agent` rewritten to a smart general + system-aware chat agent (Haiku 4.5 + window memory + read-only n8n tools); `configure-agent-router.yml` verifies the system's bot token (soft-halt with a Hebrew instruction if absent — the operator's single manual action), creates the Telegram credential, installs + activates `tg-inbound`, and registers `setWebhook`.
+- **Hotfix** ✅ — `tg-inbound` calls the router **internally** (`localhost:5678`); the public path is Caddy HMAC-gated. Caught on the live test of `factory-test-tgbot2`.
+- **PR 4** ✅ — docs (`docs/telegram-chat-bot.md`) + suppress the n8n attribution footer (this PR).
+
+Verified end-to-end on a live test system: Telegram message → real, system-aware answer (live n8n workflow data) with the 🤖 prefix.
+
+**Deliberately deferred to a follow-up** (the system's Postgres is Railway-private and its password isn't in SM, so GitHub Actions can't create tables/credentials there — needs live DB discovery): persistent Postgres chat memory, style-profile learning + weekly refresh (`style-refresh`), daily proactive summary (`tg-proactive`), dedup/spend logging, and approval-gated (HITL) write actions. `tg-proactive`/`style-refresh` stay inert templates until then. Existing systems are **not** auto-migrated (re-run deploy + configure to migrate). Full design: `factory-research-context.md`; status + troubleshooting: `docs/telegram-chat-bot.md`.
+
 ## Things we are deliberately not building
 
 The previous factory had these and they bought less than they cost:
