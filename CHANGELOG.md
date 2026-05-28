@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 114 — feat: /dev-stage living development-plan mechanism (command + template) — PR 1 of 3
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | feat | User-invoked `/dev-stage` flow that manages each new development as ordered, documented stages in a living `DEVPLAN.md`, reported to the user in plain Hebrew on demand. PR 1 = building blocks only, **zero CI/script changes**: new `templates/devplan/DEVPLAN.template.md` and new `.claude/commands/dev-stage.md` (modeled on `handoff.md`), mirrored byte-identical into `templates/system/.claude/commands/` to keep the skills-mirror gate green. The CI enforcement gate and the CLAUDE.md Never-rule clarification follow in PRs 2–3. |
+
 ## Stage 113 — fix: postgres_named_query — drop specifyInputSchema, trigger back to passthrough (proven on tgbot15 with the operator sending a real message)
 
 | PR | Type | Summary |
