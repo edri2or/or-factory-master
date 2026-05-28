@@ -838,6 +838,20 @@ jobs:
             NEW_VERIFIED=$(printf '%s' "$NEW_STATUS" | jq -r '.status.verified // false')
             NEW_CNAME_TARGET=$(printf '%s' "$NEW_STATUS" | jq -r \
               '.status.dnsRecords // [] | map(select(.recordType=="DNS_RECORD_TYPE_CNAME")) | .[0].requiredValue // ""')
+            # Propagate the recreate's new id back to GITHUB_ENV, otherwise the
+            # next step ("Wait for Railway TLS cert") starts with the now-deleted
+            # original id — its own retry-with-recreate then targets a stale id,
+            # `customDomainDelete` silently succeeds on a missing record, and
+            # `customDomainCreate` returns INTERNAL_SERVER_ERROR (the existing
+            # record from step 9's recreate still occupies the domain). Symptom
+            # caught on factory-test-tgbot11 (run 26578458921): 6× 500 on
+            # recreate, deploy failed after ~17 min on the TLS-cert wait.
+            NEW_CUSTOM_DOMAIN_ID=$(printf '%s' "$NEW_STATUS" | jq -r '.id // ""')
+            if [ -n "$NEW_CUSTOM_DOMAIN_ID" ] && [ "$NEW_CUSTOM_DOMAIN_ID" != "null" ]; then
+              CUSTOM_DOMAIN_ID="$NEW_CUSTOM_DOMAIN_ID"
+              echo "CUSTOM_DOMAIN_ID=${CUSTOM_DOMAIN_ID}" >> "$GITHUB_ENV"
+              echo "INFO: CUSTOM_DOMAIN_ID updated to ${CUSTOM_DOMAIN_ID} after force-recreate"
+            fi
             echo "After recreate: verified=$NEW_VERIFIED cnameTarget=$NEW_CNAME_TARGET"
 
             # The CNAME target generally changes on recreate — update CF.
