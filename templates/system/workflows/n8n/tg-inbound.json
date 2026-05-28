@@ -19,7 +19,7 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "// The Webhook node delivers the raw Telegram update under .body. Normalize\n// message | edited_message | callback_query into one shape, and DROP anything\n// not from the single authorized operator chat (replaces the Telegram Trigger's\n// restrictToChatIds; Caddy already validated the secret token at the edge).\n// @@CHAT_ID@@ is substituted at install time.\nconst u = ($input.first().json && $input.first().json.body) || $input.first().json || {};\nconst cb = u.callback_query || null;\nconst msg = u.message || u.edited_message || (cb && cb.message) || {};\nconst isCallback = !!cb;\nlet text = isCallback ? (cb.data || '') : (msg.text || msg.caption || '');\ntext = String(text).trim();\nconst chatId = (msg.chat && msg.chat.id) || (cb && cb.from && cb.from.id) || '';\nif (String(chatId) !== '@@CHAT_ID@@') { return []; }\nif (!text) { return []; }\nreturn [{ json: { text: text, chat_id: chatId, kind: isCallback ? 'callback_query' : (u.edited_message ? 'edited_message' : 'message') } }];"
+        "jsCode": "// The Webhook node delivers the raw Telegram update under .body. Normalize\n// message | edited_message | callback_query into one shape, and DROP anything\n// not from the single authorized operator chat (replaces the Telegram Trigger's\n// restrictToChatIds; Caddy already validated the secret token at the edge).\n// @@CHAT_ID@@ is substituted at install time.\nconst u = ($input.first().json && $input.first().json.body) || $input.first().json || {};\nconst cb = u.callback_query || null;\nconst msg = u.message || u.edited_message || (cb && cb.message) || {};\nconst isCallback = !!cb;\nlet text = isCallback ? (cb.data || '') : (msg.text || msg.caption || '');\ntext = String(text).trim();\nconst chatId = (msg.chat && msg.chat.id) || (cb && cb.from && cb.from.id) || '';\nif (String(chatId) !== '@@CHAT_ID@@') { return []; }\nif (!text) { return []; }\nconst updateId = Number(u.update_id || 0);\nreturn [{ json: { text: text, chat_id: chatId, kind: isCallback ? 'callback_query' : (u.edited_message ? 'edited_message' : 'message'), update_id: updateId } }];"
       },
       "id": "10000000-0000-0000-0000-000000000002",
       "name": "Extract & Normalize",
@@ -29,11 +29,25 @@
     },
     {
       "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO tg_updates_seen (update_id) VALUES ({{ $json.update_id }}) ON CONFLICT (update_id) DO NOTHING RETURNING update_id;",
+        "options": {}
+      },
+      "id": "10000000-0000-0000-0000-000000000005",
+      "name": "Dedup Guard",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [580, 320],
+      "credentials": { "postgres": { "id": "@@CRED_POSTGRES_ID@@", "name": "Postgres (n8n)" } },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
         "method": "POST",
         "url": "http://localhost:5678/webhook/agent-router",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ text: $json.text }) }}",
+        "jsonBody": "={{ JSON.stringify({ text: $('Extract & Normalize').first().json.text }) }}",
         "options": { "timeout": 120000 }
       },
       "id": "10000000-0000-0000-0000-000000000003",
@@ -61,7 +75,8 @@
   ],
   "connections": {
     "Telegram Webhook": { "main": [[{ "node": "Extract & Normalize", "type": "main", "index": 0 }]] },
-    "Extract & Normalize": { "main": [[{ "node": "Call Agent Router", "type": "main", "index": 0 }]] },
+    "Extract & Normalize": { "main": [[{ "node": "Dedup Guard", "type": "main", "index": 0 }]] },
+    "Dedup Guard": { "main": [[{ "node": "Call Agent Router", "type": "main", "index": 0 }]] },
     "Call Agent Router": { "main": [[{ "node": "Send Reply", "type": "main", "index": 0 }]] }
   },
   "settings": { "executionOrder": "v1" }
