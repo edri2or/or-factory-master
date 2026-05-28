@@ -2,6 +2,24 @@
 
 Older `CHANGELOG.md` entries moved here to keep the main file under the 20 KB scan-friendly cap (enforced by `scripts/check-changelog-size.sh`). Ordering preserved (newest archived stage first).
 
+## Stage 102 — feat: Phase F follow-up PR 5/5 — Telegram update dedup via `tg_updates_seen`
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | feature | Final Phase F follow-up. Telegram occasionally redelivers the same update (network hiccup, our 200 not reaching Telegram in time), which today would replay the bot's response twice. **`tg-inbound.json`** now: (1) carries `update_id` out of `Extract & Normalize` (was dropped before), (2) routes through a new **`Dedup Guard`** Postgres node — `INSERT INTO tg_updates_seen (update_id) VALUES (…) ON CONFLICT (update_id) DO NOTHING RETURNING update_id;` — which produces 0 rows on a duplicate (downstream skipped → message ignored) and 1 row on a first-seen update (downstream fires), and (3) the `Call Agent Router` node now references `$('Extract & Normalize').first().json.text` for its body (since Dedup Guard's output is just `{update_id}`). The Dedup Guard has `onError: continueRegularOutput` so a transient PG failure forwards the message rather than dropping it (prefer rare double-processing to lost messages). `configure-agent-router.yml` substitutes `@@CRED_POSTGRES_ID@@` in tg-inbound and, when no PG credential is wired, uses `jq` to drop the Dedup Guard and rewire Normalize→Call Agent Router so the bot keeps working without persistence — same graceful-degradation pattern as the unknown-agent memory in PR 2. `agent-router.json` + `tests/router_battery.yaml` untouched. |
+
+## Stage 101 — feat: Phase F follow-up PR 4/5 — install + activate `tg-proactive` (daily 08:00 summary)
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | feature | `configure-agent-router.yml` now also installs **and activates** `templates/system/workflows/n8n/tg-proactive.json` — a daily (`0 8 * * *`, 08:00 UTC) summary that aggregates the last 24h of `audit_log` + `spend_log`, fetches the last 20 failed executions via the n8n Public API, reads `style_profile` (populated by `style-refresh` from PR 3) for tone-matching, asks Claude Haiku 4.5 for 3–5 concise bullets + one suggested action, and sends 🟢 to Telegram. Gated on Postgres credential + Telegram credential + chat id; soft-fail (any miss leaves a WARN; the router + chat bot stay up). Placeholders substituted from `configure`'s already-resolved values: `@@CRED_POSTGRES_ID@@`, `@@CRED_OPENROUTER_ID@@`, `@@CRED_N8N_API_ID@@`, `@@CRED_TELEGRAM_ID@@`, `@@CHAT_ID@@`, `@@SYSTEM_NAME@@`, `@@N8N_DOMAIN@@`. One small polish to the template: the Send Proactive node now sets `appendAttribution: false` (consistent with PR 1's tg-inbound polish in Stage 94), so the daily summary won't carry n8n's "sent via n8n" footer. PR 5 (dedup) is next. |
+
+## Stage 100 — feat: Phase F follow-up PR 3/5 — install + activate `style-refresh`
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | feature | After Batch 1 (PR 1/2 + the three /run fixes) was verified live on `factory-test-tgbot6` (`Postgres credential id=…` + `db-setup ran — Postgres tables ensured` + `unknown-agent` installed with `memoryPostgresChat`), `configure-agent-router.yml` now also installs **and activates** `templates/system/workflows/n8n/style-refresh.json` — a weekly (`0 3 * * 0`, Sunday 03:00 UTC) extractor that reads the last 50 messages of `n8n_chat_histories` for `tg:<chat_id>`, asks Claude Haiku 4.5 for a JSON style profile (language, formality, emoji use, anti-patterns, …) with a safe fallback, and UPSERTs into the `style_profile` table created in PR 1. Gated on Postgres credential + chat id; soft-fail (any miss skips style-refresh, the router + bot stay up). Postgres credential id, OpenRouter id, and chat id are substituted from `configure`'s already-resolved values; the template's existing placeholders need no change. PR 4 (`tg-proactive`) consumes `style_profile` to match the operator's tone. |
+
 ## Stage 99 — fix: db-setup `/run` body also needs `destinationNode` (n8n partial-execution flow)
 
 | PR | Type | Summary |
