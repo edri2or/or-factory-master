@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 116 — feat: /dev-stage — living DEVPLAN.md development mechanism (command + template + CI gate + docs)
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | feat | New user-invoked `/dev-stage` flow: each new development runs as ordered, documented stages tracked in a living `DEVPLAN.md`, reported to the user in plain Hebrew on demand (the user never opens a file), and enforced by CI. Ships `templates/devplan/DEVPLAN.template.md` (plan template) + `.claude/commands/dev-stage.md` (the command, modeled on `handoff.md`, mirrored byte-identical into `templates/system/.claude/commands/` per the skills-mirror gate) + `scripts/check-devplan-updated.sh` with a `Check devplan updated` step in `changelog-check.yml` (twin of the CHANGELOG gate: fails the build when a root `DEVPLAN.md`/`devplans/*.md` is `status: active` and code changed without updating it in the same diff; no-op when no plan is active; detection path-scoped so the seed template never triggers it; no `on: paths:`, no new required check — lives in the existing `Changelog gates` job). Also scopes the CLAUDE.md "Never … session-summary files" rule with a narrow inline exception (original wording preserved verbatim) and documents the flow in CLAUDE.md "Development workflow" + `docs/roadmap.md`. No provisioning/deploy/skills/runtime logic touched. Verified locally: shellcheck + yamllint clean; the gate proven in 4 scenarios (no plan→PASS, plan updated→PASS, code-only→exit 1, completed→releases). |
+
 ## Stage 115 — feat: Phase F Gap 5 — real OpenRouter cost in spend_log via key-usage polling
 
 | PR | Type | Summary |
