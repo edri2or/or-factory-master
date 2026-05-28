@@ -1,0 +1,31 @@
+{
+  "name": "factory-master: db-setup",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "40000000-0000-0000-0000-000000000001",
+      "name": "Run Once",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [220, 320]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "CREATE TABLE IF NOT EXISTS n8n_chat_histories (id SERIAL PRIMARY KEY, session_id VARCHAR(255) NOT NULL, message JSONB NOT NULL);\nCREATE INDEX IF NOT EXISTS idx_n8n_chat_histories_session ON n8n_chat_histories (session_id);\nCREATE TABLE IF NOT EXISTS style_profile (chat_id BIGINT PRIMARY KEY, profile JSONB NOT NULL, refreshed_at TIMESTAMPTZ NOT NULL DEFAULT now());\nCREATE TABLE IF NOT EXISTS audit_log (id BIGSERIAL PRIMARY KEY, ts TIMESTAMPTZ NOT NULL DEFAULT now(), actor TEXT, action TEXT, detail JSONB);\nCREATE INDEX IF NOT EXISTS idx_audit_log_ts ON audit_log (ts);\nCREATE TABLE IF NOT EXISTS spend_log (id BIGSERIAL PRIMARY KEY, ts TIMESTAMPTZ NOT NULL DEFAULT now(), model TEXT, cost_usd NUMERIC(12,6) NOT NULL DEFAULT 0);\nCREATE INDEX IF NOT EXISTS idx_spend_log_ts ON spend_log (ts);\nCREATE TABLE IF NOT EXISTS tg_updates_seen (update_id BIGINT PRIMARY KEY, seen_at TIMESTAMPTZ NOT NULL DEFAULT now());\nCREATE TABLE IF NOT EXISTS pending_actions (id BIGSERIAL PRIMARY KEY, created_at TIMESTAMPTZ NOT NULL DEFAULT now(), chat_id BIGINT, description TEXT, tool TEXT, args JSONB, status TEXT NOT NULL DEFAULT 'pending', resolved_at TIMESTAMPTZ);\nCREATE INDEX IF NOT EXISTS idx_pending_actions_status ON pending_actions (status);\nCREATE TABLE IF NOT EXISTS events (id BIGSERIAL PRIMARY KEY, ts TIMESTAMPTZ NOT NULL DEFAULT now(), kind TEXT, payload JSONB);\nCREATE INDEX IF NOT EXISTS idx_events_ts ON events (ts);\nSELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name IN ('n8n_chat_histories','style_profile','audit_log','spend_log','tg_updates_seen','pending_actions','events') ORDER BY table_name;",
+        "options": {}
+      },
+      "id": "40000000-0000-0000-0000-000000000002",
+      "name": "Create Tables",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [440, 320],
+      "credentials": { "postgres": { "id": "@@CRED_POSTGRES_ID@@", "name": "Postgres (n8n)" } }
+    }
+  ],
+  "connections": {
+    "Run Once": { "main": [[{ "node": "Create Tables", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" }
+}

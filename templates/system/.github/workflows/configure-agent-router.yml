@@ -157,6 +157,57 @@ jobs:
           [ -n "$CRED_N8N_API_ID" ] && [ "$CRED_N8N_API_ID" != "null" ] || _soft_exit0 "לא התקבל id ל-credential של n8n API"
           echo "INFO: n8n API credential id=${CRED_N8N_API_ID}"
 
+          # Phase F follow-up: per-system Postgres credential. The system's Postgres is
+          # reachable only on Railway's private network and its password is never stored
+          # in SM, so fetch the password + private host from Railway's GraphQL API (using
+          # this system's railway-api-token) and build the n8n "Postgres (n8n)" credential
+          # here. Additive + soft: any miss skips Postgres features but leaves the router
+          # + chat bot fully working.
+          RAILWAY_GQL="https://backboard.railway.com/graphql/v2"
+          RAILWAY_TOKEN=$(_sm_read "railway-api-token" || echo "")
+          [ -n "$RAILWAY_TOKEN" ] && echo "::add-mask::${RAILWAY_TOKEN}" || true
+          RW_PROJECT_ID=$(_sm_read "railway-project-id" || echo "")
+          RW_PG_SVC_ID=$(_sm_read "railway-postgres-service-id" || echo "")
+          CRED_POSTGRES_ID=""
+          _rwgql() {
+            curl -sS --max-time 30 -X POST "$RAILWAY_GQL" \
+              -H "Authorization: Bearer ${RAILWAY_TOKEN}" -H "Content-Type: application/json" \
+              -d "$(jq -cn --arg q "$1" --argjson v "${2:-{}}" '{query:$q, variables:$v}')" || echo '{}'
+          }
+          if [ -n "$RAILWAY_TOKEN" ] && [ -n "$RW_PROJECT_ID" ] && [ -n "$RW_PG_SVC_ID" ]; then
+            RW_ENVS=$(_rwgql 'query($pid:String!){project(id:$pid){environments{edges{node{id name}}}}}' \
+              "$(jq -cn --arg pid "$RW_PROJECT_ID" '{pid:$pid}')")
+            RW_ENV_ID=$(printf '%s' "$RW_ENVS" | jq -r '.data.project.environments.edges[]?.node | select(.name=="production") | .id' 2>/dev/null | head -1 || echo "")
+            [ -n "$RW_ENV_ID" ] || RW_ENV_ID=$(printf '%s' "$RW_ENVS" | jq -r '.data.project.environments.edges[0]?.node.id // empty' 2>/dev/null || echo "")
+            PG_PASSWORD=""; PG_HOST=""
+            if [ -n "$RW_ENV_ID" ]; then
+              RW_VARS=$(_rwgql 'query($pid:String!,$eid:String!,$sid:String!){variables(projectId:$pid,environmentId:$eid,serviceId:$sid)}' \
+                "$(jq -cn --arg pid "$RW_PROJECT_ID" --arg eid "$RW_ENV_ID" --arg sid "$RW_PG_SVC_ID" '{pid:$pid,eid:$eid,sid:$sid}')")
+              PG_PASSWORD=$(printf '%s' "$RW_VARS" | jq -r '.data.variables.POSTGRES_PASSWORD // empty' 2>/dev/null || echo "")
+              PG_HOST=$(printf '%s' "$RW_VARS" | jq -r '.data.variables.RAILWAY_PRIVATE_DOMAIN // empty' 2>/dev/null || echo "")
+              [ -n "$PG_PASSWORD" ] && echo "::add-mask::${PG_PASSWORD}" || true
+              [ -n "$PG_HOST" ] && echo "::add-mask::${PG_HOST}" || true
+            fi
+            if [ -n "$PG_PASSWORD" ] && [ -n "$PG_HOST" ]; then
+              PG_CRED_NAME="Postgres (n8n)"
+              CRED_POSTGRES_ID=$(jq -r --arg n "$PG_CRED_NAME" '[(.data // .) | .[]? | select(.name==$n)][0].id // empty' /tmp/ar-creds.json || echo "")
+              if [ -z "$CRED_POSTGRES_ID" ]; then
+                PG_CRED_BODY=$(jq -cn --arg n "$PG_CRED_NAME" --arg h "$PG_HOST" --arg p "$PG_PASSWORD" \
+                  '{name:$n, type:"postgres", data:{host:$h, port:5432, database:"postgres", user:"postgres", password:$p, ssl:"disable", allowUnauthorizedCerts:true}}')
+                HTTP=$(_napi POST "$BASE/rest/credentials" /tmp/ar-cred-pg.json "$PG_CRED_BODY")
+                { [ "$HTTP" = "200" ] || [ "$HTTP" = "201" ]; } || { head -c 300 /tmp/ar-cred-pg.json >&2 || true; echo "WARN: POST /rest/credentials (postgres) HTTP $HTTP — Postgres features skipped" >&2; }
+                CRED_POSTGRES_ID=$(jq -r '.data.id // .id // empty' /tmp/ar-cred-pg.json || echo "")
+              fi
+              { [ -n "$CRED_POSTGRES_ID" ] && [ "$CRED_POSTGRES_ID" != "null" ]; } \
+                && echo "INFO: Postgres credential id=${CRED_POSTGRES_ID}" \
+                || { echo "WARN: no Postgres credential id — features skipped" >&2; CRED_POSTGRES_ID=""; }
+            else
+              echo "WARN: could not read POSTGRES_PASSWORD/RAILWAY_PRIVATE_DOMAIN from Railway — Postgres features skipped" >&2
+            fi
+          else
+            echo "WARN: railway-api-token/project-id/postgres-service-id missing in SM — Postgres features skipped" >&2
+          fi
+
           # Phase F: Telegram chat bot. Read the per-system bot token + chat id from
           # THIS system's SM. We check the SYSTEM copy (n8n-telegram-bot-token, seeded
           # by provision), NOT the control default — deploy-sa can read this project's
@@ -224,6 +275,32 @@ jobs:
             fi
             printf '%s' "$wid"
           }
+
+          # Phase F follow-up: create the per-system Postgres tables. Only n8n can reach
+          # the Railway-private Postgres, so install a tiny db-setup workflow (manual
+          # trigger + one Postgres node of CREATE TABLE IF NOT EXISTS …) and run it once
+          # via /rest (Caddy permits /rest/*; /webhook/* is HMAC-gated). Idempotent + soft.
+          DB_SETUP_ID=""
+          if [ -n "$CRED_POSTGRES_ID" ] && [ "$CRED_POSTGRES_ID" != "null" ]; then
+            DB_SRC="${WF_DIR}/db-setup.json"
+            if [ -f "$DB_SRC" ]; then
+              sed -e "s#@@CRED_POSTGRES_ID@@#${CRED_POSTGRES_ID}#g" "$DB_SRC" > /tmp/ar-prep-db-setup.json
+              DB_SETUP_ID=$(_upsert_wf "factory-master: db-setup" /tmp/ar-prep-db-setup.json no) || DB_SETUP_ID=""
+              if [ -n "$DB_SETUP_ID" ] && [ "$DB_SETUP_ID" != "null" ]; then
+                HTTP=$(_napi POST "$BASE/rest/workflows/${DB_SETUP_ID}/run" /tmp/ar-db-run.json '{}')
+                if [ "$HTTP" = "200" ] || [ "$HTTP" = "201" ]; then
+                  echo "PASS: db-setup ran (id=${DB_SETUP_ID}) — Postgres tables ensured"
+                else
+                  echo "WARN: db-setup run HTTP ${HTTP} (body: $(head -c 200 /tmp/ar-db-run.json 2>/dev/null | tr '\n' ' ')) — tables may be missing" >&2
+                fi
+              else
+                echo "WARN: db-setup workflow install failed — Postgres tables not created" >&2
+                DB_SETUP_ID=""
+              fi
+            else
+              echo "WARN: db-setup.json not found in repo — Postgres tables skipped" >&2
+            fi
+          fi
 
           # 4. Sub-workflows FIRST (so we know their IDs for the router). The new
           #    code/research/infra agents carry only @@CRED_OPENROUTER_ID@@; the
@@ -360,6 +437,11 @@ jobs:
             echo "| infra model | \`openai/gpt-5-mini\` |"
             echo "| sub-agents | 5 (כולם לא-פעילים by design — מופעלים ע\"י ה-router דרך Execute Sub-workflow) |"
             echo "| Webhook | ${BASE}/webhook/agent-router |"
+            if [ -n "${CRED_POSTGRES_ID:-}" ] && [ "${CRED_POSTGRES_ID:-}" != "null" ]; then
+              echo "| Postgres | credential \`${CRED_POSTGRES_ID}\` + טבלאות (db-setup \`${DB_SETUP_ID:-?}\`) |"
+            else
+              echo "| Postgres | ⚠️ דולג — לא נשלפו פרטי חיבור מ-Railway (זיכרון/סגנון/סיכום מושבתים) |"
+            fi
             if [ "$SKIP_TELEGRAM" = "no" ]; then
               echo "| Telegram chat bot | tg-inbound \`${TG_WF_ID:-?}\` (פעיל) → /webhook/telegram-in/inbound |"
               echo "| בדיקת חיים | שלח הודעה לבוט בטלגרם מהאקאונט שלך |"
