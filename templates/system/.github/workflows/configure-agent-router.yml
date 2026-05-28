@@ -347,7 +347,10 @@ jobs:
             # its memory node back to the in-memory window so the chat bot still works
             # (graceful degradation — never leave a node pointing at an empty credential).
             if [ "$file" = "unknown-agent.json" ] && { [ -z "$CRED_POSTGRES_ID" ] || [ "$CRED_POSTGRES_ID" = "null" ]; }; then
-              jq '(.nodes[] | select(.name=="Conversation Memory")) |= (.type="@n8n/n8n-nodes-langchain.memoryBufferWindow" | .typeVersion=1.3 | del(.credentials) | del(.parameters.tableName))' \
+              jq '(.nodes[] | select(.name=="Conversation Memory")) |= (.type="@n8n/n8n-nodes-langchain.memoryBufferWindow" | .typeVersion=1.3 | del(.credentials) | del(.parameters.tableName))
+                  | (.nodes |= map(select(.name != "Read Style Profile")))
+                  | .connections."When Executed by Another Workflow" = {"main":[[{"node":"Chat Agent","type":"main","index":0}]]}
+                  | del(.connections."Read Style Profile")' \
                 "/tmp/ar-prep-${file}" > "/tmp/ar-prep-${file}.tmp" \
                 && mv "/tmp/ar-prep-${file}.tmp" "/tmp/ar-prep-${file}" \
                 || echo "WARN: unknown-agent memory fallback transform failed — using template as-is" >&2
