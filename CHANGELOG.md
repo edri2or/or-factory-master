@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 104 — fix: silent bot failures — decommission revoked wrong OR key, configure didn't notice, unknown-agent broke data flow
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | fix | Three connected bugs surfaced by a real Telegram message that the bot answered with the fallback `אין לי תשובה כרגע` — the first end-to-end smoke that wasn't a configure-time PASS marker. **(1)** `decommission-test-system.yml` read the OpenRouter key hash from the *shared* SM (`factory-test-25` in reuse mode), so a decommission of any older system revoked whichever key was minted **last** — today that meant decommissioning `tgbot2` killed `tgbot8`'s live key (the remaining 4 decommissions returned 404). Patched to identify the key by **name** via `GET /api/v1/keys` filtered by `name == SYSTEM_NAME`, so each teardown revokes its own key regardless of SM contents. **(2)** `configure-agent-router.yml` happily logged `PASS: agent-router configured` while every Chat Agent call silently 401'd. Added a live OpenRouter probe — direct `curl POST openrouter.ai/api/v1/chat/completions` with the SM key — and writes a Hebrew WARN to the job summary on non-200 (with the actual error body + remediation pointers). This is the missing "verify the thing actually works" step. **(3)** `unknown-agent.json` (from PR 149's `Read Style Profile` node) broke the data flow two ways: Postgres `SELECT` returning 0 rows emitted zero items, short-circuiting Chat Agent entirely; and even on 1 row, Chat Agent's `text: ={{ $json.sanitized }}` resolved to `undefined` because Read Style Profile *replaces* `$json` with the SELECT result. Fixed both: `alwaysOutputData: true` on Read Style Profile, and Chat Agent now reads `text` from `$('When Executed by Another Workflow').first().json.sanitized` — works whether the style row exists or not, and whether the `jq` fallback strips the node (no-PG path) or not. No template churn beyond the 3 edits; no behavior change for systems that already had a working OpenRouter key + populated style_profile. Bot end-to-end behavior will be verified on a fresh `factory-test-tgbot9` after merge, with an actual Telegram message + inspect of the resulting `agent-router` execution. |
+
 ## Stage 103 — feat: Phase F closure — style injection in unknown-agent, schema parity, docs status
 
 | PR | Type | Summary |

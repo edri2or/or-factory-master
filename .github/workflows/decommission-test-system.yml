@@ -137,23 +137,38 @@ jobs:
           # Revoke this system's per-system OpenRouter inference key before teardown,
           # using the account-wide management key (control project only). Best-effort:
           # an orphaned inference key is not a teardown blocker, so any failure warns
-          # and continues. SYS_PROJECT is where the system's secrets live (reuse-aware).
+          # and continues.
+          #
+          # IMPORTANT: identify the key by NAME, not by the SM hash. In reuse mode
+          # every test system shares one SM (factory-test-25), and that SM's
+          # `openrouter-key-hash` always reflects the LAST-provisioned system — so a
+          # decommission of an older system would otherwise read the hash of an
+          # unrelated, still-active system and revoke that key by mistake.
+          # (Real outage on 2026-05-28: decommissioning tgbot2 read tgbot8's hash and
+          # killed its live key. The whole batch returned 404 after the first revoke.)
           OR_API="https://openrouter.ai/api/v1"
-
-          HASH=$(gcloud secrets versions access latest \
-            --secret="openrouter-key-hash" --project="$SYS_PROJECT" 2>/dev/null || echo "")
-          if [ -z "$HASH" ]; then
-            echo "INFO: no OpenRouter key to revoke, continuing"
-            exit 0
-          fi
 
           MGMT_KEY=$(gcloud secrets versions access latest \
             --secret="openrouter-management-key" --project="$GCP_PROJECT" 2>/dev/null || echo "")
           if [ -z "$MGMT_KEY" ]; then
-            echo "::warning::openrouter-management-key unavailable in ${GCP_PROJECT} — cannot revoke key ${HASH}; continuing teardown"
+            echo "::warning::openrouter-management-key unavailable in ${GCP_PROJECT} — cannot revoke key for ${SYSTEM_NAME}; continuing teardown"
             exit 0
           fi
           echo "::add-mask::${MGMT_KEY}"
+
+          # Find this system's key by NAME via the Provisioning API. The mint step
+          # uses SYSTEM_NAME (== SYSTEM_SLUG) as the key name, so name == SYSTEM_NAME.
+          set +e
+          KEYS_RESP=$(curl -sS --max-time 30 \
+            -X GET "${OR_API}/keys" \
+            -H "Authorization: Bearer ${MGMT_KEY}" 2>/dev/null)
+          set -e
+          HASH=$(printf '%s' "$KEYS_RESP" | jq -r --arg n "$SYSTEM_NAME" \
+            '[(.data // []) | .[]? | select(.name == $n)][0].hash // empty' 2>/dev/null || echo "")
+          if [ -z "$HASH" ]; then
+            echo "INFO: no active OpenRouter key named '${SYSTEM_NAME}' found in account — nothing to revoke (already gone, or never minted)"
+            exit 0
+          fi
 
           set +e
           HTTP=$(curl -sS -o /tmp/or-del.json -w '%{http_code}' --max-time 30 \
@@ -165,11 +180,11 @@ jobs:
           rm -f /tmp/or-del.json
 
           if [ "$CURL_RC" -eq 0 ] && [ "$HTTP" = "200" ] && [ "$DELETED" = "true" ]; then
-            echo "PASS: revoked OpenRouter inference key (hash=${HASH})."
+            echo "PASS: revoked OpenRouter inference key '${SYSTEM_NAME}' (hash=${HASH})."
           else
             {
               echo "## ⚠️ ביטול מפתח OpenRouter נכשל"
-              echo "מפתח ה-Inference (hash=\`${HASH}\`) לא בוטל (curl_rc=${CURL_RC}, http=${HTTP}). פירוק המערכת ממשיך כרגיל — ניתן לבטל ידנית מאוחר יותר:"
+              echo "מפתח ה-Inference של \`${SYSTEM_NAME}\` (hash=\`${HASH}\`) לא בוטל (curl_rc=${CURL_RC}, http=${HTTP}). פירוק המערכת ממשיך כרגיל — ניתן לבטל ידנית מאוחר יותר:"
               echo '```'
               echo "curl -X DELETE ${OR_API}/keys/${HASH} -H 'Authorization: Bearer <management-key>'"
               echo '```'
