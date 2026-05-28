@@ -19,6 +19,17 @@
     },
     {
       "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Normalize the LLM's tool args into a uniform { query_name } shape.\n// n8n's toolWorkflow v2.1 may deliver args at any of several locations\n// depending on the toolWorkflow's schemaType setting and the trigger's\n// inputSource — Stage 110's workflowInputs fix alone didn't surface the\n// LLM-supplied value (every postgres-named-queries execution on tgbot13\n// still fell to the 'Unknown Query' branch with run-time under 30ms).\n// This normalizer is defensive against ALL observed shapes and also emits\n// `_raw_input` so future executions show what actually arrived.\nconst raw = ($input.first() && $input.first().json) || {};\nlet qn = '';\nif (typeof raw.query_name === 'string' && raw.query_name) {\n  qn = raw.query_name;\n} else if (raw.input && typeof raw.input.query_name === 'string') {\n  qn = raw.input.query_name;\n} else if (raw.query && typeof raw.query === 'object' && typeof raw.query.query_name === 'string') {\n  qn = raw.query.query_name;\n} else if (typeof raw.query === 'string') {\n  try { const p = JSON.parse(raw.query); if (p && typeof p.query_name === 'string') qn = p.query_name; } catch (e) { /* ignore */ }\n} else if (typeof raw.arguments === 'string') {\n  try { const p = JSON.parse(raw.arguments); if (p && typeof p.query_name === 'string') qn = p.query_name; } catch (e) { /* ignore */ }\n}\nreturn [{ json: { query_name: qn, _raw_input: raw } }];"
+      },
+      "id": "50000000-0000-0000-0000-00000000000a",
+      "name": "Normalize Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [400, 320]
+    },
+    {
+      "parameters": {
         "mode": "rules",
         "rules": {
           "values": [
@@ -162,7 +173,7 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "// Format any of the 4 Postgres branch outputs into a uniform tool response.\n// Postgres nodes with alwaysOutputData:true emit one empty {} when SELECT returns\n// zero rows; filter that out so the LLM sees rows:[] rather than rows:[{}].\nconst trigger = $('When Executed by Another Workflow').first().json || {};\nconst rows = $input.all()\n  .map(i => i.json)\n  .filter(o => o && typeof o === 'object' && Object.keys(o).length > 0);\nreturn [{ json: { ok: true, query_name: String(trigger.query_name || ''), rows: rows } }];"
+        "jsCode": "// Format any of the 4 Postgres branch outputs into a uniform tool response.\n// Postgres nodes with alwaysOutputData:true emit one empty {} when SELECT returns\n// zero rows; filter that out so the LLM sees rows:[] rather than rows:[{}].\n// query_name comes from the Normalize Input node (Stage 111) which extracts it\n// defensively from any of the possible toolWorkflow payload shapes.\nconst normalized = $('Normalize Input').first().json || {};\nconst rows = $input.all()\n  .map(i => i.json)\n  .filter(o => o && typeof o === 'object' && Object.keys(o).length > 0);\nreturn [{ json: { ok: true, query_name: String(normalized.query_name || ''), rows: rows } }];"
       },
       "id": "50000000-0000-0000-0000-000000000007",
       "name": "Format Output",
@@ -185,13 +196,19 @@
               "id": "52000000-0000-0000-0000-000000000002",
               "name": "query_name",
               "type": "string",
-              "value": "={{ $('When Executed by Another Workflow').first().json.query_name }}"
+              "value": "={{ $('Normalize Input').first().json.query_name }}"
             },
             {
               "id": "52000000-0000-0000-0000-000000000003",
               "name": "error",
               "type": "string",
               "value": "unknown query_name — valid: style_profile_get, recent_audit_log, pending_actions_open, executions_summary_24h"
+            },
+            {
+              "id": "52000000-0000-0000-0000-000000000004",
+              "name": "_debug_received",
+              "type": "object",
+              "value": "={{ $('Normalize Input').first().json._raw_input }}"
             }
           ]
         },
@@ -205,7 +222,8 @@
     }
   ],
   "connections": {
-    "When Executed by Another Workflow": { "main": [[{ "node": "Route by Query Name", "type": "main", "index": 0 }]] },
+    "When Executed by Another Workflow": { "main": [[{ "node": "Normalize Input", "type": "main", "index": 0 }]] },
+    "Normalize Input": { "main": [[{ "node": "Route by Query Name", "type": "main", "index": 0 }]] },
     "Route by Query Name": {
       "main": [
         [{ "node": "Q: style_profile_get", "type": "main", "index": 0 }],
