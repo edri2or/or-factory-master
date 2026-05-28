@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 106 — feat: Phase F follow-up — style_profile injection in ops/code/research/infra sub-agents
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | feature | Closes Gap 2 of `docs/phase-f-handoff.md` §2. Stage 103 added `Read Style Profile` Postgres injection only to `unknown-agent`, so when the router landed on ops/code/research/infra the sub-agent still answered with its hard-coded persona prompt — exposing the architecture to the user (e.g. "אני ה-RESEARCH sub-agent") and ignoring the operator's learned style profile. The same pattern (Postgres `SELECT profile FROM style_profile WHERE chat_id = …` between the trigger and the AI Agent, with `onError: continueRegularOutput` + `alwaysOutputData: true`) is now applied identically to all four. systemMessage in `ops-agent` (LangChain `agent` node — `parameters.options.systemMessage`) and in code/research/infra (LangChain `chainLlm` node — `parameters.messages.messageValues[0].message`) becomes an n8n expression that appends `Style profile (match in tone, length, emoji density, humor; do not announce you are matching it): <profile>` when a row is present, and a no-op empty branch when not. The `text` field of each AI Agent is now read via `$('When Executed by Another Workflow').first().json.sanitized` (rather than `$json.sanitized`) since `Read Style Profile` now sits between the trigger and the agent and replaces `$json` (this was the same fix as Stage 104's data-flow patch for unknown-agent, now applied consistently). `configure-agent-router.yml`'s PG-missing fallback is split into two `if` blocks: the existing one keeps the unknown-agent in-memory window swap, and a new one (case-based, runs against all 5 files) strips `Read Style Profile` + rewires `When Executed by Another Workflow → <AI Agent>` directly when no Postgres credential is wired. Graceful degradation preserved: a system without PG installs 5 clean working sub-agents with no dangling credential reference. No changes to `agent-router.json` or `tests/router_battery.yaml` — the classifier and Macro-F1 gate are unaffected. Out of scope: Gaps 3 (new tools for unknown-agent), 4 (AGENTS.md.template refresh), 5 (real cost tracking) — deferred per handoff. |
+
 ## Stage 105 — docs: Phase F handoff document for cross-session continuity
 
 | PR | Type | Summary |

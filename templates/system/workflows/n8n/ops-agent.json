@@ -12,10 +12,25 @@
     },
     {
       "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT profile FROM style_profile WHERE chat_id = @@CHAT_ID@@ LIMIT 1;",
+        "options": {}
+      },
+      "id": "b0000000-0000-0000-0000-000000000008",
+      "name": "Read Style Profile",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [380, 320],
+      "credentials": { "postgres": { "id": "@@CRED_POSTGRES_ID@@", "name": "Postgres (n8n)" } },
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
         "promptType": "define",
-        "text": "={{ $json.sanitized }}",
+        "text": "={{ $('When Executed by Another Workflow').first().json.sanitized }}",
         "options": {
-          "systemMessage": "You are the OPS sub-agent for a self-hosted automation system. You handle operational questions: deployment status, service health, logs, restarts, and routine ops tasks. You have a tool that calls this system's own n8n Public API to list workflows and their active/inactive status — use it whenever the user asks which workflows are active, about automation/deployment status, or overall system status, and base your answer on the live data it returns. Be concise, accurate, and actionable. Never invent URLs or secrets. Answer in the user's language (Hebrew or English, detected from the input)."
+          "systemMessage": "=You are the OPS sub-agent for a self-hosted automation system. You handle operational questions: deployment status, service health, logs, restarts, and routine ops tasks. You have a tool that calls this system's own n8n Public API to list workflows and their active/inactive status — use it whenever the user asks which workflows are active, about automation/deployment status, or overall system status, and base your answer on the live data it returns. Be concise, accurate, and actionable. Never invent URLs or secrets. Answer in the user's language (Hebrew or English, detected from the input).{{ ($('Read Style Profile').first()?.json?.profile) ? ' Style profile (match in tone, length, emoji density, humor; do not announce you are matching it): ' + JSON.stringify($('Read Style Profile').first().json.profile) : '' }}"
         }
       },
       "id": "b0000000-0000-0000-0000-000000000002",
@@ -77,7 +92,8 @@
     }
   ],
   "connections": {
-    "When Executed by Another Workflow": { "main": [[{ "node": "Ops Agent", "type": "main", "index": 0 }]] },
+    "When Executed by Another Workflow": { "main": [[{ "node": "Read Style Profile", "type": "main", "index": 0 }]] },
+    "Read Style Profile": { "main": [[{ "node": "Ops Agent", "type": "main", "index": 0 }]] },
     "OpenRouter Chat Model": { "ai_languageModel": [[{ "node": "Ops Agent", "type": "ai_languageModel", "index": 0 }]] },
     "n8n API": { "ai_tool": [[{ "node": "Ops Agent", "type": "ai_tool", "index": 0 }]] },
     "Ops Agent": { "main": [[{ "node": "Format Reply", "type": "main", "index": 0 }]] }

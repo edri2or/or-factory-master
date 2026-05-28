@@ -381,14 +381,35 @@ jobs:
             # its memory node back to the in-memory window so the chat bot still works
             # (graceful degradation — never leave a node pointing at an empty credential).
             if [ "$file" = "unknown-agent.json" ] && { [ -z "$CRED_POSTGRES_ID" ] || [ "$CRED_POSTGRES_ID" = "null" ]; }; then
-              jq '(.nodes[] | select(.name=="Conversation Memory")) |= (.type="@n8n/n8n-nodes-langchain.memoryBufferWindow" | .typeVersion=1.3 | del(.credentials) | del(.parameters.tableName))
-                  | (.nodes |= map(select(.name != "Read Style Profile")))
-                  | .connections."When Executed by Another Workflow" = {"main":[[{"node":"Chat Agent","type":"main","index":0}]]}
-                  | del(.connections."Read Style Profile")' \
+              jq '(.nodes[] | select(.name=="Conversation Memory")) |= (.type="@n8n/n8n-nodes-langchain.memoryBufferWindow" | .typeVersion=1.3 | del(.credentials) | del(.parameters.tableName))' \
                 "/tmp/ar-prep-${file}" > "/tmp/ar-prep-${file}.tmp" \
                 && mv "/tmp/ar-prep-${file}.tmp" "/tmp/ar-prep-${file}" \
                 || echo "WARN: unknown-agent memory fallback transform failed — using template as-is" >&2
               echo "INFO: unknown-agent memory → in-memory window (no Postgres credential)"
+            fi
+            # Phase F follow-up (Stage 105): all 5 sub-agents now read style_profile from
+            # Postgres and inject it into their system prompt. If no Postgres credential
+            # was wired, strip the "Read Style Profile" node and re-wire the trigger
+            # directly to the AI Agent so the credential-less node never reaches n8n.
+            if [ -z "$CRED_POSTGRES_ID" ] || [ "$CRED_POSTGRES_ID" = "null" ]; then
+              case "$file" in
+                unknown-agent.json)  NEXT_NODE="Chat Agent" ;;
+                ops-agent.json)      NEXT_NODE="Ops Agent" ;;
+                code-agent.json)     NEXT_NODE="Code Reply" ;;
+                research-agent.json) NEXT_NODE="Research Reply" ;;
+                infra-agent.json)    NEXT_NODE="Infra Reply" ;;
+                *)                   NEXT_NODE="" ;;
+              esac
+              if [ -n "$NEXT_NODE" ]; then
+                jq --arg next "$NEXT_NODE" \
+                   '(.nodes |= map(select(.name != "Read Style Profile")))
+                    | .connections."When Executed by Another Workflow" = {"main":[[{"node":$next,"type":"main","index":0}]]}
+                    | del(.connections."Read Style Profile")' \
+                   "/tmp/ar-prep-${file}" > "/tmp/ar-prep-${file}.tmp" \
+                   && mv "/tmp/ar-prep-${file}.tmp" "/tmp/ar-prep-${file}" \
+                   || echo "WARN: ${slot}-agent style-profile strip transform failed — using template as-is" >&2
+                echo "INFO: ${slot}-agent → Read Style Profile stripped (no Postgres credential)"
+              fi
             fi
             ID=$(_upsert_wf "$wf_name" "/tmp/ar-prep-${file}" no) || _soft_exit0 "כשל ביצירת/עדכון ${wf_name}"
             [ -n "$ID" ] && [ "$ID" != "null" ] || _soft_exit0 "לא התקבל id עבור ${wf_name}"
