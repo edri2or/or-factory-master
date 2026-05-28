@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 105 — docs: Phase F handoff document for cross-session continuity
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | docs | New `docs/phase-f-handoff.md` consolidates what a fresh Claude Code session needs to continue Phase F. Includes: live-state snapshot (`factory-test-tgbot9` alive, all PRs in main), the **5 open gaps** vs the original plan's §6.2/§7.5 mapping (HITL, style injection in the 4 remaining sub-agents, new tools for unknown-agent, AGENTS.md template, real cost tracking in spend_log) with concrete remediation steps, and the **verification discipline** lesson from Stages 95–104 (install PASS is not proof; the bot must reply to a real Telegram message, and the new live OpenRouter probe from Stage 104 must show HTTP 200). References the not-in-repo `factory-research-context.md` (the operator's 1047-line upload, kept out of the repo by explicit instruction) and lists the one-line prompt to brief a new session. Pure docs change; no behaviour. |
+
 ## Stage 104 — fix: silent bot failures — decommission revoked wrong OR key, configure didn't notice, unknown-agent broke data flow
 
 | PR | Type | Summary |
