@@ -298,8 +298,11 @@ jobs:
                 # entry pointing at the trigger; an empty {} crashes the handler
                 # with "Cannot read properties of undefined (reading 'id')" (500).
                 # See packages/cli/src/workflows/workflows.controller.ts in n8n 1.121.
+                # Recent n8n also requires `destinationNode` for the "new partial
+                # execution flow" — set it to the only data node so the full chain
+                # (Run Once → Create Tables) executes.
                 RUN_BODY=$(jq -cn --slurpfile wf /tmp/ar-prep-db-setup.json --arg id "$DB_SETUP_ID" \
-                  '{workflowData: ($wf[0] + {id:$id}), runData:{}, startNodes:[{name:"Run Once", sourceData:null}]}')
+                  '{workflowData: ($wf[0] + {id:$id}), runData:{}, startNodes:[{name:"Run Once", sourceData:null}], destinationNode:"Create Tables"}')
                 HTTP=$(_napi POST "$BASE/rest/workflows/${DB_SETUP_ID}/run" /tmp/ar-db-run.json "$RUN_BODY")
                 if [ "$HTTP" = "200" ] || [ "$HTTP" = "201" ]; then
                   echo "PASS: db-setup ran (id=${DB_SETUP_ID}) — Postgres tables ensured"

@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 99 — fix: db-setup `/run` body also needs `destinationNode` (n8n partial-execution flow)
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | fix | Stage 98 fixed `body.workflowData.id` but live verification on `factory-test-tgbot5` then surfaced the next layer: n8n 1.121 returned `HTTP 500 — "a destinationNodeName is required for the new partial execution flow"`. The recent `executeManually` flow requires the body to name the node to execute up to, in addition to `startNodes`. Fix: add `destinationNode: "Create Tables"` (the only data node in `db-setup.json`) to the run body — n8n then runs the full chain `Run Once → Create Tables`. PR 1's `db-setup.json` template is unchanged. Still soft-fail; `n8n_chat_histories` still auto-created by the memory node either way. |
+
 ## Stage 98 — fix: db-setup `/rest/workflows/:id/run` body must include workflowData + id
 
 | PR | Type | Summary |
