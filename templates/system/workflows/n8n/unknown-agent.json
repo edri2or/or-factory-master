@@ -104,11 +104,11 @@
     {
       "parameters": {
         "name": "postgres_named_query",
-        "description": "Run a fixed, READ-ONLY whitelist query against this system's own Postgres. Valid query_name values: style_profile_get (the operator's current learned style profile, no params); recent_audit_log (last 10 audit_log rows of bot actions + decisions, no params); pending_actions_open (open pending_actions awaiting HITL approval, no params); executions_summary_24h (n8n executions in last 24h grouped by status, no params). Returns {ok:true, query_name, rows:[...]} on a valid name, or {ok:false, query_name, error} on an unknown name. Use for questions about audit history, pending approvals, conversation style, or recent automation runs.",
+        "description": "Run a fixed, READ-ONLY whitelist query against this system's own Postgres. You MUST pass `query_name` as one of EXACTLY these 4 string values: \"style_profile_get\" (the operator's current learned style profile), \"recent_audit_log\" (last 10 audit_log rows of bot actions + decisions), \"pending_actions_open\" (open pending_actions awaiting HITL approval), \"executions_summary_24h\" (n8n executions in last 24h grouped by status). Returns {ok:true, query_name, rows:[...]} on a valid name, or {ok:false, query_name, error} on an unknown name. Use for questions about audit history, pending approvals, conversation style, or recent automation runs.",
         "workflowId": { "__rl": true, "value": "@@WF_PG_NAMED_QUERIES_ID@@", "mode": "id" },
         "specifyInputSchema": true,
-        "schemaType": "manual",
-        "inputSchema": "{\"type\":\"object\",\"properties\":{\"query_name\":{\"type\":\"string\",\"enum\":[\"style_profile_get\",\"recent_audit_log\",\"pending_actions_open\",\"executions_summary_24h\"],\"description\":\"Which whitelisted query to run.\"}},\"required\":[\"query_name\"]}"
+        "schemaType": "fromJson",
+        "jsonSchemaExample": "{\n  \"query_name\": \"style_profile_get\"\n}"
       },
       "id": "c0000000-0000-0000-0000-000000000009",
       "name": "postgres_named_query",
