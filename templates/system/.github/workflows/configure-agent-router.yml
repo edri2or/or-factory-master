@@ -170,9 +170,15 @@ jobs:
           RW_PG_SVC_ID=$(_sm_read "railway-postgres-service-id" || echo "")
           CRED_POSTGRES_ID=""
           _rwgql() {
+            # NOTE: do NOT write --argjson v "${2:-{}}" — bash brace-counting in
+            # ${param:-default} eats the expansion's closing brace into the literal
+            # {} default, appending a stray } to $2 and breaking the JSON. Use an
+            # explicit default (same fix as deploy-railway-cloudflare.yml's _gql).
+            local q="$1" v="${2:-}"
+            [ -n "$v" ] || v='{}'
             curl -sS --max-time 30 -X POST "$RAILWAY_GQL" \
               -H "Authorization: Bearer ${RAILWAY_TOKEN}" -H "Content-Type: application/json" \
-              -d "$(jq -cn --arg q "$1" --argjson v "${2:-{}}" '{query:$q, variables:$v}')" || echo '{}'
+              -d "$(jq -cn --arg q "$q" --argjson v "$v" '{query:$q, variables:$v}')" || echo '{}'
           }
           if [ -n "$RAILWAY_TOKEN" ] && [ -n "$RW_PROJECT_ID" ] && [ -n "$RW_PG_SVC_ID" ]; then
             RW_ENVS=$(_rwgql 'query($pid:String!){project(id:$pid){environments{edges{node{id name}}}}}' \
