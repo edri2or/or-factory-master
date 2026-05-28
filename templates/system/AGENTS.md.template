@@ -59,8 +59,80 @@ The factory has set up the following components for this system:
 - **Caddy gateway** in front of n8n, enforcing HMAC-SHA256 on `/webhook/*` and per-IP rate limits
 - **Cloudflare DNS** + Let's Encrypt certificate (DNS-only mode)
 - **`.claude/`** package — slash commands and skills (incl. `gcp-hands-client`)
-- **Agent Router + Telegram Chat Bot** — n8n workflows + `configure-agent-router.yml`. The router classifies/routes to ops/code/research/infra/unknown sub-agents; `tg-inbound` brings Telegram messages in (generic Webhook at `/webhook/telegram-in/inbound`, exempt from Caddy HMAC and authed by Telegram's `X-Telegram-Bot-Api-Secret-Token`) → the router → reply. The `unknown-agent` is a smart general + system-aware chat agent. Two physically-separate Telegram bots share one `chat_id`: the **chat bot** (`n8n-telegram-bot-token`) and the **alerts bot** (`telegram-bot-token`, used by `emit-event.sh`). See `docs/telegram-chat-bot.md`.
+- **Agent Router + Telegram Chat Bot** — n8n workflows wired by `configure-agent-router.yml`: a classifier routes to ops/code/research/infra/unknown sub-agents, and an inbound Telegram bot turns the system's bot token into a smart, system-aware chat agent. → see [**Telegram Chat Bot**](#telegram-chat-bot) below.
 - **Observability emitter** — `scripts/emit-event.sh` ships factory.deploy.* events to Axiom/Telegram/Linear
+
+## Telegram Chat Bot
+
+This system ships with a per-system Telegram chat bot (Phase F). It turns the Telegram
+bot token already in Secret Manager into a smart, system-aware conversational agent —
+natural language, persistent memory, learned style, and **read-only** access to live
+system data — without touching the Agent Router's classifier or its Macro-F1 CI gate.
+
+### Two separate bots (one shared chat)
+
+| Bot | Token secret | Direction | Driven by |
+|---|---|---|---|
+| 🤖 **Chat bot** | `n8n-telegram-bot-token` (per-system) | two-way — answers questions, knows the system | `tg-inbound` workflow in n8n |
+| 🟡/🔴 **Alerts bot** | `telegram-bot-token` (copied from control) | one-way — errors / warnings | `scripts/emit-event.sh` |
+
+Both talk to the same `chat_id` (`n8n-telegram-chat-id`, seeded from `telegram-chat-id`).
+In a private chat `chat_id == user_id`, so the same operator faces both bots.
+
+### Inbound flow
+
+```
+operator → Telegram → ${PUBLIC_URL}/webhook/telegram-in/inbound
+  → Caddy: /webhook/telegram-in/* is exempt from HMAC and authed instead by Telegram's
+    X-Telegram-Bot-Api-Secret-Token header (value = secret n8n-telegram-webhook-secret;
+    wrong/missing header → 401)
+  → tg-inbound: normalize + filter to the operator chat_id → dedup → call the router
+  → Agent Router (unchanged): classify → sub-agent → reply
+  → tg-inbound → Telegram sendMessage (🤖) → operator
+```
+
+`tg-inbound` calls the router over the **internal** `http://localhost:5678/webhook/agent-router`
+— the public domain would be blocked by Caddy's HMAC.
+
+### n8n workflows (Phase F)
+
+- **`tg-inbound`** — inbound handler (active): webhook → normalize + chat_id filter → Dedup Guard (`tg_updates_seen`) → call router → 🤖 reply.
+- **`tg-proactive`** — daily 08:00 UTC (active): aggregates the last 24 h (audit + spend) + recent failed executions → Haiku summary → 🟢 message.
+- **`style-refresh`** — weekly Sunday 03:00 UTC (active): reads the last 50 messages → Haiku extracts a style-profile JSON → upserts `style_profile`.
+- **`postgres-named-queries`** — subworkflow (Stage 108): the read-only query whitelist behind the `postgres_named_query` tool (below).
+- **`db-setup`** — one-shot manual workflow: creates the 7 Postgres tables (idempotent, `IF NOT EXISTS`).
+
+The Agent Router and its five sub-agents (`ops`, `code`, `research`, `infra`, `unknown`)
+pre-date Phase F; `unknown-agent` and `ops-agent` were upgraded with the system-aware tools below.
+
+### Postgres tables (created by `db-setup`)
+
+| Table | Key columns | Purpose |
+|---|---|---|
+| `n8n_chat_histories` | `session_id` (= `tg:<chat_id>`), `message` (JSONB) | Conversation memory (Postgres Chat Memory) |
+| `style_profile` | `chat_id` (PK), `profile` (JSONB), `refreshed_at` | Per-operator learned style; refreshed weekly |
+| `audit_log` | `ts`, `chat_id`, `action`, `params`, `decision`, `intent_confidence` | Bot decisions / intent records |
+| `spend_log` | `ts`, `model`, `prompt_tokens`, `completion_tokens`, `cost_usd` | LLM spend per call (see Deferred) |
+| `tg_updates_seen` | `update_id` (PK), `seen_at` | Telegram update dedup |
+| `pending_actions` | `chat_id`, `description`, `tool`, `args`, `status` | HITL approval queue (see Deferred) |
+| `events` | `ts`, `chat_id`, `action`, `dow`, `hour` | Activity events for future pattern analysis |
+
+### System-aware tools (read-only)
+
+`unknown-agent` (general chat) and `ops-agent` carry two read-only mechanisms:
+
+- **`postgres_named_query`** — a fixed whitelist of four read-only SELECTs (no free SQL): `style_profile_get`, `recent_audit_log`, `pending_actions_open`, `executions_summary_24h`.
+- **SYSTEM-INFO injection** — `configure-agent-router.yml` injects a JSON block (`system_name`, `n8n_domain`, `gcp_project_id`, `gcp_region`, `runtime`, `capabilities`) into the system prompt at install time, so the bot can answer "where am I / what am I" with no runtime dependency.
+
+Every Postgres path is **soft-fail**: if the Postgres credential is missing, `configure-agent-router.yml` logs a WARN and the bot keeps working with in-memory window memory (the `postgres_named_query` tool is `jq`-stripped out).
+
+### Deferred (Phase F follow-up — intentional, not bugs)
+
+- **Real cost in `spend_log`** — `cost_usd` is currently a constant `0`; wiring real OpenRouter usage is a separate change (handoff Gap 5).
+- **HITL for write actions** (`pending_actions`) — there are no write tools yet, so nothing asks for approval; the async approve/deny path will be built when a write tool is added (handoff Gap 1).
+
+Full detail (Hebrew) lives in `docs/telegram-chat-bot.md` in the factory repo
+([edri2or/or-factory-master](https://github.com/edri2or/or-factory-master)).
 
 ## Secrets in GCP Secret Manager (names only — never echo, print, or log values)
 
@@ -110,6 +182,7 @@ ${GENERIC_SECRETS}
 - **Never commit `.env*`, `*.pem`, or `*.key` files.**
 - **Never disable branch protection** on the `main` branch.
 - **Never modify** the per-system Railway project or Cloudflare DNS without dispatching the deploy workflow.
+- **Never give the chat bot free-SQL or write tools.** Its DB access is the fixed read-only `postgres_named_query` whitelist; state-changing actions must route through the (deferred) HITL `pending_actions` flow.
 
 ## Further reading (load only when relevant to the task at hand)
 
