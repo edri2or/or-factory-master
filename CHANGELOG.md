@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 114 — docs: Phase F Gap 4 — AGENTS.md.template documents the Telegram chat bot
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | docs | Closes Gap 4 of `docs/phase-f-handoff.md` §2. `templates/system/AGENTS.md.template` described the bot in one dense bullet; it now has a dedicated **Telegram Chat Bot** section matching what Stages 95–113 actually shipped: the two separate bots (chat `n8n-telegram-bot-token` via `tg-inbound`; alerts `telegram-bot-token` via `emit-event.sh`) sharing one `chat_id`; the inbound flow (Telegram → Caddy `telegram-in` exemption authed by `X-Telegram-Bot-Api-Secret-Token` → tg-inbound → router); the 5 Phase F workflows (`tg-inbound`, `tg-proactive`, `style-refresh`, `postgres-named-queries`, `db-setup`); the **7** Postgres tables with key columns (the handoff said 6, but `db-setup.json` creates 7: n8n_chat_histories, style_profile, audit_log, spend_log, tg_updates_seen, pending_actions, events); the read-only `postgres_named_query` 4-query whitelist + SYSTEM-INFO injection on `unknown-agent`+`ops-agent`; and the two deferred items (real `spend_log` cost = Gap 5, HITL writes = Gap 1). The dense bullet under "What was provisioned" is slimmed to a pointer, and one Forbidden-Actions bullet now forbids giving the bot free-SQL/write tools. Docs-only — no workflow/Caddy/script/runtime change; per handoff §3 rule 5 it reaches systems provisioned after merge, so no test-system provision was needed for a documentation change. Full Hebrew reference stays in `docs/telegram-chat-bot.md`. Gaps 1 and 5 remain open. |
+
 ## Stage 113 — fix: postgres_named_query — drop specifyInputSchema, trigger back to passthrough (proven on tgbot15 with the operator sending a real message)
 
 | PR | Type | Summary |
