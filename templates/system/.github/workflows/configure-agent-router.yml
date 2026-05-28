@@ -137,6 +137,40 @@ jobs:
           [ -n "$CRED_ID" ] || _soft_exit0 "ה-credential '${CRED_NAME}' לא נמצא ב-n8n — הרץ קודם את deploy-railway-cloudflare.yml"
           echo "INFO: OpenRouter credential id=${CRED_ID}"
 
+          # Verify the OpenRouter key actually works — catches keys that were revoked
+          # (e.g. wrongly by a sibling system's decommission before the name-based fix)
+          # or corrupted between mint and storage. Without this check, configure would
+          # report PASS while every Chat Agent call silently 401s and the bot returns
+          # the fallback "אין לי תשובה כרגע" on every message. Direct curl bypasses
+          # n8n and gives a definitive PASS/FAIL signal.
+          OR_KEY=$(_sm_read "openrouter-api-key" || echo "")
+          if [ -n "$OR_KEY" ]; then
+            echo "::add-mask::${OR_KEY}"
+            OR_TEST_HTTP=$(curl -sS -o /tmp/ar-or-test.json -w '%{http_code}' --max-time 15 \
+              -X POST "https://openrouter.ai/api/v1/chat/completions" \
+              -H "Authorization: Bearer ${OR_KEY}" -H "Content-Type: application/json" \
+              -d '{"model":"openrouter/auto","messages":[{"role":"user","content":"ok"}],"max_tokens":1}' 2>/dev/null || echo "000")
+            if [ "$OR_TEST_HTTP" = "200" ]; then
+              echo "PASS: OpenRouter credential live-tested (HTTP 200 from chat/completions)."
+            else
+              OR_ERR_MSG=$(jq -r '.error.message // .message // empty' /tmp/ar-or-test.json 2>/dev/null || echo "")
+              {
+                echo "## ⚠️ ה-OpenRouter credential לא עובד — הבוט ייתן fallback בלבד"
+                echo "בדיקה חיה ל-\`openrouter.ai/api/v1/chat/completions\` עם ה-\`openrouter-api-key\` מ-SM החזירה **HTTP ${OR_TEST_HTTP}** (\`${OR_ERR_MSG:-no message body}\`)."
+                echo ""
+                echo "המשמעות: כל הודעה לבוט תחזיר \`🤖 אין לי תשובה כרגע — נסה שוב בעוד רגע.\` כי ה-Classify Intent של ה-Agent Router ייפול ב-Authorization."
+                echo ""
+                echo "בדיקות אפשריות:"
+                echo "1. ב-\`https://openrouter.ai/settings/keys\` — חפש מפתח בשם \`${SYSTEM_NAME}\`. אם איננו → המפתח בוטל; צריך rotation."
+                echo "2. ב-\`https://openrouter.ai/credits\` — האם יש יתרה חיובית."
+              } >> "$GITHUB_STEP_SUMMARY"
+              echo "WARN: OpenRouter live test failed (HTTP ${OR_TEST_HTTP}, msg='${OR_ERR_MSG}') — bot will return fallback responses for every message" >&2
+            fi
+            rm -f /tmp/ar-or-test.json
+          else
+            echo "WARN: openrouter-api-key empty in SM — skipping live test" >&2
+          fi
+
           # Stage 51b: the ops-agent has an HTTP Request tool that calls this system's
           # OWN n8n Public API. Create/reuse an httpHeaderAuth credential from the
           # n8n-api-key (minted at deploy) so the tool authenticates server-side and the
