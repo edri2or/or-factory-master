@@ -293,7 +293,14 @@ jobs:
               sed -e "s#@@CRED_POSTGRES_ID@@#${CRED_POSTGRES_ID}#g" "$DB_SRC" > /tmp/ar-prep-db-setup.json
               DB_SETUP_ID=$(_upsert_wf "factory-master: db-setup" /tmp/ar-prep-db-setup.json no) || DB_SETUP_ID=""
               if [ -n "$DB_SETUP_ID" ] && [ "$DB_SETUP_ID" != "null" ]; then
-                HTTP=$(_napi POST "$BASE/rest/workflows/${DB_SETUP_ID}/run" /tmp/ar-db-run.json '{}')
+                # n8n's /rest/workflows/:id/run (manual execution) requires
+                # body.workflowData with `id` matching the URL param + a startNodes
+                # entry pointing at the trigger; an empty {} crashes the handler
+                # with "Cannot read properties of undefined (reading 'id')" (500).
+                # See packages/cli/src/workflows/workflows.controller.ts in n8n 1.121.
+                RUN_BODY=$(jq -cn --slurpfile wf /tmp/ar-prep-db-setup.json --arg id "$DB_SETUP_ID" \
+                  '{workflowData: ($wf[0] + {id:$id}), runData:{}, startNodes:[{name:"Run Once", sourceData:null}]}')
+                HTTP=$(_napi POST "$BASE/rest/workflows/${DB_SETUP_ID}/run" /tmp/ar-db-run.json "$RUN_BODY")
                 if [ "$HTTP" = "200" ] || [ "$HTTP" = "201" ]; then
                   echo "PASS: db-setup ran (id=${DB_SETUP_ID}) — Postgres tables ensured"
                 else
