@@ -1,0 +1,217 @@
+{
+  "name": "factory-master: postgres-named-queries",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": { "inputSource": "passthrough" },
+      "id": "50000000-0000-0000-0000-000000000001",
+      "name": "When Executed by Another Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [220, 320]
+    },
+    {
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose", "version": 2 },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "51000000-0000-0000-0000-000000000001",
+                    "leftValue": "={{ $json.query_name }}",
+                    "rightValue": "style_profile_get",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "style_profile_get"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose", "version": 2 },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "51000000-0000-0000-0000-000000000002",
+                    "leftValue": "={{ $json.query_name }}",
+                    "rightValue": "recent_audit_log",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "recent_audit_log"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose", "version": 2 },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "51000000-0000-0000-0000-000000000003",
+                    "leftValue": "={{ $json.query_name }}",
+                    "rightValue": "pending_actions_open",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "pending_actions_open"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose", "version": 2 },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "51000000-0000-0000-0000-000000000004",
+                    "leftValue": "={{ $json.query_name }}",
+                    "rightValue": "executions_summary_24h",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "executions_summary_24h"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "unknown_query"
+        }
+      },
+      "id": "50000000-0000-0000-0000-000000000002",
+      "name": "Route by Query Name",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [440, 320]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT chat_id, profile, refreshed_at FROM style_profile WHERE chat_id = @@CHAT_ID@@ LIMIT 1;",
+        "options": {}
+      },
+      "id": "50000000-0000-0000-0000-000000000003",
+      "name": "Q: style_profile_get",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [680, 140],
+      "credentials": { "postgres": { "id": "@@CRED_POSTGRES_ID@@", "name": "Postgres (n8n)" } },
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT ts, chat_id, action, decision, intent_confidence FROM audit_log ORDER BY ts DESC LIMIT 10;",
+        "options": {}
+      },
+      "id": "50000000-0000-0000-0000-000000000004",
+      "name": "Q: recent_audit_log",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [680, 260],
+      "credentials": { "postgres": { "id": "@@CRED_POSTGRES_ID@@", "name": "Postgres (n8n)" } },
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, created_at, chat_id, description, tool, args, status FROM pending_actions WHERE status IN ('pending','awaiting') ORDER BY created_at DESC LIMIT 20;",
+        "options": {}
+      },
+      "id": "50000000-0000-0000-0000-000000000005",
+      "name": "Q: pending_actions_open",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [680, 380],
+      "credentials": { "postgres": { "id": "@@CRED_POSTGRES_ID@@", "name": "Postgres (n8n)" } },
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT status, COUNT(*)::int AS n FROM execution_entity WHERE \"startedAt\" > NOW() - INTERVAL '24 hours' GROUP BY status ORDER BY n DESC;",
+        "options": {}
+      },
+      "id": "50000000-0000-0000-0000-000000000006",
+      "name": "Q: executions_summary_24h",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [680, 500],
+      "credentials": { "postgres": { "id": "@@CRED_POSTGRES_ID@@", "name": "Postgres (n8n)" } },
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Format any of the 4 Postgres branch outputs into a uniform tool response.\n// Postgres nodes with alwaysOutputData:true emit one empty {} when SELECT returns\n// zero rows; filter that out so the LLM sees rows:[] rather than rows:[{}].\nconst trigger = $('When Executed by Another Workflow').first().json || {};\nconst rows = $input.all()\n  .map(i => i.json)\n  .filter(o => o && typeof o === 'object' && Object.keys(o).length > 0);\nreturn [{ json: { ok: true, query_name: String(trigger.query_name || ''), rows: rows } }];"
+      },
+      "id": "50000000-0000-0000-0000-000000000007",
+      "name": "Format Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [920, 320]
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "52000000-0000-0000-0000-000000000001",
+              "name": "ok",
+              "type": "boolean",
+              "value": "=false"
+            },
+            {
+              "id": "52000000-0000-0000-0000-000000000002",
+              "name": "query_name",
+              "type": "string",
+              "value": "={{ $('When Executed by Another Workflow').first().json.query_name }}"
+            },
+            {
+              "id": "52000000-0000-0000-0000-000000000003",
+              "name": "error",
+              "type": "string",
+              "value": "unknown query_name — valid: style_profile_get, recent_audit_log, pending_actions_open, executions_summary_24h"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "50000000-0000-0000-0000-000000000008",
+      "name": "Unknown Query",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [920, 620]
+    }
+  ],
+  "connections": {
+    "When Executed by Another Workflow": { "main": [[{ "node": "Route by Query Name", "type": "main", "index": 0 }]] },
+    "Route by Query Name": {
+      "main": [
+        [{ "node": "Q: style_profile_get", "type": "main", "index": 0 }],
+        [{ "node": "Q: recent_audit_log", "type": "main", "index": 0 }],
+        [{ "node": "Q: pending_actions_open", "type": "main", "index": 0 }],
+        [{ "node": "Q: executions_summary_24h", "type": "main", "index": 0 }],
+        [{ "node": "Unknown Query", "type": "main", "index": 0 }]
+      ]
+    },
+    "Q: style_profile_get": { "main": [[{ "node": "Format Output", "type": "main", "index": 0 }]] },
+    "Q: recent_audit_log": { "main": [[{ "node": "Format Output", "type": "main", "index": 0 }]] },
+    "Q: pending_actions_open": { "main": [[{ "node": "Format Output", "type": "main", "index": 0 }]] },
+    "Q: executions_summary_24h": { "main": [[{ "node": "Format Output", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" }
+}

@@ -352,6 +352,55 @@ jobs:
             fi
           fi
 
+          # Phase F follow-up (Stage 108): build the SYSTEM-INFO JSON injected into
+          # unknown-agent's system prompt at install time. Replaces the originally
+          # planned `gcp_metadata_get` tool, which can't work — n8n runs on Railway,
+          # not on a GCP VM, so http://metadata.google.internal/... is unreachable.
+          # Same proven pattern as Stage 103's style_profile injection: facts go into
+          # the prompt, no runtime tool call, no new per-system SM secret.
+          SYSTEM_INFO_JSON=$(jq -cn \
+            --arg sys "$SYSTEM_NAME" \
+            --arg dom "$N8N_DOMAIN" \
+            --arg proj "$PROJECT_ID" \
+            '{system_name:$sys, n8n_domain:$dom, gcp_project_id:$proj,
+              gcp_region:"me-west1",
+              runtime:"Railway (n8n 1.121 + Postgres + Caddy)",
+              capabilities:{
+                read_only:true, write:false,
+                tools:["list_workflows","recent_errors","postgres_named_query"],
+                hitl_required_for_writes:true
+              }}' 2>/dev/null || echo '{}')
+          echo "INFO: SYSTEM_INFO_JSON built (length=${#SYSTEM_INFO_JSON})"
+
+          # Phase F follow-up (Stage 108): install the postgres-named-queries
+          # subworkflow BEFORE the sub-agent loop, so its id is available for the
+          # @@WF_PG_NAMED_QUERIES_ID@@ substitution in unknown-agent.json. The
+          # subworkflow exposes a fixed whitelist of 4 read-only SELECTs
+          # (style_profile_get, recent_audit_log, pending_actions_open,
+          # executions_summary_24h) — NO free SQL. Gated on the Postgres credential;
+          # soft-fail (if PG is missing, the PG-missing fallback below strips the
+          # postgres_named_query tool from unknown-agent so it never references a
+          # missing subworkflow id).
+          PG_NAMED_WF_ID=""
+          if [ -n "$CRED_POSTGRES_ID" ] && [ "$CRED_POSTGRES_ID" != "null" ]; then
+            PGNQ_SRC="${WF_DIR}/postgres-named-queries.json"
+            if [ -f "$PGNQ_SRC" ]; then
+              sed -e "s#@@CRED_POSTGRES_ID@@#${CRED_POSTGRES_ID}#g" \
+                  -e "s#@@CHAT_ID@@#${CHAT_ID}#g" \
+                  "$PGNQ_SRC" > /tmp/ar-prep-pg-named-queries.json
+              PG_NAMED_WF_ID=$(_upsert_wf "factory-master: postgres-named-queries" \
+                /tmp/ar-prep-pg-named-queries.json no) || PG_NAMED_WF_ID=""
+              if [ -n "$PG_NAMED_WF_ID" ] && [ "$PG_NAMED_WF_ID" != "null" ]; then
+                echo "PASS: factory-master: postgres-named-queries → id=${PG_NAMED_WF_ID} (לא-פעיל by design — subworkflow)"
+              else
+                echo "WARN: postgres-named-queries install failed" >&2
+                PG_NAMED_WF_ID=""
+              fi
+            else
+              echo "WARN: postgres-named-queries.json not found in repo — skipping" >&2
+            fi
+          fi
+
           # 4. Sub-workflows FIRST (so we know their IDs for the router). The new
           #    code/research/infra agents carry only @@CRED_OPENROUTER_ID@@; the
           #    @@CRED_N8N_API_ID@@/@@N8N_DOMAIN@@ substitutions are harmless no-ops on
@@ -375,7 +424,21 @@ jobs:
                 -e "s#@@N8N_DOMAIN@@#${N8N_DOMAIN}#g" \
                 -e "s#@@CHAT_ID@@#${CHAT_ID}#g" \
                 -e "s#@@SYSTEM_NAME@@#${SYSTEM_NAME}#g" \
+                -e "s#@@WF_PG_NAMED_QUERIES_ID@@#${PG_NAMED_WF_ID}#g" \
                 "$src" > "/tmp/ar-prep-${file}"
+            # Phase F follow-up (Stage 108): inject the SYSTEM-INFO JSON into
+            # unknown-agent's Chat Agent system prompt via jq gsub (not sed) so the
+            # JSON string is properly escaped when embedded inside the outer JSON
+            # string. Only unknown-agent carries the @@SYSTEM_INFO_JSON@@ placeholder;
+            # this is a no-op for the other 4 sub-agents. Soft-fail.
+            if [ "$file" = "unknown-agent.json" ]; then
+              jq --arg info "$SYSTEM_INFO_JSON" \
+                 '(.nodes[] | select(.name=="Chat Agent")).parameters.options.systemMessage |= gsub("@@SYSTEM_INFO_JSON@@"; $info)' \
+                 "/tmp/ar-prep-${file}" > "/tmp/ar-prep-${file}.tmp" \
+                 && mv "/tmp/ar-prep-${file}.tmp" "/tmp/ar-prep-${file}" \
+                 || echo "WARN: unknown-agent SYSTEM_INFO_JSON injection failed — placeholder left in place" >&2
+              echo "INFO: unknown-agent SYSTEM-INFO injected (project=${PROJECT_ID}, region=me-west1)"
+            fi
             # Phase F follow-up: unknown-agent uses Postgres-backed chat memory. If no
             # Postgres credential was wired (PG fetch failed in the step above), rewrite
             # its memory node back to the in-memory window so the chat bot still works
@@ -386,6 +449,16 @@ jobs:
                 && mv "/tmp/ar-prep-${file}.tmp" "/tmp/ar-prep-${file}" \
                 || echo "WARN: unknown-agent memory fallback transform failed — using template as-is" >&2
               echo "INFO: unknown-agent memory → in-memory window (no Postgres credential)"
+              # Phase F follow-up (Stage 108): with no Postgres credential, the
+              # postgres-named-queries subworkflow wasn't installed, so strip the
+              # postgres_named_query tool + connection. Same graceful-degradation
+              # pattern as Read Style Profile / Dedup Guard / Conversation Memory.
+              jq '(.nodes |= map(select(.name != "postgres_named_query")))
+                  | del(.connections."postgres_named_query")' \
+                "/tmp/ar-prep-${file}" > "/tmp/ar-prep-${file}.tmp" \
+                && mv "/tmp/ar-prep-${file}.tmp" "/tmp/ar-prep-${file}" \
+                || echo "WARN: unknown-agent postgres_named_query strip failed — placeholder may remain" >&2
+              echo "INFO: unknown-agent postgres_named_query → stripped (no Postgres credential)"
             fi
             # Phase F follow-up (Stage 105): all 5 sub-agents now read style_profile from
             # Postgres and inject it into their system prompt. If no Postgres credential
@@ -595,6 +668,9 @@ jobs:
             echo "| Webhook | ${BASE}/webhook/agent-router |"
             if [ -n "${CRED_POSTGRES_ID:-}" ] && [ "${CRED_POSTGRES_ID:-}" != "null" ]; then
               echo "| Postgres | credential \`${CRED_POSTGRES_ID}\` + טבלאות (db-setup \`${DB_SETUP_ID:-?}\`) |"
+              if [ -n "${PG_NAMED_WF_ID:-}" ] && [ "${PG_NAMED_WF_ID:-}" != "null" ]; then
+                echo "| postgres-named-queries | \`${PG_NAMED_WF_ID}\` (subworkflow — whitelist של 4 שאילתות SELECT לקריאה ע\"י unknown-agent) |"
+              fi
               if [ -n "${STYLE_WF_ID:-}" ] && [ "${STYLE_WF_ID:-}" != "null" ]; then
                 echo "| style-refresh | \`${STYLE_WF_ID}\` (פעיל, cron 0 3 * * 0 — שבועי, יום ראשון 03:00 UTC) |"
               fi
