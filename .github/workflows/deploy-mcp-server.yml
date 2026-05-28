@@ -376,6 +376,44 @@ jobs:
           echo "::error::Service did not return 200 on /health within 10 minutes"
           exit 1
 
+      - name: Register Linear webhook (idempotent, soft-fail)
+        if: success()
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          # OIL auto-fix activation: register the outbound Linear webhook so a
+          # newly-opened OIL-* issue rings the bell (Linear -> POST
+          # /linear-webhook -> rules triage -> repository_dispatch(oil-investigate)).
+          # The admin-gated POST /oil-register-webhook reads LINEAR_WEBHOOK_SECRET
+          # from its mounted env and calls Linear's webhookCreate; it is idempotent
+          # (returns the existing webhook if one already points at this
+          # /linear-webhook URL). We run it from the runner because the call needs
+          # the X-Admin-Secret header (probe tools can't send it) and this sandbox's
+          # egress can't reach run.app — the runner can, and the /health gate above
+          # already confirmed the service is live. The response body carries only a
+          # non-secret webhook id/status. Soft-fail: a registration hiccup must
+          # never fail a deploy.
+          REGION_URL="https://${SERVICE}-${GCP_PROJECT_NUMBER}.${GCP_REGION}.run.app"
+          ADMIN=$(gcloud secrets versions access latest \
+            --secret="mcp-server-admin-secret" --project="${GCP_PROJECT}" 2>/dev/null | tr -d '\r\n' || true)
+          if [ -z "${ADMIN}" ]; then
+            echo "WARN: could not read mcp-server-admin-secret; skipping webhook registration."
+          else
+            echo "::add-mask::${ADMIN}"
+            CODE=$(curl -s -o /tmp/oil-reg.body -w '%{http_code}' --max-time 30 \
+              -X POST "${REGION_URL}/oil-register-webhook" \
+              -H "X-Admin-Secret: ${ADMIN}" || echo "000")
+            echo "POST /oil-register-webhook -> HTTP ${CODE}"
+            head -c 500 /tmp/oil-reg.body 2>/dev/null || true
+            echo ""
+            if [ "${CODE}" = "200" ]; then
+              echo "PASS: Linear webhook registered (idempotent)."
+            else
+              echo "WARN: webhook registration returned HTTP ${CODE} (soft-fail; not blocking deploy)."
+            fi
+            rm -f /tmp/oil-reg.body
+          fi
+
       - name: Summary
         if: success()
         run: |
