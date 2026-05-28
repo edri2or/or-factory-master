@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 98 — fix: db-setup `/rest/workflows/:id/run` body must include workflowData + id
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | fix | After Stage 97 unblocked the Postgres credential creation, the live verification on `factory-test-tgbot4` exposed the next layer: `configure-agent-router.yml`'s db-setup auto-run POSTed `{}` to `/rest/workflows/${id}/run` and n8n returned `HTTP 500 — Cannot read properties of undefined (reading 'id')`. n8n's manual-run controller (`packages/cli/src/workflows/workflows.controller.ts`, v1.121) reads `req.body.workflowData.id` and tampering-checks it against the URL param; an empty body is unhandled. There is no Public-API equivalent in 1.121 (PR #20234 was closed). Fix: build the run body from the prepped workflow JSON we already have on disk, injecting the id from the upsert response: `{workflowData: ($wf[0] + {id:$id}), runData:{}, startNodes:[{name:"Run Once", sourceData:null}]}`. Still soft-fail (a non-2xx leaves a Hebrew WARN; `n8n_chat_histories` is still auto-created by the memoryPostgresChat node on first chat). PR 1's `db-setup` workflow is otherwise unchanged. Validated on the n8n source (cited in the commit/PR body). |
+
 ## Stage 97 — fix: configure-agent-router Railway GraphQL helper dropped its variables (brace-expansion bug)
 
 | PR | Type | Summary |
