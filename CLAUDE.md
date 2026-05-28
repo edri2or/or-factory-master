@@ -66,7 +66,7 @@ The previous factory (`edri2or/factory`) automated everything end-to-end. Failur
 - Auto-chain stages without verifying: dispatch the next workflow only after verifying the prior run's outputs. Never dispatch `decommission-system.yml` (real-system teardown) from the agent (it's off the `dispatch_workflow` allowlist by design).
 - Dispatch `decommission-test-system.yml` (test teardown) for any reason other than an explicit user request to tear down a test system — never automatically, never chained after provision/deploy. Confirm with the user first; it's destructive.
 - Open GitHub Issues to report success/failure — this is interactive, not async.
-- Write `factory/manifests/`, `factory/evidence/`, or session-summary files.
+- Write `factory/manifests/`, `factory/evidence/`, or session-summary files. *(A user-driven living development plan — `DEVPLAN.md`, managed by the `/dev-stage` command — is a permitted and required tracking tool, distinct from the auto-generated manifest/evidence outputs this rule forbids.)*
 - Bypass branch protection or skip CI checks.
 - Print, log, or echo secret values.
 - Create GCP SA keys. Auth is WIF only.
@@ -97,6 +97,10 @@ The previous factory (`edri2or/factory`) automated everything end-to-end. Failur
 | `decommission-system` | Tear down a real system (archive repo, soft-delete project). Requires written approval. NOT agent-dispatchable. |
 | `decommission-test-system` | Tear down a TEST system's per-test resources: delete its Railway project + Cloudflare DNS, archive its repo. Agent-dispatchable but **user-triggered only, never auto-chained**. Touches no GCP project or SM. |
 | `health-check` | Read-only status report of factory + all managed systems. |
+
+## Development workflow
+
+`/dev-stage` runs a new development as ordered, documented stages tracked in a living `DEVPLAN.md` (instantiated from `templates/devplan/DEVPLAN.template.md`), reporting to the user in plain Hebrew on demand — the user never opens a file. A CI gate (`scripts/check-devplan-updated.sh`, wired into the existing `changelog-check.yml` "Changelog gates" job) blocks merging dev-code while a plan is `status: active` unless that plan is updated in the same diff; it is a twin of the CHANGELOG gate and a no-op when no plan is active. `/dev-stage` is a slash-command (`.claude/commands/dev-stage.md`), not a factory skill.
 
 ## Workflows
 

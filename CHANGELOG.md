@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 116 — docs: /dev-stage — CLAUDE.md Never-rule clarification + Development-workflow docs (PR 3 of 3)
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | docs | Final PR of the `/dev-stage` mechanism. Scopes the CLAUDE.md "Never … session-summary files" rule with an inline parenthetical clarifying that a user-driven living `DEVPLAN.md` (managed by `/dev-stage`) is a permitted, required tracking tool — the rule's wording is preserved verbatim, only a narrow exception is appended. Adds a "Development workflow" section to CLAUDE.md and a "Working today" line to `docs/roadmap.md` documenting `/dev-stage`. Docs-only; no script/workflow/runtime change. |
+
 ## Stage 115 — feat: /dev-stage CI enforcement gate (PR 2 of 3)
 
 | PR | Type | Summary |
