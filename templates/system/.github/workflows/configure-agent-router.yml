@@ -581,6 +581,36 @@ jobs:
             fi
           fi
 
+          # 5e. Gap 5: install + activate spend-track — hourly poll of OpenRouter's
+          #     authoritative GET /api/v1/key cumulative usage (data.usage, USD: OR
+          #     credits are 1:1 USD), writes the incremental delta into spend_log as
+          #     model='openrouter-key'. Replaces the old hardcoded cost_usd=0 "Log
+          #     Spend" node (removed from tg-proactive.json this PR). Per-call token
+          #     usage from n8n's lmChatOpenRouter is unreachable downstream
+          #     (n8n#26302/#21673 — response.tokenUsage is silently dropped), hence the
+          #     key-usage approach. Gated on Postgres (the spend_track_state + spend_log
+          #     tables live there) + the OpenRouter credential. NOT gated on Telegram/
+          #     chat_id. Soft-fail (WARN only); never blocks the router.
+          SPEND_WF_ID=""
+          if [ -n "$CRED_POSTGRES_ID" ] && [ "$CRED_POSTGRES_ID" != "null" ] \
+             && [ -n "$CRED_ID" ] && [ "$CRED_ID" != "null" ]; then
+            SPEND_SRC="${WF_DIR}/spend-track.json"
+            if [ -f "$SPEND_SRC" ]; then
+              sed -e "s#@@CRED_POSTGRES_ID@@#${CRED_POSTGRES_ID}#g" \
+                  -e "s#@@CRED_OPENROUTER_ID@@#${CRED_ID}#g" \
+                  "$SPEND_SRC" > /tmp/ar-prep-spend-track.json
+              SPEND_WF_ID=$(_upsert_wf "factory-master: spend-track" /tmp/ar-prep-spend-track.json yes) \
+                || SPEND_WF_ID=""
+              if [ -n "$SPEND_WF_ID" ] && [ "$SPEND_WF_ID" != "null" ]; then
+                echo "PASS: factory-master: spend-track → id=${SPEND_WF_ID} (פעיל, cron 0 * * * * — שעתי, מעקב עלות OpenRouter ל-spend_log)"
+              else
+                echo "WARN: spend-track install failed" >&2; SPEND_WF_ID=""
+              fi
+            else
+              echo "WARN: spend-track.json not found in repo — skipping" >&2
+            fi
+          fi
+
           # 5b. Phase F: install + activate tg-inbound (Telegram Webhook → router →
           #     reply) and register Telegram's webhook at the Caddy /webhook/telegram-in
           #     path, authenticated by the per-system secret token (Caddy validates the
@@ -688,6 +718,9 @@ jobs:
               fi
               if [ -n "${PROACT_WF_ID:-}" ] && [ "${PROACT_WF_ID:-}" != "null" ]; then
                 echo "| tg-proactive | \`${PROACT_WF_ID}\` (פעיל, cron 0 8 * * * — יומי 08:00 UTC, סיכום 24ש' לטלגרם) |"
+              fi
+              if [ -n "${SPEND_WF_ID:-}" ] && [ "${SPEND_WF_ID:-}" != "null" ]; then
+                echo "| spend-track | \`${SPEND_WF_ID}\` (פעיל, cron 0 * * * * — עלות OpenRouter אמיתית ל-spend_log) |"
               fi
             else
               echo "| Postgres | ⚠️ דולג — לא נשלפו פרטי חיבור מ-Railway (זיכרון/סגנון/סיכום מושבתים) |"
