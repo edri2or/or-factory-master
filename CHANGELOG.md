@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 97 — fix: configure-agent-router Railway GraphQL helper dropped its variables (brace-expansion bug)
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | fix | Live verification of PR 1/2 (`factory-test-tgbot3`) surfaced that the new Postgres wiring silently skipped: configure logged "could not read POSTGRES_PASSWORD/RAILWAY_PRIVATE_DOMAIN from Railway" and unknown-agent fell back to in-memory window. Root cause: the `_rwgql` helper built its request body with `--argjson v "${2:-{}}"` — bash brace-counting in `${param:-default}` consumes the parameter-expansion's closing brace into the literal `{}` default, appending a **stray `}`** to the variables JSON (`{"pid":"…"}}`), so `jq --argjson` rejected it and every Railway GraphQL call got an empty/malformed body (env-id never resolved → variables never read). This is the exact pitfall `deploy-railway-cloudflare.yml`'s `_gql` documents and avoids. Fix: `_rwgql` now uses an explicit `local v="${2:-}"; [ -n "$v" ] || v='{}'` (proven locally: buggy form → `jq: invalid JSON`, fixed form → well-formed body). The token was never the issue — the deploy writes these same variables with `railway-api-token`, so it can read them. No behaviour change for systems without Postgres (still soft-fall back). Only `configure-agent-router.yml` changed. |
+
 ## Stage 96 — feat: Phase F follow-up PR 2/5 — persistent Postgres chat memory
 
 | PR | Type | Summary |
