@@ -321,10 +321,22 @@ jobs:
             [ -f "$src" ] || _soft_exit0 "קובץ ${file} לא נמצא בריפו"
             sed -e "s#@@CRED_OPENROUTER_ID@@#${CRED_ID}#g" \
                 -e "s#@@CRED_N8N_API_ID@@#${CRED_N8N_API_ID}#g" \
+                -e "s#@@CRED_POSTGRES_ID@@#${CRED_POSTGRES_ID}#g" \
                 -e "s#@@N8N_DOMAIN@@#${N8N_DOMAIN}#g" \
                 -e "s#@@CHAT_ID@@#${CHAT_ID}#g" \
                 -e "s#@@SYSTEM_NAME@@#${SYSTEM_NAME}#g" \
                 "$src" > "/tmp/ar-prep-${file}"
+            # Phase F follow-up: unknown-agent uses Postgres-backed chat memory. If no
+            # Postgres credential was wired (PG fetch failed in the step above), rewrite
+            # its memory node back to the in-memory window so the chat bot still works
+            # (graceful degradation — never leave a node pointing at an empty credential).
+            if [ "$file" = "unknown-agent.json" ] && { [ -z "$CRED_POSTGRES_ID" ] || [ "$CRED_POSTGRES_ID" = "null" ]; }; then
+              jq '(.nodes[] | select(.name=="Conversation Memory")) |= (.type="@n8n/n8n-nodes-langchain.memoryBufferWindow" | .typeVersion=1.3 | del(.credentials) | del(.parameters.tableName))' \
+                "/tmp/ar-prep-${file}" > "/tmp/ar-prep-${file}.tmp" \
+                && mv "/tmp/ar-prep-${file}.tmp" "/tmp/ar-prep-${file}" \
+                || echo "WARN: unknown-agent memory fallback transform failed — using template as-is" >&2
+              echo "INFO: unknown-agent memory → in-memory window (no Postgres credential)"
+            fi
             ID=$(_upsert_wf "$wf_name" "/tmp/ar-prep-${file}" no) || _soft_exit0 "כשל ביצירת/עדכון ${wf_name}"
             [ -n "$ID" ] && [ "$ID" != "null" ] || _soft_exit0 "לא התקבל id עבור ${wf_name}"
             case "$slot" in
