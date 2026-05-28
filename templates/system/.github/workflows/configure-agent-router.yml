@@ -426,18 +426,25 @@ jobs:
                 -e "s#@@SYSTEM_NAME@@#${SYSTEM_NAME}#g" \
                 -e "s#@@WF_PG_NAMED_QUERIES_ID@@#${PG_NAMED_WF_ID}#g" \
                 "$src" > "/tmp/ar-prep-${file}"
-            # Phase F follow-up (Stage 108): inject the SYSTEM-INFO JSON into
-            # unknown-agent's Chat Agent system prompt via jq gsub (not sed) so the
+            # Phase F follow-up (Stage 108 + Stage 110): inject the SYSTEM-INFO JSON
+            # into the chat-AI-agent node's systemMessage via jq gsub (not sed) so the
             # JSON string is properly escaped when embedded inside the outer JSON
-            # string. Only unknown-agent carries the @@SYSTEM_INFO_JSON@@ placeholder;
-            # this is a no-op for the other 4 sub-agents. Soft-fail.
-            if [ "$file" = "unknown-agent.json" ]; then
-              jq --arg info "$SYSTEM_INFO_JSON" \
-                 '(.nodes[] | select(.name=="Chat Agent")).parameters.options.systemMessage |= gsub("@@SYSTEM_INFO_JSON@@"; $info)' \
+            # string. unknown-agent carries the placeholder since Stage 108; ops-agent
+            # since Stage 110 (so operational questions about runs/audit/style can read
+            # both the postgres_named_query tool and authoritative system facts without
+            # the LLM inventing them). No-op for code/research/infra. Soft-fail.
+            SYSINFO_TARGET_NODE=""
+            case "$file" in
+              unknown-agent.json) SYSINFO_TARGET_NODE="Chat Agent" ;;
+              ops-agent.json)     SYSINFO_TARGET_NODE="Ops Agent" ;;
+            esac
+            if [ -n "$SYSINFO_TARGET_NODE" ]; then
+              jq --arg info "$SYSTEM_INFO_JSON" --arg target "$SYSINFO_TARGET_NODE" \
+                 '(.nodes[] | select(.name==$target)).parameters.options.systemMessage |= gsub("@@SYSTEM_INFO_JSON@@"; $info)' \
                  "/tmp/ar-prep-${file}" > "/tmp/ar-prep-${file}.tmp" \
                  && mv "/tmp/ar-prep-${file}.tmp" "/tmp/ar-prep-${file}" \
-                 || echo "WARN: unknown-agent SYSTEM_INFO_JSON injection failed — placeholder left in place" >&2
-              echo "INFO: unknown-agent SYSTEM-INFO injected (project=${PROJECT_ID}, region=me-west1)"
+                 || echo "WARN: ${file} SYSTEM_INFO_JSON injection failed — placeholder left in place" >&2
+              echo "INFO: ${file} SYSTEM-INFO injected → ${SYSINFO_TARGET_NODE} (project=${PROJECT_ID}, region=me-west1)"
             fi
             # Phase F follow-up: unknown-agent uses Postgres-backed chat memory. If no
             # Postgres credential was wired (PG fetch failed in the step above), rewrite
@@ -449,16 +456,21 @@ jobs:
                 && mv "/tmp/ar-prep-${file}.tmp" "/tmp/ar-prep-${file}" \
                 || echo "WARN: unknown-agent memory fallback transform failed — using template as-is" >&2
               echo "INFO: unknown-agent memory → in-memory window (no Postgres credential)"
-              # Phase F follow-up (Stage 108): with no Postgres credential, the
-              # postgres-named-queries subworkflow wasn't installed, so strip the
-              # postgres_named_query tool + connection. Same graceful-degradation
-              # pattern as Read Style Profile / Dedup Guard / Conversation Memory.
+            fi
+            # Phase F follow-up (Stage 108 + Stage 110): with no Postgres credential
+            # the postgres-named-queries subworkflow wasn't installed, so strip the
+            # postgres_named_query tool + connection from any sub-agent that carries
+            # it. Same graceful-degradation pattern as Read Style Profile / Dedup
+            # Guard / Conversation Memory. Currently unknown-agent (Stage 108) and
+            # ops-agent (Stage 110) carry the tool.
+            if { [ "$file" = "unknown-agent.json" ] || [ "$file" = "ops-agent.json" ]; } \
+               && { [ -z "$CRED_POSTGRES_ID" ] || [ "$CRED_POSTGRES_ID" = "null" ]; }; then
               jq '(.nodes |= map(select(.name != "postgres_named_query")))
                   | del(.connections."postgres_named_query")' \
                 "/tmp/ar-prep-${file}" > "/tmp/ar-prep-${file}.tmp" \
                 && mv "/tmp/ar-prep-${file}.tmp" "/tmp/ar-prep-${file}" \
-                || echo "WARN: unknown-agent postgres_named_query strip failed — placeholder may remain" >&2
-              echo "INFO: unknown-agent postgres_named_query → stripped (no Postgres credential)"
+                || echo "WARN: ${file} postgres_named_query strip failed — placeholder may remain" >&2
+              echo "INFO: ${file} postgres_named_query → stripped (no Postgres credential)"
             fi
             # Phase F follow-up (Stage 105): all 5 sub-agents now read style_profile from
             # Postgres and inject it into their system prompt. If no Postgres credential

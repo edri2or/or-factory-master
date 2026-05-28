@@ -3,7 +3,14 @@
   "active": false,
   "nodes": [
     {
-      "parameters": { "inputSource": "passthrough" },
+      "parameters": {
+        "inputSource": "workflowInputs",
+        "workflowInputs": {
+          "values": [
+            { "name": "query_name", "type": "string" }
+          ]
+        }
+      },
       "id": "50000000-0000-0000-0000-000000000001",
       "name": "When Executed by Another Workflow",
       "type": "n8n-nodes-base.executeWorkflowTrigger",
