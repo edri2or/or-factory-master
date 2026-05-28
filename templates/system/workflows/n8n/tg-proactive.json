@@ -84,19 +84,6 @@
       "typeVersion": 1.2,
       "position": [1100, 320],
       "credentials": { "telegramApi": { "id": "@@CRED_TELEGRAM_ID@@", "name": "Telegram (factory-master)" } }
-    },
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "INSERT INTO spend_log (model, cost_usd) VALUES ('anthropic/claude-haiku-4.5', 0);",
-        "options": {}
-      },
-      "id": "20000000-0000-0000-0000-000000000007",
-      "name": "Log Spend",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.5,
-      "position": [1320, 320],
-      "credentials": { "postgres": { "id": "@@CRED_POSTGRES_ID@@", "name": "Postgres (n8n)" } }
     }
   ],
   "connections": {
@@ -104,8 +91,7 @@
     "Aggregate Stats": { "main": [[{ "node": "Recent Errors", "type": "main", "index": 0 }]] },
     "Recent Errors": { "main": [[{ "node": "Summarize Day", "type": "main", "index": 0 }]] },
     "OpenRouter Chat Model": { "ai_languageModel": [[{ "node": "Summarize Day", "type": "ai_languageModel", "index": 0 }]] },
-    "Summarize Day": { "main": [[{ "node": "Send Proactive", "type": "main", "index": 0 }]] },
-    "Send Proactive": { "main": [[{ "node": "Log Spend", "type": "main", "index": 0 }]] }
+    "Summarize Day": { "main": [[{ "node": "Send Proactive", "type": "main", "index": 0 }]] }
   },
   "settings": { "executionOrder": "v1" }
 }
