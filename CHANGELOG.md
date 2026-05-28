@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 102 — feat: Phase F follow-up PR 5/5 — Telegram update dedup via `tg_updates_seen`
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | feature | Final Phase F follow-up. Telegram occasionally redelivers the same update (network hiccup, our 200 not reaching Telegram in time), which today would replay the bot's response twice. **`tg-inbound.json`** now: (1) carries `update_id` out of `Extract & Normalize` (was dropped before), (2) routes through a new **`Dedup Guard`** Postgres node — `INSERT INTO tg_updates_seen (update_id) VALUES (…) ON CONFLICT (update_id) DO NOTHING RETURNING update_id;` — which produces 0 rows on a duplicate (downstream skipped → message ignored) and 1 row on a first-seen update (downstream fires), and (3) the `Call Agent Router` node now references `$('Extract & Normalize').first().json.text` for its body (since Dedup Guard's output is just `{update_id}`). The Dedup Guard has `onError: continueRegularOutput` so a transient PG failure forwards the message rather than dropping it (prefer rare double-processing to lost messages). `configure-agent-router.yml` substitutes `@@CRED_POSTGRES_ID@@` in tg-inbound and, when no PG credential is wired, uses `jq` to drop the Dedup Guard and rewire Normalize→Call Agent Router so the bot keeps working without persistence — same graceful-degradation pattern as the unknown-agent memory in PR 2. `agent-router.json` + `tests/router_battery.yaml` untouched. |
+
 ## Stage 101 — feat: Phase F follow-up PR 4/5 — install + activate `tg-proactive` (daily 08:00 summary)
 
 | PR | Type | Summary |

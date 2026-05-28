@@ -448,9 +448,22 @@ jobs:
             TG_SRC="${WF_DIR}/tg-inbound.json"
             if [ -f "$TG_SRC" ]; then
               sed -e "s#@@CRED_TELEGRAM_ID@@#${CRED_TELEGRAM_ID}#g" \
+                  -e "s#@@CRED_POSTGRES_ID@@#${CRED_POSTGRES_ID}#g" \
                   -e "s#@@CHAT_ID@@#${CHAT_ID}#g" \
                   -e "s#@@N8N_DOMAIN@@#${N8N_DOMAIN}#g" \
                   "$TG_SRC" > /tmp/ar-prep-tg-inbound.json
+              # Phase F follow-up (PR 5/5): if no Postgres credential, drop the
+              # Dedup Guard node and rewire Normalize→Call Agent Router directly,
+              # so the chat bot keeps working even without persistence.
+              if [ -z "$CRED_POSTGRES_ID" ] || [ "$CRED_POSTGRES_ID" = "null" ]; then
+                jq '(.nodes |= map(select(.name != "Dedup Guard")))
+                    | .connections."Extract & Normalize" = {"main":[[{"node":"Call Agent Router","type":"main","index":0}]]}
+                    | del(.connections."Dedup Guard")' \
+                  /tmp/ar-prep-tg-inbound.json > /tmp/ar-prep-tg-inbound.json.tmp \
+                  && mv /tmp/ar-prep-tg-inbound.json.tmp /tmp/ar-prep-tg-inbound.json \
+                  || echo "WARN: tg-inbound dedup fallback transform failed — using template as-is" >&2
+                echo "INFO: tg-inbound dedup → skipped (no Postgres credential)"
+              fi
               TG_WF_ID=$(_upsert_wf "factory-master: tg-inbound" /tmp/ar-prep-tg-inbound.json yes) \
                 || _soft_exit0 "כשל ביצירת/עדכון tg-inbound"
               echo "PASS: factory-master: tg-inbound → id=${TG_WF_ID}"
