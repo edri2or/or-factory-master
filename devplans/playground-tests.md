@@ -17,7 +17,7 @@ status: active
 
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
-| 1 | תשתית BATS (submodules + common helper) | pending | `.gitmodules`, `scripts/tests/bats/`, `scripts/tests/test_helper/{bats-support,bats-assert,common.bash}` |
+| 1 | תשתית BATS (submodules + common helper) | completed | `.gitmodules`, `scripts/tests/bats/`, `scripts/tests/test_helper/{bats-support,bats-assert,common.bash}`, `scripts/tests/_smoke.bats` |
 | 2 | BATS לחמישה סקריפטי-ליבה | pending | `scripts/tests/{lib,check-changelog-updated,check-devplan-updated,check-actions-pinned,check-workflow-permissions}.bats`, `scripts/tests/fixtures/` |
 | 3 | Template rendering validation | pending | `scripts/tests/validate-templates.sh` |
 | 4 | Playground Tests CI workflow | pending | `.github/workflows/playground-tests.yml`, אופציונלית `.actionlintrc` |
@@ -32,12 +32,12 @@ status: active
 ### שלב 1 — תשתית BATS
 
 **Acceptance:**
-- [ ] `git submodule status` מראה את שלושת ה-submodules pinned ל-SHA.
-- [ ] `./scripts/tests/bats/bin/bats --version` מחזיר גרסה.
-- [ ] `scripts/tests/test_helper/common.bash` קיים וטוען bats-support + bats-assert.
-- [ ] קובץ "smoke" קצר (`scripts/tests/_smoke.bats`) או הרצה ידנית מאמת ש-`load test_helper/common` עובד.
+- [x] `git submodule status` מראה את שלושת ה-submodules pinned ל-SHA.
+- [x] `./scripts/tests/bats/bin/bats --version` מחזיר גרסה (1.13.0).
+- [x] `scripts/tests/test_helper/common.bash` קיים וטוען bats-support + bats-assert.
+- [x] קובץ smoke (`scripts/tests/_smoke.bats`) רץ ירוק — 5/5 PASS.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם. bats 1.13.0 + bats-support 0.3.0 + bats-assert 2.2.4 נטענים. common.bash משתמש ב-paths אבסולוטיים עוגנים ב-`BASH_SOURCE` (תיקון: `load` של BATS פותר יחסית לקובץ ה-test, לא לקובץ ה-helper). 5 בדיקות-smoke עוברות מקומית.
 
 **שינוי תוכנית:** —
 
@@ -130,4 +130,4 @@ status: active
 
 > שורה פשוטה אחת לכל שלב שהסתיים — בשפה ש-Or מבין, בלי ז'רגון.
 
-- (עדיין לא התחלנו.)
+- שלב 1 הושלם — התקנתי framework של בדיקות-יחידה ל-bash (BATS) כ-3 מודולים מקובעים, וכלי-עזר משותף לכל הבדיקות. סניטי-טסט קצר עובר.
