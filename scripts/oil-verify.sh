@@ -37,8 +37,11 @@ failed()   { echo "VERDICT: failed — $1"; exit 1; }
 # Only a bare `bash <file>` / `bats <file>` is allowed — no pipes, redirects, or
 # shell metacharacters, so the recovered command cannot smuggle arbitrary shell.
 # Identical whitelist to oil-autofix-validate.sh.
-printf '%s' "$test_cmd" | grep -Eq '^(bash|bats) [A-Za-z0-9_./-]+$' \
-  || failed "test_cmd is not a bare 'bash <file>' invocation: $test_cmd"
+if ! printf '%s' "$test_cmd" | grep -Eq '^(bash|bats) [A-Za-z0-9_./-]+$'; then
+  if ! printf '%s' "$test_cmd" | grep -Eq '^npm --prefix [A-Za-z0-9_./-]+ test$'; then
+    failed "test_cmd is not a bare 'bash <file>' or 'npm --prefix <dir> test' invocation: $test_cmd"
+  fi
+fi
 
 test_file=$(printf '%s' "$test_cmd" | awk '{print $2}')
 [ -f "$test_file" ] || failed "declared test file does not exist on main: $test_file"
@@ -47,7 +50,23 @@ test_file=$(printf '%s' "$test_cmd" | awk '{print $2}')
 # exactly like oil-autofix-validate.sh's run_test. On the merged main tree the fix
 # is present, so the reproducer must now PASS.
 rc=0
-env -i PATH=/usr/local/bin:/usr/bin:/bin HOME="${RUNNER_TEMP:-/tmp}" bash -c "$test_cmd" >/dev/null 2>&1 || rc=$?
+if printf '%s' "$test_cmd" | grep -q '^npm '; then
+  prefix_dir=$(printf '%s' "$test_cmd" | awk '{print $3}')
+  (cd "$prefix_dir" && npm ci --prefer-offline \
+    --cache /tmp/npmcache \
+    --userconfig /dev/null \
+    && tsc --build --force) >/dev/null 2>&1 || rc=$?
+  if [ "$rc" -eq 0 ]; then
+    env -i \
+      PATH=/usr/local/bin:/usr/bin:/bin \
+      HOME="${RUNNER_TEMP:-/tmp}" \
+      npm_config_cache=/tmp/npmcache \
+      NPM_CONFIG_USERCONFIG=/dev/null \
+      bash -c "$test_cmd" >/dev/null 2>&1 || rc=$?
+  fi
+else
+  env -i PATH=/usr/local/bin:/usr/bin:/bin HOME="${RUNNER_TEMP:-/tmp}" bash -c "$test_cmd" >/dev/null 2>&1 || rc=$?
+fi
 
 [ "$rc" -eq 0 ] || failed "reproducer still fails on merged main (rc=$rc)"
 verified "test='$test_cmd'"
