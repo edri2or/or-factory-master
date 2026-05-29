@@ -693,16 +693,22 @@ jobs:
           cp "${GITHUB_WORKSPACE}/templates/system/.yamllint" "$CLONE_DIR/.yamllint"
           # Seed CHANGELOG.md only if absent (fresh repo: it is) so the doc gate has a baseline.
           [ -f "$CLONE_DIR/CHANGELOG.md" ] || cp "${GITHUB_WORKSPACE}/templates/system/CHANGELOG.md" "$CLONE_DIR/CHANGELOG.md"
-          for sc in lib check-changelog-updated check-changelog-size scan-for-secrets \
+          for sc in lib check-changelog-updated check-changelog-size compile-changelog scan-for-secrets \
                     check-actions-pinned check-workflow-permissions \
                     check-no-pull-request-target check-no-privileged-pr-workflows; do
             [ -f "${GITHUB_WORKSPACE}/scripts/${sc}.sh" ] || { echo "FAIL: scripts/${sc}.sh not found" >&2; exit 1; }
             cp "${GITHUB_WORKSPACE}/scripts/${sc}.sh" "$CLONE_DIR/scripts/${sc}.sh"
           done
+          # Seed the per-PR changelog fragment dir + convention README so the system inherits
+          # the race-proof changelog: each PR drops a changelog.d/ fragment, and the portable
+          # scripts/compile-changelog.sh folds them into a numbered CHANGELOG.md in one pass.
+          [ -f "${GITHUB_WORKSPACE}/templates/system/changelog.d/README.md" ] || { echo "FAIL: templates/system/changelog.d/README.md not found" >&2; exit 1; }
+          mkdir -p "$CLONE_DIR/changelog.d"
+          cp "${GITHUB_WORKSPACE}/templates/system/changelog.d/README.md" "$CLONE_DIR/changelog.d/README.md"
 
           git -C "$CLONE_DIR" config user.name "or-factory-master[bot]"
           git -C "$CLONE_DIR" config user.email "factory-master-broker@or-factory-master-control.iam.gserviceaccount.com"
-          git -C "$CLONE_DIR" add .claude workflows .github/workflows Caddyfile Dockerfile.caddy caddy scripts .yamllint CHANGELOG.md
+          git -C "$CLONE_DIR" add .claude workflows .github/workflows Caddyfile Dockerfile.caddy caddy scripts .yamllint CHANGELOG.md changelog.d
           # Guard the commit: a reuse-mode re-provision with byte-identical files would
           # otherwise abort this step under `set -e` ("nothing to commit").
           git -C "$CLONE_DIR" diff --cached --quiet \
@@ -711,7 +717,7 @@ jobs:
             || { echo "FAIL: could not push scaffold to edri2or/${SYSTEM_NAME}:main" >&2; exit 1; }
 
           rm -rf "$CLONE_DIR"
-          echo "PASS: .claude package + Agent Router + Caddy gateway + CI governance bundle pushed to edri2or/${SYSTEM_NAME}:main (${COUNT} commands + gcp-hands-client skill + 3 n8n workflows + configure-agent-router.yml + Caddyfile + Dockerfile.caddy + caddy/hmacguard + 4 CI workflows + 8 check scripts + .yamllint + CHANGELOG.md)."
+          echo "PASS: .claude package + Agent Router + Caddy gateway + CI governance bundle pushed to edri2or/${SYSTEM_NAME}:main (${COUNT} commands + gcp-hands-client skill + 3 n8n workflows + configure-agent-router.yml + Caddyfile + Dockerfile.caddy + caddy/hmacguard + 4 CI workflows + 9 portable scripts (incl. compile-changelog) + .yamllint + CHANGELOG.md + changelog.d/ seed)."
 
       - name: Push system orientation docs (AGENTS.md + CLAUDE.md) to system repo
         continue-on-error: true
