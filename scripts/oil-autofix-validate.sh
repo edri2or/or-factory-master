@@ -85,12 +85,29 @@ if ! printf '%s' "$test_cmd" | grep -Eq '^(bash|bats) [A-Za-z0-9_./-]+$'; then
     fail "test_cmd is not a bare 'bash <file>' or 'npm --prefix <dir> test' invocation: $test_cmd"
   fi
 fi
-test_file=$(printf '%s' "$test_cmd" | awk '{print $2}')
-[ -f "$test_file" ] || fail "declared test file does not exist: $test_file"
-printf '%s\n' "$changed_files" | grep -qxF "$test_file" \
-  || fail "test file is not part of the candidate diff: $test_file"
-jq -r '.test_paths[]? // empty' "$META" 2>/dev/null | grep -qxF "$test_file" \
-  || fail "test file not declared in test_paths: $test_file"
+if printf '%s' "$test_cmd" | grep -q '^npm '; then
+  # npm path: `npm --prefix <dir> test` runs a whole test dir, so there is no
+  # single `$2` file. The declared test_paths ARE the reproducer files; the
+  # --prefix dir (word 3) must exist, and every declared test file must exist
+  # and be part of the candidate diff.
+  prefix_dir=$(printf '%s' "$test_cmd" | awk '{print $3}')
+  [ -d "$prefix_dir" ] || fail "declared npm --prefix dir does not exist: $prefix_dir"
+  test_files=$(jq -r '.test_paths[]? // empty' "$META" 2>/dev/null || true)
+  [ -n "$test_files" ] || fail "npm test_cmd declares no test_paths"
+  while IFS= read -r tf; do
+    [ -n "$tf" ] || continue
+    [ -f "$tf" ] || fail "declared test file does not exist: $tf"
+    printf '%s\n' "$changed_files" | grep -qxF "$tf" \
+      || fail "test file is not part of the candidate diff: $tf"
+  done <<< "$test_files"
+else
+  test_file=$(printf '%s' "$test_cmd" | awk '{print $2}')
+  [ -f "$test_file" ] || fail "declared test file does not exist: $test_file"
+  printf '%s\n' "$changed_files" | grep -qxF "$test_file" \
+    || fail "test file is not part of the candidate diff: $test_file"
+  jq -r '.test_paths[]? // empty' "$META" 2>/dev/null | grep -qxF "$test_file" \
+    || fail "test file not declared in test_paths: $test_file"
+fi
 
 # Run the AI-authored test in a SCRUBBED environment (inherits no secrets).
 run_test() {
@@ -114,13 +131,17 @@ if printf '%s' "$test_cmd" | grep -q '^npm '; then
   (cd "$prefix_dir" && npm ci --prefer-offline \
     --cache /tmp/npmcache \
     --userconfig /dev/null \
-    && tsc --build --force) \
-    || fail "npm ci / tsc build failed before pass-after run"
+    && npm run build) \
+    || fail "npm ci / build failed before pass-after run"
 fi
 run_test >/dev/null 2>&1 || fail "test does not PASS with the fix applied"
 
 # fails-before: revert the fix (non-test) files to base, keep the test, expect failure.
-fix_files=$(printf '%s\n' "$changed_files" | grep -vxF "$test_file" || true)
+if printf '%s' "$test_cmd" | grep -q '^npm '; then
+  fix_files=$(printf '%s\n' "$changed_files" | grep -vxFf <(printf '%s\n' "$test_files") || true)
+else
+  fix_files=$(printf '%s\n' "$changed_files" | grep -vxF "$test_file" || true)
+fi
 [ -n "$fix_files" ] || fail "the candidate changed only the test file (no actual fix)"
 while IFS= read -r f; do
   [ -n "$f" ] || continue
@@ -136,8 +157,8 @@ if printf '%s' "$test_cmd" | grep -q '^npm '; then
   (cd "$prefix_dir" && npm ci --prefer-offline \
     --cache /tmp/npmcache \
     --userconfig /dev/null \
-    && tsc --build --force) \
-    || { git checkout HEAD -- . 2>/dev/null || true; fail "npm ci / tsc build failed before fail-before run"; }
+    && npm run build) \
+    || { git checkout HEAD -- . 2>/dev/null || true; fail "npm ci / build failed before fail-before run"; }
 fi
 
 before_rc=0
