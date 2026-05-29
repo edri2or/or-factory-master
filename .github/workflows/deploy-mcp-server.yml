@@ -245,6 +245,73 @@ jobs:
             echo "PASS: linear-webhook-secret minted (no trailing newline)."
           fi
 
+      - name: Ensure telegram-approval-webhook-secret exists (mint if missing)
+        run: |
+          set -euo pipefail
+          # secret_token for Telegram's setWebhook on the OIL approval bridge:
+          # Telegram echoes it in X-Telegram-Bot-Api-Secret-Token on every
+          # callback, proving the request is genuinely from Telegram (layer 1 of
+          # 2; the from.id allowlist is layer 2). Minted random like
+          # bs-webhook-secret; the same value is handed to Telegram when the
+          # approval webhook is registered. Reused across re-deploys. Broker SA
+          # already holds project-level secretAccessor — no extra IAM grant.
+          if gcloud secrets describe "telegram-approval-webhook-secret" \
+               --project="${GCP_PROJECT}" >/dev/null 2>&1; then
+            echo "INFO: telegram-approval-webhook-secret exists; reusing."
+          else
+            printf '%s' "$(openssl rand -hex 32)" | gcloud secrets create "telegram-approval-webhook-secret" \
+              --project="${GCP_PROJECT}" \
+              --replication-policy=automatic \
+              --labels="owner=factory-master,purpose=telegram-approval-bridge" \
+              --data-file=-
+            echo "PASS: telegram-approval-webhook-secret minted (no trailing newline)."
+          fi
+
+      - name: Ensure oil-approver-telegram-allowlist exists (placeholder if missing)
+        run: |
+          set -euo pipefail
+          # CSV of Telegram user ids permitted to approve OIL merges (Or's id).
+          # Created as a placeholder so the env mount resolves; the bridge stays
+          # closed (nobody allowed) until the operator overwrites it with the
+          # real id(s). Mounted into OIL_APPROVER_TELEGRAM_ALLOWLIST.
+          if gcloud secrets describe "oil-approver-telegram-allowlist" \
+               --project="${GCP_PROJECT}" >/dev/null 2>&1; then
+            echo "INFO: oil-approver-telegram-allowlist exists; reusing."
+          else
+            gcloud secrets create "oil-approver-telegram-allowlist" \
+              --project="${GCP_PROJECT}" \
+              --replication-policy=automatic \
+              --labels="owner=factory-master,purpose=oil-approver-allowlist"
+            printf '__NOT_CONFIGURED__' | gcloud secrets versions add "oil-approver-telegram-allowlist" \
+              --project="${GCP_PROJECT}" \
+              --data-file=-
+            echo "PASS: oil-approver-telegram-allowlist created with placeholder value."
+          fi
+
+      - name: Ensure oil-autofix-approver App secret shells exist (placeholders if missing)
+        run: |
+          set -euo pipefail
+          # The approver App's 3 real credentials are written by
+          # register-oil-approver-app.yml. But the Cloud Run --set-secrets mount
+          # fails if any referenced secret is absent, so this deploy may run
+          # BEFORE registration. Create placeholder shells so the mount always
+          # resolves; the MCP's approverConfigured() treats the placeholder as
+          # "not configured" (the bridge stays dormant) until the registration
+          # workflow adds the real versions. Never overwrites a real value.
+          for NAME in oil-autofix-approver-app-id oil-autofix-approver-app-installation-id oil-autofix-approver-app-private-key; do
+            if gcloud secrets describe "${NAME}" --project="${GCP_PROJECT}" >/dev/null 2>&1; then
+              echo "INFO: ${NAME} exists; leaving as-is."
+            else
+              gcloud secrets create "${NAME}" \
+                --project="${GCP_PROJECT}" \
+                --replication-policy=automatic \
+                --labels="owner=factory-master,purpose=oil-approver-app"
+              printf '__NOT_CONFIGURED__' | gcloud secrets versions add "${NAME}" \
+                --project="${GCP_PROJECT}" --data-file=-
+              echo "PASS: ${NAME} created with placeholder (register-oil-approver-app.yml will add the real value)."
+            fi
+          done
+
       - name: Best-effort grant runtime SA access to sentry-api-key
         run: |
           set -uo pipefail
@@ -332,7 +399,7 @@ jobs:
               --port=3000 \
               --timeout=300 \
               --set-env-vars="PUBLIC_BASE_URL=${PUBLIC_BASE_URL}" \
-              --set-secrets="MCP_ADMIN_SECRET=mcp-server-admin-secret:latest,BEARER_SIGNING_KEY=mcp-server-bearer-signing-key:latest,GITHUB_APP_ID=factory-master-broker-app-id:latest,GITHUB_APP_PRIVATE_KEY=factory-master-broker-app-private-key:latest,GITHUB_APP_INSTALLATION_ID=factory-master-broker-app-installation-id:latest,RAILWAY_API_TOKEN=railway-api-token:latest,CLOUDFLARE_API_TOKEN=cloudflare-token-creator:latest,CLOUDFLARE_ZONE_ID=cloudflare-zone-id-or-infra:latest,CLOUDFLARE_ZONES_READ_TOKEN=cloudflare-zones-read-token:latest,SENTRY_DSN=sentry-api-key:latest,BS_WEBHOOK_SECRET=bs-webhook-secret:latest,LINEAR_WEBHOOK_SECRET=linear-webhook-secret:latest" \
+              --set-secrets="MCP_ADMIN_SECRET=mcp-server-admin-secret:latest,BEARER_SIGNING_KEY=mcp-server-bearer-signing-key:latest,GITHUB_APP_ID=factory-master-broker-app-id:latest,GITHUB_APP_PRIVATE_KEY=factory-master-broker-app-private-key:latest,GITHUB_APP_INSTALLATION_ID=factory-master-broker-app-installation-id:latest,RAILWAY_API_TOKEN=railway-api-token:latest,CLOUDFLARE_API_TOKEN=cloudflare-token-creator:latest,CLOUDFLARE_ZONE_ID=cloudflare-zone-id-or-infra:latest,CLOUDFLARE_ZONES_READ_TOKEN=cloudflare-zones-read-token:latest,SENTRY_DSN=sentry-api-key:latest,BS_WEBHOOK_SECRET=bs-webhook-secret:latest,LINEAR_WEBHOOK_SECRET=linear-webhook-secret:latest,TELEGRAM_APPROVAL_WEBHOOK_SECRET=telegram-approval-webhook-secret:latest,OIL_APPROVER_TELEGRAM_ALLOWLIST=oil-approver-telegram-allowlist:latest,OIL_APPROVER_APP_ID=oil-autofix-approver-app-id:latest,OIL_APPROVER_INSTALLATION_ID=oil-autofix-approver-app-installation-id:latest,OIL_APPROVER_PRIVATE_KEY=oil-autofix-approver-app-private-key:latest" \
               --labels="owner=factory-master,purpose=mcp-server" \
               --quiet 2>&1
           }
@@ -412,6 +479,41 @@ jobs:
               echo "WARN: webhook registration returned HTTP ${CODE} (soft-fail; not blocking deploy)."
             fi
             rm -f /tmp/oil-reg.body
+          fi
+
+      - name: Register Telegram approval webhook (idempotent, soft-fail)
+        if: success()
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          # OIL approval bridge: point the CONTROL alerts bot's webhook at this
+          # server's /telegram-webhook, carrying the secret_token Telegram will
+          # echo in X-Telegram-Bot-Api-Secret-Token. The alerts bot is send-only
+          # today (nothing receives on it), so claiming its webhook is safe and
+          # does not affect the per-system chat bots (different tokens). setWebhook
+          # is idempotent (re-setting the same url+secret is a no-op-ish 200).
+          # Soft-fail: a hiccup must never fail a deploy. allowed_updates is
+          # restricted to callback_query (we only care about button taps).
+          REGION_URL="https://${SERVICE}-${GCP_PROJECT_NUMBER}.${GCP_REGION}.run.app"
+          TG_TOKEN=$(gcloud secrets versions access latest --secret="telegram-bot-token" --project="${GCP_PROJECT}" 2>/dev/null | tr -d '\r\n' || true)
+          TG_SECRET=$(gcloud secrets versions access latest --secret="telegram-approval-webhook-secret" --project="${GCP_PROJECT}" 2>/dev/null | tr -d '\r\n' || true)
+          if [ -z "${TG_TOKEN}" ] || [ -z "${TG_SECRET}" ]; then
+            echo "WARN: telegram bot token or approval secret unreadable; skipping setWebhook."
+          else
+            echo "::add-mask::${TG_TOKEN}"
+            echo "::add-mask::${TG_SECRET}"
+            PAYLOAD=$(jq -cn --arg url "${REGION_URL}/telegram-webhook" --arg secret "${TG_SECRET}" \
+              '{url:$url, secret_token:$secret, allowed_updates:["callback_query"]}')
+            CODE=$(curl -s -o /tmp/tg-setwh.body -w '%{http_code}' --max-time 30 \
+              -X POST "https://api.telegram.org/bot${TG_TOKEN}/setWebhook" \
+              -H "Content-Type: application/json" --data "${PAYLOAD}" || echo "000")
+            echo "POST setWebhook -> HTTP ${CODE}"
+            if [ "${CODE}" = "200" ] && [ "$(jq -r '.ok // false' /tmp/tg-setwh.body 2>/dev/null)" = "true" ]; then
+              echo "PASS: Telegram approval webhook registered → ${REGION_URL}/telegram-webhook"
+            else
+              echo "WARN: setWebhook returned HTTP ${CODE} (soft-fail): $(jq -r '.description // empty' /tmp/tg-setwh.body 2>/dev/null || true)"
+            fi
+            rm -f /tmp/tg-setwh.body
           fi
 
       - name: Summary

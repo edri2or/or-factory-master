@@ -318,6 +318,13 @@ export async function fetchJobLogs(jobId: string, opts: LogReadOptions = {}): Pr
 // principal can never both author and merge. Built lazily from its own env vars
 // (mounted by deploy-mcp-server.yml); when they are absent the approver is simply
 // unavailable and approverConfigured() returns false (the broker path is intact).
+// deploy-mcp-server.yml creates these as placeholder secrets (literal
+// __NOT_CONFIGURED__) so the Cloud Run mount always resolves, even before
+// register-oil-approver-app.yml writes the real credentials. Treat the
+// placeholder (or empty) as "not configured" so the bridge stays dormant.
+const PLACEHOLDER = '__NOT_CONFIGURED__';
+const configured = (v: string | undefined): v is string => Boolean(v) && v !== PLACEHOLDER;
+
 const OIL_APPROVER_APP_ID = process.env.OIL_APPROVER_APP_ID;
 const OIL_APPROVER_INSTALLATION_ID = process.env.OIL_APPROVER_INSTALLATION_ID;
 const OIL_APPROVER_RAW_KEY = process.env.OIL_APPROVER_PRIVATE_KEY;
@@ -325,7 +332,7 @@ const OIL_APPROVER_RAW_KEY = process.env.OIL_APPROVER_PRIVATE_KEY;
 let approverIdentity: AppIdentity | null = null;
 
 export function approverConfigured(): boolean {
-  return Boolean(OIL_APPROVER_APP_ID && OIL_APPROVER_INSTALLATION_ID && OIL_APPROVER_RAW_KEY);
+  return configured(OIL_APPROVER_APP_ID) && configured(OIL_APPROVER_INSTALLATION_ID) && configured(OIL_APPROVER_RAW_KEY);
 }
 
 function getApproverIdentity(): AppIdentity {
