@@ -17,7 +17,7 @@ status: active
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
 | 1 | Plan-file תמיד-per-dev + devplan gate multi-active | completed | `dev-stage.md` (×2), `check-devplan-updated.sh`, `CHANGELOG.md` |
-| 2 | Changelog gate מקבל `changelog.d/` | pending | `check-changelog-updated.sh` |
+| 2 | Changelog gate מקבל `changelog.d/` | completed | `check-changelog-updated.sh` |
 | 3 | Changelog fragment במצב מקביל | pending | `dev-stage.md` (×2) |
 | 4 | תיעוד + CHANGELOG entry | pending | `CLAUDE.md`, `CHANGELOG.md` |
 
@@ -42,10 +42,10 @@ status: active
 ### שלב 2 — Changelog gate מקבל `changelog.d/`
 
 **Acceptance:**
-- [ ] `check-changelog-updated.sh` מקבל `changelog.d/*.md` כתחליף ל-`CHANGELOG.md`
-- [ ] `bash scripts/check-changelog-updated.sh` עובר ✓
+- [x] `check-changelog-updated.sh` מקבל `changelog.d/*.md` כתחליף ל-`CHANGELOG.md`
+- [x] `bash scripts/check-changelog-updated.sh` עובר ✓
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם — השער מקבל `CHANGELOG.md` או פתק `changelog.d/<date>-<slug>.md`. regex אומת על דוגמאות.
 
 **שינוי תוכנית:** —
 
@@ -82,3 +82,4 @@ status: active
 > שורה פשוטה אחת לכל שלב שהסתיים — בשפה ש-Or מבין, בלי ז'רגון.
 
 - שלב 1 הושלם — פיתוח חדש תמיד נפתח ב-devplans/, שומר-CI אוכף את כל הפיתוחים הפעילים.
+- שלב 2 הושלם — שומר-היומן מקבל גם קובץ-פתק נפרד (changelog.d/), לא רק את היומן המרכזי.

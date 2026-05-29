@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 137 — feat: parallel dev-stage — changelog gate accepts changelog.d/ fragments (Stage 2/4)
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | feat | Stage 2 of the parallel-dev-stage development. `scripts/check-changelog-updated.sh` now accepts EITHER a touch to `CHANGELOG.md` OR a `changelog.d/<YYYY-MM-DD>-<slug>.md` fragment as satisfying the documentation requirement — mirroring how the devplan twin (`check-devplan-updated.sh`) accepts `devplans/*.md`. Regex `^(CHANGELOG\.md\|changelog\.d/.+\.md)$` (verified: accepts `CHANGELOG.md` + dated `.md` fragments, rejects non-`.md` files under `changelog.d/`, `docs/CHANGELOG.md`, and code files). This readies the gate for Stage 3, where `/dev-stage` writes a fragment instead of pushing to the head of `CHANGELOG.md` when a parallel development is active — without it, a correctly-documented parallel development would fail CI. Single-development flow is unchanged (the `CHANGELOG.md` branch still matches first). |
+
 ## Stage 136 — feat: parallel dev-stage — plan-file always-per-dev + devplan gate multi-active (Stage 1/4)
 
 | PR | Type | Summary |
