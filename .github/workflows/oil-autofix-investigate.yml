@@ -277,6 +277,9 @@ jobs:
                 terraform/, or any path mentioning wif / workload-identity / secret /
                 credential / creds, or any *.pem / *.key / .env* file. Those MUST be
                 escalated to a human — do not touch them.
+              * Do NOT touch CHANGELOG.md. The workflow appends the CHANGELOG entry
+                itself after you finish, so adding one here would push the candidate
+                over the 2-file safety cap and get it escalated. Just the fix + test.
               * The test must run with plain `bash <file>` (no test framework is
                 installed). Put it under scripts/tests/ , make it exit non-zero BEFORE
                 your fix and zero AFTER it, and have it genuinely reproduce the bug.
@@ -379,6 +382,32 @@ jobs:
           ROOT=$(jq -r '.root_cause // ""' oil-context/diagnosis.json 2>/dev/null || echo "")
 
           git branch "$BRANCH" HEAD
+          git checkout -q "$BRANCH"
+
+          # The fixer is forbidden from touching CHANGELOG.md (it would breach the
+          # 2-file safety cap). But this repo's CI requires a CHANGELOG entry for
+          # any code change, so the WORKFLOW prepends one deterministically here —
+          # on the candidate branch only, AFTER the gate already vetted the
+          # AI-authored fix+test. CHANGELOG is documentation, not code, so a
+          # workflow-owned, templated entry is safer than an AI-authored one. Only
+          # prepend if the fixer didn't already add an entry (belt-and-suspenders).
+          if [ -f CHANGELOG.md ] && ! git diff --name-only "${BASE_SHA}"..HEAD | grep -qxF CHANGELOG.md; then
+            TS=$(date -u +%Y-%m-%dT%H:%MZ)
+            TMPCL=$(mktemp)
+            {
+              printf '# Changelog\n\n'
+              printf '## OIL auto-fix — %s — %s\n\n' "${ISSUE_IDENT:-OIL}" "$TS"
+              printf '| PR | Type | Summary |\n|---|---|---|\n'
+              printf '| TBD | fix | Auto-fix proposed by oil-autofix for **%s**. %s Root cause: %s. Opened as a DRAFT PR by the broker App; awaits human Telegram approval (merged by the separate oil-autofix-approver identity). The fix + repro test passed the deterministic safety gate (≤2 AI-authored files / ≤100 lines, no forbidden paths, no secrets, fail-before/pass-after). This CHANGELOG entry is appended by the workflow, not the AI. |\n\n' "${ISSUE_IDENT:-OIL}" "${SUMMARY:-fix}" "${ROOT:-n/a}"
+              tail -n +2 CHANGELOG.md
+            } > "$TMPCL"
+            mv "$TMPCL" CHANGELOG.md
+            git -c user.email="factory-master-broker[bot]@users.noreply.github.com" \
+                -c user.name="factory-master-broker[bot]" \
+                -c commit.gpgsign=false \
+                commit -q -- CHANGELOG.md -m "oil-autofix: changelog entry for ${ISSUE_IDENT:-OIL}"
+          fi
+
           if ! git push "https://x-access-token:${PR_TOKEN}@github.com/edri2or/${TARGET_REPO}.git" "$BRANCH:$BRANCH" >/dev/null 2>&1; then
             echo "opened=false" >> "$GITHUB_OUTPUT"
             echo "WARN: branch push failed — escalating."

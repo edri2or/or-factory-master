@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 130 — fix: OIL auto-fix — workflow owns the CHANGELOG entry (resolve fixer 2-file-cap vs CI tension)
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | fix | The Stage-4 live verification (OIL-20) surfaced a real design tension, not AI flakiness: the fixer correctly added a `CHANGELOG.md` entry to satisfy this repo's changelog CI gate, but that made the candidate **3 files** (fix + test + CHANGELOG) — over the deterministic safety gate's `MAX_FILES=2` cap (`scripts/oil-autofix-validate.sh`) — so it escalated **before** the Telegram bridge was ever reached. Fix: the fixer prompt in `oil-autofix-investigate.yml` now explicitly forbids touching `CHANGELOG.md` (keeping the AI surface at fix + test = 2 files), and the **workflow** prepends a templated CHANGELOG entry itself in the open-PR step — on the candidate branch only, **after** the gate has vetted the AI-authored files, as a separate broker-App commit. CHANGELOG is documentation, not code, so a workflow-owned, templated entry is both safer (no AI-authored changelog prose) and resolves the contradiction so a provable fix actually opens a draft PR + reaches the approval bridge. Idempotent guard: only prepends if the candidate didn't already include a CHANGELOG change. Verified: `yamllint` + shellcheck clean; YAML still one `investigate` job. Re-run of the OIL-20 verification follows. |
+
 ## Stage 129 — chore: OIL auto-fix Stage 4 — temporary E2E fixture for live approval-bridge verification
 
 | PR | Type | Summary |
