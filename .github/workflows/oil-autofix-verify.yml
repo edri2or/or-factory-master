@@ -1,0 +1,293 @@
+name: OIL Auto-fix — Verify (post-merge)
+
+# Stage 5 of the OIL auto-fix loop — the post-merge verifier. Triggered by push to
+# main (or manually via workflow_dispatch). It acts ONLY on an OIL auto-fix merge,
+# which it recognises by the squash-merge subject "oil-autofix: OIL-NN — … (#PR)".
+# Because it triggers on push (not a PR-close event) it may safely hold a WIF
+# id-token — the same isolation the investigate workflow uses.
+#
+# It uses NO GitHub API token (default GITHUB_TOKEN or App) in its logic: the OIL
+# identifier + PR number come from the commit subject, and the reproducer is the
+# scripts/tests/*.sh that the merge commit added (recovered with git, token-free).
+# The only credentials it touches are linear-api-key + the Telegram secrets, read
+# from the control project's Secret Manager via WIF.
+#
+# It re-runs that reproducer on the merged main tree (scripts/oil-verify.sh, in a
+# scrubbed env, after cloud creds are revoked). On success it moves the Linear issue
+# to a completed state + posts a closing comment + pings Or on Telegram. On failure
+# it comments + alerts "נכשל באימות" and leaves the issue OPEN. Every external call
+# is soft-fail.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "Merged OIL PR number (optional)."
+        required: false
+        default: ""
+        type: string
+      issue_id:
+        description: "Linear OIL identifier or UUID (e.g. OIL-16)."
+        required: false
+        default: ""
+        type: string
+      test_cmd:
+        description: "Override reproducer command (e.g. bash scripts/tests/x.sh)."
+        required: false
+        default: ""
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: oil-verify-${{ github.event.inputs.pr_number || github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify the merged fix + close the issue
+    runs-on: ubuntu-latest
+    environment: production
+    # Run only on main, and only for an OIL auto-fix merge (or a manual dispatch).
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'workflow_dispatch' ||
+       startsWith(github.event.head_commit.message, 'oil-autofix:'))
+    permissions:
+      contents: read
+      id-token: write
+
+    env:
+      BROKER_SA: "factory-master-broker@or-factory-master-control.iam.gserviceaccount.com"
+      WIF_PROVIDER: "projects/140345952904/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
+      CONTROL_PROJECT: "or-factory-master-control"
+
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
+        with:
+          # Need HEAD + its parent so `git diff-tree HEAD` can find the file(s) the
+          # merge commit added. persist-credentials:false — we use no git remote auth.
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Authenticate to GCP via WIF
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093  # v3.0.0
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.BROKER_SA }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db  # v3.0.1
+
+      - name: Resolve issue + recover reproducer (read-only context)
+        id: prep
+        env:
+          # Inputs flow through env, never interpolated into a script line, so a
+          # crafted value cannot inject shell.
+          EVENT_NAME: ${{ github.event_name }}
+          HEAD_MSG: ${{ github.event.head_commit.message }}
+          INPUT_PR: ${{ inputs.pr_number }}
+          INPUT_ISSUE: ${{ inputs.issue_id }}
+          INPUT_TESTCMD: ${{ inputs.test_cmd }}
+        run: |
+          set -uo pipefail
+
+          # --- Source: the push commit subject (auto) OR manual dispatch inputs ---
+          if [ "${EVENT_NAME:-}" = "workflow_dispatch" ]; then
+            PR_NUMBER="${INPUT_PR:-}"
+            ISSUE_ID="${INPUT_ISSUE:-}"
+            TEST_CMD="${INPUT_TESTCMD:-}"
+          else
+            # Squash-merge subject: "oil-autofix: OIL-16 — <summary> (#NN)".
+            ISSUE_ID=$(printf '%s' "$HEAD_MSG" | sed -n 's/^oil-autofix:[[:space:]]*\([A-Za-z0-9-]\{1,\}\).*/\1/p' | head -1)
+            PR_NUMBER=$(printf '%s' "$HEAD_MSG" | head -1 | sed -n 's/.*(#\([0-9]\{1,\}\))[[:space:]]*$/\1/p')
+            TEST_CMD=""
+          fi
+          if [ -z "$ISSUE_ID" ] && [ -z "$PR_NUMBER" ]; then
+            echo "Could not determine the OIL issue (no commit-subject match / no inputs)." >&2
+            exit 1
+          fi
+
+          # --- Recover the reproducer from the merge commit (the added
+          #     scripts/tests/*.sh), unless a manual override was given. Token-free:
+          #     just the merged tree we already checked out. ---
+          if [ -z "$TEST_CMD" ]; then
+            TEST_FILE=$(git diff-tree --no-commit-id --name-status -r HEAD 2>/dev/null \
+              | awk '$1=="A" && $2 ~ /^scripts\/tests\/.*\.sh$/ {print $2}' | head -1)
+            [ -n "$TEST_FILE" ] && TEST_CMD="bash $TEST_FILE"
+          fi
+
+          # --- Re-validate the recovered command (a bare bash/bats <file> only —
+          #     identical whitelist to the Stage-3 gate). ---
+          if [ -n "$TEST_CMD" ] && ! printf '%s' "$TEST_CMD" | grep -Eq '^(bash|bats) [A-Za-z0-9_./-]+$'; then
+            echo "Recovered test_cmd is not a bare 'bash <file>' invocation — dropping it: $TEST_CMD" >&2
+            TEST_CMD=""
+          fi
+
+          # --- Secrets from the control project's Secret Manager (masked) ---
+          LINEAR_TOKEN=$(gcloud secrets versions access latest --secret=linear-api-key --project="$CONTROL_PROJECT" 2>/dev/null || true)
+          echo "::add-mask::$LINEAR_TOKEN"
+          TG_TOKEN=$(gcloud secrets versions access latest --secret=telegram-bot-token --project="$CONTROL_PROJECT" 2>/dev/null | tr -d '\r\n' || true)
+          echo "::add-mask::$TG_TOKEN"
+          TG_CHAT=$(gcloud secrets versions access latest --secret=telegram-chat-id --project="$CONTROL_PROJECT" 2>/dev/null | tr -d '\r\n' || true)
+          echo "::add-mask::$TG_CHAT"
+
+          # --- Resolve the Linear issue (id accepts OIL-NN or UUID) + its state ---
+          ISSUE_UUID=""; ISSUE_IDENT="${ISSUE_ID:-}"; ISSUE_STATE_TYPE=""
+          if [ -n "$ISSUE_ID" ]; then
+            REQ=$(jq -cn --arg id "$ISSUE_ID" \
+              '{query:"query($id:String!){ issue(id:$id){ id identifier state { type } } }", variables:{id:$id}}')
+            IRESP=$(curl -sS -m 20 -X POST https://api.linear.app/graphql \
+              -H "Authorization: $LINEAR_TOKEN" -H "Content-Type: application/json" \
+              --data "$REQ" 2>/dev/null || true)
+            ISSUE_UUID=$(jq -r '.data.issue.id // empty' <<<"$IRESP" 2>/dev/null || true)
+            ID2=$(jq -r '.data.issue.identifier // empty' <<<"$IRESP" 2>/dev/null || true)
+            [ -n "$ID2" ] && ISSUE_IDENT="$ID2"
+            ISSUE_STATE_TYPE=$(jq -r '.data.issue.state.type // empty' <<<"$IRESP" 2>/dev/null || true)
+          fi
+
+          # --- Hand to later steps (all masked) ---
+          {
+            echo "LINEAR_TOKEN=$LINEAR_TOKEN"
+            echo "TG_TOKEN=$TG_TOKEN"
+            echo "TG_CHAT=$TG_CHAT"
+            echo "ISSUE_UUID=$ISSUE_UUID"
+            echo "ISSUE_IDENT=$ISSUE_IDENT"
+            echo "ISSUE_STATE_TYPE=$ISSUE_STATE_TYPE"
+            echo "PR_NUMBER=${PR_NUMBER:-}"
+            echo "TEST_CMD=$TEST_CMD"
+          } >> "$GITHUB_ENV"
+
+          echo "issue=$ISSUE_IDENT uuid=${ISSUE_UUID:-none} state=${ISSUE_STATE_TYPE:-?} pr=#${PR_NUMBER:-?} test='${TEST_CMD:-none}'"
+
+      - name: Drop cloud credentials before running the reproducer
+        id: lockdown
+        run: |
+          set -uo pipefail
+          # Everything needed later (Linear token, Telegram) is already in the
+          # masked job env. Remove ALL cloud credentials BEFORE the AI-authored
+          # reproducer runs. Nothing is pushed, so no token is minted here.
+          gcloud auth revoke --all >/dev/null 2>&1 || true
+          rm -f "${CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE:-/nonexistent}" 2>/dev/null || true
+          rm -f "${GOOGLE_APPLICATION_CREDENTIALS:-/nonexistent}" 2>/dev/null || true
+          rm -f gha-creds-*.json 2>/dev/null || true
+          { echo "CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE="; echo "GOOGLE_APPLICATION_CREDENTIALS="; echo "GOOGLE_GHA_CREDS_PATH="; } >> "$GITHUB_ENV"
+          echo "INFO: cloud credentials revoked before reproducer run."
+
+      - name: Re-run the reproducer on merged main (post-merge gate)
+        id: verify
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          # Idempotency: if the issue is already terminal, do nothing.
+          case "${ISSUE_STATE_TYPE:-}" in
+            completed|canceled)
+              echo "outcome=skip" >> "$GITHUB_OUTPUT"
+              echo "INFO: issue ${ISSUE_IDENT:-?} already ${ISSUE_STATE_TYPE} — nothing to do."
+              exit 0 ;;
+          esac
+          # No reproducer recovered → escalate-soft (NOT a verification failure).
+          if [ -z "${TEST_CMD:-}" ]; then
+            echo "outcome=norepro" >> "$GITHUB_OUTPUT"
+            echo "INFO: no reproducer command recovered — manual verification needed."
+            exit 0
+          fi
+          out=$(bash scripts/oil-verify.sh "$TEST_CMD" 2>&1); rc=$?
+          printf '%s\n' "$out"
+          verdict=$(printf '%s\n' "$out" | sed -n 's/^VERDICT: //p' | head -1)
+          echo "verdict=${verdict}" >> "$GITHUB_OUTPUT"
+          if [ "$rc" -eq 0 ]; then
+            echo "outcome=verified" >> "$GITHUB_OUTPUT"
+          else
+            echo "outcome=failed" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Verified — close the Linear issue + notify
+        if: steps.verify.outputs.outcome == 'verified'
+        run: |
+          set -uo pipefail
+          if [ -z "${ISSUE_UUID:-}" ]; then
+            echo "No ISSUE_UUID — cannot close; PR #${PR_NUMBER:-?} still verified."
+          else
+            # 1) Resolve a 'completed'-type workflow state for the issue's team.
+            SQ=$(jq -cn --arg id "$ISSUE_UUID" --arg t "completed" \
+              '{query:"query($id:String!,$t:String!){ issue(id:$id){ team { states(filter:{type:{eq:$t}}){ nodes{ id name position } } } } }", variables:{id:$id,t:$t}}')
+            SRESP=$(curl -sS -m 20 -X POST https://api.linear.app/graphql \
+              -H "Authorization: $LINEAR_TOKEN" -H "Content-Type: application/json" --data "$SQ" 2>/dev/null || true)
+            STATE_ID=$(jq -r '.data.issue.team.states.nodes | (map(select(.name=="Done"))[0]) // (sort_by(.position)[0]) | .id // empty' <<<"$SRESP" 2>/dev/null || true)
+            if [ -n "$STATE_ID" ]; then
+              echo "::add-mask::$STATE_ID"
+              MQ=$(jq -cn --arg id "$ISSUE_UUID" --arg s "$STATE_ID" \
+                '{query:"mutation($id:String!,$s:String!){ issueUpdate(id:$id, input:{stateId:$s}){ success } }", variables:{id:$id,s:$s}}')
+              URESP=$(curl -sS -m 20 -X POST https://api.linear.app/graphql \
+                -H "Authorization: $LINEAR_TOKEN" -H "Content-Type: application/json" --data "$MQ" 2>/dev/null || true)
+              echo "issueUpdate success: $(jq -r '.data.issueUpdate.success // false' <<<"$URESP" 2>/dev/null || echo false)"
+            else
+              echo "WARN: no completed-type state for the team — leaving state unchanged, still commenting."
+            fi
+            # 2) Closing comment.
+            CBODY="🤖 OIL auto-fix — אומת ונסגר ✅"$'\n\n'"התיקון מוזג ל-main וכל בדיקות ה-CI עברו. הרצנו מחדש את בדיקת-השחזור על קוד ה-main שאחרי המיזוג — והיא עברה. לכן התקלה תוקנה והתיק נסגר אוטומטית."$'\n\n'"| שדה | ערך |"$'\n'"|---|---|"$'\n'"| PR שמוזג | #${PR_NUMBER:-?} |"$'\n'"| בדיקת שחזור | ${TEST_CMD:-?} |"$'\n'"| תוצאה | עבר (verified) |"$'\n\n'"— נוצר אוטומטית · oil-autofix-verify · אימות פוסט-מיזוג; התיק הועבר לסטטוס \"הושלם\"."
+            CREQ=$(jq -cn --arg id "$ISSUE_UUID" --arg b "$CBODY" \
+              '{query:"mutation($id:String!,$b:String!){ commentCreate(input:{issueId:$id, body:$b}){ success } }", variables:{id:$id,b:$b}}')
+            curl -sS -m 20 -X POST https://api.linear.app/graphql \
+              -H "Authorization: $LINEAR_TOKEN" -H "Content-Type: application/json" --data "$CREQ" >/dev/null 2>&1 || true
+            echo "Closing comment posted to ${ISSUE_IDENT:-?}."
+          fi
+          # 3) Success Telegram (Or asked for a closing ping). Soft-fail.
+          if [ -n "${TG_TOKEN:-}" ] && [ -n "${TG_CHAT:-}" ]; then
+            MSG="✅ תוקן ואומת — סגרתי את התיק."$'\n'"תיק: ${ISSUE_IDENT:-?}"$'\n'"PR: #${PR_NUMBER:-?}"
+            curl -sS -m 10 -o /dev/null -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
+              --data-urlencode "chat_id=${TG_CHAT}" --data-urlencode "text=${MSG}" 2>/dev/null || true
+          fi
+
+      - name: Verification failed — comment + alert (do NOT close)
+        if: steps.verify.outputs.outcome == 'failed'
+        env:
+          VERDICT: ${{ steps.verify.outputs.verdict }}
+        run: |
+          set -uo pipefail
+          if [ -n "${ISSUE_UUID:-}" ]; then
+            FBODY="🤖 OIL auto-fix — נכשל באימות ⚠️"$'\n\n'"התיקון מוזג ל-main, אך הרצה חוזרת של בדיקת-השחזור על קוד ה-main שאחרי המיזוג נכשלה. עצרנו את הלולאה והתיק נשאר פתוח לטיפול ידני — ייתכן שהתיקון לא כיסה את כל המקרים או שצצה רגרסיה."$'\n\n'"| שדה | ערך |"$'\n'"|---|---|"$'\n'"| PR שמוזג | #${PR_NUMBER:-?} |"$'\n'"| בדיקת שחזור | ${TEST_CMD:-?} |"$'\n'"| תוצאה | ${VERDICT:-failed} |"$'\n\n'"— נוצר אוטומטית · oil-autofix-verify · אימות פוסט-מיזוג נכשל; התיק נשאר פתוח."
+            FREQ=$(jq -cn --arg id "$ISSUE_UUID" --arg b "$FBODY" \
+              '{query:"mutation($id:String!,$b:String!){ commentCreate(input:{issueId:$id, body:$b}){ success } }", variables:{id:$id,b:$b}}')
+            curl -sS -m 20 -X POST https://api.linear.app/graphql \
+              -H "Authorization: $LINEAR_TOKEN" -H "Content-Type: application/json" --data "$FREQ" >/dev/null 2>&1 || true
+            echo "Failure comment posted to ${ISSUE_IDENT:-?} (issue left open)."
+          fi
+          if [ -n "${TG_TOKEN:-}" ] && [ -n "${TG_CHAT:-}" ]; then
+            MSG="🚨 OIL — נכשל באימות אחרי המיזוג, התיק נשאר פתוח."$'\n'"תיק: ${ISSUE_IDENT:-?}"$'\n'"PR: #${PR_NUMBER:-?}"$'\n'"בדיקת השחזור על main לאחר המיזוג נכשלה — נדרש טיפול ידני."
+            curl -sS -m 10 -o /dev/null -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
+              --data-urlencode "chat_id=${TG_CHAT}" --data-urlencode "text=${MSG}" 2>/dev/null || true
+          fi
+
+      - name: No reproducer to verify — informational comment (no close, no alarm)
+        if: steps.verify.outputs.outcome == 'norepro'
+        run: |
+          set -uo pipefail
+          if [ -n "${ISSUE_UUID:-}" ]; then
+            NBODY="🤖 OIL auto-fix — מוזג (ללא אימות אוטומטי) ℹ️"$'\n\n'"התיקון מוזג ל-main, אבל לא נמצאה בדיקת-שחזור לאימות אוטומטי (ייתכן שזה תיקון מלפני מנגנון האימות). התיק נשאר פתוח — מומלץ אימות ידני לפני סגירה."$'\n\n'"— נוצר אוטומטית · oil-autofix-verify."
+            NREQ=$(jq -cn --arg id "$ISSUE_UUID" --arg b "$NBODY" \
+              '{query:"mutation($id:String!,$b:String!){ commentCreate(input:{issueId:$id, body:$b}){ success } }", variables:{id:$id,b:$b}}')
+            curl -sS -m 20 -X POST https://api.linear.app/graphql \
+              -H "Authorization: $LINEAR_TOKEN" -H "Content-Type: application/json" --data "$NREQ" >/dev/null 2>&1 || true
+            echo "No-reproducer informational comment posted to ${ISSUE_IDENT:-?} (issue left open, no alarm)."
+          fi
+
+      - name: Step summary
+        if: always()
+        env:
+          OUTCOME: ${{ steps.verify.outputs.outcome }}
+          VERDICT: ${{ steps.verify.outputs.verdict }}
+        run: |
+          {
+            echo "## OIL auto-fix — אימות פוסט-מיזוג"
+            echo ""
+            echo "| שדה | ערך |"
+            echo "|---|---|"
+            echo "| תיק | ${ISSUE_IDENT:-?} |"
+            echo "| PR | #${PR_NUMBER:-?} |"
+            echo "| בדיקת שחזור | ${TEST_CMD:-—} |"
+            echo "| תוצאה | ${OUTCOME:-?}${VERDICT:+ — $VERDICT} |"
+          } >> "$GITHUB_STEP_SUMMARY"

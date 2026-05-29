@@ -32,3 +32,8 @@ jobs:
 
       - name: yamllint
         run: yamllint .github/workflows/ templates/system/.github/workflows/
+
+      - name: OIL verify self-test
+        # Proves scripts/oil-verify.sh's verdicts (verified / failed / malformed /
+        # missing / empty) with throwaway fixtures — no live OIL run needed.
+        run: bash scripts/tests/oil-verify-selftest.sh
