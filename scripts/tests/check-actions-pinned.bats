@@ -4,18 +4,16 @@
 # The script scans .github/workflows/*.yml,*.yaml and FAILS if any line
 # matches its `uses:` regex with a ref that isn't a full 40-char hex SHA.
 #
-# IMPORTANT — known latent bug surfaced by these tests:
-#   The script's regex is `^\s+uses:\s+[^.][^/]+/`, which requires `uses:`
-#   immediately after leading whitespace. The standard YAML step form
-#   `      - uses: owner/repo@ref` (with a list-item dash) does NOT match,
-#   so step-level action uses ARE NOT INSPECTED by this script today. The
-#   regex only catches the no-dash form used by reusable-workflow callers
-#   (`jobs.<j>.uses:`).
+# Covers BOTH `uses:` forms the regex now inspects:
+#   - step form:            "      - uses: owner/repo@ref"   (list-item dash)
+#   - reusable-caller form: "    uses: owner/repo@ref"       (jobs.<j>.uses, no dash)
+# Local actions (uses: ./...) are ignored in either form.
 #
-# These tests document the script's ACTUAL behavior — they don't quietly
-# fix the bug. The fix belongs in a separate dev-stage so the change is
-# planned and reviewed; raising the bug is exactly what a Playground layer
-# is supposed to do.
+# Regression note: the step form was historically NOT inspected — the regex
+# `^\s+uses:` couldn't match a leading list-item dash, so step-level action
+# uses slipped through. The "step form … @v5/@short-SHA" cases below lock in
+# the fix that taught the regex the `(-\s+)?` dash form; they fail on the old
+# script and pass on the fixed one.
 
 load test_helper/common
 
@@ -41,9 +39,21 @@ write_wf() {
 
 # --- happy paths ---
 
+@test "PASS: step-form action pinned to a full SHA" {
+  write_wf "step.yml" "name: step
+jobs:
+  j:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@${PINNED_SHA}"
+
+  run bash -c "cd '$fixture' && bash '$CHECK'"
+  assert_success
+  assert_output --partial "PASS"
+}
+
 @test "PASS: reusable-workflow caller pinned to a full SHA" {
-  # Reusable workflow caller — `uses:` sits directly at jobs.<j>.uses,
-  # so the script's regex inspects it. Pinned to a 40-hex SHA → PASS.
+  # Reusable workflow caller — `uses:` sits directly at jobs.<j>.uses.
   write_wf "caller.yml" "name: caller
 jobs:
   call:
@@ -54,7 +64,20 @@ jobs:
   assert_output --partial "PASS"
 }
 
-@test "PASS: local action (uses: ./...) is ignored" {
+@test "PASS: local step action (- uses: ./...) is ignored" {
+  write_wf "local-step.yml" "name: local-step
+jobs:
+  j:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: ./.github/actions/my-action"
+
+  run bash -c "cd '$fixture' && bash '$CHECK'"
+  assert_success
+  assert_output --partial "PASS"
+}
+
+@test "PASS: local reusable caller (uses: ./...) is ignored" {
   write_wf "local.yml" "name: local
 jobs:
   call:
@@ -72,7 +95,35 @@ jobs:
   assert_output --partial "Skipping"
 }
 
-# --- failure paths ---
+# --- failure paths (step form — the regression-locking cases) ---
+
+@test "FAIL: step-form action pinned only to a tag (@v5)" {
+  write_wf "step-tag.yml" "name: step-tag
+jobs:
+  j:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5"
+
+  run bash -c "cd '$fixture' && bash '$CHECK'"
+  assert_failure
+  assert_output --partial "unpinned action"
+}
+
+@test "FAIL: step-form action pinned to a short SHA" {
+  write_wf "step-short.yml" "name: step-short
+jobs:
+  j:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@93cb6efe"
+
+  run bash -c "cd '$fixture' && bash '$CHECK'"
+  assert_failure
+  assert_output --partial "unpinned action"
+}
+
+# --- failure paths (reusable-caller form) ---
 
 @test "FAIL: reusable-workflow caller pinned only to a tag (@v1)" {
   write_wf "tag.yml" "name: tag
