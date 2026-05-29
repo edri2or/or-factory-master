@@ -21,8 +21,8 @@ itself declares "manage this in ordered, documented stages."
 
 Before anything, read:
 1. `templates/devplan/DEVPLAN.template.md` — the plan template you instantiate.
-2. `devplans/*.md`, if any exist — to detect any parallel active developments
-   (needed in Step 3 for the changelog fragment rule).
+2. `devplans/*.md`, if any exist — to see which other developments are active in parallel
+   (so you coordinate, and the devplan CI gate stays satisfied).
 
 ## Instructions
 
@@ -46,16 +46,15 @@ For each stage, in order:
   stay green:
   - **Plan file**: set the stage's status (`in-progress` → `completed`) in the stages
     table, write the "הערת התקדמות אחרונה", and add the stage's line to the "יומן ל-Or".
-  - **Changelog** — pick the path by how many developments are active right now (count
-    `status: active` across the root `DEVPLAN.md` and every `devplans/*.md`):
-    - *Single* (this is the only active plan): add the entry to the top of `CHANGELOG.md`,
-      exactly as before — zero change to the normal flow.
-    - *Parallel* (another plan is also `status: active`): write the entry to a
-      per-development fragment `changelog.d/<YYYY-MM-DD>-<slug>.md` (append each stage to
-      that same fragment) INSTEAD of the top of `CHANGELOG.md`, so two parallel PRs never
-      collide on the changelog head. The CI changelog gate accepts the fragment.
-    - *Optional cleanup*: when a parallel development closes, its fragment MAY be moved to
-      the top of `CHANGELOG.md` and deleted — a clean step taken once nothing can collide.
+  - **Changelog** — write the stage's entry to a per-development fragment
+    `changelog.d/<YYYY-MM-DD>-<slug>.md` (append each stage to that same fragment), NOT to
+    the head of `CHANGELOG.md`. This is the default for **every** development: a fragment
+    file is unique per dev, so concurrent PRs never collide on a hand-picked `Stage N`. The
+    CI changelog gate (`scripts/check-changelog-updated.sh`) accepts the fragment. The
+    numbered `CHANGELOG.md` is built later — and only — by the **Compile changelog** workflow
+    (`scripts/compile-changelog.sh`), which folds all fragments in one single-threaded run
+    (so `Stage N` numbers are assigned with no concurrency) and auto-archives past the size
+    cap. Never hand-edit the top of `CHANGELOG.md` from a stage.
 - **(c) Report to Or** in plain Hebrew: which stage, what was done, what's next. Short.
 - **(d) Stop at the boundary** and wait for Or's approval before the next stage.
 - **If it gets complicated / the plan no longer fits**: update the plan first — add or
