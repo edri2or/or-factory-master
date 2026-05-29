@@ -73,3 +73,18 @@ Total wall time: ~3 minutes. No retries fired on the happy path; the retry budge
 ## How long this took
 
 Stage 6 — from first dispatch (which immediately failed at IAM binding) to clean end-to-end — was 7 workflow runs across roughly an hour, with 5 PRs and 3 manual IAM/permission grants in between. Each failure surfaced exactly one bug, and each PR fixed exactly one bug. That is the dividend of running provisioning manually and watching: every failure is visible immediately and is small enough to fix in one commit.
+
+
+## Factory-main branch protection (Stage 4 — changelog-concurrency, 2026-05-29)
+
+`or-factory-master` main was previously unprotected at the enforcement layer: the four CI checks (Changelog gates, shellcheck + yamllint, Scan for committed secrets, Supply chain gates) ran on every PR but nothing blocked a merge when they were red or still running. Discipline substituted for a rule.
+
+Stage 4 applied a `protect-main` GitHub ruleset (enforcement: active) via `.github/workflows/protect-main.yml` + `scripts/ensure-protect-main-ruleset.sh`. The ruleset:
+
+- Requires the 4 CI contexts to pass before any merge.
+- Requires all changes to go through a PR (direct push to `main` is blocked).
+- Blocks force-push and branch deletion.
+- Non-strict (`strict_required_status_checks_policy: false`) — branches don't need to be up-to-date before merging. Merge queue is the correct upgrade if PR throughput grows significantly.
+- Admin bypass: `RepositoryRole id=5` (repo admin) can merge in emergencies; the bypass is scoped, audited by GitHub, and not a blanket override.
+
+The workflow is self-triggering (path-filter on itself + the script) and idempotent. No MCP source changes, no operator click — the PR merge was the trigger.

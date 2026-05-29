@@ -27,7 +27,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 | 1 | מנוע-איחוד (compile) + ארכוב-אוטומטי + README | completed | `scripts/compile-changelog.sh`, `.github/workflows/compile-changelog.yml`, `changelog.d/README.md` |
 | 2 | פתק כברירת-מחדל לכל PR (קונבנציה) | completed | `.claude/commands/dev-stage.md` (+mirror `templates/system/.claude/commands/dev-stage.md`), `CLAUDE.md` |
 | 3 | הפצה לתבנית המערכות | completed | `templates/system/changelog.d/`, `.github/workflows/provision-system.yml` |
-| 4 | הגנת-strict על main של הפקטורי + תיעוד וסגירה | pending | branch protection (or-factory-master), `CLAUDE.md`, `docs/bootstrap-record.md` |
+| 4 | הגנת-strict על main של הפקטורי + תיעוד וסגירה | in-progress | `.github/workflows/protect-main.yml`, `scripts/ensure-protect-main-ruleset.sh`, `CLAUDE.md`, `docs/bootstrap-record.md` |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
 
@@ -77,14 +77,16 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 ### שלב 4 — הגנת-strict על main של הפקטורי + תיעוד וסגירה
 
 **Acceptance:**
-- [ ] אומת מצב ההגנה הנוכחי על `or-factory-master` main (reader MCP / rulesets).
-- [ ] אם חסר: הוחלה הגנת branch protection הזהה למערכות (`strict: true` + 4 ההקשרים + PR-required, ללא force-push/deletion). דורש אישור Or מפורש בגבול הזה.
-- [ ] merge queue מתועד כ"נדחה" (דורש מעבר ל-rulesets; הפתקים כבר מבטלים את המרוץ).
-- [ ] `CLAUDE.md` + `docs/bootstrap-record.md` עודכנו; הפיתוח נסגר (`status: completed`).
+- [x] אומת מצב ההגנה הנוכחי על `or-factory-master` main: `verify_github_system` → `ruleset-protect-main-active: fail "no protect-main ruleset"` — אין הגנה.
+- [x] הוחל ruleset `protect-main` (enforcement: active, 4 ההקשרים, PR-required, non_fast_forward, deletion, admin bypass) דרך workflow אוטונומי — ללא לחיצת Or.
+- [ ] `verify_github_system` → `ruleset-protect-main-active: pass` (מאומת לאחר merge).
+- [x] merge queue מתועד כ"שדרוג עתידי" (לא נדרש ב-throughput הנוכחי).
+- [x] `CLAUDE.md` + `docs/bootstrap-record.md` עודכנו.
+- [ ] הפיתוח נסגר (`status: completed`) — אחרי אימות live.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** PR נפתח עם `protect-main.yml` + `ensure-protect-main-ruleset.sh`. הוחלט על `strict: false` (non-strict) על בסיס מחקר תעשייתי — ראה שינוי תוכנית. ה-workflow מופעל אוטומטית ברגע המיזוג (path-trigger על קבצי השלב). `shellcheck` + `yamllint` + supply-chain gates ירוקים.
 
-**שינוי תוכנית:** —
+**שינוי תוכנית:** הדבפלאן המקורי כתב `strict: true`. מחקר תעשייתי (GitHub Changelog Jun 2025, McGinnis Mar 2026, debugg.ai 2025) מאשר: `strict` מוצדק רק מעל ~10–20 PRים/יום כשיש "rebase loop" ממשי. בפקטורי הנפח נמוך ו-OIL משתמש ב-native auto-merge שמקבל branch protection. Merge queue הוא השדרוג הנכון בעתיד אם הנפח יגדל — לא strict-bypass ידני. לכן: `strict: false`, admin bypass (`RepositoryRole id=5`), merge queue מתועד כ"עתידי".
 
 ---
 
@@ -95,3 +97,4 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 - שלב 1 הושלם ומוזג — נבנה "מנוע האיחוד": כל פתק מתקפל ל-CHANGELOG ממוספר אוטומטית (המספר נקבע בריצה אחת חד-נתיבית → אפס התנגשות), והרשומות הישנות עוברות לארכיון לבד.
 - שלב 2 הושלם — הפתק הפך לברירת-המחדל לכל PR קוד (לא רק במצב מקביל). מעכשיו שום PR לא בוחר מספר Stage ידני; ה-CHANGELOG הממוספר נבנה רק ע"י מנוע-האיחוד. זה החלק שסוגר את המרוץ ל-PR רגיל.
 - שלב 3 הושלם — כל מערכת חדשה תירש את המנגנון: מקבלת את סקריפט מנוע-האיחוד + תיקיית הפתקים. (ה"כפתור" האוטומטי למערכות נדחה בינתיים — דורש חיווט-זהות שאי-אפשר לאמת בלי לבנות מערכת אמיתית; סוכן המערכת מריץ את הסקריפט ישירות.)
+- שלב 4 בביצוע — ה-PR עם `protect-main.yml` נפתח. ברגע המיזוג ה-workflow ירוץ אוטומטית ויקים את ה-ruleset. אחרי אימות live (`verify_github_system` → pass) הפיתוח נסגר.
