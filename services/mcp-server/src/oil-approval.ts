@@ -11,16 +11,21 @@
 // reviewers (the original design) are Enterprise-only for private repos, so this
 // application-level gate replaces them.
 //
-// State-free by design: the PR number travels inside the button's callback_data
-// (`oilapprove:<pr>` / `oilreject:<pr>`, well under Telegram's 64-byte cap), so a
-// Cloud Run instance swap can never lose a pending approval. Every step is
-// soft-fail and the webhook always answers 200 so Telegram never retry-storms.
+// State-free by design: the target repo + PR number travel inside the button's
+// callback_data (`oilapprove:<repo>:<pr>` / `oilreject:<repo>:<pr>`, well under
+// Telegram's 64-byte cap — system names are ≤30 chars), so a Cloud Run instance
+// swap can never lose a pending approval. The repo segment is what lets the loop
+// merge a fix in a SYSTEM repo, not only the factory (Stage 83); the legacy
+// two-segment form (`oilapprove:<pr>`) still decodes to the factory repo. Every
+// step is soft-fail and the webhook always answers 200 so Telegram never
+// retry-storms.
 
 import type { Request } from 'express';
 import {
   approverConfigured,
   mergePullRequestAsApprover,
   closePullRequestAsApprover,
+  dispatchWorkflow,
 } from './github-client.js';
 import {
   emitEvent,
@@ -31,7 +36,15 @@ import {
 } from './observability-client.js';
 
 const OWNER = 'edri2or';
-const REPO = 'or-factory-master';
+// The factory's own repo — the default target when a callback carries no repo
+// segment (legacy two-segment form) and the repo a registration omits one.
+const DEFAULT_REPO = 'or-factory-master';
+
+// A safe GitHub repo-name shape. The factory (`or-factory-master`) and every
+// system_name (`^[a-z][a-z0-9-]{4,28}[a-z0-9]$`) match this; a colon can never
+// appear, so splitting callback_data on ':' is unambiguous, and a crafted value
+// can never inject anything else into the merge target.
+const REPO_RE = /^[a-z0-9][a-z0-9-]{0,38}$/;
 
 // callback_data tags. Kept short (<<64 bytes) and namespaced so the handler only
 // ever acts on its own buttons.
@@ -46,23 +59,43 @@ export interface ApprovalResult {
 // Pure decoder for a button's callback_data. Exported so it can be unit-tested
 // without the Telegram/GitHub side effects. Returns null for anything that isn't
 // one of our two well-formed tags with a positive integer PR number.
-export function parseCallbackData(data: string): { action: 'approve' | 'reject'; pr: number } | null {
+//
+// Two accepted shapes, after the prefix:
+//   * `<repo>:<pr>`  (Stage 83) → that repo is the merge target,
+//   * `<pr>`         (legacy)   → the factory repo (DEFAULT_REPO).
+// The repo segment must match REPO_RE (so a malformed/hostile value is rejected,
+// never silently merged somewhere unexpected).
+export function parseCallbackData(
+  data: string,
+): { action: 'approve' | 'reject'; repo: string; pr: number } | null {
   let action: 'approve' | 'reject';
-  let prRaw: string;
+  let rest: string;
   if (data.startsWith(APPROVE_PREFIX)) {
     action = 'approve';
-    prRaw = data.slice(APPROVE_PREFIX.length);
+    rest = data.slice(APPROVE_PREFIX.length);
   } else if (data.startsWith(REJECT_PREFIX)) {
     action = 'reject';
-    prRaw = data.slice(REJECT_PREFIX.length);
+    rest = data.slice(REJECT_PREFIX.length);
   } else {
     return null;
   }
+
+  // Split off an optional repo segment. system_name / the factory never contain
+  // a colon, so a single ':' cleanly separates <repo> from <pr>.
+  let repo = DEFAULT_REPO;
+  let prRaw = rest;
+  const sep = rest.indexOf(':');
+  if (sep >= 0) {
+    repo = rest.slice(0, sep);
+    prRaw = rest.slice(sep + 1);
+    if (!REPO_RE.test(repo)) return null;
+  }
+
   // Reject non-integer / non-positive / trailing-garbage forms ("12x", "", "-1").
   if (!/^[0-9]+$/.test(prRaw)) return null;
   const pr = Number(prRaw);
   if (!Number.isInteger(pr) || pr <= 0) return null;
-  return { action, pr };
+  return { action, repo, pr };
 }
 
 // Is this Telegram user id permitted to approve? Exported for unit testing.
@@ -110,15 +143,25 @@ function allowedUserIds(): Set<string> {
 }
 
 // Called by the workflow (admin-gated in index.ts) right after it opens a DRAFT
-// PR. Sends Or one Telegram message with ✅/❌ buttons carrying the PR number.
+// PR. Sends Or one Telegram message with ✅/❌ buttons carrying the target repo +
+// PR number. `repo` defaults to the factory when the caller omits it (so a
+// pre-Stage-83 caller keeps working unchanged); a system repo (Stage 83) is
+// embedded in the button data so the eventual merge targets that repo.
 export async function registerApproval(input: {
   pr_number: number;
   issue_id?: string;
   pr_url?: string;
+  repo?: string;
 }): Promise<ApprovalResult> {
   const pr = input.pr_number;
   if (!Number.isInteger(pr) || pr <= 0) {
     return { status: 400, body: { error: 'bad_pr_number' } };
+  }
+  // Validate the repo segment up-front: it ends up inside callback_data and later
+  // becomes a merge target, so a malformed value must be refused here, not merged.
+  const repo = input.repo && input.repo.length > 0 ? input.repo : DEFAULT_REPO;
+  if (!REPO_RE.test(repo)) {
+    return { status: 400, body: { error: 'bad_repo' } };
   }
   if (!approverConfigured()) {
     // The bridge is dormant until the approver App credentials are mounted.
@@ -127,14 +170,17 @@ export async function registerApproval(input: {
   }
 
   const issue = input.issue_id ? `${input.issue_id}` : 'OIL';
+  // Show Or which repo the fix lands in (the factory or a named system).
+  const repoLine = repo === DEFAULT_REPO ? `מאגר: הפקטורי` : `מערכת: ${repo}`;
   const text =
     `🔧 OIL auto-fix — תיקון מוכן לאישור\n` +
     `תיק: ${issue}\n` +
+    `${repoLine}\n` +
     `PR #${pr}${input.pr_url ? `\n${input.pr_url}` : ''}\n\n` +
     `אשר/דחה כאן:`;
   const buttons: InlineButton[] = [
-    { text: '✅ אישור ומיזוג', callback_data: `${APPROVE_PREFIX}${pr}` },
-    { text: '❌ דחייה', callback_data: `${REJECT_PREFIX}${pr}` },
+    { text: '✅ אישור ומיזוג', callback_data: `${APPROVE_PREFIX}${repo}:${pr}` },
+    { text: '❌ דחייה', callback_data: `${REJECT_PREFIX}${repo}:${pr}` },
   ];
 
   const sent = await sendTelegramKeyboard(text, buttons);
@@ -142,8 +188,8 @@ export async function registerApproval(input: {
     await emitApproval('register_failed', pr, `telegram-${sent.status}`);
     return { status: 502, body: { error: 'telegram_send_failed', telegram: sent.status } };
   }
-  await emitApproval('registered', pr, issue);
-  return { status: 200, body: { ok: true, pr, message_id: sent.messageId ?? null } };
+  await emitApproval('registered', pr, `${issue} (${repo})`);
+  return { status: 200, body: { ok: true, pr, repo, message_id: sent.messageId ?? null } };
 }
 
 // Inbound Telegram callback (a button press). The secret_token header is verified
@@ -175,22 +221,23 @@ export async function handleTelegramCallback(req: Request): Promise<ApprovalResu
     return { status: 200, body: { unauthorized: true } };
   }
 
-  // Decode action + PR number from the button itself (no server-side lookup).
+  // Decode action + target repo + PR number from the button itself (no
+  // server-side lookup). `repo` is the factory for legacy two-segment buttons.
   const decoded = parseCallbackData(data);
   if (!decoded) {
     await answerCallbackQuery(callbackId);
     return { status: 200, body: { ignored: 'unknown_callback_data' } };
   }
-  const { action, pr } = decoded;
+  const { action, repo, pr } = decoded;
 
   if (action === 'reject') {
-    const r = await closePullRequestAsApprover(pr, OWNER, REPO);
+    const r = await closePullRequestAsApprover(pr, OWNER, repo);
     await answerCallbackQuery(callbackId, r.status && r.message ? `שגיאה: ${r.message}` : '❌ נדחה');
     if (messageId && chatId != null) {
       await editTelegramMessage(chatId as string | number, messageId, `❌ PR #${pr} נדחה (לא מוזג).`);
     }
-    await emitApproval('rejected', pr, r.message ?? 'closed');
-    return { status: 200, body: { action: 'reject', pr, closed: r.status === 200 } };
+    await emitApproval('rejected', pr, `${repo}: ${r.message ?? 'closed'}`);
+    return { status: 200, body: { action: 'reject', repo, pr, closed: r.status === 200 } };
   }
 
   // approve → merge as the approver App.
@@ -199,15 +246,31 @@ export async function handleTelegramCallback(req: Request): Promise<ApprovalResu
   // previously caused duplicate merge attempts / duplicate merge_failed events).
   await answerCallbackQuery(callbackId, '⏳ מאשר…');
 
-  const r = await mergePullRequestAsApprover(pr, 'SQUASH', OWNER, REPO);
+  const r = await mergePullRequestAsApprover(pr, 'SQUASH', OWNER, repo);
 
   // Merged synchronously (the PR was already green when ✅ was tapped).
   if (r.merged) {
     if (messageId && chatId != null) {
       await editTelegramMessage(chatId as string | number, messageId, `✅ PR #${pr} אושר ומוזג.`);
     }
-    await emitApproval('approved', pr, r.sha ? `merged ${r.sha.slice(0, 7)}` : 'merged');
-    return { status: 200, body: { action: 'approve', pr, merged: true, sha: r.sha ?? null } };
+    await emitApproval('approved', pr, r.sha ? `${repo}: merged ${r.sha.slice(0, 7)}` : `${repo}: merged`);
+    // Stage 83 — cross-repo post-merge verify. The factory's own merges fire
+    // oil-autofix-verify.yml via push:main, but a SYSTEM merge lands on the
+    // system's main, which the factory never observes. So on a confirmed
+    // synchronous merge of a system PR, dispatch the factory's verify workflow
+    // (broker identity, org-wide actions:write) pointed at that system; verify
+    // recovers the issue id + reproducer from the system's merge commit itself.
+    // Soft-fail — a dispatch hiccup must never break the approval reply.
+    if (repo !== DEFAULT_REPO) {
+      await dispatchWorkflow(
+        'oil-autofix-verify.yml',
+        'main',
+        { repo, pr_number: String(pr) },
+        OWNER,
+        DEFAULT_REPO,
+      ).catch(() => undefined);
+    }
+    return { status: 200, body: { action: 'approve', repo, pr, merged: true, sha: r.sha ?? null } };
   }
 
   // Auto-merge armed: GitHub will merge once the required CI checks pass. This is

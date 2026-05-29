@@ -4,7 +4,13 @@ name: Register OIL Approver App (2-click)
 # SEPARATE identity that MERGES OIL auto-fix draft PRs after a human Telegram ✅
 # (the broker opens the PR; this App merges it; the same principal can never do
 # both). Minimal permissions: contents:write + pull_requests:write + metadata:read
-# (merge needs the first two). Installed on edri2or/or-factory-master ONLY.
+# (merge needs the first two — nothing is added for Stage 83). Installed ORG-WIDE
+# (all repositories, like the broker) so the loop can merge a fix in a SYSTEM
+# repo, not only the factory. Isolation is preserved differently: the MCP server
+# mints a per-merge installation token DOWN-SCOPED to the one target repo (a
+# GitHub installation token can be narrowed to specific repositories + a
+# permission subset and can never exceed the install), so an org-wide install
+# still yields the same effective isolation as an App-per-repo.
 # Credentials land in the CONTROL project's SM as
 # oil-autofix-approver-app-{id,private-key,installation-id}. The same Cloud Run
 # receiver image as register-system-app.yml is reused (it is generic over
@@ -12,8 +18,7 @@ name: Register OIL Approver App (2-click)
 #
 # Operator action (ADR-012 vendor floor): 2 browser clicks on GitHub.
 #   1. "Create GitHub App"
-#   2. "Install" — choose 'Only select repositories' and tick
-#      edri2or/or-factory-master. Do NOT choose 'All repositories'.
+#   2. "Install" — choose 'All repositories' (org-wide, same as the broker).
 #
 # Idempotent: if the 3 SM secrets already exist the job is a no-op. NOT on the
 # dispatch_workflow allowlist — the operator dispatches it from the GitHub UI.
@@ -162,7 +167,7 @@ jobs:
           {
             echo "## OIL approver App registration — Action Required"
             echo ""
-            echo "**App name**: \`${APP_NAME}\`  •  installs on \`edri2or/${TARGET_REPO}\` only"
+            echo "**App name**: \`${APP_NAME}\`  •  installs **org-wide** (all repositories, like the broker)"
             echo ""
             echo "👉 **[Start App registration](${SERVICE_URL})**"
             echo ""
@@ -170,9 +175,10 @@ jobs:
             echo "GitHub shows 'Create GitHub App' — click it."
             echo ""
             echo "### Click 2 — Install (CRITICAL: pick the right radio)"
-            echo "On the install page choose **'Only select repositories'** and tick \`edri2or/${TARGET_REPO}\`."
+            echo "On the install page choose **'All repositories'** (org-wide, the same scope as the broker)."
             echo ""
-            echo "⚠ **Do NOT pick 'All repositories'.** This identity only ever merges PRs in the factory repo."
+            echo "ℹ Org-wide is required so the loop can merge a fix in a system repo. Safety is kept by a"
+            echo "per-merge token the MCP server down-scopes to the one target repo — never a broad token at merge time."
             echo ""
             echo "Credentials are written automatically to GCP Secret Manager (project \`${GCP_PROJECT}\`):"
             echo "- \`${SECRET_PREFIX}id\`"
@@ -200,7 +206,7 @@ jobs:
             "🔧 רישום אפליקציית oil-autofix-approver — דרושות 2 לחיצות" \
             "${SERVICE_URL}" \
             '1. "Create GitHub App"' \
-            "2. \"Install\" → \"Only select repositories\" → edri2or/${TARGET_REPO}" \
+            '2. "Install" → "All repositories" (ארגוני, כמו ה-broker)' \
             "Run: ${RUN_URL}")
           PAYLOAD=$(jq -n --arg chat "$TG_CHAT_ID" --arg text "$TEXT" \
             '{chat_id:$chat, text:$text, disable_web_page_preview:true}')
@@ -240,13 +246,15 @@ jobs:
             fi
           done
 
-      - name: Verify install scope is narrow (single repo only)
+      - name: Verify install scope is org-wide and covers the factory
         if: steps.check-secrets.outputs.exists == 'false'
         run: |
           set -euo pipefail
-          # Mint an installation token for the NEW approver App, then call
-          # /installation/repositories. repository_selection=='all' would return
-          # every org repo — we assert exactly 1 (edri2or/or-factory-master).
+          # Mint an installation token for the NEW approver App, then assert the
+          # install is ORG-WIDE (repository_selection=='all', the same scope as the
+          # broker) AND that it actually covers the factory repo. Org-wide is now
+          # REQUIRED so the loop can merge a fix in a system repo; per-merge repo
+          # scoping (in the MCP server) keeps each merge isolated to one repo.
           APP_ID=$(gcloud secrets versions access latest --secret="${SECRET_PREFIX}id" --project="${GCP_PROJECT}")
           INSTALL_ID=$(gcloud secrets versions access latest --secret="${SECRET_PREFIX}installation-id" --project="${GCP_PROJECT}")
           gcloud secrets versions access latest --secret="${SECRET_PREFIX}private-key" --project="${GCP_PROJECT}" > /tmp/approver-key.pem
@@ -261,18 +269,24 @@ jobs:
             -H "Accept: application/vnd.github+json" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
             "https://api.github.com/installation/repositories?per_page=100")
-          TOTAL=$(echo "$RESP" | jq -r '.total_count // empty')
-          FIRST=$(echo "$RESP" | jq -r '.repositories[0].full_name // empty')
-          if [ "$TOTAL" = "1" ] && [ "$FIRST" = "edri2or/${TARGET_REPO}" ]; then
-            echo "PASS: install scope is narrow (1 repo: ${FIRST})"
+          SELECTION=$(echo "$RESP" | jq -r '.repository_selection // empty')
+          # Does the install reach the factory? On an org-wide install the token can
+          # read the factory repo directly (200), even if it is past the first page.
+          FACTORY_CODE=$(curl -sS -o /dev/null -w '%{http_code}' \
+            -H "Authorization: Bearer ${APP_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/edri2or/${TARGET_REPO}")
+          if [ "$SELECTION" = "all" ] && [ "$FACTORY_CODE" = "200" ]; then
+            echo "PASS: install is org-wide (repository_selection=all) and covers edri2or/${TARGET_REPO}"
           else
-            echo "::error::install scope too broad — total_count=${TOTAL} first=${FIRST}"
+            echo "::error::install scope wrong — repository_selection=${SELECTION} factory_http=${FACTORY_CODE} (expected all + 200)"
             {
               echo "## ⚠ Install scope check FAILED"
-              echo "App \`${APP_NAME}\` was installed with the wrong scope (total_count=${TOTAL}, first=\`${FIRST}\`). Recover:"
-              echo "1. Uninstall: **Settings → Developer settings → GitHub Apps → ${APP_NAME} → Uninstall**."
-              echo "2. Delete the SM secrets: \`gcloud secrets delete ${SECRET_PREFIX}id ${SECRET_PREFIX}private-key ${SECRET_PREFIX}installation-id --project=${GCP_PROJECT}\`"
-              echo "3. Re-dispatch this workflow; on click 2 pick **'Only select repositories'** → \`edri2or/${TARGET_REPO}\`."
+              echo "App \`${APP_NAME}\` was not installed org-wide (repository_selection=\`${SELECTION}\`, factory reachable=\`${FACTORY_CODE}\`). Recover:"
+              echo "1. Open: **Settings → Developer settings → GitHub Apps → ${APP_NAME} → Install App → Configure**."
+              echo "2. Under **Repository access** pick **'All repositories'**, then Save."
+              echo "3. Re-dispatch this workflow (it re-verifies the scope). No need to delete the SM secrets."
             } >> "$GITHUB_STEP_SUMMARY"
             exit 1
           fi

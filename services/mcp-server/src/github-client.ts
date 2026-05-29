@@ -76,6 +76,36 @@ async function installationToken(): Promise<string> {
   return tokenFor(brokerIdentity);
 }
 
+// Mint an installation token DOWN-SCOPED to a single repo (and a permission
+// subset). Used by the OIL approver: its App is installed org-wide (so it can
+// merge in any system repo), but every individual merge/close should hold a
+// token scoped to exactly the one repo it acts on — a GitHub installation token
+// can be narrowed to specific `repositories` + a permission subset and can never
+// exceed what the installation was granted, giving per-merge isolation
+// equivalent to an App-per-repo. Not cached (each call is for a specific repo and
+// short-lived); the caller mints once per merge/close.
+async function repoScopedToken(
+  identity: AppIdentity,
+  repo: string,
+  permissions: Record<string, string>,
+): Promise<string> {
+  const resp = await fetch(
+    `https://api.github.com/app/installations/${identity.installationId}/access_tokens`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${makeJwtForApp(identity.appId, identity.privateKey)}`,
+        Accept: 'application/vnd.github+json',
+        'X-GitHub-Api-Version': '2022-11-28',
+      },
+      body: JSON.stringify({ repositories: [repo], permissions }),
+    },
+  );
+  if (!resp.ok) throw new Error(`Repo-scoped token fetch failed (${repo}): ${resp.status}`);
+  const data = (await resp.json()) as { token: string };
+  return data.token;
+}
+
 async function ghFetchRepo(
   owner: string,
   repo: string,
@@ -359,8 +389,9 @@ async function ghFetchRepoAs(
   repo: string,
   path: string,
   init: RequestInit = {},
+  tokenOverride?: string,
 ): Promise<Response> {
-  const token = await tokenFor(identity);
+  const token = tokenOverride ?? (await tokenFor(identity));
   return fetch(`https://api.github.com/repos/${owner}/${repo}${path}`, {
     ...init,
     headers: {
@@ -386,8 +417,13 @@ export interface MergeResult {
 // GitHub GraphQL under an explicit App identity. Needed for operations REST can't
 // do — chiefly markPullRequestReadyForReview (un-drafting a PR; the REST
 // PATCH {draft:false} is silently ignored by GitHub).
-async function ghGraphQLAs(identity: AppIdentity, query: string, variables: Record<string, unknown>): Promise<unknown> {
-  const token = await tokenFor(identity);
+async function ghGraphQLAs(
+  identity: AppIdentity,
+  query: string,
+  variables: Record<string, unknown>,
+  tokenOverride?: string,
+): Promise<unknown> {
+  const token = tokenOverride ?? (await tokenFor(identity));
   const resp = await fetch('https://api.github.com/graphql', {
     method: 'POST',
     headers: {
@@ -428,11 +464,23 @@ export async function mergePullRequestAsApprover(
   owner: string = DEFAULT_OWNER,
   repo: string = DEFAULT_REPO,
 ): Promise<MergeResult> {
+  // Refuse to act on anything but a well-formed repo in our org — `repo`
+  // originates from the verified callback_data, never free input, but guard
+  // anyway so the org-wide approver install can never be aimed elsewhere.
+  if (owner !== DEFAULT_OWNER || !repo) {
+    return { merged: false, status: 400, message: `refused: invalid merge target ${owner}/${repo}` };
+  }
   try {
     const identity = getApproverIdentity();
+    // Down-scope the approver token to exactly this repo + merge perms, so the
+    // org-wide install never yields a broad token at merge time.
+    const token = await repoScopedToken(identity, repo, {
+      contents: 'write',
+      pull_requests: 'write',
+    });
 
     // 1. Resolve the PR node id + draft state, then un-draft via GraphQL.
-    const pr = (await (await ghFetchRepoAs(identity, owner, repo, `/pulls/${prNumber}`)).json().catch(() => ({}))) as {
+    const pr = (await (await ghFetchRepoAs(identity, owner, repo, `/pulls/${prNumber}`, {}, token)).json().catch(() => ({}))) as {
       node_id?: string;
       draft?: boolean;
     };
@@ -442,6 +490,7 @@ export async function mergePullRequestAsApprover(
         identity,
         'mutation($id:ID!){ markPullRequestReadyForReview(input:{pullRequestId:$id}){ pullRequest{ id isDraft } } }',
         { id: pr.node_id },
+        token,
       ).catch(() => undefined);
     }
 
@@ -451,6 +500,7 @@ export async function mergePullRequestAsApprover(
         identity,
         'mutation($id:ID!,$m:PullRequestMergeMethod!){ enablePullRequestAutoMerge(input:{pullRequestId:$id, mergeMethod:$m}){ pullRequest{ id } } }',
         { id: pr.node_id, m: mergeMethod },
+        token,
       );
       // Armed. GitHub will merge once the required checks are green.
       return { merged: false, pending: true, status: 200 };
@@ -471,7 +521,7 @@ export async function mergePullRequestAsApprover(
     const resp = await ghFetchRepoAs(identity, owner, repo, `/pulls/${prNumber}/merge`, {
       method: 'PUT',
       body: JSON.stringify({ merge_method: restMethod }),
-    });
+    }, token);
     const data = (await resp.json().catch(() => ({}))) as { merged?: boolean; sha?: string; message?: string };
     if (resp.ok && data.merged) {
       return { merged: true, sha: data.sha, status: resp.status };
@@ -495,12 +545,19 @@ export async function closePullRequestAsApprover(
   owner: string = DEFAULT_OWNER,
   repo: string = DEFAULT_REPO,
 ): Promise<MergeResult> {
+  if (owner !== DEFAULT_OWNER || !repo) {
+    return { merged: false, status: 400, message: `refused: invalid close target ${owner}/${repo}` };
+  }
   try {
     const identity = getApproverIdentity();
+    const token = await repoScopedToken(identity, repo, {
+      contents: 'write',
+      pull_requests: 'write',
+    });
     const resp = await ghFetchRepoAs(identity, owner, repo, `/pulls/${prNumber}`, {
       method: 'PATCH',
       body: JSON.stringify({ state: 'closed' }),
-    });
+    }, token);
     const data = (await resp.json().catch(() => ({}))) as { state?: string; message?: string };
     if (resp.ok && data.state === 'closed') {
       return { merged: false, status: resp.status };

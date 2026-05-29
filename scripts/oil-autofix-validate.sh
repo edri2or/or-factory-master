@@ -21,16 +21,22 @@
 # inherits no secrets) and only ever after credentials have been removed.
 #
 # Usage:  scripts/oil-autofix-validate.sh <base_sha>
-# Reads:  oil-context/fix-meta.json
+# Reads:  oil-context/fix-meta.json   (override with OIL_FIX_META — used when the
+#           candidate lives in a system checkout under ./target and this script is
+#           run with cwd=target, while fix-meta.json stays at the workspace root)
 #           {"test_cmd":"bash scripts/tests/x.sh","test_paths":["scripts/tests/x.sh"]}
 # Prints: one "VERDICT: open_pr ..." or "VERDICT: escalate — <reason>" line.
 # Exit:   0 = safe to open the draft PR; non-zero = escalate.
+#
+# The git diff, the changed-file paths, and the test files are all resolved
+# relative to the CURRENT WORKING DIRECTORY, so the same gate proves a candidate
+# in the factory tree (cwd = repo root) or in a system tree (cwd = ./target).
 
 set -uo pipefail
 
 MAX_FILES=2
 MAX_LINES=100
-META="oil-context/fix-meta.json"
+META="${OIL_FIX_META:-oil-context/fix-meta.json}"
 
 base_sha="${1:-}"
 [ -n "$base_sha" ] || { echo "VERDICT: escalate — internal: no base sha"; exit 2; }
