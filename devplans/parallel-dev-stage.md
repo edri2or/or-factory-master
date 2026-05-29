@@ -18,7 +18,7 @@ status: active
 |---|---|---|---|
 | 1 | Plan-file תמיד-per-dev + devplan gate multi-active | completed | `dev-stage.md` (×2), `check-devplan-updated.sh`, `CHANGELOG.md` |
 | 2 | Changelog gate מקבל `changelog.d/` | completed | `check-changelog-updated.sh` |
-| 3 | Changelog fragment במצב מקביל | pending | `dev-stage.md` (×2) |
+| 3 | Changelog fragment במצב מקביל | completed | `dev-stage.md` (×2), `changelog.d/` |
 | 4 | תיעוד + CHANGELOG entry | pending | `CLAUDE.md`, `CHANGELOG.md` |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
@@ -54,11 +54,11 @@ status: active
 ### שלב 3 — Changelog fragment במצב מקביל
 
 **Acceptance:**
-- [ ] `dev-stage.md` Step 3(b) מכיל את כלל הפתק המקבילי
-- [ ] Mirror זהה ב-`templates/system/`
-- [ ] `bash scripts/check-skills-mirror.sh` עובר ✓
+- [x] `dev-stage.md` Step 3(b) מכיל את כלל הפתק המקבילי
+- [x] Mirror זהה ב-`templates/system/`
+- [x] `bash scripts/check-skills-mirror.sh` עובר ✓
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם — Step 3(b) מנחה לכתוב פתק changelog.d/ כשרצים שני פיתוחים פעילים. mirror זהה. רשומת היומן של השלב הזה עצמה נכתבה כפתק (dogfooding — oil-autofix פעיל במקביל).
 
 **שינוי תוכנית:** —
 
@@ -83,3 +83,4 @@ status: active
 
 - שלב 1 הושלם — פיתוח חדש תמיד נפתח ב-devplans/, שומר-CI אוכף את כל הפיתוחים הפעילים.
 - שלב 2 הושלם — שומר-היומן מקבל גם קובץ-פתק נפרד (changelog.d/), לא רק את היומן המרכזי.
+- שלב 3 הושלם — כשרצים שני פיתוחים יחד, כל אחד כותב את היומן שלו לקובץ-פתק נפרד (במקום להתנגש בראש היומן המרכזי).
