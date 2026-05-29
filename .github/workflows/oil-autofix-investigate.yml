@@ -405,7 +405,7 @@ jobs:
             git -c user.email="factory-master-broker[bot]@users.noreply.github.com" \
                 -c user.name="factory-master-broker[bot]" \
                 -c commit.gpgsign=false \
-                commit -q -- CHANGELOG.md -m "oil-autofix: changelog entry for ${ISSUE_IDENT:-OIL}"
+                commit -q -m "oil-autofix: changelog entry for ${ISSUE_IDENT:-OIL}" -- CHANGELOG.md
           fi
 
           if ! git push "https://x-access-token:${PR_TOKEN}@github.com/edri2or/${TARGET_REPO}.git" "$BRANCH:$BRANCH" >/dev/null 2>&1; then

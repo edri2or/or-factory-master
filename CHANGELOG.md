@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 131 — fix: OIL auto-fix — correct git-commit arg order in the workflow CHANGELOG-append
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | fix | The Stage-130 re-run (OIL-20) got further — the fixer stayed at 2 files, the deterministic gate **passed**, and the open-PR step began — but the workflow's own CHANGELOG-append commit had its args in the wrong order: `git commit -q -- CHANGELOG.md -m "…"`. The `--` makes git treat everything after it as **pathspecs**, so `-m` and the message were parsed as filenames (`error: pathspec '-m' did not match any file(s)`), the commit failed, and the open-PR step exited before writing `opened=true` — so the Telegram approval step (step 12) skipped. No orphan branch/PR was created (the failure was before the push). Fix: reorder to `git commit -q -m "…" -- CHANGELOG.md` (message flag before the pathspec separator). The workflow uses `-c commit.gpgsign=false`, so signing is not involved. Verified: `yamllint` + shellcheck clean. Re-run of OIL-20 follows — this time the loop should reach the Telegram bridge. |
+
 ## Stage 130 — fix: OIL auto-fix — workflow owns the CHANGELOG entry (resolve fixer 2-file-cap vs CI tension)
 
 | PR | Type | Summary |
