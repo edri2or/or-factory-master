@@ -1,5 +1,12 @@
 # Changelog
 
+## OIL bridge smoke test — 2026-05-29T08:48Z
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | chore | Inert draft PR opened by the Stage-4 Telegram approval-bridge smoke test (mode=smoke). Proves register→Telegram→✅→merge-by-approver deterministically, without the AI fixer. Removed after the test. |
+
+
 ## Stage 133 — fix: OIL auto-fix — checkout persist-credentials:false so the broker token can push (latent 403)
 
 | PR | Type | Summary |
