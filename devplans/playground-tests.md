@@ -18,7 +18,7 @@ status: active
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
 | 1 | תשתית BATS (submodules + common helper) | completed | `.gitmodules`, `scripts/tests/bats/`, `scripts/tests/test_helper/{bats-support,bats-assert,common.bash}`, `scripts/tests/_smoke.bats` |
-| 2 | BATS לחמישה סקריפטי-ליבה | pending | `scripts/tests/{lib,check-changelog-updated,check-devplan-updated,check-actions-pinned,check-workflow-permissions}.bats`, `scripts/tests/fixtures/` |
+| 2 | BATS לחמישה סקריפטי-ליבה | completed | `scripts/tests/{lib,check-changelog-updated,check-devplan-updated,check-actions-pinned,check-workflow-permissions}.bats` |
 | 3 | Template rendering validation | pending | `scripts/tests/validate-templates.sh` |
 | 4 | Playground Tests CI workflow | pending | `.github/workflows/playground-tests.yml`, אופציונלית `.actionlintrc` |
 | 5 | עדכון `dev-stage.md` (Step 3 + Safety Rule) | pending | `.claude/commands/dev-stage.md` (+mirror אם קיים) |
@@ -46,12 +46,12 @@ status: active
 ### שלב 2 — BATS לחמישה סקריפטי-ליבה
 
 **Acceptance:**
-- [ ] חמישה קבצי `.bats` קיימים תחת `scripts/tests/`.
-- [ ] לכל סקריפט: happy path + לפחות 2 failure paths.
-- [ ] `./scripts/tests/bats/bin/bats scripts/tests/*.bats` עובר ירוק מקומית.
-- [ ] שום test לא דורש רשת/cloud creds.
+- [x] חמישה קבצי `.bats` קיימים תחת `scripts/tests/`.
+- [x] לכל סקריפט: happy path + לפחות 2 failure paths.
+- [x] `./scripts/tests/bats/bin/bats scripts/tests/*.bats` עובר ירוק מקומית — **28/28 PASS**.
+- [x] שום test לא דורש רשת/cloud creds.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם. 28 בדיקות ירוקות לוקאלית. **ממצא — באג סמוי ב-`check-actions-pinned.sh`:** ה-regex `^\s+uses:` לא תופס את הצורה `      - uses:` עם מקף-רשימה, רק את `    uses:` של reusable-workflow callers. כלומר כל ה-`- uses:` ב-steps לא נבדקים בפועל. הבדיקות מתעדות את ההתנהגות הקיימת ומסמנות את הבאג; התיקון לא בוצע (תואם למגבלה "אל תשנה את 4 השערים הקיימים"). מצריך dev-stage נפרד אחרי מרג'.
 
 **שינוי תוכנית:** —
 
@@ -131,3 +131,4 @@ status: active
 > שורה פשוטה אחת לכל שלב שהסתיים — בשפה ש-Or מבין, בלי ז'רגון.
 
 - שלב 1 הושלם — התקנתי framework של בדיקות-יחידה ל-bash (BATS) כ-3 מודולים מקובעים, וכלי-עזר משותף לכל הבדיקות. סניטי-טסט קצר עובר.
+- שלב 2 הושלם — כתבתי 5 קבצי בדיקות (אחד לכל סקריפט-ליבה), 28 בדיקות עוברות לוקאלית. גיליתי באג ישן ב-`check-actions-pinned.sh`: ה-`- uses:` הסטנדרטי של GitHub Actions לא נבדק. תיקון בנפרד.
