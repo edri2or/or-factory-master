@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 129 — chore: OIL auto-fix Stage 4 — temporary E2E fixture for live approval-bridge verification
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | chore | Temporary inert fixture for the **live end-to-end verification** of the Telegram approval bridge (the DEVPLAN stage-4 acceptance: bug → draft PR → Telegram → ✅ → merge by `oil-autofix-approver`). Re-adds `scripts/oil-selftest-draftpr.sh` (`sum_two`, documented to return `a + b` but coded `a - b`) — the same OIL-19 mechanism: nothing references or executes it (`pipeline-tests.yml` only shellcheck-lints `scripts/*.sh`, and the script is shellcheck-clean), so `main` stays green while it provides a small reproducible in-bounds bug for the loop to find + fix. A throwaway Linear issue (`action_required:false` so the live bell stays quiet) will drive the investigator → fixer → gate → broker-opened draft PR → the new `approval` step → a real Telegram ✅/❌ message; tapping ✅ merges the inert PR via the separate approver identity. Removed in a follow-up teardown PR once verified — `main` returns to identical content. No production loop/runtime logic changed. |
+
 ## Stage 128 — feat: allowlist deploy-mcp-server.yml for dispatch (activates the OIL approval bridge)
 
 | PR | Type | Summary |
