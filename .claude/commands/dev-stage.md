@@ -42,6 +42,13 @@ confirmation, in plain Hebrew. Do not touch any code yet. Wait for his OK on the
 ### Step 3: Execution Loop (one stage at a time)
 For each stage, in order:
 - **(a) Implement** the stage.
+- **(a.1) Verify via Playground** — After implementing the stage's code, push
+  to the PR branch and wait for CI. Check that the "Playground tests" status
+  check passes. If it fails, read the failure output, fix the issue, and push
+  again. Do NOT proceed to bookkeeping until the Playground check is green.
+  If Playground is not relevant to the current stage's changes (e.g., a
+  docs-only change), note "Playground: N/A — no testable changes" in the
+  progress note and proceed.
 - **(b) Update the bookkeeping** in the same change as the stage's code, so the CI gates
   stay green:
   - **Plan file**: set the stage's status (`in-progress` → `completed`) in the stages
@@ -80,6 +87,9 @@ releases the CI devplan gate), give Or a short closing summary in Hebrew, and st
 5. **Never make a large / costly / irreversible move** (real provision/deploy/teardown,
    or anything with a cost) without Or's explicit approval first.
 6. **Do not** build hooks or a `/status` command here — that is a separate later phase.
+7. **Never proceed to bookkeeping with a red Playground check** on the PR,
+   unless the stage contains only documentation or non-testable changes. If
+   Playground fails, read the output and fix before continuing.
 
 ## Examples
 
