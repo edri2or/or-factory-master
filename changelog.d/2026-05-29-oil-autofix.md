@@ -27,3 +27,9 @@
 | Type | Summary |
 |---|---|
 | chore | Stage 5 complete and verified live end-to-end (success: OIL-22 auto-closed; failure: OIL-23 left open + alerted). Remove the two temporary `scripts/tests/oil-stage5-failsmoke*.sh` demo fixtures (the permanent `oil-verify-{passmode,failmode}.sh` pair stays); throwaway test issues OIL-22/OIL-23 canceled. DEVPLAN Stage 5 → completed. |
+
+## docs: OIL Stage 6 — document the loop + the scoped exception
+
+| Type | Summary |
+|---|---|
+| docs | New `docs/oil-autofix.md` — full reference for the loop (end-to-end flow, components, safety model, triggering/testing, v1 limits). `CLAUDE.md`: add `oil-autofix-investigate.yml` + `oil-autofix-verify.yml` to the Workflows table, and a note that the OIL loop is the one sanctioned, verified, human-gated exception to "no auto-chain / no issue-based reporting". `docs/roadmap.md`: new "Phase G — OIL auto-fix loop (done)" + annotate the two "deliberately not building" bullets. Closes the development (DEVPLAN `status: completed`; Stage 7 deferred to its own `/dev-stage`). |

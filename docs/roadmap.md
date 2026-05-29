@@ -106,6 +106,21 @@ Verified end-to-end on a live test system: Telegram message → real, system-awa
 
 **Deliberately deferred to a follow-up** (the system's Postgres is Railway-private and its password isn't in SM, so GitHub Actions can't create tables/credentials there — needs live DB discovery): persistent Postgres chat memory, style-profile learning + weekly refresh (`style-refresh`), daily proactive summary (`tg-proactive`), dedup/spend logging, and approval-gated (HITL) write actions. `tg-proactive`/`style-refresh` stay inert templates until then. Existing systems are **not** auto-migrated (re-run deploy + configure to migrate). Full design: `factory-research-context.md`; status + troubleshooting: `docs/telegram-chat-bot.md`.
 
+## Phase G — feat: OIL auto-fix loop (done)
+
+The "second half" of the failure mechanism. The observability pipeline already *detects* failures and opens a Linear **OIL** ticket; Phase G adds the autonomous agent that reads the ticket, root-causes it, prepares a small fix, asks Or for one Telegram ✅, merges it (separate `oil-autofix-approver` identity, green-CI-gated), then **verifies the fix on merged `main` and closes the ticket** — or alerts and leaves it open. Or never touches a terminal. Full reference: `docs/oil-autofix.md`.
+
+Shipped as ordered `/dev-stage` stages, each merged + verified before the next:
+
+- **Stage 1** ✅ — read-only investigator workflow (`oil-autofix-investigate.yml`).
+- **Stage 2** ✅ — Linear webhook + rules-only triage in the MCP → `repository_dispatch(oil-investigate)`.
+- **Stage 3** ✅ — AI fixer + deterministic safety gate (`scripts/oil-autofix-validate.sh`) → DRAFT PR.
+- **Stage 4** ✅ — Telegram ✅/❌ approval bridge; the separate `oil-autofix-approver` App merges via native auto-merge. (GitHub Environment protection turned out to be Enterprise-only on a private repo, so the gate is Telegram + branch protection, not a GitHub Environment.)
+- **Stage 5** ✅ — post-merge verifier (`oil-autofix-verify.yml` + `scripts/oil-verify.sh`): re-run the reproducer on merged `main` → `issueUpdate(completed)` + closing comment + Telegram, or alert + leave the ticket open. Verified live end-to-end (success: OIL-22 auto-closed; failure: OIL-23 left open + alert — the failure demo itself caught + fixed a real `bash -e` bug in the verifier).
+- **Stage 6** ✅ — docs (this section + `docs/oil-autofix.md`).
+
+**Stage 7 (deferred):** widen the fixer beyond bash-runnable `scripts/*.sh` (a TS test runner, etc.) — it will start as its own `/dev-stage`. Today the fixer only touches `or-factory-master` and only code with a bash reproducer; `.github/workflows/*`, WIF/IAM, and secrets are always off-limits.
+
 ## Things we are deliberately not building
 
 The previous factory had these and they bought less than they cost:
@@ -113,9 +128,9 @@ The previous factory had these and they bought less than they cost:
 - **factory-actions MCP server.** The read-only inspection MCP (`5b6e937f-*`) already covers every verify/inspect/list we need. Building a write-tools MCP would mean more code paths to secure with no real upside.
 - **Manifests** (`factory/manifests/<system>.yml`). The state lives in GCP IAM and GitHub settings; reconstructing it from a manifest would duplicate the source of truth.
 - **Evidence records** (`factory/evidence/*.json`). The workflow runs *are* the audit log; GitHub keeps them.
-- **Issue-based reporting** (`factory-success` / `factory-failure` labels). The agent watches workflow runs in real time; Issues are async clutter.
+- **Issue-based reporting** (`factory-success` / `factory-failure` labels). The agent watches workflow runs in real time; Issues are async clutter. *(The OIL auto-fix loop (Phase G) is the deliberate, bounded exception — but it is **Linear**-issue-driven, consuming the failure tickets the observability pipeline already opens, not GitHub `factory-*` Issues. See `docs/oil-autofix.md`.)*
 - **Handoff gates / direct verification**. The factory builds; the user verifies in the same session via the inspection MCP. If verification fails, fix and re-run — no separate gate workflow.
-- **Auto-chain between workflows**. Every workflow is a separate manual dispatch. The user decides when to move to the next step.
+- **Auto-chain between workflows**. Every workflow is a separate manual dispatch. The user decides when to move to the next step. *(The OIL auto-fix loop (Phase G) is the deliberate, bounded exception: it chains investigate → fix → merge → verify → close, but every step is verified and the merge is human-gated by a Telegram ✅. See `docs/oil-autofix.md`.)*
 
 If you want one of these later, that's fine, but each one needs to justify itself against the "manual, visible, restart-from-scratch" principle in CLAUDE.md.
 
