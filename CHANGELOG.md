@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 121 — chore: OIL auto-fix Stage 3 — live draft-PR-path verification (temporary scaffold)
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | chore | Live end-to-end check of Stage 3's **draft-PR** outcome (the escalation path was already proven live on OIL-16; the fixer *autonomously opening a DRAFT PR* had not been). `oil-autofix-investigate.yml` runs only on `main` and checks out `main`, so the reproducible bug must sit on `main` during the run. Adds a tiny **inert** fixture `scripts/oil-selftest-draftpr.sh` (a `sum_two` helper documented `a + b` but coded `a - b`) — nothing references or executes it and `pipeline-tests.yml` only shellcheck-lints `scripts/*.sh`, so `main` stays green. A throwaway OIL test issue drives the real investigator → fixer → deterministic gate → an auto-opened **DRAFT** PR, which is verified and **closed without merging**; the fixture is removed immediately after, returning `main` to identical content. No production code/workflow changed; the draft PR is never merged. |
+
 ## Stage 120 — feat: OIL auto-fix Phase 1 / Stage 3 — guarded DRAFT-PR fixer
 
 | PR | Type | Summary |
