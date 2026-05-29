@@ -18,9 +18,18 @@ on:
   workflow_dispatch:
     inputs:
       issue_id:
-        description: "Linear OIL issue identifier or UUID (e.g. OIL-16)"
-        required: true
+        description: "Linear OIL issue identifier or UUID (e.g. OIL-16). Ignored when mode=smoke."
+        required: false
+        default: ""
         type: string
+      mode:
+        description: "investigate (default) | smoke — Stage-4 bridge proof: open an inert draft PR + call /oil-approval-register (no AI, deterministic)"
+        required: false
+        default: investigate
+        type: choice
+        options:
+          - investigate
+          - smoke
 
 permissions: {}
 
@@ -29,7 +38,8 @@ jobs:
     name: Investigate OIL issue (read-only)
     runs-on: ubuntu-latest
     environment: production
-    if: github.ref == 'refs/heads/main'
+    # Skip the AI investigation entirely in smoke mode (the smoke job runs instead).
+    if: github.ref == 'refs/heads/main' && (github.event_name != 'workflow_dispatch' || inputs.mode != 'smoke')
     permissions:
       contents: read
       id-token: write
@@ -277,6 +287,9 @@ jobs:
                 terraform/, or any path mentioning wif / workload-identity / secret /
                 credential / creds, or any *.pem / *.key / .env* file. Those MUST be
                 escalated to a human — do not touch them.
+              * Do NOT touch CHANGELOG.md. The workflow appends the CHANGELOG entry
+                itself after you finish, so adding one here would push the candidate
+                over the 2-file safety cap and get it escalated. Just the fix + test.
               * The test must run with plain `bash <file>` (no test framework is
                 installed). Put it under scripts/tests/ , make it exit non-zero BEFORE
                 your fix and zero AFTER it, and have it genuinely reproduce the bug.
@@ -379,6 +392,32 @@ jobs:
           ROOT=$(jq -r '.root_cause // ""' oil-context/diagnosis.json 2>/dev/null || echo "")
 
           git branch "$BRANCH" HEAD
+          git checkout -q "$BRANCH"
+
+          # The fixer is forbidden from touching CHANGELOG.md (it would breach the
+          # 2-file safety cap). But this repo's CI requires a CHANGELOG entry for
+          # any code change, so the WORKFLOW prepends one deterministically here —
+          # on the candidate branch only, AFTER the gate already vetted the
+          # AI-authored fix+test. CHANGELOG is documentation, not code, so a
+          # workflow-owned, templated entry is safer than an AI-authored one. Only
+          # prepend if the fixer didn't already add an entry (belt-and-suspenders).
+          if [ -f CHANGELOG.md ] && ! git diff --name-only "${BASE_SHA}"..HEAD | grep -qxF CHANGELOG.md; then
+            TS=$(date -u +%Y-%m-%dT%H:%MZ)
+            TMPCL=$(mktemp)
+            {
+              printf '# Changelog\n\n'
+              printf '## OIL auto-fix — %s — %s\n\n' "${ISSUE_IDENT:-OIL}" "$TS"
+              printf '| PR | Type | Summary |\n|---|---|---|\n'
+              printf '| TBD | fix | Auto-fix proposed by oil-autofix for **%s**. %s Root cause: %s. Opened as a DRAFT PR by the broker App; awaits human Telegram approval (merged by the separate oil-autofix-approver identity). The fix + repro test passed the deterministic safety gate (≤2 AI-authored files / ≤100 lines, no forbidden paths, no secrets, fail-before/pass-after). This CHANGELOG entry is appended by the workflow, not the AI. |\n\n' "${ISSUE_IDENT:-OIL}" "${SUMMARY:-fix}" "${ROOT:-n/a}"
+              tail -n +2 CHANGELOG.md
+            } > "$TMPCL"
+            mv "$TMPCL" CHANGELOG.md
+            git -c user.email="factory-master-broker[bot]@users.noreply.github.com" \
+                -c user.name="factory-master-broker[bot]" \
+                -c commit.gpgsign=false \
+                commit -q -m "oil-autofix: changelog entry for ${ISSUE_IDENT:-OIL}" -- CHANGELOG.md
+          fi
+
           if ! git push "https://x-access-token:${PR_TOKEN}@github.com/edri2or/${TARGET_REPO}.git" "$BRANCH:$BRANCH" >/dev/null 2>&1; then
             echo "opened=false" >> "$GITHUB_OUTPUT"
             echo "WARN: branch push failed — escalating."
@@ -495,3 +534,112 @@ jobs:
             echo "| PR טיוטה | ${PR_URL:-—} |"
             echo "| תגובה נכתבה ל-Linear | ${OK} |"
           } >> "$GITHUB_STEP_SUMMARY"
+
+  # ── Stage 4 — Telegram bridge smoke test (deterministic, no AI) ──────────────
+  # Proves the approval bridge end-to-end without the non-deterministic fixer:
+  # opens an INERT draft PR as the broker (a one-line comment in a throwaway
+  # file), then calls /oil-approval-register exactly as the production path does,
+  # so Or gets a real ✅/❌ Telegram message → tapping ✅ merges the inert PR as
+  # the SEPARATE oil-autofix-approver identity. Runs ONLY for mode=smoke; the
+  # production loop never reaches it. Temporary verification scaffold — removed in
+  # the Stage-4 teardown PR.
+  smoke:
+    name: Telegram bridge smoke test (mode=smoke)
+    runs-on: ubuntu-latest
+    environment: production
+    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.mode == 'smoke'
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      BROKER_SA: "factory-master-broker@or-factory-master-control.iam.gserviceaccount.com"
+      WIF_PROVIDER: "projects/140345952904/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
+      CONTROL_PROJECT: "or-factory-master-control"
+      TARGET_REPO: "or-factory-master"
+
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
+
+      - name: Authenticate to GCP via WIF
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093  # v3.0.0
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.BROKER_SA }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db  # v3.0.1
+
+      - name: Open inert DRAFT PR + register Telegram approval
+        run: |
+          set -uo pipefail
+          # Mint a short-lived broker token (contents+pull_requests write on this
+          # repo) + read the MCP admin secret — same sources as the production
+          # path. Masked; never on disk beyond the key file we shred.
+          APP_ID=$(gcloud secrets versions access latest --secret=factory-master-broker-app-id --project="$CONTROL_PROJECT")
+          INSTALL_ID=$(gcloud secrets versions access latest --secret=factory-master-broker-app-installation-id --project="$CONTROL_PROJECT")
+          gcloud secrets versions access latest --secret=factory-master-broker-app-private-key --project="$CONTROL_PROJECT" > /tmp/smoke-key.pem
+          echo "::add-mask::$APP_ID"; echo "::add-mask::$INSTALL_ID"
+          PR_TOKEN=$(bash scripts/generate-app-token.sh /tmp/smoke-key.pem "$APP_ID" "$INSTALL_ID" "" '{"contents":"write","pull_requests":"write"}' "[\"$TARGET_REPO\"]")
+          shred -u /tmp/smoke-key.pem 2>/dev/null || rm -f /tmp/smoke-key.pem
+          [ -n "$PR_TOKEN" ] || { echo "::error::could not mint broker token"; exit 1; }
+          echo "::add-mask::$PR_TOKEN"
+          MCP_ADMIN=$(gcloud secrets versions access latest --secret=mcp-server-admin-secret --project="$CONTROL_PROJECT" | tr -d '\r\n')
+          echo "::add-mask::$MCP_ADMIN"
+
+          # Build an INERT change on a fresh branch: a timestamped marker file
+          # under a throwaway dir. Nothing references it; CI stays green.
+          BRANCH="oil-smoke/$(date +%s)"
+          MARKER="docs/oil-smoke-$(date +%s).md"
+          git checkout -q -b "$BRANCH"
+          mkdir -p docs
+          printf '# OIL bridge smoke test\n\nInert marker for the Stage-4 Telegram approval-bridge live test. Safe to delete.\n' > "$MARKER"
+          # CHANGELOG entry so the PR passes the changelog gate (same reason the
+          # real path appends one). Prepend, like the production open-PR step.
+          if [ -f CHANGELOG.md ]; then
+            TMPCL=$(mktemp)
+            {
+              printf '# Changelog\n\n'
+              printf '## OIL bridge smoke test — %s\n\n' "$(date -u +%Y-%m-%dT%H:%MZ)"
+              printf '| PR | Type | Summary |\n|---|---|---|\n'
+              printf '| TBD | chore | Inert draft PR opened by the Stage-4 Telegram approval-bridge smoke test (mode=smoke). Proves register→Telegram→✅→merge-by-approver deterministically, without the AI fixer. Removed after the test. |\n\n'
+              tail -n +2 CHANGELOG.md
+            } > "$TMPCL"
+            mv "$TMPCL" CHANGELOG.md
+          fi
+          git add -A
+          git -c user.email="factory-master-broker[bot]@users.noreply.github.com" \
+              -c user.name="factory-master-broker[bot]" \
+              -c commit.gpgsign=false \
+              commit -q -m "oil-smoke: inert bridge test $(date +%s)"
+          git push "https://x-access-token:${PR_TOKEN}@github.com/edri2or/${TARGET_REPO}.git" "$BRANCH:$BRANCH"
+
+          BODY='Inert DRAFT PR for the OIL auto-fix **Stage-4 Telegram approval-bridge** live test (mode=smoke). No real code changed (a throwaway marker + a changelog line). Approve in Telegram to verify the merge happens as the separate oil-autofix-approver identity; reject/close otherwise.'
+          PR_JSON=$(jq -cn --arg t "oil-smoke: Telegram bridge live test" --arg h "$BRANCH" --arg b "$BODY" \
+            '{title:$t, head:$h, base:"main", body:$b, draft:true}')
+          RESP=$(curl -sS -m 30 -X POST \
+            -H "Authorization: Bearer ${PR_TOKEN}" -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/edri2or/${TARGET_REPO}/pulls" -d "$PR_JSON")
+          PR_URL=$(printf '%s' "$RESP" | jq -r '.html_url // empty')
+          PR_NUMBER=$(printf '%s' "$RESP" | jq -r '.number // empty')
+          [ -n "$PR_NUMBER" ] || { echo "::error::PR create failed: $(printf '%s' "$RESP" | jq -r '.message // "unknown"')"; exit 1; }
+          echo "Opened inert draft PR #${PR_NUMBER}: ${PR_URL}"
+
+          # Fire the bridge exactly as the production path does.
+          REQ=$(jq -cn --argjson pr "${PR_NUMBER}" --arg issue "OIL-SMOKE" --arg url "${PR_URL}" \
+            '{pr_number:$pr, issue_id:$issue, pr_url:$url}')
+          CODE=$(curl -sS -m 30 -o /tmp/smoke-reg.json -w '%{http_code}' \
+            -X POST "https://factory-master-actions-mcp-140345952904.me-west1.run.app/oil-approval-register" \
+            -H "X-Admin-Secret: ${MCP_ADMIN}" -H "Content-Type: application/json" --data "$REQ")
+          echo "POST /oil-approval-register -> HTTP ${CODE}"
+          {
+            echo "## OIL bridge smoke test"
+            echo "| field | value |"
+            echo "|---|---|"
+            echo "| inert draft PR | #${PR_NUMBER} (${PR_URL}) |"
+            echo "| /oil-approval-register | HTTP ${CODE} |"
+            echo ""
+            echo "Approve in Telegram → the PR merges as oil-autofix-approver. Then clean up the branch + PR."
+          } >> "$GITHUB_STEP_SUMMARY"
+          [ "${CODE}" = "200" ] || { echo "::error::register returned ${CODE}: $(jq -r '.error // empty' /tmp/smoke-reg.json 2>/dev/null)"; exit 1; }
+          echo "PASS: Telegram approval message sent for inert PR #${PR_NUMBER}."
