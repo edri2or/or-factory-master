@@ -26,7 +26,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 |---|---|---|---|
 | 1 | מנוע-איחוד (compile) + ארכוב-אוטומטי + README | completed | `scripts/compile-changelog.sh`, `.github/workflows/compile-changelog.yml`, `changelog.d/README.md` |
 | 2 | פתק כברירת-מחדל לכל PR (קונבנציה) | completed | `.claude/commands/dev-stage.md` (+mirror `templates/system/.claude/commands/dev-stage.md`), `CLAUDE.md` |
-| 3 | הפצה לתבנית המערכות | pending | `templates/system/changelog.d/`, `.github/workflows/provision-system.yml` |
+| 3 | הפצה לתבנית המערכות | completed | `templates/system/changelog.d/`, `.github/workflows/provision-system.yml` |
 | 4 | הגנת-strict על main של הפקטורי + תיעוד וסגירה | pending | branch protection (or-factory-master), `CLAUDE.md`, `docs/bootstrap-record.md` |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
@@ -64,13 +64,13 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 ### שלב 3 — הפצה לתבנית המערכות
 
 **Acceptance:**
-- [ ] `templates/system/changelog.d/` נזרע (README + `.gitkeep`).
-- [ ] `provision-system.yml` (שלב ה-scaffold-copy) מעתיק את `compile-changelog.sh` + `compile-changelog.yml` + זורע `changelog.d/` בכל מערכת חדשה.
-- [ ] אומת: רשימת ה-scaffold כוללת את הקבצים; (אופציונלי באישור Or) provision-בדיקה 0-מכסה על `factory-test-25`.
+- [x] `templates/system/changelog.d/README.md` נזרע (ה-README שומר על קיום התיקייה — אין צורך ב-`.gitkeep`).
+- [x] `provision-system.yml` (שלב ה-scaffold-copy) מעתיק את `compile-changelog.sh` (סקריפט נייד) + זורע `changelog.d/` בכל מערכת חדשה. (ה-workflow למערכות נדחה — ראה שינוי תוכנית.)
+- [x] אומת: `yamllint` + 4 שערי supply-chain ירוקים; ה-`git add` ורשימת ה-scaffold כוללים את הקבצים.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם — מערכת חדשה תקבל מעכשיו את `compile-changelog.sh` (9 הסקריפטים הניידים) + זרע `changelog.d/README.md`. ה-CHANGELOG-gate הנייד כבר מקבל פתקים, ו-`/dev-stage` כבר כותב פתקים — אז מערכת חדשה יורשת את המנגנון המלא. PR ממתין ל-CI ולאישורך לשלב 4.
 
-**שינוי תוכנית:** —
+**שינוי תוכנית:** ה-compile **workflow** למערכות נדחה (לא נשלח לתבנית). סיבה: workflow למערכת חייב זהות-מערכת (WIF + הסוד `github-app-private-key` של המערכת) שאי-אפשר לאמת בלי provision אמיתי — ושליחת workflow לא-מאומת לכל מערכת עתידית מפֵרה את "verify each step". במקום זה נשלח הסקריפט הנייד (`compile-changelog.sh`); סוכן של המערכת מריץ אותו ישירות (`bash scripts/compile-changelog.sh`). ה-workflow של הפקטורי עצמו (שלב 1) מכסה את ריפו-הפקטורי.
 
 ---
 
@@ -94,3 +94,4 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 
 - שלב 1 הושלם ומוזג — נבנה "מנוע האיחוד": כל פתק מתקפל ל-CHANGELOG ממוספר אוטומטית (המספר נקבע בריצה אחת חד-נתיבית → אפס התנגשות), והרשומות הישנות עוברות לארכיון לבד.
 - שלב 2 הושלם — הפתק הפך לברירת-המחדל לכל PR קוד (לא רק במצב מקביל). מעכשיו שום PR לא בוחר מספר Stage ידני; ה-CHANGELOG הממוספר נבנה רק ע"י מנוע-האיחוד. זה החלק שסוגר את המרוץ ל-PR רגיל.
+- שלב 3 הושלם — כל מערכת חדשה תירש את המנגנון: מקבלת את סקריפט מנוע-האיחוד + תיקיית הפתקים. (ה"כפתור" האוטומטי למערכות נדחה בינתיים — דורש חיווט-זהות שאי-אפשר לאמת בלי לבנות מערכת אמיתית; סוכן המערכת מריץ את הסקריפט ישירות.)
