@@ -17,12 +17,39 @@ process.env.GITHUB_APP_PRIVATE_KEY ||= 'test';
 
 const { parseCallbackData, isAllowed } = await import('../dist/oil-approval.js');
 
-test('parseCallbackData: valid approve', () => {
-  assert.deepEqual(parseCallbackData('oilapprove:174'), { action: 'approve', pr: 174 });
+test('parseCallbackData: legacy two-segment approve → factory repo', () => {
+  assert.deepEqual(parseCallbackData('oilapprove:174'), {
+    action: 'approve',
+    repo: 'or-factory-master',
+    pr: 174,
+  });
 });
 
-test('parseCallbackData: valid reject', () => {
-  assert.deepEqual(parseCallbackData('oilreject:171'), { action: 'reject', pr: 171 });
+test('parseCallbackData: legacy two-segment reject → factory repo', () => {
+  assert.deepEqual(parseCallbackData('oilreject:171'), {
+    action: 'reject',
+    repo: 'or-factory-master',
+    pr: 171,
+  });
+});
+
+test('parseCallbackData: three-segment carries a system repo', () => {
+  assert.deepEqual(parseCallbackData('oilapprove:factory-test-42:174'), {
+    action: 'approve',
+    repo: 'factory-test-42',
+    pr: 174,
+  });
+  assert.deepEqual(parseCallbackData('oilreject:factory-test-42:9'), {
+    action: 'reject',
+    repo: 'factory-test-42',
+    pr: 9,
+  });
+});
+
+test('parseCallbackData: rejects a malformed/hostile repo segment', () => {
+  assert.equal(parseCallbackData('oilapprove:Bad_Repo:1'), null); // uppercase + underscore
+  assert.equal(parseCallbackData('oilapprove:../etc:1'), null); // path-ish
+  assert.equal(parseCallbackData('oilapprove::1'), null); // empty repo
 });
 
 test('parseCallbackData: rejects unknown prefix', () => {
@@ -53,7 +80,8 @@ test('isAllowed: only allow-listed ids, never empty', () => {
 });
 
 test('callback_data stays within Telegram 64-byte cap', () => {
-  // Even a 10-digit PR number is comfortably under 64 bytes.
-  const data = `oilapprove:${'9'.repeat(10)}`;
+  // Worst case: the longest prefix + a max-length (30-char) system_name + a
+  // 10-digit PR number is still comfortably under 64 bytes.
+  const data = `oilapprove:${'a'.repeat(30)}:${'9'.repeat(10)}`;
   assert.ok(Buffer.byteLength(data, 'utf8') <= 64, `callback_data ${data} exceeds 64 bytes`);
 });

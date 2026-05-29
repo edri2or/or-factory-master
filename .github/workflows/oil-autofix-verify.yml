@@ -6,11 +6,19 @@ name: OIL Auto-fix — Verify (post-merge)
 # Because it triggers on push (not a PR-close event) it may safely hold a WIF
 # id-token — the same isolation the investigate workflow uses.
 #
-# It uses NO GitHub API token (default GITHUB_TOKEN or App) in its logic: the OIL
-# identifier + PR number come from the commit subject, and the reproducer is the
-# scripts/tests/*.sh that the merge commit added (recovered with git, token-free).
-# The only credentials it touches are linear-api-key + the Telegram secrets, read
-# from the control project's Secret Manager via WIF.
+# FACTORY path (push:main): it uses NO GitHub API token — the OIL identifier + PR
+# number come from the commit subject, and the reproducer is the scripts/tests/*.sh
+# the merge commit added (recovered with git, token-free). The only credentials it
+# touches are linear-api-key + the Telegram secrets, read from the control project's
+# Secret Manager via WIF.
+#
+# SYSTEM path (Stage 83, workflow_dispatch with `repo`=<system_name>): a system
+# merge lands on the SYSTEM's main, which the factory never observes, so the MCP
+# server dispatches this workflow right after it merges a system PR. Here it mints
+# a broker token DOWN-SCOPED to that one repo (contents:read) ONLY to shallow-clone
+# the system's main into ./target, then recovers the OIL id + reproducer from the
+# system's merge commit and runs the reproducer THERE — identical logic, just a
+# different tree.
 #
 # It re-runs that reproducer on the merged main tree (scripts/oil-verify.sh, in a
 # scrubbed env, after cloud creds are revoked). On success it moves the Linear issue
@@ -23,6 +31,11 @@ on:
     branches: [main]
   workflow_dispatch:
     inputs:
+      repo:
+        description: "Target repo to verify (a system_name). Empty/or-factory-master = the factory's own main."
+        required: false
+        default: ""
+        type: string
       pr_number:
         description: "Merged OIL PR number (optional)."
         required: false
@@ -42,7 +55,7 @@ on:
 permissions: {}
 
 concurrency:
-  group: oil-verify-${{ github.event.inputs.pr_number || github.sha }}
+  group: oil-verify-${{ github.event.inputs.repo || 'or-factory-master' }}-${{ github.event.inputs.pr_number || github.sha }}
   cancel-in-progress: false
 
 jobs:
@@ -88,17 +101,59 @@ jobs:
           # crafted value cannot inject shell.
           EVENT_NAME: ${{ github.event_name }}
           HEAD_MSG: ${{ github.event.head_commit.message }}
+          INPUT_REPO: ${{ inputs.repo }}
           INPUT_PR: ${{ inputs.pr_number }}
           INPUT_ISSUE: ${{ inputs.issue_id }}
           INPUT_TESTCMD: ${{ inputs.test_cmd }}
         run: |
           set -uo pipefail
 
-          # --- Source: the push commit subject (auto) OR manual dispatch inputs ---
+          # --- Which tree do we verify? The factory's own main (push, or an empty/
+          #     factory `repo` input) lives in this checkout; a SYSTEM (Stage 83,
+          #     dispatched with repo=<system_name>) is cloned into ./target. ---
+          TARGET_REPO="${INPUT_REPO:-}"
+          if [ "${EVENT_NAME:-}" != "workflow_dispatch" ]; then TARGET_REPO=""; fi
+          if [ -z "$TARGET_REPO" ] || [ "$TARGET_REPO" = "or-factory-master" ]; then
+            TARGET_DIR="."
+            TARGET_REPO="or-factory-master"
+          else
+            # Validate the system_name shape before it ever reaches a URL/clone.
+            if ! printf '%s' "$TARGET_REPO" | grep -Eq '^[a-z][a-z0-9-]{4,28}[a-z0-9]$'; then
+              echo "Refusing to verify a malformed target repo: $TARGET_REPO" >&2
+              exit 1
+            fi
+            TARGET_DIR="target"
+            APP_ID=$(gcloud secrets versions access latest --secret=factory-master-broker-app-id --project="$CONTROL_PROJECT" 2>/dev/null || true)
+            INSTALL_ID=$(gcloud secrets versions access latest --secret=factory-master-broker-app-installation-id --project="$CONTROL_PROJECT" 2>/dev/null || true)
+            gcloud secrets versions access latest --secret=factory-master-broker-app-private-key --project="$CONTROL_PROJECT" > /tmp/oil-verify-key.pem 2>/dev/null || true
+            echo "::add-mask::$APP_ID"; echo "::add-mask::$INSTALL_ID"
+            CLONE_TOKEN=""
+            if [ -s /tmp/oil-verify-key.pem ] && [ -n "$APP_ID" ] && [ -n "$INSTALL_ID" ]; then
+              CLONE_TOKEN=$(bash scripts/generate-app-token.sh /tmp/oil-verify-key.pem "$APP_ID" "$INSTALL_ID" "" '{"contents":"read","metadata":"read"}' "[\"$TARGET_REPO\"]" 2>/dev/null || true)
+            fi
+            rm -f /tmp/oil-verify-key.pem
+            [ -n "$CLONE_TOKEN" ] || { echo "Could not mint a read token to clone edri2or/$TARGET_REPO" >&2; exit 1; }
+            echo "::add-mask::$CLONE_TOKEN"
+            B64=$(printf 'x-access-token:%s' "$CLONE_TOKEN" | base64 | tr -d '\n')
+            rm -rf target
+            # depth 2 so `git diff-tree HEAD` can see what the merge commit added.
+            git -c http.extraheader="AUTHORIZATION: basic ${B64}" \
+              clone --depth 2 "https://github.com/edri2or/${TARGET_REPO}.git" target >/dev/null 2>&1 \
+              || { echo "Clone of edri2or/$TARGET_REPO failed" >&2; exit 1; }
+          fi
+
+          # --- Source: the push commit subject (auto) OR manual dispatch inputs.
+          #     For a dispatched SYSTEM verify the MCP passes only repo+pr_number, so
+          #     recover the OIL id from the system's own merge-commit subject. ---
           if [ "${EVENT_NAME:-}" = "workflow_dispatch" ]; then
             PR_NUMBER="${INPUT_PR:-}"
             ISSUE_ID="${INPUT_ISSUE:-}"
             TEST_CMD="${INPUT_TESTCMD:-}"
+            if [ -z "$ISSUE_ID" ]; then
+              SYS_MSG=$(git -C "$TARGET_DIR" log -1 --pretty=%s 2>/dev/null || true)
+              ISSUE_ID=$(printf '%s' "$SYS_MSG" | sed -n 's/^oil-autofix:[[:space:]]*\([A-Za-z0-9-]\{1,\}\).*/\1/p' | head -1)
+              [ -n "$PR_NUMBER" ] || PR_NUMBER=$(printf '%s' "$SYS_MSG" | sed -n 's/.*(#\([0-9]\{1,\}\))[[:space:]]*$/\1/p')
+            fi
           else
             # Squash-merge subject: "oil-autofix: OIL-16 — <summary> (#NN)".
             ISSUE_ID=$(printf '%s' "$HEAD_MSG" | sed -n 's/^oil-autofix:[[:space:]]*\([A-Za-z0-9-]\{1,\}\).*/\1/p' | head -1)
@@ -112,9 +167,9 @@ jobs:
 
           # --- Recover the reproducer from the merge commit (the added
           #     scripts/tests/*.sh), unless a manual override was given. Token-free:
-          #     just the merged tree we already checked out. ---
+          #     just the merged tree (the factory checkout, or the ./target clone). ---
           if [ -z "$TEST_CMD" ]; then
-            TEST_FILE=$(git diff-tree --no-commit-id --name-status -r HEAD 2>/dev/null \
+            TEST_FILE=$(git -C "$TARGET_DIR" diff-tree --no-commit-id --name-status -r HEAD 2>/dev/null \
               | awk '$1=="A" && $2 ~ /^scripts\/tests\/.*\.sh$/ {print $2}' | head -1)
             [ -n "$TEST_FILE" ] && TEST_CMD="bash $TEST_FILE"
           fi
@@ -158,9 +213,11 @@ jobs:
             echo "ISSUE_STATE_TYPE=$ISSUE_STATE_TYPE"
             echo "PR_NUMBER=${PR_NUMBER:-}"
             echo "TEST_CMD=$TEST_CMD"
+            echo "TARGET_DIR=$TARGET_DIR"
+            echo "TARGET_REPO=$TARGET_REPO"
           } >> "$GITHUB_ENV"
 
-          echo "issue=$ISSUE_IDENT uuid=${ISSUE_UUID:-none} state=${ISSUE_STATE_TYPE:-?} pr=#${PR_NUMBER:-?} test='${TEST_CMD:-none}'"
+          echo "repo=$TARGET_REPO tree=$TARGET_DIR issue=$ISSUE_IDENT uuid=${ISSUE_UUID:-none} state=${ISSUE_STATE_TYPE:-?} pr=#${PR_NUMBER:-?} test='${TEST_CMD:-none}'"
 
       - name: Drop cloud credentials before running the reproducer
         id: lockdown
@@ -198,7 +255,9 @@ jobs:
             echo "INFO: no reproducer command recovered — manual verification needed."
             exit 0
           fi
-          out=$(bash scripts/oil-verify.sh "$TEST_CMD" 2>&1); rc=$?
+          # Run in the verified tree: the factory checkout (TARGET_DIR=.) or the
+          # ./target system clone. oil-verify.sh resolves the test file in its cwd.
+          out=$(cd "${TARGET_DIR:-.}" && bash "$GITHUB_WORKSPACE/scripts/oil-verify.sh" "$TEST_CMD" 2>&1); rc=$?
           printf '%s\n' "$out"
           verdict=$(printf '%s\n' "$out" | sed -n 's/^VERDICT: //p' | head -1)
           echo "verdict=${verdict}" >> "$GITHUB_OUTPUT"

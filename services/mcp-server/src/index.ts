@@ -221,8 +221,9 @@ app.post('/oil-register-webhook', async (req: Request, res: Response) => {
 
 // OIL approval bridge — REGISTER. The oil-autofix-investigate workflow calls this
 // (admin-gated, X-Admin-Secret) right after the broker opens a DRAFT PR. It sends
-// Or one Telegram message with ✅/❌ buttons carrying the PR number. Body:
-// { pr_number, issue_id?, pr_url? }.
+// Or one Telegram message with ✅/❌ buttons carrying the target repo + PR number.
+// Body: { pr_number, issue_id?, pr_url?, repo? }. `repo` (Stage 83) names the repo
+// the fix lands in — a system repo, or omitted/the factory for a factory fix.
 app.post('/oil-approval-register', async (req: Request, res: Response) => {
   const provided = (req.headers['x-admin-secret'] as string | undefined) ?? '';
   if (!secretMatches(provided)) {
@@ -234,6 +235,7 @@ app.post('/oil-approval-register', async (req: Request, res: Response) => {
     pr_number: Number(body['pr_number']),
     issue_id: typeof body['issue_id'] === 'string' ? body['issue_id'] : undefined,
     pr_url: typeof body['pr_url'] === 'string' ? body['pr_url'] : undefined,
+    repo: typeof body['repo'] === 'string' ? body['repo'] : undefined,
   });
   res.status(r.status).json(r.body);
 });
