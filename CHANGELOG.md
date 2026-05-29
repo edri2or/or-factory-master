@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 136 — feat: parallel dev-stage — plan-file always-per-dev + devplan gate multi-active (Stage 1/4)
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | feat | Stage 1 of the parallel-dev-stage development. Two changes: (1) `dev-stage.md` Step 2 now always creates the plan at `devplans/<slug>.md` — no more conditional root-vs-devplans branch. Two parallel sessions pick different slugs → different files → no collision even if opened simultaneously. Context section updated to reflect the new purpose of reading `devplans/*.md` (parallel detection, not placement decision). Mirror applied to `templates/system/.claude/commands/dev-stage.md` (byte-identical, `check-skills-mirror.sh` passes). (2) `scripts/check-devplan-updated.sh` removes the `break` and collects ALL active plans into an array; if code was touched, at least one active plan must appear in the diff — enforcement is no longer silently lost when two developments run in parallel. Bilingual error messages preserved. |
+
 ## Stage 135 — feat: per-system agent identity in orientation docs (operator card + system purpose + human agent name)
 
 | PR | Type | Summary |
