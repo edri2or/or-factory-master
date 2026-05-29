@@ -47,7 +47,8 @@ PAYLOAD=$(jq -cn '{
           {context: "Changelog gates"},
           {context: "shellcheck + yamllint"},
           {context: "Scan for committed secrets"},
-          {context: "Supply chain gates"}
+          {context: "Supply chain gates"},
+          {context: "Playground tests"}
         ],
         strict_required_status_checks_policy: false
       }
