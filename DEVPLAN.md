@@ -22,11 +22,10 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 | 1 | חוקר קריאה-בלבד (workflow) | completed | `.github/workflows/oil-autofix-investigate.yml` |
 | 2 | פעמון Linear + סינון רעש (triage) | completed | `services/mcp-server/src/*`, `deploy-mcp-server.yml`, `oil-autofix-investigate.yml` |
 | 3 | הצעת תיקון כ-PR טיוטה | completed | `.github/workflows/oil-autofix-investigate.yml`, `scripts/oil-autofix-validate.sh` |
-| 4 | סביבת אישור + job יישום ממתין | in-progress | `.github/workflows/oil-autofix-investigate.yml`, `.github/workflows/setup-oil-environment.yml` + Environment `oil-autofix` |
-| 5 | גשר אישור טלגרם (✅/❌ → מיזוג) | pending | `services/mcp-server/src/*`, `deploy-mcp-server.yml` |
-| 6 | אימות פוסט-תיקון + סגירת תיק | pending | `.github/workflows/oil-autofix-investigate.yml` |
-| 7 | תיעוד (חריג מכוון ותחום) | pending | `docs/oil-autofix.md`, `CLAUDE.md`, `docs/roadmap.md` |
-| 8 | סביבת-בדיקות — הרחבת כיסוי התיקון | deferred | `services/mcp-server/*`, `scripts/`, `.github/workflows/pipeline-tests.yml` (TBD) |
+| 4 | גשר אישור טלגרם (✅/❌ → מיזוג) | in-progress | `services/mcp-server/src/*`, `deploy-mcp-server.yml`, `oil-autofix-investigate.yml` |
+| 5 | אימות פוסט-תיקון + סגירת תיק | pending | `.github/workflows/oil-autofix-investigate.yml` |
+| 6 | תיעוד (חריג מכוון ותחום) | pending | `docs/oil-autofix.md`, `CLAUDE.md`, `docs/roadmap.md` |
+| 7 | סביבת-בדיקות — הרחבת כיסוי התיקון | deferred | `services/mcp-server/*`, `scripts/`, `.github/workflows/pipeline-tests.yml` (TBD) |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed` / `deferred`.
 
@@ -95,48 +94,40 @@ shellcheck בודק אותו ב-CI והוא נבדק ביחידה מקומית. 
 
 ---
 
-### שלב 4 — סביבת אישור + job יישום ממתין
+### שלב 4 — גשר אישור טלגרם (✅/❌ → מיזוג)
+
+> שלב 4 המקורי ("סביבת אישור" מבוססת GitHub Environment) ושלב 5 ("גשר טלגרם") **אוחדו**
+> לשלב אחד אחרי שהשער של GitHub התברר כחסום בחבילה שלנו (ראה "שינוי תוכנית"). השער
+> והמיזוג מתבצעים שניהם דרך טלגרם.
 
 **Acceptance:**
-- [ ] Environment `oil-autofix` נוצר: required reviewer = App מאשר חדש (`oil-autofix-approver`), prevent-self-review ON, מוגבל ל-main.
-- [ ] job `apply` ממתין על הסביבה אחרי פתיחת ה-PR.
-- [ ] אומת שה-job אכן נעצר וממתין לאישור.
-
-**הערת התקדמות אחרונה:** בתהליך — PR הקוד. נוסף `setup-oil-environment.yml` (יוצר אידמפוטנטית
-את הסביבה `oil-autofix`: prevent_self_review ON, main בלבד, דרך טוקן-ברוקר עם
-`administration:write`; **לא** מוסיף reviewer כי REST לא תומך ב-App כ-reviewer — זו לחיצת-UI
-אחת חד-פעמית). ל-`oil-autofix-investigate.yml` נוספו: קלט `mode` (investigate/smoketest),
-`outputs` ל-job `investigate` (`pr_opened`/`pr_url`/`pr_number`), job **`apply`** (נעצר על
-`environment: oil-autofix` רק כשנפתח PR טיוטה — **בלי לוגיקת מיזוג**, המיזוג הוא שלב 5), ו-job
-**`gate_smoketest`** (בדיקת-עשן זולה: נוגע באותה סביבה ונעצר — בלי AI/PR/GCP). שתי הזהויות
-נשמרות נפרדות (ברוקר פותח, מאשר מאשר), ו-prevent_self_review חוסם את הברוקר מלאשר את עצמו.
-נותרו (אחרי מיזוג ה-PR): רישום אפליקציית `oil-autofix-approver`, לחיצת-UI להוספתה כ-reviewer,
-ואז `mode=smoketest` לאימות חי שהשער נעצר. רישום האפליקציה הקדים לכאן (שלב 5 מונה אותו, אבל
-שלב 4 חייב שהיא תתקיים כדי להוסיפה כ-reviewer).
-
-**שינוי תוכנית:** האימות החי נעשה ב-`mode=smoketest` (job זעיר על אותה סביבה) ולא ב-fixture
-באג + תיק Linear — מהיר, זול, חסר-תופעות-לוואי, ומוכיח ישירות שהסביבה `oil-autofix` עוצרת job.
-זו הסביבה המדויקת שבה `apply` ייעצר, אז ההוכחה זהה. נבחר על-פני workflow-דמה נפרד כי בדיקת-העשן
-חייבת לרוץ מ-main (מדיניות-הענף של הסביבה) והדרך היחידה להדליקה אגנטית היא דרך workflow שכבר
-ב-allowlist של `dispatch_workflow` — וזה היחיד.
-
----
-
-### שלב 5 — גשר אישור טלגרם (✅/❌ → מיזוג)
-
-**Acceptance:**
-- [ ] `oil-autofix-approver` App רשום + 3 סודות ב-SM; סודות `oil-approval-register-secret` + `oil-approver-telegram-allowlist`.
+- [ ] `oil-autofix-approver` App רשום (זהות נפרדת מהברוקר) + 3 סודות ב-SM; סודות `oil-approval-register-secret` + `oil-approver-telegram-allowlist`.
 - [ ] אחסון state ממתין (Firestore מועדף / GCS) + הרשאת IAM ל-runtime SA.
-- [ ] `/oil-approval-register` (שולח הודעת טלגרם אחת ✅/❌ עם approval_id אטום) + `/telegram-webhook` (secret_token + allowlist על from.id + lookup + אישור pending_deployments בזהות ה-App).
-- [ ] אומת חי: באג → טלגרם → ✅ → ה-PR ממוזג.
+- [ ] `/oil-approval-register` (admin-gated; שולח הודעת טלגרם אחת ✅/❌ עם approval_id אטום) + `/telegram-webhook` (אימות `X-Telegram-Bot-Api-Secret-Token` + allowlist על `from.id` + lookup → **מיזוג ה-PR בזהות `oil-autofix-approver`**).
+- [ ] אומת חי: באג → PR טיוטה → טלגרם → ✅ → ה-PR ממוזג (בזהות המאשר, לא הברוקר).
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** נוקה שער-ה-GitHub. שלב 4 המקורי (Environment `oil-autofix` + job
+`apply` ממתין + `gate_smoketest`) נבנה ומוזג (PR #174), אבל ה-push ל-main הוכיח חי שהשער חסום:
+GitHub החזיר **HTTP 422** ("billing plan supports … protection rule") — required reviewers /
+wait_timer / prevent_self_review על **repo פרטי** הם **Enterprise-only**, והארגון ב-Team. ה-PR
+שניקה (`setup-oil-environment.yml` נמחק; `oil-autofix-investigate.yml` הוחזר למצב נקי של סוף-
+שלב-3, בלי `apply`/`gate_smoketest`/`mode`/`outputs`; ה-Environment הריק נמחק מה-repo). השער
+עובר לטלגרם. **נותר (בנייה נפרדת, מתחילה ברישום אפליקציה — דורש אישור Or):** הגשר עצמו לפי
+ה-Acceptance למעלה. הקוד הקיים שישמש בשימוש-חוזר: דפוס HMAC + raw-body מ-`handleLinearWebhook`,
+`sendTelegramMessage` (להרחיב ל-inline-keyboard), דפוס admin-gate מ-`/oil-register-webhook`,
+ו-`register-system-app.yml` לרישום האפליקציה.
 
-**שינוי תוכנית:** —
+**שינוי תוכנית:** **שער-ה-GitHub ננטש לטובת טלגרם, ושלבים 4+5 אוחדו.** הסיבה: חוקי-הגנה על
+environment ב-repo פרטי דורשים GitHub Enterprise (אומת חד-משמעית מול ה-API: branch-policy=200,
+אבל `prevent_self_review`=422 ו-`required_reviewers`=422, וב-changelog רשמי של GitHub). ה-
+Environment היה מה שהפריד את "השער" (4) מ"המיזוג" (5); בלעדיו הם מנגנון טלגרם אחד. הפרדת-
+הזהויות נשמרת: הברוקר פותח את ה-PR, ואפליקציית `oil-autofix-approver` (זהות נפרדת, הרשאות
+`contents`+`pull_requests` write בלבד) ממזגת — רק אחרי אימות לחיצת ה-✅ בטלגרם (secret_token +
+allowlist על `from.id`). זו הגנה אפליקטיבית במקום הגנת-פלטפורמה.
 
 ---
 
-### שלב 6 — אימות פוסט-תיקון + סגירת תיק
+### שלב 5 — אימות פוסט-תיקון + סגירת תיק
 
 **Acceptance:**
 - [ ] אחרי מיזוג + CI ירוק → אימות (reproducer / re-dispatch בטוח של ה-workflow שנכשל).
@@ -149,7 +140,7 @@ shellcheck בודק אותו ב-CI והוא נבדק ביחידה מקומית. 
 
 ---
 
-### שלב 7 — תיעוד (חריג מכוון ותחום)
+### שלב 6 — תיעוד (חריג מכוון ותחום)
 
 **Acceptance:**
 - [ ] `docs/oil-autofix.md` חדש; רשומת CHANGELOG.
@@ -161,9 +152,9 @@ shellcheck בודק אותו ב-CI והוא נבדק ביחידה מקומית. 
 
 ---
 
-### שלב 8 — סביבת-בדיקות: הרחבת כיסוי התיקון (דחוי)
+### שלב 7 — סביבת-בדיקות: הרחבת כיסוי התיקון (דחוי)
 
-> השלב הזה דחוי במכוון. הלולאה (שלבים 1–7) נסגרת ומסומנת `completed` כרגיל; שלב 8 *מתבגר
+> השלב הזה דחוי במכוון. הלולאה (שלבים 1–6) נסגרת ומסומנת `completed` כרגיל; שלב 7 *מתבגר
 > לפיתוח נפרד* (משלו `/dev-stage`) כשמתחילים אותו — כך הוא לעולם לא משאיר את התוכנית `active`
 > ולא תופס את שער ה-CI לאורך זמן.
 
@@ -189,3 +180,4 @@ shellcheck בודק אותו ב-CI והוא נבדק ביחידה מקומית. 
 - שלב 1 הושלם — "החוקר" (workflow קריאה-בלבד) נבנה, עבר את כל בדיקות ה-CI, ומוזג (PR #164). אימות חי הועבר ל-PR 2.
 - שלב 2 הושלם — ה"פעמון" מ-Linear חובר: תקלה חדשה מדליקה עכשיו את החוקר לבד, ורישום ה-webhook מתבצע אוטומטית בכל פריסה. בדרך גילינו ותיקנו באג שמנע מהחוקר לרוץ כשהמערכת (ולא בן-אדם) מפעילה אותו.
 - שלב 3 הושלם — כשהחוקר מזהה באג קטן ובטוח בקוד של הפקטורי, הוא עכשיו גם **מכין תיקון ופותח אותו כ-PR טיוטה** (לא ממוזג לבד — מחכה לאישור). אם התיקון מסוכן, גדול, או שאי-אפשר להוכיח אותו בבדיקה — הוא פשוט מסביר ומסלים אליך, בלי לגעת בקוד. שמנו שכבות אבטחה כדי שה-AI לא יוכל לעשות נזק.
+- שלב 4 בתהליך — תכננו "חדר המתנה לאישור" דרך GitHub, אבל התברר חי שהתכונה חסומה בחבילה שלנו (היא דורשת חבילת פרימיום של GitHub). אז שינינו כיוון: **האישור יעבור דרך טלגרם** — תקבל הודעה אחת עם ✅/❌ ובלחיצה התיקון יתמזג. זה גם מאחד את מה שהיה אמור להיות שני שלבים לאחד. ניקינו את הקוד שכבר לא רלוונטי; את גשר הטלגרם עצמו נבנה בצעד הבא (שמתחיל ברישום אפליקציה חדשה — אבקש את אישורך).
