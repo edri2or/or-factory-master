@@ -117,6 +117,18 @@ wait_timer / prevent_self_review על **repo פרטי** הם **Enterprise-only**
 `sendTelegramMessage` (להרחיב ל-inline-keyboard), דפוס admin-gate מ-`/oil-register-webhook`,
 ו-`register-system-app.yml` לרישום האפליקציה.
 
+**PR-A (קוד ה-MCP — רדום עד פריסה):** נכתב כל קוד הגשר בצד ה-MCP. `github-client.ts` הוכלל
+לתמוך בזהות-אפליקציה שנייה (`tokenFor(identity)`; מסלול הברוקר ללא שינוי התנהגותי) + נוספו
+`mergePullRequestAsApprover`/`closePullRequestAsApprover` (זהות `oil-autofix-approver` מ-env
+`OIL_APPROVER_*`, lazy; `approverConfigured()` מחזיר false עד שהסודות מותקנים). מודול חדש
+`oil-approval.ts`: `registerApproval` (שולח הודעת טלגרם אחת עם כפתורי ✅/❌ שנושאים את מספר
+ה-PR ב-`callback_data` — **בלי state בשרת**), `handleTelegramCallback` (allowlist על `from.id`
+→ מיזוג/סגירה בזהות המאשר), ו-`parseCallbackData`/`isAllowed` (טהורים, נבדקו ביחידה).
+`index.ts`: route `/oil-approval-register` (admin-gated) + `/telegram-webhook` (secret_token
+gated, תמיד 200). `observability-client.ts`: `sendTelegramKeyboard`/`answerCallbackQuery`/
+`editTelegramMessage`. הכל רדום עד שהאפליקציה תירשם + ה-MCP ייפרס (PR-B). אומת: `tsc` נקי,
+7 בדיקות-יחידה ירוקות (`npm test`).
+
 **שינוי תוכנית:** **שער-ה-GitHub ננטש לטובת טלגרם, ושלבים 4+5 אוחדו.** הסיבה: חוקי-הגנה על
 environment ב-repo פרטי דורשים GitHub Enterprise (אומת חד-משמעית מול ה-API: branch-policy=200,
 אבל `prevent_self_review`=422 ו-`required_reviewers`=422, וב-changelog רשמי של GitHub). ה-

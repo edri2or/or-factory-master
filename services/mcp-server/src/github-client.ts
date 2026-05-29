@@ -23,23 +23,43 @@ interface CachedToken {
   expiresAt: number;
 }
 
-let cached: CachedToken | null = null;
-
-function makeJwt(): string {
-  const now = Math.floor(Date.now() / 1000);
-  return jwt.sign({ iat: now - 60, exp: now + 540, iss: APP_ID }, PRIVATE_KEY, { algorithm: 'RS256' });
+// One App identity (id + installation + key) plus its own token cache. The
+// broker is the default identity used by every existing tool; a second identity
+// (the OIL auto-fix approver, which MERGES PRs) is constructed lazily from its
+// own OIL_APPROVER_* env vars so a missing approver config never breaks the
+// broker path.
+interface AppIdentity {
+  appId: string;
+  installationId: string;
+  privateKey: string;
+  cached: CachedToken | null;
 }
 
-async function installationToken(): Promise<string> {
+const brokerIdentity: AppIdentity = {
+  appId: APP_ID,
+  installationId: APP_INSTALLATION_ID,
+  privateKey: PRIVATE_KEY,
+  cached: null,
+};
+
+function makeJwtForApp(appId: string, privateKey: string): string {
+  const now = Math.floor(Date.now() / 1000);
+  return jwt.sign({ iat: now - 60, exp: now + 540, iss: appId }, privateKey, { algorithm: 'RS256' });
+}
+
+// Mint (and cache) an installation access token for the given App identity.
+// Generic over the identity so broker + approver share one code path; each keeps
+// its own cache on its AppIdentity record.
+async function tokenFor(identity: AppIdentity): Promise<string> {
   const bufferMs = 5 * 60 * 1000;
-  if (cached && cached.expiresAt - Date.now() > bufferMs) return cached.token;
+  if (identity.cached && identity.cached.expiresAt - Date.now() > bufferMs) return identity.cached.token;
 
   const resp = await fetch(
-    `https://api.github.com/app/installations/${APP_INSTALLATION_ID}/access_tokens`,
+    `https://api.github.com/app/installations/${identity.installationId}/access_tokens`,
     {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${makeJwt()}`,
+        Authorization: `Bearer ${makeJwtForApp(identity.appId, identity.privateKey)}`,
         Accept: 'application/vnd.github+json',
         'X-GitHub-Api-Version': '2022-11-28',
       },
@@ -48,8 +68,12 @@ async function installationToken(): Promise<string> {
 
   if (!resp.ok) throw new Error(`Installation token fetch failed: ${resp.status}`);
   const data = (await resp.json()) as { token: string; expires_at: string };
-  cached = { token: data.token, expiresAt: new Date(data.expires_at).getTime() };
-  return cached.token;
+  identity.cached = { token: data.token, expiresAt: new Date(data.expires_at).getTime() };
+  return identity.cached.token;
+}
+
+async function installationToken(): Promise<string> {
+  return tokenFor(brokerIdentity);
 }
 
 async function ghFetchRepo(
@@ -285,4 +309,121 @@ export async function fetchJobLogs(jobId: string, opts: LogReadOptions = {}): Pr
   const resp = await ghFetchRepo(owner, repo, `/actions/jobs/${jobId}/logs`, { redirect: 'follow' });
   if (!resp.ok) throw new Error(`Job logs fetch failed for ${owner}/${repo} job ${jobId}: ${resp.status}`);
   return filterLogText(await resp.text(), opts);
+}
+
+// ── OIL auto-fix approver identity (SECOND App — merges/closes PRs) ──────────────
+// A distinct GitHub App from the broker, with only contents:write +
+// pull_requests:write. The OIL loop's broker opens a DRAFT PR; this separate
+// identity performs the merge after a verified human Telegram ✅ — so the same
+// principal can never both author and merge. Built lazily from its own env vars
+// (mounted by deploy-mcp-server.yml); when they are absent the approver is simply
+// unavailable and approverConfigured() returns false (the broker path is intact).
+const OIL_APPROVER_APP_ID = process.env.OIL_APPROVER_APP_ID;
+const OIL_APPROVER_INSTALLATION_ID = process.env.OIL_APPROVER_INSTALLATION_ID;
+const OIL_APPROVER_RAW_KEY = process.env.OIL_APPROVER_PRIVATE_KEY;
+
+let approverIdentity: AppIdentity | null = null;
+
+export function approverConfigured(): boolean {
+  return Boolean(OIL_APPROVER_APP_ID && OIL_APPROVER_INSTALLATION_ID && OIL_APPROVER_RAW_KEY);
+}
+
+function getApproverIdentity(): AppIdentity {
+  if (!approverConfigured()) {
+    throw new Error('OIL approver App not configured (OIL_APPROVER_APP_ID/_INSTALLATION_ID/_PRIVATE_KEY)');
+  }
+  if (!approverIdentity) {
+    approverIdentity = {
+      appId: OIL_APPROVER_APP_ID as string,
+      installationId: OIL_APPROVER_INSTALLATION_ID as string,
+      // Same literal-\n restoration as the broker key (Secret Manager / Railway).
+      privateKey: (OIL_APPROVER_RAW_KEY as string).replace(/\\n/g, '\n'),
+      cached: null,
+    };
+  }
+  return approverIdentity;
+}
+
+// Generic repo fetch under an explicit App identity (mirrors ghFetchRepo, which
+// is hardwired to the broker). Used only by the approver merge/close calls.
+async function ghFetchRepoAs(
+  identity: AppIdentity,
+  owner: string,
+  repo: string,
+  path: string,
+  init: RequestInit = {},
+): Promise<Response> {
+  const token = await tokenFor(identity);
+  return fetch(`https://api.github.com/repos/${owner}/${repo}${path}`, {
+    ...init,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/vnd.github+json',
+      'X-GitHub-Api-Version': '2022-11-28',
+      'Content-Type': 'application/json',
+      ...(init.headers ?? {}),
+    },
+  });
+}
+
+export interface MergeResult {
+  merged: boolean;
+  sha?: string;
+  status: number;
+  message?: string;
+}
+
+// Merge a PR as the approver App. A draft PR cannot be merged, so this first
+// marks it ready-for-review (best-effort) then PUTs the merge. Returns a
+// structured result (never throws) so the Telegram handler can report cleanly.
+export async function mergePullRequestAsApprover(
+  prNumber: number,
+  mergeMethod: 'merge' | 'squash' | 'rebase' = 'squash',
+  owner: string = DEFAULT_OWNER,
+  repo: string = DEFAULT_REPO,
+): Promise<MergeResult> {
+  try {
+    const identity = getApproverIdentity();
+    // A draft must be marked ready before it can merge. Best-effort: ignore the
+    // outcome (if it's already non-draft this is a harmless no-op-ish call).
+    await ghFetchRepoAs(identity, owner, repo, `/pulls/${prNumber}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ draft: false }),
+    }).catch(() => undefined);
+
+    const resp = await ghFetchRepoAs(identity, owner, repo, `/pulls/${prNumber}/merge`, {
+      method: 'PUT',
+      body: JSON.stringify({ merge_method: mergeMethod }),
+    });
+    const data = (await resp.json().catch(() => ({}))) as { merged?: boolean; sha?: string; message?: string };
+    if (resp.ok && data.merged) {
+      return { merged: true, sha: data.sha, status: resp.status };
+    }
+    return { merged: false, status: resp.status, message: data.message ?? `merge HTTP ${resp.status}` };
+  } catch (e) {
+    return { merged: false, status: 0, message: String(e).slice(0, 200) };
+  }
+}
+
+// Close a PR without merging (the ❌ path), as the approver App. Structured,
+// never-throws result. The branch is left for the workflow/operator to prune.
+export async function closePullRequestAsApprover(
+  prNumber: number,
+  owner: string = DEFAULT_OWNER,
+  repo: string = DEFAULT_REPO,
+): Promise<MergeResult> {
+  try {
+    const identity = getApproverIdentity();
+    const resp = await ghFetchRepoAs(identity, owner, repo, `/pulls/${prNumber}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ state: 'closed' }),
+    });
+    const data = (await resp.json().catch(() => ({}))) as { state?: string; message?: string };
+    if (resp.ok && data.state === 'closed') {
+      return { merged: false, status: resp.status };
+    }
+    return { merged: false, status: resp.status, message: data.message ?? `close HTTP ${resp.status}` };
+  } catch (e) {
+    return { merged: false, status: 0, message: String(e).slice(0, 200) };
+  }
 }
