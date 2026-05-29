@@ -380,9 +380,34 @@ export interface MergeResult {
   message?: string;
 }
 
-// Merge a PR as the approver App. A draft PR cannot be merged, so this first
-// marks it ready-for-review (best-effort) then PUTs the merge. Returns a
-// structured result (never throws) so the Telegram handler can report cleanly.
+// GitHub GraphQL under an explicit App identity. Needed for operations REST can't
+// do — chiefly markPullRequestReadyForReview (un-drafting a PR; the REST
+// PATCH {draft:false} is silently ignored by GitHub).
+async function ghGraphQLAs(identity: AppIdentity, query: string, variables: Record<string, unknown>): Promise<unknown> {
+  const token = await tokenFor(identity);
+  const resp = await fetch('https://api.github.com/graphql', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/vnd.github+json',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ query, variables }),
+  });
+  const json = (await resp.json().catch(() => ({}))) as { data?: unknown; errors?: Array<{ message: string }> };
+  if (json.errors && json.errors.length > 0) throw new Error(`GraphQL: ${json.errors[0].message}`);
+  return json.data;
+}
+
+// Merge a PR as the approver App. Three things, in order:
+//  1. Un-draft it via GraphQL markPullRequestReadyForReview — a draft PR cannot
+//     be merged, and the REST PATCH {draft:false} is silently ignored.
+//  2. Poll briefly for the PR to become mergeable (branch protection requires the
+//     CI checks green; the message is sent at PR-open so checks may still be
+//     running when the human taps ✅ a moment later). We RESPECT branch
+//     protection — we wait for green, we don't bypass it.
+//  3. PUT the merge.
+// Returns a structured result (never throws) so the Telegram handler reports cleanly.
 export async function mergePullRequestAsApprover(
   prNumber: number,
   mergeMethod: 'merge' | 'squash' | 'rebase' = 'squash',
@@ -391,13 +416,36 @@ export async function mergePullRequestAsApprover(
 ): Promise<MergeResult> {
   try {
     const identity = getApproverIdentity();
-    // A draft must be marked ready before it can merge. Best-effort: ignore the
-    // outcome (if it's already non-draft this is a harmless no-op-ish call).
-    await ghFetchRepoAs(identity, owner, repo, `/pulls/${prNumber}`, {
-      method: 'PATCH',
-      body: JSON.stringify({ draft: false }),
-    }).catch(() => undefined);
 
+    // 1. Resolve the PR node id + draft state, then un-draft via GraphQL.
+    const pr = (await (await ghFetchRepoAs(identity, owner, repo, `/pulls/${prNumber}`)).json().catch(() => ({}))) as {
+      node_id?: string;
+      draft?: boolean;
+    };
+    if (pr.node_id && pr.draft) {
+      await ghGraphQLAs(
+        identity,
+        'mutation($id:ID!){ markPullRequestReadyForReview(input:{pullRequestId:$id}){ pullRequest{ id isDraft } } }',
+        { id: pr.node_id },
+      ).catch(() => undefined); // best-effort; merge attempt below is the real gate
+    }
+
+    // 2. Poll up to ~90s for mergeability (CI green under branch protection).
+    //    mergeable_state: 'clean' = good; 'blocked'/'unstable' = checks pending or
+    //    required reviews; 'dirty' = conflicts. We retry on the transient ones.
+    let lastState = 'unknown';
+    for (let i = 0; i < 18; i++) {
+      const s = (await (await ghFetchRepoAs(identity, owner, repo, `/pulls/${prNumber}`)).json().catch(() => ({}))) as {
+        mergeable_state?: string;
+        draft?: boolean;
+      };
+      lastState = s.mergeable_state ?? 'unknown';
+      if (!s.draft && (lastState === 'clean' || lastState === 'has_hooks')) break;
+      if (lastState === 'dirty') return { merged: false, status: 409, message: 'merge conflict (mergeable_state=dirty)' };
+      await new Promise((r) => setTimeout(r, 5000));
+    }
+
+    // 3. Attempt the merge.
     const resp = await ghFetchRepoAs(identity, owner, repo, `/pulls/${prNumber}/merge`, {
       method: 'PUT',
       body: JSON.stringify({ merge_method: mergeMethod }),
@@ -406,7 +454,11 @@ export async function mergePullRequestAsApprover(
     if (resp.ok && data.merged) {
       return { merged: true, sha: data.sha, status: resp.status };
     }
-    return { merged: false, status: resp.status, message: data.message ?? `merge HTTP ${resp.status}` };
+    return {
+      merged: false,
+      status: resp.status,
+      message: data.message ? `${data.message} (mergeable_state=${lastState})` : `merge HTTP ${resp.status} (mergeable_state=${lastState})`,
+    };
   } catch (e) {
     return { merged: false, status: 0, message: String(e).slice(0, 200) };
   }
