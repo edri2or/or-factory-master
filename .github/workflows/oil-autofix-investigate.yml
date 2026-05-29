@@ -18,18 +18,9 @@ on:
   workflow_dispatch:
     inputs:
       issue_id:
-        description: "Linear OIL issue identifier or UUID (e.g. OIL-16). Ignored when mode=smoketest."
-        required: false
-        default: ""
+        description: "Linear OIL issue identifier or UUID (e.g. OIL-16)"
+        required: true
         type: string
-      mode:
-        description: "investigate (default) | smoketest — Stage-4 gate proof: no AI, no PR, just pause on the oil-autofix environment"
-        required: false
-        default: investigate
-        type: choice
-        options:
-          - investigate
-          - smoketest
 
 permissions: {}
 
@@ -38,16 +29,10 @@ jobs:
     name: Investigate OIL issue (read-only)
     runs-on: ubuntu-latest
     environment: production
-    # Skip the whole investigation in smoketest mode (Stage-4 gate proof only).
-    if: github.ref == 'refs/heads/main' && (github.event_name != 'workflow_dispatch' || inputs.mode != 'smoketest')
+    if: github.ref == 'refs/heads/main'
     permissions:
       contents: read
       id-token: write
-    # Surfaced to the Stage-4 `apply` gate: did Stage 3 open a draft PR, and which one.
-    outputs:
-      pr_opened: ${{ steps.openpr.outputs.opened }}
-      pr_url: ${{ steps.openpr.outputs.pr_url }}
-      pr_number: ${{ steps.openpr.outputs.pr_number }}
 
     env:
       BROKER_SA: "factory-master-broker@or-factory-master-control.iam.gserviceaccount.com"
@@ -462,57 +447,3 @@ jobs:
             echo "| PR טיוטה | ${PR_URL:-—} |"
             echo "| תגובה נכתבה ל-Linear | ${OK} |"
           } >> "$GITHUB_STEP_SUMMARY"
-
-  # ── Stage 4 — the approval gate ──────────────────────────────────────────────
-  # When (and only when) Stage 3 opened a draft PR, this job runs against the
-  # `oil-autofix` environment. That environment's required reviewer is the
-  # SEPARATE `oil-autofix-approver` App, and prevent_self_review is ON — so the
-  # broker App that drove this run (and opened the PR) can NEVER approve it. The
-  # job therefore PAUSES here, "Waiting", until the approver acts. Approval +
-  # the actual merge are Stage 5 (the Telegram bridge); this job deliberately
-  # contains NO merge logic — once approved it only records that the gate opened.
-  apply:
-    name: Apply approved fix (gate — no merge)
-    needs: investigate
-    runs-on: ubuntu-latest
-    environment: oil-autofix
-    if: github.ref == 'refs/heads/main' && needs.investigate.outputs.pr_opened == 'true'
-    permissions: {}
-    steps:
-      - name: Gate opened — merge deferred to Stage 5
-        env:
-          PR_URL: ${{ needs.investigate.outputs.pr_url }}
-          PR_NUMBER: ${{ needs.investigate.outputs.pr_number }}
-        run: |
-          set -uo pipefail
-          # Reaching this step means the oil-autofix environment was approved by
-          # oil-autofix-approver (a human-driven, second identity). Stage 4 stops
-          # at proving the pause; it merges NOTHING. Stage 5 wires the approval +
-          # merge. Keep this body inert.
-          echo "✅ oil-autofix gate approved for draft PR #${PR_NUMBER:-?} (${PR_URL:-n/a})."
-          echo "Merge is intentionally deferred to Stage 5 (Telegram approval bridge)."
-          {
-            echo "## OIL auto-fix — approval gate"
-            echo ""
-            echo "Gate **approved** for draft PR #${PR_NUMBER:-?}: ${PR_URL:-—}"
-            echo ""
-            echo "_Stage 4 proves the pause only — no merge happens here. Stage 5 performs the merge._"
-          } >> "$GITHUB_STEP_SUMMARY"
-
-  # ── Stage 4 — gate smoke test (verification only) ────────────────────────────
-  # A zero-cost way to prove the gate pauses, without running the AI or opening a
-  # real PR: dispatch this workflow with mode=smoketest. This job references the
-  # same `oil-autofix` environment as `apply`, so it pauses in exactly the same
-  # "Waiting" state. It does nothing else — no AI, no PR, no GCP, no merge — and
-  # is never reached by the production loop (repository_dispatch / mode=investigate).
-  gate_smoketest:
-    name: Gate smoke test (pauses on oil-autofix)
-    runs-on: ubuntu-latest
-    environment: oil-autofix
-    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && inputs.mode == 'smoketest'
-    permissions: {}
-    steps:
-      - name: Reached after approval (smoke test)
-        run: |
-          echo "Smoke test: the oil-autofix gate released this job."
-          echo "This path runs ONLY for mode=smoketest and merges nothing."

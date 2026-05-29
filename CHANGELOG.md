@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 123 — chore: OIL auto-fix Stage 4 — revert blocked GitHub-environment gate, pivot to Telegram
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | chore | Stage 122 built the approval gate as a GitHub **Environment** (`oil-autofix`) with a required-reviewer App + `prevent_self_review`. On merge, the auto-triggered `setup-oil-environment.yml` proved **live** that this is impossible on our plan: GitHub returned **HTTP 422** — environment protection rules (`required_reviewers`, `wait_timer`, `prevent_self_review`) are **Enterprise-only for private repositories**, and `edri2or` is on the **Team** plan. Confirmed unambiguously via the REST API (branch-policy PUT = 200, but `prevent_self_review` = 422 and `required_reviewers` = 422) and GitHub's own changelog/docs. This PR **reverts the blocked gate** and pivots the approval mechanism to **Telegram** (which also merges the original stages 4+5 into one): deletes `.github/workflows/setup-oil-environment.yml` (it can only ever 422); restores `oil-autofix-investigate.yml` to its clean end-of-Stage-3 shape — removes the `apply` + `gate_smoketest` jobs (both referenced the blocked `environment: oil-autofix`), the `mode` input, and the `investigate` job `outputs`, and restores `issue_id` to `required: true`. **Kept** the harmless `pr_number` capture in the open-PR step (it will feed the Telegram bridge). The empty `oil-autofix` environment GitHub auto-created during the failed run was already deleted via the API (HTTP 204) — no repo residue. **Why this matters:** the merged `apply` job would otherwise let GitHub auto-create an unprotected `oil-autofix` environment on the next draft PR and log "✅ gate approved" with no real approval — a misleading phantom gate. The new gate (separate `oil-autofix-approver` App merging only after a verified Telegram ✅) is the next step and begins with an operator-gated App registration. DEVPLAN: stages 4+5 merged into "Telegram approval bridge" (stage 4, in-progress); stages 6→5, 7→6, 8→7 renumbered. No production loop logic changed; nothing auto-merged. |
+
 ## Stage 122 — feat: OIL auto-fix Stage 4 — approval gate (oil-autofix environment + waiting `apply` job)
 
 | PR | Type | Summary |
