@@ -1,11 +1,10 @@
 # Changelog
 
-## OIL bridge smoke test — 2026-05-29T11:18Z
+## Stage 139 — chore: OIL Stage-4 teardown — remove smoke scaffold + fixture; loop verified live
 
 | PR | Type | Summary |
 |---|---|---|
-| TBD | chore | Inert draft PR opened by the Stage-4 Telegram approval-bridge smoke test (mode=smoke). Proves register→Telegram→✅→merge-by-approver deterministically, without the AI fixer. Removed after the test. |
-
+| TBD | chore | Stage-4 (Telegram approval bridge) is verified end-to-end and SAFE, so this removes the temporary verification scaffolding. The live proof: **positive** — inert PR #198 was merged by the separate `oil-autofix-approver[bot]` (not the broker) and ONLY because its 4 CI checks were green; **negative** — a deliberately red PR (#199, failing `Changelog gates`) was rejected at merge with `405 Required status check "Changelog gates" is failing`, proving the new platform lock (branch protection on `main`) + the approver's native auto-merge both refuse a red merge — exactly the PR #190 bug, now closed from both directions. Teardown: removed the `smoke` job + `mode` input from `oil-autofix-investigate.yml` (back to the single read-only `investigate` job), deleted the `scripts/oil-selftest-draftpr.sh` fixture, cleaned the inert `docs/oil-smoke-*.md` marker + stray smoke changelog entry that the last smoke run left on `main`, and closed the stale smoke PR #188 + pruned all `oil-smoke/*` / `oil-negtest/*` branches. No change to the production OIL loop or the MCP bridge code. Verified: `yamllint` + shellcheck clean; the workflow parses to just `investigate` (12 steps). |
 
 ## Stage 138 — fix: OIL approver merges SAFELY (native auto-merge, no mergeable_state trust) + gha-creds leak cleanup
 

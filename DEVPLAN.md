@@ -22,7 +22,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 | 1 | חוקר קריאה-בלבד (workflow) | completed | `.github/workflows/oil-autofix-investigate.yml` |
 | 2 | פעמון Linear + סינון רעש (triage) | completed | `services/mcp-server/src/*`, `deploy-mcp-server.yml`, `oil-autofix-investigate.yml` |
 | 3 | הצעת תיקון כ-PR טיוטה | completed | `.github/workflows/oil-autofix-investigate.yml`, `scripts/oil-autofix-validate.sh` |
-| 4 | גשר אישור טלגרם (✅/❌ → מיזוג) | in-progress | `services/mcp-server/src/*`, `deploy-mcp-server.yml`, `oil-autofix-investigate.yml` |
+| 4 | גשר אישור טלגרם (✅/❌ → מיזוג) | completed | `services/mcp-server/src/*`, `deploy-mcp-server.yml`, `oil-autofix-investigate.yml` |
 | 5 | אימות פוסט-תיקון + סגירת תיק | pending | `.github/workflows/oil-autofix-investigate.yml` |
 | 6 | תיעוד (חריג מכוון ותחום) | pending | `docs/oil-autofix.md`, `CLAUDE.md`, `docs/roadmap.md` |
 | 7 | סביבת-בדיקות — הרחבת כיסוי התיקון | deferred | `services/mcp-server/*`, `scripts/`, `.github/workflows/pipeline-tests.yml` (TBD) |
@@ -217,6 +217,16 @@ polling ל-`mergeable_state=clean` עד ~90s (מכבד branch protection); (ג) 
 אמון ב-mergeable_state); smoke מוסיף רק 2 קבצים מפורשים; root `.gitignore` ל-gha-creds; ניקוי
 הקבצים שדלפו מ-main. **נותר:** workflow חד-פעמי ל-branch protection (required checks + no-bypass +
 allow_auto_merge), פריסה מחדש, ריצת smoke סופית, ואז teardown.
+
+**✅ שלב 4 הושלם ואומת חי מקצה-לקצה (2026-05-29):** ה-branch protection הודלק (4 בדיקות נדרשות +
+`enforce_admins` + `allow_auto_merge`, אומת ב-`list_branch_protection_rules`), ה-MCP נפרס מחדש עם
+לוגיקת-המיזוג-הבטוח (image מתויג ב-SHA של המיזוג). **הוכחה כפולה:** (חיובי) PR אינרטי #198 מוזג ע"י
+`oil-autofix-approver[bot]` — זהות נפרדת — ורק כי 4 הבדיקות היו ירוקות; (שלילי) PR אדום מכוון (#199,
+`Changelog gates` נכשל) נדחה במיזוג עם `405 Required status check "Changelog gates" is failing`. כך
+התרחיש המקורי (✅ על PR אדום → מיזוג, כמו #190) סגור משני הכיוונים: גם הקוד (auto-merge ממתין לירוק)
+וגם הפלטפורמה (המנעול חוסם אדום). **Teardown (Stage 139):** הוסר ה-smoke job + קלט `mode`, נמחק
+fixture `oil-selftest-draftpr.sh`, נוקו שאריות ה-smoke מ-main, נסגר PR #188 הישן ונגזמו ענפי
+`oil-smoke/*`+`oil-negtest/*`. **נותר בפיתוח:** שלב 5 (אימות פוסט-תיקון + סגירת תיק) ושלב 6 (תיעוד).
 
 **שינוי תוכנית:** **שער-ה-GitHub ננטש לטובת טלגרם, ושלבים 4+5 אוחדו.** הסיבה: חוקי-הגנה על
 environment ב-repo פרטי דורשים GitHub Enterprise (אומת חד-משמעית מול ה-API: branch-policy=200,
