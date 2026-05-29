@@ -13,8 +13,13 @@ fi
 for workflow in "$WORKFLOW_DIR"/*.yml "$WORKFLOW_DIR"/*.yaml; do
   [ -f "$workflow" ] || continue
   while IFS= read -r line; do
-    # Match "uses: owner/repo@ref" lines, skip local actions (uses: ./...)
-    if echo "$line" | grep -qE '^\s+uses:\s+[^.][^/]+/'; then
+    # Match "uses: owner/repo@ref" lines in BOTH forms — the step form
+    # "      - uses: owner/repo@ref" (list-item dash) and the reusable-workflow
+    # caller form "    uses: owner/repo@ref" (no dash). Skip local actions
+    # (uses: ./...). The optional "(-\s+)?" is what lets the common step form
+    # be inspected at all; without it the leading-whitespace anchor only ever
+    # matched the dash-less caller form.
+    if echo "$line" | grep -qE '^\s+(-\s+)?uses:\s+[^.][^/]+/'; then
       ref=$(echo "$line" | sed -E 's/.*uses:\s+[^@]+@([^ #]+).*/\1/')
       # A full-length commit SHA is exactly 40 hex characters
       if ! echo "$ref" | grep -qE '^[0-9a-f]{40}$'; then
