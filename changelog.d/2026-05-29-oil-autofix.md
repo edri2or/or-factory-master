@@ -9,3 +9,9 @@
 | Type | Summary |
 |---|---|
 | chore | Add `scripts/tests/oil-verify-passmode.sh` — a trivially passing reproducer fixture (the success-path companion to `oil-verify-failmode.sh`). Merging this PR (an `oil-autofix: OIL-22` commit) is itself the Stage-5 controlled live verification: `oil-autofix-verify` re-runs the fixture on merged `main`, posts a closing comment, and moves OIL-22 to a completed state. |
+
+## test: OIL Stage 5 — failure-path live demo (temporary)
+
+| Type | Summary |
+|---|---|
+| test | Add `scripts/tests/oil-stage5-failsmoke.sh` — a TEMPORARY deliberately-failing reproducer to prove the verify FAILURE path live (OIL-23): `oil-autofix-verify` re-runs it on merged `main`, sees it fail, posts a "verification failed" comment, alerts on Telegram, and leaves the issue OPEN (no auto-close). Removed in the very next PR. |
