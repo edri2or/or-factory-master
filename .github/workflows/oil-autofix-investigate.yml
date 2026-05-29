@@ -617,7 +617,10 @@ jobs:
             } > "$TMPCL"
             mv "$TMPCL" CHANGELOG.md
           fi
-          git add -A
+          # Stage ONLY the two intended files — never `git add -A`, which would
+          # also stage the google-github-actions/auth credential file
+          # (gha-creds-*.json) written into the workspace by the auth step.
+          git add CHANGELOG.md "$MARKER"
           git -c user.email="factory-master-broker[bot]@users.noreply.github.com" \
               -c user.name="factory-master-broker[bot]" \
               -c commit.gpgsign=false \

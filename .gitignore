@@ -1,0 +1,6 @@
+# Credentials written into the workspace by google-github-actions/auth.
+# `cleanup_credentials` (default true) removes this in the job's post-step, but
+# the file exists DURING the job, so any `git add -A` mid-job (e.g. an auto-fix
+# or smoke step that commits) would otherwise capture it. Per the action's
+# official guidance (google-github-actions/auth README, Issue #298), ignore it.
+gha-creds-*.json

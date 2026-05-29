@@ -375,6 +375,9 @@ async function ghFetchRepoAs(
 
 export interface MergeResult {
   merged: boolean;
+  // True when the merge was not done synchronously but native auto-merge was
+  // armed: GitHub will merge once branch protection's required checks pass.
+  pending?: boolean;
   sha?: string;
   status: number;
   message?: string;
@@ -399,18 +402,29 @@ async function ghGraphQLAs(identity: AppIdentity, query: string, variables: Reco
   return json.data;
 }
 
-// Merge a PR as the approver App. Three things, in order:
-//  1. Un-draft it via GraphQL markPullRequestReadyForReview — a draft PR cannot
-//     be merged, and the REST PATCH {draft:false} is silently ignored.
-//  2. Poll briefly for the PR to become mergeable (branch protection requires the
-//     CI checks green; the message is sent at PR-open so checks may still be
-//     running when the human taps ✅ a moment later). We RESPECT branch
-//     protection — we wait for green, we don't bypass it.
-//  3. PUT the merge.
+// Merge a PR as the approver App, SAFELY — never merging a PR whose required CI
+// checks aren't green. We do NOT trust the REST `mergeable_state` field, which is
+// documented to be unreliable for merge automation (it reports 'clean' on a repo
+// without branch protection even when checks fail, and flips to 'unknown' while
+// GitHub recomputes — see pascalgn/automerge-action #103/#164). Instead we rely
+// on the platform: branch protection on main lists the 4 CI checks as REQUIRED,
+// and we arm GitHub's NATIVE auto-merge — GitHub then merges the PR itself, but
+// only once every required check passes. That makes green-CI a platform-enforced
+// precondition, not something this code has to (mis)judge.
+//
+// Steps:
+//  1. Un-draft via GraphQL markPullRequestReadyForReview (REST {draft:false} is
+//     silently ignored; auto-merge can't be enabled on a draft).
+//  2. Arm native auto-merge via GraphQL enablePullRequestAutoMerge(SQUASH).
+//     → success: { merged:false, pending:true } — GitHub will merge when green.
+//  3. If GitHub rejects auto-merge because the PR is ALREADY in a mergeable
+//     ("clean") state (nothing left to wait for), fall back to a direct PUT
+//     merge — branch protection still enforces required checks, so a red PR is
+//     rejected here too (reported, never forced).
 // Returns a structured result (never throws) so the Telegram handler reports cleanly.
 export async function mergePullRequestAsApprover(
   prNumber: number,
-  mergeMethod: 'merge' | 'squash' | 'rebase' = 'squash',
+  mergeMethod: 'MERGE' | 'SQUASH' | 'REBASE' = 'SQUASH',
   owner: string = DEFAULT_OWNER,
   repo: string = DEFAULT_REPO,
 ): Promise<MergeResult> {
@@ -422,42 +436,52 @@ export async function mergePullRequestAsApprover(
       node_id?: string;
       draft?: boolean;
     };
-    if (pr.node_id && pr.draft) {
+    if (!pr.node_id) return { merged: false, status: 404, message: `could not resolve PR #${prNumber}` };
+    if (pr.draft) {
       await ghGraphQLAs(
         identity,
         'mutation($id:ID!){ markPullRequestReadyForReview(input:{pullRequestId:$id}){ pullRequest{ id isDraft } } }',
         { id: pr.node_id },
-      ).catch(() => undefined); // best-effort; merge attempt below is the real gate
+      ).catch(() => undefined);
     }
 
-    // 2. Poll up to ~90s for mergeability (CI green under branch protection).
-    //    mergeable_state: 'clean' = good; 'blocked'/'unstable' = checks pending or
-    //    required reviews; 'dirty' = conflicts. We retry on the transient ones.
-    let lastState = 'unknown';
-    for (let i = 0; i < 18; i++) {
-      const s = (await (await ghFetchRepoAs(identity, owner, repo, `/pulls/${prNumber}`)).json().catch(() => ({}))) as {
-        mergeable_state?: string;
-        draft?: boolean;
-      };
-      lastState = s.mergeable_state ?? 'unknown';
-      if (!s.draft && (lastState === 'clean' || lastState === 'has_hooks')) break;
-      if (lastState === 'dirty') return { merged: false, status: 409, message: 'merge conflict (mergeable_state=dirty)' };
-      await new Promise((r) => setTimeout(r, 5000));
+    // 2. Arm native auto-merge — GitHub merges only when required checks pass.
+    try {
+      await ghGraphQLAs(
+        identity,
+        'mutation($id:ID!,$m:PullRequestMergeMethod!){ enablePullRequestAutoMerge(input:{pullRequestId:$id, mergeMethod:$m}){ pullRequest{ id } } }',
+        { id: pr.node_id, m: mergeMethod },
+      );
+      // Armed. GitHub will merge once the required checks are green.
+      return { merged: false, pending: true, status: 200 };
+    } catch (e) {
+      const msg = String(e);
+      // "Pull request is in clean status" / "not in the correct state" ⇒ nothing
+      // to wait on (checks already settled / no required checks pending). Fall
+      // through to a direct merge, which branch protection still gates on green.
+      const alreadyMergeable = /clean status|correct state|not mergeable|cannot be merged|Base branch/i.test(msg);
+      if (!alreadyMergeable) {
+        return { merged: false, status: 422, message: `enable auto-merge failed: ${msg.slice(0, 160)}` };
+      }
     }
 
-    // 3. Attempt the merge.
+    // 3. Fallback: direct merge (branch protection enforces required checks; a red
+    //    PR is rejected here, never forced).
+    const restMethod = mergeMethod.toLowerCase(); // SQUASH → squash
     const resp = await ghFetchRepoAs(identity, owner, repo, `/pulls/${prNumber}/merge`, {
       method: 'PUT',
-      body: JSON.stringify({ merge_method: mergeMethod }),
+      body: JSON.stringify({ merge_method: restMethod }),
     });
     const data = (await resp.json().catch(() => ({}))) as { merged?: boolean; sha?: string; message?: string };
     if (resp.ok && data.merged) {
       return { merged: true, sha: data.sha, status: resp.status };
     }
+    // 405 = blocked by branch protection (e.g. required checks not green) — the
+    // safety net working as intended.
     return {
       merged: false,
       status: resp.status,
-      message: data.message ? `${data.message} (mergeable_state=${lastState})` : `merge HTTP ${resp.status} (mergeable_state=${lastState})`,
+      message: data.message ?? `merge HTTP ${resp.status}`,
     };
   } catch (e) {
     return { merged: false, status: 0, message: String(e).slice(0, 200) };

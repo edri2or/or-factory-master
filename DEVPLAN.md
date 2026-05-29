@@ -208,6 +208,16 @@ merge_failed כפול. **תוקן:** (א) הסרת draft דרך GraphQL `markPul
 polling ל-`mergeable_state=clean` עד ~90s (מכבד branch protection); (ג) עונים ל-callback קודם,
 ממזגים אחר כך. נותר: redeploy של ה-MCP + ריצת smoke אחרונה → מיזוג בזהות `oil-autofix-approver`.
 
+**ריצת smoke סופית חשפה 2 בעיות-אבטחה אמיתיות (באג 6+7) — תוקנו לפי מחקר industry-standard:**
+המיזוג **הצליח** (PR #190 מוזג ע"י `oil-autofix-approver[bot]` — **הפרדת-זהויות הוכחה!**) אבל:
+(1) מוזג למרות `Changelog gates` **אדום** — כי ל-main אין branch protection, ו-`mergeable_state`
+לא-אמין (מתועד: automerge-action #103/#164); (2) ה-smoke עשה `git add -A` ו**דלף `gha-creds-*.json`**
+(WIF external_account — לא מפתח, אבל לא ב-main). **תוקן (Stage 137):** המאשר עבר ל-auto-merge מובנה
+(`enablePullRequestAutoMerge` — GitHub ממזג רק כש-required checks ירוקות, אכיפת-פלטפורמה במקום
+אמון ב-mergeable_state); smoke מוסיף רק 2 קבצים מפורשים; root `.gitignore` ל-gha-creds; ניקוי
+הקבצים שדלפו מ-main. **נותר:** workflow חד-פעמי ל-branch protection (required checks + no-bypass +
+allow_auto_merge), פריסה מחדש, ריצת smoke סופית, ואז teardown.
+
 **שינוי תוכנית:** **שער-ה-GitHub ננטש לטובת טלגרם, ושלבים 4+5 אוחדו.** הסיבה: חוקי-הגנה על
 environment ב-repo פרטי דורשים GitHub Enterprise (אומת חד-משמעית מול ה-API: branch-policy=200,
 אבל `prevent_self_review`=422 ו-`required_reviewers`=422, וב-changelog רשמי של GitHub). ה-
