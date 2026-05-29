@@ -21,6 +21,16 @@ on:
         required: false
         type: string
         default: ""
+      system_purpose:
+        description: "One or two sentences: what this system does and the agent's role in it. Fills the Purpose section of AGENTS.md. Leave empty to keep the manual TODO(human) placeholder."
+        required: false
+        type: string
+        default: ""
+      agent_name:
+        description: "Human-style name for this system's agent. Leave EMPTY to auto-generate a unique name deterministically from the system name, or type your own to override."
+        required: false
+        type: string
+        default: ""
 
 permissions: {}
 
@@ -710,6 +720,8 @@ jobs:
           GCP_PROJECT: ${{ steps.validate.outputs.gcp_project }}
           REUSE: ${{ steps.validate.outputs.reuse }}
           ADOPT: ${{ steps.validate.outputs.adopt }}
+          SYSTEM_PURPOSE_INPUT: ${{ inputs.system_purpose }}
+          AGENT_NAME_INPUT: ${{ inputs.agent_name }}
         run: |
           set -uo pipefail
           # Soft-fail by design: a failure here must NEVER fail a provision.
@@ -743,6 +755,32 @@ jobs:
           [ "$REUSE" = "true" ] && MODE="reuse"
           [ "$ADOPT" = "true" ] && MODE="adopt"
 
+          # System purpose: use the operator's input, else keep the template's TODO(human) fallback.
+          # (Single physical line via $'...\n...' so the embedded newline can't break the YAML block.)
+          if [ -n "${SYSTEM_PURPOSE_INPUT:-}" ]; then
+            SYSTEM_PURPOSE="$SYSTEM_PURPOSE_INPUT"
+          else
+            SYSTEM_PURPOSE=$'TODO(human): Describe the goal of this system and the role the agent should play in\ndeveloping it further. Until this section is filled, the agent does not have a mission.'
+          fi
+
+          # Agent name: operator override wins; else deterministic from SYSTEM_NAME (stable + collision-free
+          # because SYSTEM_NAME is already globally unique). Two short word lists; pick by hash.
+          if [ -n "${AGENT_NAME_INPUT:-}" ]; then
+            AGENT_NAME="$AGENT_NAME_INPUT"
+          else
+            ADJ=(amber azure brave bright calm clever coral crimson eager fleet golden indigo jade keen lunar
+                 noble onyx quiet rapid scarlet swift teal vivid witty zephyr)
+            NOUN=(arrow beacon cedar comet delta ember falcon glacier harbor ibex jasper kestrel lyra maple
+                  nimbus orchid pine quartz raven summit tundra umbra vega willow yarrow)
+            HASH=$(printf '%s' "$SYSTEM_NAME" | sha256sum | tr -dc '0-9a-f')
+            AI=$(( 0x${HASH:0:8} % ${#ADJ[@]} ))
+            NI=$(( 0x${HASH:8:8} % ${#NOUN[@]} ))
+            # Capitalize first letters for a human feel: "Swift Falcon"
+            A="${ADJ[$AI]}"; N="${NOUN[$NI]}"
+            AGENT_NAME="$(printf '%s %s' "${A^}" "${N^}")"
+          fi
+          echo "INFO: agent name = ${AGENT_NAME}"
+
           # Enumerate generic secrets from factory SM. The EXCLUDE regex MUST stay
           # in sync with scripts/copy-generic-secrets.sh — same source of truth.
           EXCLUDE='^(factory-master-broker-app-.*|.*-management-key|.*-provisioning-key|.*-master-key|n8n-telegram-bot-token-test)$'
@@ -763,12 +801,13 @@ jobs:
           export SYSTEM_NAME GCP_PROJECT PROJECT_NUMBER ISO_TIMESTAMP
           export PUBLIC_URL HEALTH_URL REPO_URL
           export GITHUB_RUN_ID GITHUB_RUN_URL WIF_PROVIDER MODE GENERIC_SECRETS
+          export SYSTEM_PURPOSE AGENT_NAME
 
           OUT_AGENTS=$(mktemp)
           OUT_CLAUDE=$(mktemp)
           trap 'rm -f "$OUT_AGENTS" "$OUT_CLAUDE"' EXIT
 
-          ALLOWLIST='${SYSTEM_NAME} ${GCP_PROJECT} ${PROJECT_NUMBER} ${ISO_TIMESTAMP} ${PUBLIC_URL} ${HEALTH_URL} ${REPO_URL} ${GITHUB_RUN_ID} ${GITHUB_RUN_URL} ${WIF_PROVIDER} ${MODE} ${GENERIC_SECRETS}'
+          ALLOWLIST='${SYSTEM_NAME} ${GCP_PROJECT} ${PROJECT_NUMBER} ${ISO_TIMESTAMP} ${PUBLIC_URL} ${HEALTH_URL} ${REPO_URL} ${GITHUB_RUN_ID} ${GITHUB_RUN_URL} ${WIF_PROVIDER} ${MODE} ${GENERIC_SECRETS} ${SYSTEM_PURPOSE} ${AGENT_NAME}'
           envsubst "$ALLOWLIST" < "$AGENTS_TMPL" > "$OUT_AGENTS"
           envsubst '${SYSTEM_NAME}' < "$CLAUDE_TMPL" > "$OUT_CLAUDE"
 
@@ -818,6 +857,11 @@ jobs:
 
           rm -rf "$CLONE_DIR"
           echo "PASS: AGENTS.md + CLAUDE.md pushed to edri2or/${SYSTEM_NAME}:main"
+          {
+            echo "## ✅ Orientation docs"
+            echo "- **שם הסוכן של המערכת:** ${AGENT_NAME}"
+            echo "- אם תרצה שם אחר — הרץ provision מחדש עם השדה \`agent_name\` מלא, או ערוך \`AGENTS.md\` ישירות."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Branch protection on main
         env:
