@@ -2,7 +2,7 @@
 dev_name: CHANGELOG חסין-מרוץ — פתקים per-PR + אכיפה
 slug: changelog-concurrency
 opened: 2026-05-29
-status: active   # active בזמן פיתוח → completed בסיום (משחרר את שער ה-CI)
+status: completed   # active בזמן פיתוח → completed בסיום (משחרר את שער ה-CI)
 ---
 
 # תוכנית פיתוח — CHANGELOG חסין-מרוץ (פתקים per-PR + אכיפה)
@@ -79,10 +79,10 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 **Acceptance:**
 - [x] אומת מצב ההגנה הנוכחי על `or-factory-master` main: `verify_github_system` → `ruleset-protect-main-active: fail "no protect-main ruleset"` — אין הגנה.
 - [x] הוחל ruleset `protect-main` (enforcement: active, 4 ההקשרים, PR-required, non_fast_forward, deletion, admin bypass) דרך workflow אוטונומי — ללא לחיצת Or.
-- [ ] `verify_github_system` → `ruleset-protect-main-active: pass` (מאומת לאחר merge).
+- [x] `verify_github_system` → `ruleset-protect-main-active: pass` (אומת: `enforcement=active`).
 - [x] merge queue מתועד כ"שדרוג עתידי" (לא נדרש ב-throughput הנוכחי).
 - [x] `CLAUDE.md` + `docs/bootstrap-record.md` עודכנו.
-- [ ] הפיתוח נסגר (`status: completed`) — אחרי אימות live.
+- [x] הפיתוח נסגר (`status: completed`) — אומת live, מוזג.
 
 **הערת התקדמות אחרונה:** PR נפתח עם `protect-main.yml` + `ensure-protect-main-ruleset.sh`. הוחלט על `strict: false` (non-strict) על בסיס מחקר תעשייתי — ראה שינוי תוכנית. ה-workflow מופעל אוטומטית ברגע המיזוג (path-trigger על קבצי השלב). `shellcheck` + `yamllint` + supply-chain gates ירוקים.
 
@@ -97,4 +97,4 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 - שלב 1 הושלם ומוזג — נבנה "מנוע האיחוד": כל פתק מתקפל ל-CHANGELOG ממוספר אוטומטית (המספר נקבע בריצה אחת חד-נתיבית → אפס התנגשות), והרשומות הישנות עוברות לארכיון לבד.
 - שלב 2 הושלם — הפתק הפך לברירת-המחדל לכל PR קוד (לא רק במצב מקביל). מעכשיו שום PR לא בוחר מספר Stage ידני; ה-CHANGELOG הממוספר נבנה רק ע"י מנוע-האיחוד. זה החלק שסוגר את המרוץ ל-PR רגיל.
 - שלב 3 הושלם — כל מערכת חדשה תירש את המנגנון: מקבלת את סקריפט מנוע-האיחוד + תיקיית הפתקים. (ה"כפתור" האוטומטי למערכות נדחה בינתיים — דורש חיווט-זהות שאי-אפשר לאמת בלי לבנות מערכת אמיתית; סוכן המערכת מריץ את הסקריפט ישירות.)
-- שלב 4 בביצוע — ה-PR עם `protect-main.yml` נפתח. ברגע המיזוג ה-workflow ירוץ אוטומטית ויקים את ה-ruleset. אחרי אימות live (`verify_github_system` → pass) הפיתוח נסגר.
+- שלב 4 הושלם — `protect-main.yml` ירה אוטומטית אחרי המיזוג (19 שניות), יצר את ה-ruleset, `verify_github_system` → `ruleset-protect-main-active: pass enforcement=active`. main של הפקטורי מוגן. הפיתוח נסגר.
