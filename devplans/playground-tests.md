@@ -19,7 +19,7 @@ status: active
 |---|---|---|---|
 | 1 | תשתית BATS (submodules + common helper) | completed | `.gitmodules`, `scripts/tests/bats/`, `scripts/tests/test_helper/{bats-support,bats-assert,common.bash}`, `scripts/tests/_smoke.bats` |
 | 2 | BATS לחמישה סקריפטי-ליבה | completed | `scripts/tests/{lib,check-changelog-updated,check-devplan-updated,check-actions-pinned,check-workflow-permissions}.bats` |
-| 3 | Template rendering validation | pending | `scripts/tests/validate-templates.sh` |
+| 3 | Template rendering validation | completed | `scripts/tests/validate-templates.sh` |
 | 4 | Playground Tests CI workflow | pending | `.github/workflows/playground-tests.yml`, אופציונלית `.actionlintrc` |
 | 5 | עדכון `dev-stage.md` (Step 3 + Safety Rule) | pending | `.claude/commands/dev-stage.md` (+mirror אם קיים) |
 | 6 | Changelog fragment סיכומי | pending | `changelog.d/2026-05-29-playground-tests.md` |
@@ -60,11 +60,11 @@ status: active
 ### שלב 3 — Template rendering validation
 
 **Acceptance:**
-- [ ] `scripts/tests/validate-templates.sh` קיים, שותל את אותה allow-list של `provision-system.yml`.
-- [ ] `bash scripts/tests/validate-templates.sh` עובר על תבניות נוכחיות (`AGENTS.md.template`, `CLAUDE.md.template`).
-- [ ] הוספת `${UNDEFINED_VAR}` ל-template (זמני) גורמת לסקריפט להיכשל.
+- [x] `scripts/tests/validate-templates.sh` קיים, שותל את אותה allow-list של `provision-system.yml`.
+- [x] `bash scripts/tests/validate-templates.sh` עובר על תבניות נוכחיות (`AGENTS.md.template`, `CLAUDE.md.template`).
+- [x] הוספת `${UNDEFINED_VAR}` ל-template (זמני) גורמת לסקריפט לכשל עם הודעה ברורה.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם. סורק `*.template` תחת `templates/system/` רקורסיבית, מרנדר עם אותה allow-list של 14 משתנים שב-`provision-system.yml:820`, וב-rendered output בודק: (1) שאין `${UPPER_CASE}`/$`UPPER_CASE` שנשארו, (2) `*.yml.template`/`*.yaml.template` עוברים yamllint כשזמין, (3) `*.sh.template` עוברים `bash -n`. היום קיימות רק 2 תבניות `.md.template`; ההרחבות עתידיות מחוברות כבר ל-pipeline.
 
 **שינוי תוכנית:** —
 
@@ -132,3 +132,4 @@ status: active
 
 - שלב 1 הושלם — התקנתי framework של בדיקות-יחידה ל-bash (BATS) כ-3 מודולים מקובעים, וכלי-עזר משותף לכל הבדיקות. סניטי-טסט קצר עובר.
 - שלב 2 הושלם — כתבתי 5 קבצי בדיקות (אחד לכל סקריפט-ליבה), 28 בדיקות עוברות לוקאלית. גיליתי באג ישן ב-`check-actions-pinned.sh`: ה-`- uses:` הסטנדרטי של GitHub Actions לא נבדק. תיקון בנפרד.
+- שלב 3 הושלם — סקריפט שמוודא שתבניות-המערכת מתרנדרות נכון לפני שמפעילים אותן על מערכת אמיתית. שתי התבניות הקיימות עוברות; placeholder שבור (לבדיקה ידנית) מקפיץ FAIL ברור.
