@@ -194,9 +194,14 @@ export async function handleTelegramCallback(req: Request): Promise<ApprovalResu
   }
 
   // approve → merge as the approver App.
+  // Answer the callback FIRST (Telegram's callback-answer window is short, and
+  // the merge can take up to ~90s while it waits for branch-protection CI to go
+  // green). Answering immediately stops Telegram from retrying the webhook (which
+  // previously caused duplicate merge attempts / duplicate merge_failed events).
+  await answerCallbackQuery(callbackId, '⏳ מאשר וממזג…');
+
   const r = await mergePullRequestAsApprover(pr, 'squash', OWNER, REPO);
   if (r.merged) {
-    await answerCallbackQuery(callbackId, '✅ מוזג');
     if (messageId && chatId != null) {
       await editTelegramMessage(chatId as string | number, messageId, `✅ PR #${pr} אושר ומוזג.`);
     }
@@ -204,8 +209,11 @@ export async function handleTelegramCallback(req: Request): Promise<ApprovalResu
     return { status: 200, body: { action: 'approve', pr, merged: true, sha: r.sha ?? null } };
   }
 
-  // Merge failed (e.g. CI not green, conflict). Tell Or; leave the PR open.
-  await answerCallbackQuery(callbackId, `מיזוג נכשל: ${r.message ?? r.status}`);
+  // Merge failed (e.g. CI still not green, conflict). Tell Or via the message
+  // edit (the callback was already answered); leave the PR open.
+  if (messageId && chatId != null) {
+    await editTelegramMessage(chatId as string | number, messageId, `⚠️ PR #${pr}: מיזוג נכשל — ${r.message ?? r.status}. ה-PR נשאר פתוח.`);
+  }
   await emitApproval('merge_failed', pr, r.message ?? `http ${r.status}`);
   return { status: 200, body: { action: 'approve', pr, merged: false, detail: r.message ?? null } };
 }
