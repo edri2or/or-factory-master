@@ -21,3 +21,9 @@
 | Type | Summary |
 |---|---|
 | fix | The live failure demo (OIL-23) caught a real bug: GitHub runs `run:` steps with `bash -e`, so the verify step's `out=$(bash scripts/oil-verify.sh …); rc=$?` capture aborted the step the instant the reproducer exited non-zero — `outcome=failed` was never written, so the failure comment + "🚨 נכשל באימות" Telegram silently never fired (the success path was unaffected — that is why OIL-22 worked). Fixed with `set +e` in the verify step (it does its own exit-code handling) and hardened a latent `&&`-abort in the prep step's identifier assignment. Re-demoed live on OIL-23 with `scripts/tests/oil-stage5-failsmoke-2.sh`. |
+
+## chore: OIL Stage 5 — close + remove live-verify failure fixtures
+
+| Type | Summary |
+|---|---|
+| chore | Stage 5 complete and verified live end-to-end (success: OIL-22 auto-closed; failure: OIL-23 left open + alerted). Remove the two temporary `scripts/tests/oil-stage5-failsmoke*.sh` demo fixtures (the permanent `oil-verify-{passmode,failmode}.sh` pair stays); throwaway test issues OIL-22/OIL-23 canceled. DEVPLAN Stage 5 → completed. |
