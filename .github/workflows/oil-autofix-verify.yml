@@ -144,7 +144,7 @@ jobs:
               --data "$REQ" 2>/dev/null || true)
             ISSUE_UUID=$(jq -r '.data.issue.id // empty' <<<"$IRESP" 2>/dev/null || true)
             ID2=$(jq -r '.data.issue.identifier // empty' <<<"$IRESP" 2>/dev/null || true)
-            [ -n "$ID2" ] && ISSUE_IDENT="$ID2"
+            if [ -n "$ID2" ]; then ISSUE_IDENT="$ID2"; fi
             ISSUE_STATE_TYPE=$(jq -r '.data.issue.state.type // empty' <<<"$IRESP" 2>/dev/null || true)
           fi
 
@@ -181,6 +181,10 @@ jobs:
         continue-on-error: true
         run: |
           set -uo pipefail
+          # GitHub invokes run-steps with `bash -e`. This step does its OWN
+          # exit-code handling — a FAILING reproducer must set outcome=failed, not
+          # abort the step before the outcome is written — so turn errexit off here.
+          set +e
           # Idempotency: if the issue is already terminal, do nothing.
           case "${ISSUE_STATE_TYPE:-}" in
             completed|canceled)

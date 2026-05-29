@@ -15,3 +15,9 @@
 | Type | Summary |
 |---|---|
 | test | Add `scripts/tests/oil-stage5-failsmoke.sh` — a TEMPORARY deliberately-failing reproducer to prove the verify FAILURE path live (OIL-23): `oil-autofix-verify` re-runs it on merged `main`, sees it fail, posts a "verification failed" comment, alerts on Telegram, and leaves the issue OPEN (no auto-close). Removed in the very next PR. |
+
+## fix: OIL Stage 5 — verify failure path aborted under `bash -e`
+
+| Type | Summary |
+|---|---|
+| fix | The live failure demo (OIL-23) caught a real bug: GitHub runs `run:` steps with `bash -e`, so the verify step's `out=$(bash scripts/oil-verify.sh …); rc=$?` capture aborted the step the instant the reproducer exited non-zero — `outcome=failed` was never written, so the failure comment + "🚨 נכשל באימות" Telegram silently never fired (the success path was unaffected — that is why OIL-22 worked). Fixed with `set +e` in the verify step (it does its own exit-code handling) and hardened a latent `&&`-abort in the prep step's identifier assignment. Re-demoed live on OIL-23 with `scripts/tests/oil-stage5-failsmoke-2.sh`. |
