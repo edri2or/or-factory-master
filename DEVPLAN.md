@@ -22,7 +22,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 | 1 | חוקר קריאה-בלבד (workflow) | completed | `.github/workflows/oil-autofix-investigate.yml` |
 | 2 | פעמון Linear + סינון רעש (triage) | completed | `services/mcp-server/src/*`, `deploy-mcp-server.yml`, `oil-autofix-investigate.yml` |
 | 3 | הצעת תיקון כ-PR טיוטה | completed | `.github/workflows/oil-autofix-investigate.yml`, `scripts/oil-autofix-validate.sh` |
-| 4 | סביבת אישור + job יישום ממתין | pending | `.github/workflows/oil-autofix-investigate.yml` + Environment `oil-autofix` |
+| 4 | סביבת אישור + job יישום ממתין | in-progress | `.github/workflows/oil-autofix-investigate.yml`, `.github/workflows/setup-oil-environment.yml` + Environment `oil-autofix` |
 | 5 | גשר אישור טלגרם (✅/❌ → מיזוג) | pending | `services/mcp-server/src/*`, `deploy-mcp-server.yml` |
 | 6 | אימות פוסט-תיקון + סגירת תיק | pending | `.github/workflows/oil-autofix-investigate.yml` |
 | 7 | תיעוד (חריג מכוון ותחום) | pending | `docs/oil-autofix.md`, `CLAUDE.md`, `docs/roadmap.md` |
@@ -102,9 +102,23 @@ shellcheck בודק אותו ב-CI והוא נבדק ביחידה מקומית. 
 - [ ] job `apply` ממתין על הסביבה אחרי פתיחת ה-PR.
 - [ ] אומת שה-job אכן נעצר וממתין לאישור.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** בתהליך — PR הקוד. נוסף `setup-oil-environment.yml` (יוצר אידמפוטנטית
+את הסביבה `oil-autofix`: prevent_self_review ON, main בלבד, דרך טוקן-ברוקר עם
+`administration:write`; **לא** מוסיף reviewer כי REST לא תומך ב-App כ-reviewer — זו לחיצת-UI
+אחת חד-פעמית). ל-`oil-autofix-investigate.yml` נוספו: קלט `mode` (investigate/smoketest),
+`outputs` ל-job `investigate` (`pr_opened`/`pr_url`/`pr_number`), job **`apply`** (נעצר על
+`environment: oil-autofix` רק כשנפתח PR טיוטה — **בלי לוגיקת מיזוג**, המיזוג הוא שלב 5), ו-job
+**`gate_smoketest`** (בדיקת-עשן זולה: נוגע באותה סביבה ונעצר — בלי AI/PR/GCP). שתי הזהויות
+נשמרות נפרדות (ברוקר פותח, מאשר מאשר), ו-prevent_self_review חוסם את הברוקר מלאשר את עצמו.
+נותרו (אחרי מיזוג ה-PR): רישום אפליקציית `oil-autofix-approver`, לחיצת-UI להוספתה כ-reviewer,
+ואז `mode=smoketest` לאימות חי שהשער נעצר. רישום האפליקציה הקדים לכאן (שלב 5 מונה אותו, אבל
+שלב 4 חייב שהיא תתקיים כדי להוסיפה כ-reviewer).
 
-**שינוי תוכנית:** —
+**שינוי תוכנית:** האימות החי נעשה ב-`mode=smoketest` (job זעיר על אותה סביבה) ולא ב-fixture
+באג + תיק Linear — מהיר, זול, חסר-תופעות-לוואי, ומוכיח ישירות שהסביבה `oil-autofix` עוצרת job.
+זו הסביבה המדויקת שבה `apply` ייעצר, אז ההוכחה זהה. נבחר על-פני workflow-דמה נפרד כי בדיקת-העשן
+חייבת לרוץ מ-main (מדיניות-הענף של הסביבה) והדרך היחידה להדליקה אגנטית היא דרך workflow שכבר
+ב-allowlist של `dispatch_workflow` — וזה היחיד.
 
 ---
 
