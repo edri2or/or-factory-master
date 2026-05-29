@@ -2,7 +2,7 @@
 dev_name: מגרש ניסויים — Playground Tests ל-CI
 slug: playground-tests
 opened: 2026-05-29
-status: active
+status: completed
 ---
 
 # תוכנית פיתוח — מגרש ניסויים (Playground Tests)
@@ -23,7 +23,7 @@ status: active
 | 4 | Playground Tests CI workflow | completed | `.github/workflows/playground-tests.yml` |
 | 5 | עדכון `dev-stage.md` (Step 3 + Safety Rule) | completed | `.claude/commands/dev-stage.md`, `templates/system/.claude/commands/dev-stage.md` |
 | 6 | Changelog fragment סיכומי | completed | `changelog.d/2026-05-29-playground-tests.md` |
-| 7 | (PR נפרד, אחרי מרג') protect-main ruleset | pending | `scripts/ensure-protect-main-ruleset.sh` |
+| 7 | (PR נפרד, אחרי מרג') protect-main ruleset | completed | `scripts/ensure-protect-main-ruleset.sh` |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
 
@@ -116,12 +116,12 @@ status: active
 ### שלב 7 — (PR נפרד) protect-main ruleset
 
 **Acceptance:**
-- [ ] שלבים 1-6 כבר ב-main, `playground-tests.yml` רץ ירוק על main לפחות פעם אחת.
-- [ ] PR חדש: `scripts/ensure-protect-main-ruleset.sh` מוסיף `{context: "Playground tests"}`.
-- [ ] אחרי מרג', `protect-main.yml` רץ ומעדכן את ה-ruleset.
-- [ ] בדיקה: PR שמכוון לכשל Playground — חסום למרג'.
+- [x] שלבים 1-6 כבר ב-main (PR #216, מוזג), `playground-tests.yml` רץ ירוק על main (run 26665176093, `fb451ee`).
+- [x] PR חדש: `scripts/ensure-protect-main-ruleset.sh` מוסיף `{context: "Playground tests"}`.
+- [ ] אחרי מרג', `protect-main.yml` רץ ומעדכן את ה-ruleset (יתאמת post-merge).
+- [ ] בדיקה: PR שמכוון לכשל Playground — חסום למרג' (אימות post-merge).
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הקוד הושלם ב-PR נפרד על אותו branch אחרי ש-PR #216 נמרג וה-workflow רץ ירוק על main. הוספתי `{context: "Playground tests"}` ל-5 ה-checks הנדרשים. `protect-main.yml` מזהה-עצמי את השינוי ל-`scripts/ensure-protect-main-ruleset.sh` ויעדכן את ה-ruleset אוטומטית עם המרג'. שני תנאי-הקבלה האחרונים (ריצת protect-main + חסימת PR-כושל) נצפים רק אחרי מרג'.
 
 **שינוי תוכנית:** —
 
@@ -137,3 +137,4 @@ status: active
 - שלב 4 הושלם — Workflow חדש "Playground Tests" שמריץ actionlint + BATS + validate-templates בכל PR. אומת ירוק ב-CI: 5 שערים, כולל החדש. כל 28 הבדיקות רצו בענן.
 - שלב 5 הושלם — עדכנתי את הוראת-העבודה `/dev-stage` כך שתחייב Playground ירוק לפני סגירת שלב, ועדכנתי גם את הגרסה שנשתלת במערכות חדשות.
 - שלב 6 הושלם — סגרתי את רשומת ה-changelog עם סיכום-על. שלבים 1–6 מוכנים למיזוג כ-PR אחד. נשאר רק שלב 7 (להפוך את הבדיקה ל"חובה") שילך ב-PR נפרד אחרי שזה יתמזג.
+- שלב 7 הושלם (קוד) — PR #216 נמרג וה-workflow רץ ירוק על main, אז ב-PR נפרד הוספתי את "Playground tests" לרשימת הבדיקות שחובה לעבור כדי למזג ל-main. אחרי מרג' השלב הזה, אף שינוי קוד לא יוכל להיכנס ל-main אם המגרש אדום. הפיתוח כולו הסתיים.
