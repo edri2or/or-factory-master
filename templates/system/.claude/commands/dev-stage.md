@@ -21,8 +21,8 @@ itself declares "manage this in ordered, documented stages."
 
 Before anything, read:
 1. `templates/devplan/DEVPLAN.template.md` — the plan template you instantiate.
-2. `DEVPLAN.md` (project root) and `devplans/*.md`, if any exist — to detect an
-   already-active development before opening a new one.
+2. `devplans/*.md`, if any exist — to detect any parallel active developments
+   (needed in Step 3 for the changelog fragment rule).
 
 ## Instructions
 
@@ -31,10 +31,8 @@ Restate the development goal in your own simple words and return it to Or for
 confirmation, in plain Hebrew. Do not touch any code yet. Wait for his OK on the goal.
 
 ### Step 2: Create the Plan, Then Stop
-- If no active development exists, create `DEVPLAN.md` at the project root from
-  `templates/devplan/DEVPLAN.template.md`.
-- If an active `DEVPLAN.md` already exists (root file with `status: active`), create
-  the new plan at `devplans/<slug>.md` instead, so plans don't collide.
+- Always create the plan at `devplans/<slug>.md` (slug derived from dev_name).
+  Never use the root `DEVPLAN.md` for new developments.
 - Fill in: `dev_name`, `slug`, `opened` (today), `status: active`, the מטרה, the
   stages table, and per-stage acceptance checklists.
 - Then STOP and present the stage breakdown to Or for approval, like plan mode — do
