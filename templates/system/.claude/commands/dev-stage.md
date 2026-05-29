@@ -42,10 +42,20 @@ confirmation, in plain Hebrew. Do not touch any code yet. Wait for his OK on the
 ### Step 3: Execution Loop (one stage at a time)
 For each stage, in order:
 - **(a) Implement** the stage.
-- **(b) Update the plan file**: set the stage's status (`in-progress` → `completed`)
-  in the stages table, write the "הערת התקדמות אחרונה", and add the stage's line to
-  the "יומן ל-Or". Commit this DEVPLAN.md update together with the stage's code in the
-  same change, so the CI devplan gate stays green.
+- **(b) Update the bookkeeping** in the same change as the stage's code, so the CI gates
+  stay green:
+  - **Plan file**: set the stage's status (`in-progress` → `completed`) in the stages
+    table, write the "הערת התקדמות אחרונה", and add the stage's line to the "יומן ל-Or".
+  - **Changelog** — pick the path by how many developments are active right now (count
+    `status: active` across the root `DEVPLAN.md` and every `devplans/*.md`):
+    - *Single* (this is the only active plan): add the entry to the top of `CHANGELOG.md`,
+      exactly as before — zero change to the normal flow.
+    - *Parallel* (another plan is also `status: active`): write the entry to a
+      per-development fragment `changelog.d/<YYYY-MM-DD>-<slug>.md` (append each stage to
+      that same fragment) INSTEAD of the top of `CHANGELOG.md`, so two parallel PRs never
+      collide on the changelog head. The CI changelog gate accepts the fragment.
+    - *Optional cleanup*: when a parallel development closes, its fragment MAY be moved to
+      the top of `CHANGELOG.md` and deleted — a clean step taken once nothing can collide.
 - **(c) Report to Or** in plain Hebrew: which stage, what was done, what's next. Short.
 - **(d) Stop at the boundary** and wait for Or's approval before the next stage.
 - **If it gets complicated / the plan no longer fits**: update the plan first — add or
