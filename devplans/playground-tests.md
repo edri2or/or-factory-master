@@ -21,7 +21,7 @@ status: active
 | 2 | BATS לחמישה סקריפטי-ליבה | completed | `scripts/tests/{lib,check-changelog-updated,check-devplan-updated,check-actions-pinned,check-workflow-permissions}.bats` |
 | 3 | Template rendering validation | completed | `scripts/tests/validate-templates.sh` |
 | 4 | Playground Tests CI workflow | completed | `.github/workflows/playground-tests.yml` |
-| 5 | עדכון `dev-stage.md` (Step 3 + Safety Rule) | pending | `.claude/commands/dev-stage.md` (+mirror אם קיים) |
+| 5 | עדכון `dev-stage.md` (Step 3 + Safety Rule) | completed | `.claude/commands/dev-stage.md`, `templates/system/.claude/commands/dev-stage.md` |
 | 6 | Changelog fragment סיכומי | pending | `changelog.d/2026-05-29-playground-tests.md` |
 | 7 | (PR נפרד, אחרי מרג') protect-main ruleset | pending | `scripts/ensure-protect-main-ruleset.sh` |
 
@@ -88,12 +88,12 @@ status: active
 ### שלב 5 — עדכון `dev-stage.md`
 
 **Acceptance:**
-- [ ] `.claude/commands/dev-stage.md` מכיל את צעד (a.1) Verify via Playground בין (a) ל-(b).
-- [ ] Safety Rules מכיל כלל #7 על Playground אדום.
-- [ ] שפה אחידה עם השאר; בלי עומס מילים.
-- [ ] mirror תחת `templates/system/.claude/commands/dev-stage.md` מסונכרן אם קיים שם הקובץ.
+- [x] `.claude/commands/dev-stage.md` מכיל את צעד (a.1) Verify via Playground בין (a) ל-(b).
+- [x] Safety Rules מכיל כלל #7 על Playground אדום.
+- [x] שפה אחידה עם השאר; בלי עומס מילים.
+- [x] mirror תחת `templates/system/.claude/commands/dev-stage.md` מסונכרן (נשאר byte-identical).
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם. צעד (a.1) + Safety Rule #7 נוספו ל-`.claude/commands/dev-stage.md`, וה-mirror בתבנית-המערכת סונכרן ל-byte-identical (כפי שנשמר מאז parallel-dev-stage). ה-Playground check הוא factory-internal — סעיף "N/A אם לא רלוונטי" שבצעד מטפל אוטומטית במערכות שאין להן את ה-check (תמיד N/A → ממשיכים).
 
 **שינוי תוכנית:** —
 
@@ -133,4 +133,5 @@ status: active
 - שלב 1 הושלם — התקנתי framework של בדיקות-יחידה ל-bash (BATS) כ-3 מודולים מקובעים, וכלי-עזר משותף לכל הבדיקות. סניטי-טסט קצר עובר.
 - שלב 2 הושלם — כתבתי 5 קבצי בדיקות (אחד לכל סקריפט-ליבה), 28 בדיקות עוברות לוקאלית. גיליתי באג ישן ב-`check-actions-pinned.sh`: ה-`- uses:` הסטנדרטי של GitHub Actions לא נבדק. תיקון בנפרד.
 - שלב 3 הושלם — סקריפט שמוודא שתבניות-המערכת מתרנדרות נכון לפני שמפעילים אותן על מערכת אמיתית. שתי התבניות הקיימות עוברות; placeholder שבור (לבדיקה ידנית) מקפיץ FAIL ברור.
-- שלב 4 הושלם — Workflow חדש "Playground Tests" שמריץ actionlint + BATS + validate-templates בכל PR. actionlint לא צבע אדום (אחרי שהגדרתי severity=error כמו שהריפו עושה כבר ל-shellcheck). תיכף אעקוב אחרי ה-CI על ה-PR.
+- שלב 4 הושלם — Workflow חדש "Playground Tests" שמריץ actionlint + BATS + validate-templates בכל PR. אומת ירוק ב-CI: 5 שערים, כולל החדש. כל 28 הבדיקות רצו בענן.
+- שלב 5 הושלם — עדכנתי את הוראת-העבודה `/dev-stage` כך שתחייב Playground ירוק לפני סגירת שלב, ועדכנתי גם את הגרסה שנשתלת במערכות חדשות.
