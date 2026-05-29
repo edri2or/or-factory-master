@@ -80,8 +80,11 @@ test_cmd=$(jq -r '.test_cmd // ""' "$META" 2>/dev/null || echo "")
 [ -n "$test_cmd" ] || fail "fix-meta.json has no test_cmd"
 # Only a bare `bash <file>` / `bats <file>` is allowed — no pipes, redirects, or
 # shell metacharacters, so the declared command cannot smuggle arbitrary shell.
-printf '%s' "$test_cmd" | grep -Eq '^(bash|bats) [A-Za-z0-9_./-]+$' \
-  || fail "test_cmd is not a bare 'bash <file>' invocation: $test_cmd"
+if ! printf '%s' "$test_cmd" | grep -Eq '^(bash|bats) [A-Za-z0-9_./-]+$'; then
+  if ! printf '%s' "$test_cmd" | grep -Eq '^npm --prefix [A-Za-z0-9_./-]+ test$'; then
+    fail "test_cmd is not a bare 'bash <file>' or 'npm --prefix <dir> test' invocation: $test_cmd"
+  fi
+fi
 test_file=$(printf '%s' "$test_cmd" | awk '{print $2}')
 [ -f "$test_file" ] || fail "declared test file does not exist: $test_file"
 printf '%s\n' "$changed_files" | grep -qxF "$test_file" \
@@ -91,10 +94,29 @@ jq -r '.test_paths[]? // empty' "$META" 2>/dev/null | grep -qxF "$test_file" \
 
 # Run the AI-authored test in a SCRUBBED environment (inherits no secrets).
 run_test() {
-  env -i PATH=/usr/local/bin:/usr/bin:/bin HOME="${RUNNER_TEMP:-/tmp}" bash -c "$test_cmd"
+  if printf '%s' "$test_cmd" | grep -q '^npm '; then
+    env -i \
+      PATH=/usr/local/bin:/usr/bin:/bin \
+      HOME="${RUNNER_TEMP:-/tmp}" \
+      npm_config_cache=/tmp/npmcache \
+      NPM_CONFIG_USERCONFIG=/dev/null \
+      bash -c "$test_cmd"
+  else
+    env -i PATH=/usr/local/bin:/usr/bin:/bin HOME="${RUNNER_TEMP:-/tmp}" bash -c "$test_cmd"
+  fi
 }
 
 # passes-after: the current HEAD tree already contains the fix.
+# For npm test commands, always force a clean TypeScript build before running
+# to avoid testing against stale dist/ artifacts.
+if printf '%s' "$test_cmd" | grep -q '^npm '; then
+  prefix_dir=$(printf '%s' "$test_cmd" | awk '{print $3}')
+  (cd "$prefix_dir" && npm ci --prefer-offline \
+    --cache /tmp/npmcache \
+    --userconfig /dev/null \
+    && tsc --build --force) \
+    || fail "npm ci / tsc build failed before pass-after run"
+fi
 run_test >/dev/null 2>&1 || fail "test does not PASS with the fix applied"
 
 # fails-before: revert the fix (non-test) files to base, keep the test, expect failure.
@@ -108,6 +130,15 @@ while IFS= read -r f; do
     rm -f "$f"
   fi
 done <<< "$fix_files"
+
+if printf '%s' "$test_cmd" | grep -q '^npm '; then
+  prefix_dir=$(printf '%s' "$test_cmd" | awk '{print $3}')
+  (cd "$prefix_dir" && npm ci --prefer-offline \
+    --cache /tmp/npmcache \
+    --userconfig /dev/null \
+    && tsc --build --force) \
+    || { git checkout HEAD -- . 2>/dev/null || true; fail "npm ci / tsc build failed before fail-before run"; }
+fi
 
 before_rc=0
 run_test >/dev/null 2>&1 || before_rc=$?
