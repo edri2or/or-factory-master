@@ -9,6 +9,7 @@ import { verifyGitHubOidc } from './oidc-verifier.js';
 import { signBearer, verifyBearer, revokeBearer } from './bearer.js';
 import { sendTelegramMessage } from './observability-client.js';
 import { handleLinearWebhook, registerLinearWebhook } from './oil-autofix.js';
+import { registerApproval, handleTelegramCallback } from './oil-approval.js';
 
 const PORT = Number(process.env.PORT ?? 3000);
 const ADMIN_SECRET = process.env.MCP_ADMIN_SECRET;
@@ -27,6 +28,21 @@ function bsTokenMatches(provided: string | undefined): boolean {
   if (!BS_WEBHOOK_SECRET_HASH) return false;
   const hash = createHash('sha256').update(provided ?? '').digest();
   return timingSafeEqual(hash, BS_WEBHOOK_SECRET_HASH);
+}
+
+// Telegram's setWebhook secret_token. Telegram echoes it in the
+// X-Telegram-Bot-Api-Secret-Token header on every callback, proving the request
+// is genuinely from Telegram (the FIRST of two layers; the from.id allowlist in
+// oil-approval.ts is the second). Absent → /telegram-webhook returns 503 (the OIL
+// approval bridge is dormant until deployed with the secret mounted).
+const TELEGRAM_APPROVAL_WEBHOOK_SECRET = process.env.TELEGRAM_APPROVAL_WEBHOOK_SECRET;
+const TELEGRAM_APPROVAL_WEBHOOK_SECRET_HASH = TELEGRAM_APPROVAL_WEBHOOK_SECRET
+  ? createHash('sha256').update(TELEGRAM_APPROVAL_WEBHOOK_SECRET).digest()
+  : null;
+function telegramTokenMatches(provided: string | undefined): boolean {
+  if (!TELEGRAM_APPROVAL_WEBHOOK_SECRET_HASH) return false;
+  const hash = createHash('sha256').update(provided ?? '').digest();
+  return timingSafeEqual(hash, TELEGRAM_APPROVAL_WEBHOOK_SECRET_HASH);
 }
 
 // PUBLIC_BASE_URL: Cloud Run (injected by deploy workflow from status.url).
@@ -201,6 +217,48 @@ app.post('/oil-register-webhook', async (req: Request, res: Response) => {
   }
   const r = await registerLinearWebhook(BASE_URL);
   res.status(r.status).json(r.body);
+});
+
+// OIL approval bridge — REGISTER. The oil-autofix-investigate workflow calls this
+// (admin-gated, X-Admin-Secret) right after the broker opens a DRAFT PR. It sends
+// Or one Telegram message with ✅/❌ buttons carrying the PR number. Body:
+// { pr_number, issue_id?, pr_url? }.
+app.post('/oil-approval-register', async (req: Request, res: Response) => {
+  const provided = (req.headers['x-admin-secret'] as string | undefined) ?? '';
+  if (!secretMatches(provided)) {
+    res.status(403).json({ error: 'unauthorized' });
+    return;
+  }
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const r = await registerApproval({
+    pr_number: Number(body['pr_number']),
+    issue_id: typeof body['issue_id'] === 'string' ? body['issue_id'] : undefined,
+    pr_url: typeof body['pr_url'] === 'string' ? body['pr_url'] : undefined,
+  });
+  res.status(r.status).json(r.body);
+});
+
+// OIL approval bridge — INBOUND callback. Telegram POSTs here when Or taps ✅/❌.
+// Gated by the secret_token Telegram echoes in X-Telegram-Bot-Api-Secret-Token
+// (constant-time); the from.id allowlist is the second layer (in oil-approval.ts).
+// Always answers 200 (Telegram retries non-2xx) — the real outcome is in the body.
+app.post('/telegram-webhook', async (req: Request, res: Response) => {
+  if (!TELEGRAM_APPROVAL_WEBHOOK_SECRET_HASH) {
+    res.status(503).json({ error: 'telegram_webhook_disabled' });
+    return;
+  }
+  const token = (req.headers['x-telegram-bot-api-secret-token'] as string | undefined) ?? '';
+  if (!telegramTokenMatches(token)) {
+    res.status(401).json({ error: 'unauthorized' });
+    return;
+  }
+  try {
+    const r = await handleTelegramCallback(req);
+    res.status(r.status).json(r.body);
+  } catch (e) {
+    process.stdout.write(`[telegram-webhook] error: ${String(e).slice(0, 300)}\n`);
+    res.status(200).json({ error: 'internal' });
+  }
 });
 
 // Diagnostic — returns recent requests. Accepts X-Admin-Secret or Bearer.

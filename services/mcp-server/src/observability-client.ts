@@ -147,6 +147,98 @@ export async function sendTelegramMessage(text: string): Promise<TelegramResult>
   return postTelegram(token, chatId, text);
 }
 
+// ── Telegram inline-keyboard + callback helpers (OIL approval bridge) ────────────
+// The approval bridge sends ONE message with ✅/❌ inline buttons whose
+// callback_data carries the PR number (so no server-side state is needed), then
+// answers the callback + edits the message after the press. All read the control
+// bot token/chat id at runtime, same as sendTelegramMessage.
+
+export interface InlineButton {
+  text: string;
+  callback_data: string;
+}
+
+interface SendKeyboardResult extends TelegramResult {
+  messageId?: number;
+}
+
+// Send a message carrying an inline keyboard (one row of buttons). Returns the
+// created message_id so the caller could edit it later if it wishes.
+export async function sendTelegramKeyboard(
+  text: string,
+  buttons: InlineButton[],
+): Promise<SendKeyboardResult> {
+  const [token, chatId] = await Promise.all([
+    readSecretSoft('telegram-bot-token'),
+    readSecretSoft('telegram-chat-id'),
+  ]);
+  if (!token || !chatId) return { status: 'skipped', reason: 'no-secret' };
+  try {
+    const resp = await fetchWithTimeout(
+      `https://api.telegram.org/bot${token}/sendMessage`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text,
+          reply_markup: { inline_keyboard: [buttons] },
+        }),
+      },
+      10000,
+    );
+    if (!resp.ok) return { status: 'failed', http: resp.status };
+    const data = (await resp.json().catch(() => ({}))) as { result?: { message_id?: number } };
+    return { status: 'ok', http: resp.status, messageId: data.result?.message_id };
+  } catch {
+    return { status: 'failed', http: 0 };
+  }
+}
+
+// Acknowledge a callback query (clears the button's loading spinner; optional
+// toast text). Best-effort — returns the raw status.
+export async function answerCallbackQuery(callbackQueryId: string, text?: string): Promise<TelegramResult> {
+  const token = await readSecretSoft('telegram-bot-token');
+  if (!token) return { status: 'skipped', reason: 'no-secret' };
+  try {
+    const body: Record<string, unknown> = { callback_query_id: callbackQueryId };
+    if (text) body['text'] = text;
+    const resp = await fetchWithTimeout(
+      `https://api.telegram.org/bot${token}/answerCallbackQuery`,
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
+      10000,
+    );
+    return resp.ok ? { status: 'ok', http: resp.status } : { status: 'failed', http: resp.status };
+  } catch {
+    return { status: 'failed', http: 0 };
+  }
+}
+
+// Replace a message's text and drop its inline keyboard (called after ✅/❌ so the
+// buttons can't be pressed twice). Best-effort.
+export async function editTelegramMessage(
+  chatId: string | number,
+  messageId: number,
+  text: string,
+): Promise<TelegramResult> {
+  const token = await readSecretSoft('telegram-bot-token');
+  if (!token) return { status: 'skipped', reason: 'no-secret' };
+  try {
+    const resp = await fetchWithTimeout(
+      `https://api.telegram.org/bot${token}/editMessageText`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chat_id: chatId, message_id: messageId, text, reply_markup: { inline_keyboard: [] } }),
+      },
+      10000,
+    );
+    return resp.ok ? { status: 'ok', http: resp.status } : { status: 'failed', http: resp.status };
+  } catch {
+    return { status: 'failed', http: 0 };
+  }
+}
+
 // Managed-label colours — scripts/lib/linear-issue.sh:18-28.
 const LABEL_COLORS: Record<string, string> = {
   factory: '#5E6AD2',
