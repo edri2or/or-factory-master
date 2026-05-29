@@ -1,5 +1,15 @@
 ## feat(ci): Playground Tests — runtime-validation CI layer (dev-stage)
 
+**Overview.** Adds a fifth CI gate — **Playground tests** — that validates script
+*logic* and *template rendering* at runtime, complementing the four existing
+static gates (changelog, shellcheck + yamllint, secret-scan, supply-chain) which
+only check syntax. This PR ships stages 1–6 (BATS infra, 5 per-script test files,
+the template-render validator, the CI workflow, and the dev-stage wiring). Stage 7
+(adding `Playground tests` as a required status check in the protect-main ruleset)
+ships in a **separate PR** after this merges and the workflow runs green on `main`
+at least once — so the required context exists before it's required. Tracked in
+`devplans/playground-tests.md`.
+
 | Type | Summary |
 |---|---|
 | feat | **Stage 1 — BATS infrastructure.** Add `bats-core` (v1.13.0), `bats-support` (v0.3.0), and `bats-assert` (v2.2.4) as git submodules under `scripts/tests/bats/` and `scripts/tests/test_helper/{bats-support,bats-assert}/` — each pinned to a full SHA, no `apt`-installed bats. Add the shared helper `scripts/tests/test_helper/common.bash` (anchored absolute paths so any `.bats` file under `scripts/tests/` can `load test_helper/common`): loads bats-support + bats-assert, exports `REPO_ROOT`, and provides `make_tmpdir` / `make_fixture_repo` / `common_teardown` for tests that need throwaway git repos or temp dirs. `scripts/tests/_smoke.bats` proves the harness end-to-end (5 checks, all PASS). Lays the ground for stage 2's per-script tests and stage 4's CI workflow. Devplan: `devplans/playground-tests.md`. |

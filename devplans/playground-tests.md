@@ -22,7 +22,7 @@ status: active
 | 3 | Template rendering validation | completed | `scripts/tests/validate-templates.sh` |
 | 4 | Playground Tests CI workflow | completed | `.github/workflows/playground-tests.yml` |
 | 5 | עדכון `dev-stage.md` (Step 3 + Safety Rule) | completed | `.claude/commands/dev-stage.md`, `templates/system/.claude/commands/dev-stage.md` |
-| 6 | Changelog fragment סיכומי | pending | `changelog.d/2026-05-29-playground-tests.md` |
+| 6 | Changelog fragment סיכומי | completed | `changelog.d/2026-05-29-playground-tests.md` |
 | 7 | (PR נפרד, אחרי מרג') protect-main ruleset | pending | `scripts/ensure-protect-main-ruleset.sh` |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
@@ -102,11 +102,12 @@ status: active
 ### שלב 6 — Changelog fragment סיכומי
 
 **Acceptance:**
-- [ ] `changelog.d/2026-05-29-playground-tests.md` קיים, אחיד עם פורמט שכניו ב-`changelog.d/`.
-- [ ] מתעד: BATS infra, 5 test files, validate-templates, playground-tests.yml, dev-stage update.
-- [ ] שער `check-changelog-updated.sh` עובר ירוק.
+- [x] `changelog.d/2026-05-29-playground-tests.md` קיים, אחיד עם פורמט שכניו ב-`changelog.d/`.
+- [x] מתעד: BATS infra, 5 test files, validate-templates, playground-tests.yml, dev-stage update.
+- [x] שער `check-changelog-updated.sh` עבר ירוק לאורך כל השלבים.
+- [x] נוספה פסקת Overview שמסבירה את התמונה המלאה ואת ההפרדה של שלב 7 ל-PR נפרד.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם. ה-fragment צבר רשומה לכל שלב 1–5 לאורך הפיתוח; שלב 6 הוסיף פסקת Overview בראש שמסכמת את כל ה-PR ומבהירה ששלב 7 (protect-main) ב-PR נפרד אחרי מרג'. ה-PR (שלבים 1–6) מוכן למיזוג. ה-devplan נשאר `status: active` כי שלב 7 עדיין פתוח.
 
 **שינוי תוכנית:** —
 
@@ -135,3 +136,4 @@ status: active
 - שלב 3 הושלם — סקריפט שמוודא שתבניות-המערכת מתרנדרות נכון לפני שמפעילים אותן על מערכת אמיתית. שתי התבניות הקיימות עוברות; placeholder שבור (לבדיקה ידנית) מקפיץ FAIL ברור.
 - שלב 4 הושלם — Workflow חדש "Playground Tests" שמריץ actionlint + BATS + validate-templates בכל PR. אומת ירוק ב-CI: 5 שערים, כולל החדש. כל 28 הבדיקות רצו בענן.
 - שלב 5 הושלם — עדכנתי את הוראת-העבודה `/dev-stage` כך שתחייב Playground ירוק לפני סגירת שלב, ועדכנתי גם את הגרסה שנשתלת במערכות חדשות.
+- שלב 6 הושלם — סגרתי את רשומת ה-changelog עם סיכום-על. שלבים 1–6 מוכנים למיזוג כ-PR אחד. נשאר רק שלב 7 (להפוך את הבדיקה ל"חובה") שילך ב-PR נפרד אחרי שזה יתמזג.
