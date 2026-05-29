@@ -26,8 +26,9 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 | 5 | גשר אישור טלגרם (✅/❌ → מיזוג) | pending | `services/mcp-server/src/*`, `deploy-mcp-server.yml` |
 | 6 | אימות פוסט-תיקון + סגירת תיק | pending | `.github/workflows/oil-autofix-investigate.yml` |
 | 7 | תיעוד (חריג מכוון ותחום) | pending | `docs/oil-autofix.md`, `CLAUDE.md`, `docs/roadmap.md` |
+| 8 | סביבת-בדיקות — הרחבת כיסוי התיקון | deferred | `services/mcp-server/*`, `scripts/`, `.github/workflows/pipeline-tests.yml` (TBD) |
 
-> סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
+> סטטוס לכל שלב: `pending` / `in-progress` / `completed` / `deferred`.
 
 ---
 
@@ -139,6 +140,27 @@ shellcheck בודק אותו ב-CI והוא נבדק ביחידה מקומית. 
 **Acceptance:**
 - [ ] `docs/oil-autofix.md` חדש; רשומת CHANGELOG.
 - [ ] עדכון `CLAUDE.md` + `docs/roadmap.md`: הלולאה מתועדת כחריג מכוון ותחום ל-"auto-chain / issue-based reporting שלא נבנים".
+
+**הערת התקדמות אחרונה:** —
+
+**שינוי תוכנית:** —
+
+---
+
+### שלב 8 — סביבת-בדיקות: הרחבת כיסוי התיקון (דחוי)
+
+> השלב הזה דחוי במכוון. הלולאה (שלבים 1–7) נסגרת ומסומנת `completed` כרגיל; שלב 8 *מתבגר
+> לפיתוח נפרד* (משלו `/dev-stage`) כשמתחילים אותו — כך הוא לעולם לא משאיר את התוכנית `active`
+> ולא תופס את שער ה-CI לאורך זמן.
+
+**מטרה:** היום המתקן (שלב 3) יודע להוכיח תיקון רק לקוד שרץ בפשטות ב-bash (`scripts/*.sh`);
+קוד TS (`services/mcp-server`) חסר test runner, ו-`.github/workflows/*` אסור למתקן — אז הם
+מוסלמים. סביבת-בדיקות אמיתית תרחיב את מה שהמתקן יכול לתקן בבטחה.
+
+**Acceptance (כיוון כללי — הפרטים ייקבעו כשמתחילים):**
+- [ ] harness לסקריפטים (למשל `bats`) + test runner ל-`services/mcp-server`, מחוברים ל-`pipeline-tests.yml`.
+- [ ] המשטח המותר של המתקן (שלב 3) מתרחב ל-TS ברגע שיש runner. `.github/workflows/*`, WIF/IAM וסודות נשארים אסורים תמיד.
+- [ ] תיעוד הרחבת-הכיסוי.
 
 **הערת התקדמות אחרונה:** —
 
