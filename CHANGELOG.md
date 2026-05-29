@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 133 — fix: OIL auto-fix — checkout persist-credentials:false so the broker token can push (latent 403)
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | fix | The `mode=smoke` run surfaced a **latent Stage-3 bug** that would have blocked every real auto-fix PR: `actions/checkout` (default `persist-credentials: true`) sets `http.https://github.com/.extraheader` to the workflow's `GITHUB_TOKEN`, which here has only `contents: read`. A configured extraheader **overrides** the `https://x-access-token:<broker-token>@github.com/...` URL credential the open-PR step pushes with, so the push got `remote: Write access to repository not granted` → **403**. This was never caught before because run 2 died at the changelog commit *before* the push, and runs 1/3 escalated — so the broker push had never actually executed end-to-end. Fix: both checkout steps (the production `investigate` job and the `smoke` job) now set `persist-credentials: false`, so no extraheader is configured and the explicit per-push broker token is the only credential git uses. Nothing in either job before the push needs the persisted credential (the AI action gets no `github_token`; only the open-PR/smoke steps push, each with their own scoped broker token). Verified: `yamllint` clean; YAML parses to `investigate` + `smoke`. Re-run of `mode=smoke` follows. |
+
 ## Stage 132 — feat: OIL auto-fix — deterministic Telegram-bridge smoke test (mode=smoke)
 
 | PR | Type | Summary |
