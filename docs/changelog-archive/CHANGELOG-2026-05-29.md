@@ -2,6 +2,18 @@
 
 Older `CHANGELOG.md` entries moved here to keep the main file under the 20 KB scan-friendly cap (enforced by `scripts/check-changelog-size.sh`). Ordering preserved (newest archived stage first).
 
+## Stage 121 — chore: OIL auto-fix Stage 3 — live draft-PR-path verification (verified; scaffold removed)
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | chore | Live end-to-end verification of Stage 3's **draft-PR** outcome — the escalation path was already proven live on OIL-16, but the fixer *autonomously opening a DRAFT PR* had not been seen. Because `oil-autofix-investigate.yml` runs only on `main` (`if: github.ref == 'refs/heads/main'`) and checks out `main`, a reproducible bug had to sit on `main` during the run: a tiny **inert** fixture `scripts/oil-selftest-draftpr.sh` (`sum_two`, documented to sum but coded `a - b`) was merged — nothing referenced or executed it (`pipeline-tests.yml` only shellcheck-lints `scripts/*.sh`), so `main` stayed green — then a throwaway Linear issue (OIL-19, `action_required:false` so the live bell stayed quiet) drove the real investigator → fixer → deterministic gate. **Result (2026-05-29):** run 26612031701 escalated safely (the fixer's first candidate slipped → the safety net working), and the retry run 26612482036 produced a valid candidate → `VERDICT: open_pr` → the broker App **auto-opened DRAFT PR #171** (base `main`, `draft:true`, `a - b`→`a + b` + a fail-before/pass-after test under `scripts/tests/`), link posted to OIL-19. Teardown: PR #171 **closed without merging**, its branch deleted, OIL-19 canceled, and this PR removes the fixture — `main` returns to identical content. No production code/workflow changed; nothing was auto-merged. |
+
+## Stage 120 — feat: OIL auto-fix Phase 1 / Stage 3 — guarded DRAFT-PR fixer
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | feat | Stage 3 extends `oil-autofix-investigate.yml`: after the read-only diagnosis, when it is `actionable-bug` (confidence ≥0.8) in `or-factory-master`, a write-mode `claude-code-action` (Read/Grep/Glob/Edit/Write/MultiEdit — **no Bash, no web**) generates the smallest fix + a plain-`bash` repro test; the workflow (not the AI) then opens a **DRAFT** PR and posts the link to Linear. Anything else → escalate the diagnosis with a reason, no PR. New `scripts/oil-autofix-validate.sh` (shellcheck-linted; 6 local fixtures) is the deterministic gate: ≤2 files / ≤100 lines, forbidden paths (`.github/workflows|actions`, `terraform/`, `*wif*`/`*secret*`/`*creds*`/`*.pem`/`.env*`), a diff-scoped secret grep, and a test that MUST fail-before / pass-after, run under a scrubbed `env -i`. All GCP creds are revoked + the workspace creds file deleted **before** any AI-authored code runs; the candidate commit excludes `oil-context/` + `gha-creds-*.json`; the branch push + PR use a per-run broker-App token scoped to one repo (`contents`+`pull_requests` write, masked) while the job `GITHUB_TOKEN` stays `contents:read`. **DRAFT only — never merged** (merge = stages 4–5, a separate `oil-autofix-approver` identity). Each fix-path step is `continue-on-error` → a hiccup degrades to escalation. DEVPLAN stage 3 → completed; gate unit-tested locally, escalation path verified live on OIL-16 post-merge. |
+
 ## Stage 119 — fix: OIL auto-fix Phase 1 — activation (broker-Bot actor gate + idempotent webhook self-register)
 
 | PR | Type | Summary |
