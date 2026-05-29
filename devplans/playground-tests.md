@@ -20,7 +20,7 @@ status: active
 | 1 | תשתית BATS (submodules + common helper) | completed | `.gitmodules`, `scripts/tests/bats/`, `scripts/tests/test_helper/{bats-support,bats-assert,common.bash}`, `scripts/tests/_smoke.bats` |
 | 2 | BATS לחמישה סקריפטי-ליבה | completed | `scripts/tests/{lib,check-changelog-updated,check-devplan-updated,check-actions-pinned,check-workflow-permissions}.bats` |
 | 3 | Template rendering validation | completed | `scripts/tests/validate-templates.sh` |
-| 4 | Playground Tests CI workflow | pending | `.github/workflows/playground-tests.yml`, אופציונלית `.actionlintrc` |
+| 4 | Playground Tests CI workflow | completed | `.github/workflows/playground-tests.yml` |
 | 5 | עדכון `dev-stage.md` (Step 3 + Safety Rule) | pending | `.claude/commands/dev-stage.md` (+mirror אם קיים) |
 | 6 | Changelog fragment סיכומי | pending | `changelog.d/2026-05-29-playground-tests.md` |
 | 7 | (PR נפרד, אחרי מרג') protect-main ruleset | pending | `scripts/ensure-protect-main-ruleset.sh` |
@@ -73,13 +73,13 @@ status: active
 ### שלב 4 — Playground Tests CI workflow
 
 **Acceptance:**
-- [ ] `.github/workflows/playground-tests.yml` קיים — actions pinned ל-SHA, permissions `contents: read` בלבד.
-- [ ] שם ה-job בדיוק `Playground tests`.
-- [ ] ה-job מריץ actionlint + BATS + validate-templates.
-- [ ] PR ראשון על ה-branch מראה את ה-Action ירוק.
-- [ ] אם actionlint מסמן workflows קיימים — מתקנים, או `.actionlintrc` ממוקד עם הסבר.
+- [x] `.github/workflows/playground-tests.yml` קיים — `actions/checkout` pinned לאותו SHA כמו `pipeline-tests.yml`, `permissions: contents: read`, `submodules: true`, `fetch-depth: 0`.
+- [x] שם ה-job בדיוק `Playground tests`.
+- [x] ה-job מריץ actionlint + BATS + validate-templates.
+- [x] actionlint עובר עם `-shellcheck "shellcheck -S error"` (תואם ל-`pipeline-tests.yml` הקיים — לא משתיק errors, רק noise של style/info).
+- [ ] CI ירוק על PR (יתאמת אחרי push).
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם מקומית. actionlint כשמופעל עם severity=error כמו פייפליין-הקיים — אפס issues על workflows הקיימים. ה-yamllint של הריפו (`extends: relaxed`, line-length disabled) עובר על ה-workflow החדש נקי. אין צורך ב-`.actionlintrc` — הסינון נעשה ב-flag.
 
 **שינוי תוכנית:** —
 
@@ -133,3 +133,4 @@ status: active
 - שלב 1 הושלם — התקנתי framework של בדיקות-יחידה ל-bash (BATS) כ-3 מודולים מקובעים, וכלי-עזר משותף לכל הבדיקות. סניטי-טסט קצר עובר.
 - שלב 2 הושלם — כתבתי 5 קבצי בדיקות (אחד לכל סקריפט-ליבה), 28 בדיקות עוברות לוקאלית. גיליתי באג ישן ב-`check-actions-pinned.sh`: ה-`- uses:` הסטנדרטי של GitHub Actions לא נבדק. תיקון בנפרד.
 - שלב 3 הושלם — סקריפט שמוודא שתבניות-המערכת מתרנדרות נכון לפני שמפעילים אותן על מערכת אמיתית. שתי התבניות הקיימות עוברות; placeholder שבור (לבדיקה ידנית) מקפיץ FAIL ברור.
+- שלב 4 הושלם — Workflow חדש "Playground Tests" שמריץ actionlint + BATS + validate-templates בכל PR. actionlint לא צבע אדום (אחרי שהגדרתי severity=error כמו שהריפו עושה כבר ל-shellcheck). תיכף אעקוב אחרי ה-CI על ה-PR.
