@@ -134,12 +134,21 @@ jobs:
             rm -f /tmp/oil-verify-key.pem
             [ -n "$CLONE_TOKEN" ] || { echo "Could not mint a read token to clone edri2or/$TARGET_REPO" >&2; exit 1; }
             echo "::add-mask::$CLONE_TOKEN"
-            B64=$(printf 'x-access-token:%s' "$CLONE_TOKEN" | base64 | tr -d '\n')
+            # URL-embed auth (survives GitHub's clone redirects, unlike
+            # http.extraheader) + retry + surfaced (scrubbed) error. depth 2 so
+            # `git diff-tree HEAD` can see what the merge commit added.
             rm -rf target
-            # depth 2 so `git diff-tree HEAD` can see what the merge commit added.
-            git -c http.extraheader="AUTHORIZATION: basic ${B64}" \
-              clone --depth 2 "https://github.com/edri2or/${TARGET_REPO}.git" target >/dev/null 2>&1 \
-              || { echo "Clone of edri2or/$TARGET_REPO failed" >&2; exit 1; }
+            cloned=false
+            for attempt in 1 2 3; do
+              if clone_err=$(git clone --depth 2 \
+                   "https://x-access-token:${CLONE_TOKEN}@github.com/edri2or/${TARGET_REPO}.git" target 2>&1); then
+                cloned=true; break
+              fi
+              echo "clone attempt ${attempt}/3 failed: $(printf '%s' "$clone_err" | sed "s/${CLONE_TOKEN}/***/g")" >&2
+              rm -rf target; sleep 5
+            done
+            [ "$cloned" = "true" ] || { echo "Clone of edri2or/$TARGET_REPO failed after 3 attempts" >&2; exit 1; }
+            git -C target remote set-url origin "https://github.com/edri2or/${TARGET_REPO}.git"
           fi
 
           # --- Source: the push commit subject (auto) OR manual dispatch inputs.
