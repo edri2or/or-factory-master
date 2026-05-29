@@ -2,7 +2,7 @@
 dev_name: מקביליות ב-dev-stage
 slug: parallel-dev-stage
 opened: 2026-05-29
-status: active
+status: completed
 ---
 
 # תוכנית פיתוח — מקביליות ב-dev-stage
@@ -19,7 +19,7 @@ status: active
 | 1 | Plan-file תמיד-per-dev + devplan gate multi-active | completed | `dev-stage.md` (×2), `check-devplan-updated.sh`, `CHANGELOG.md` |
 | 2 | Changelog gate מקבל `changelog.d/` | completed | `check-changelog-updated.sh` |
 | 3 | Changelog fragment במצב מקביל | completed | `dev-stage.md` (×2), `changelog.d/` |
-| 4 | תיעוד + CHANGELOG entry | pending | `CLAUDE.md`, `CHANGELOG.md` |
+| 4 | תיעוד + CHANGELOG entry | completed | `CLAUDE.md`, `changelog.d/` |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
 
@@ -67,13 +67,13 @@ status: active
 ### שלב 4 — תיעוד + CHANGELOG entry
 
 **Acceptance:**
-- [ ] `CLAUDE.md` סעיף "Development workflow" מעודכן עם הכללים החדשים
-- [ ] `CHANGELOG.md` מכיל Stage 136 המתעד את כל 4 השינויים
-- [ ] כל שערי-CI עוברים ✓
+- [x] `CLAUDE.md` סעיף "Development workflow" מעודכן עם הכללים החדשים
+- [x] רשומת היומן של 4 השלבים מתועדת (136-137 ב-CHANGELOG.md; 3-4 בפתק changelog.d/)
+- [x] כל שערי-CI עוברים ✓
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם — CLAUDE.md מתעד את זרימת המקביליות; הפיתוח נסגר (status: completed). רשומת השלב נכתבה לפתק (oil-autofix עדיין פעיל במקביל).
 
-**שינוי תוכנית:** —
+**שינוי תוכנית:** רשומות היומן של שלבים 3-4 נכתבו לפתק changelog.d/ במקום ל-CHANGELOG.md (בחירת Or) — גם dogfooding של המנגנון, גם עקיפת תקרת ה-20KB וגם מניעת התנגשות עם לולאת ה-OIL.
 
 ---
 
@@ -84,3 +84,4 @@ status: active
 - שלב 1 הושלם — פיתוח חדש תמיד נפתח ב-devplans/, שומר-CI אוכף את כל הפיתוחים הפעילים.
 - שלב 2 הושלם — שומר-היומן מקבל גם קובץ-פתק נפרד (changelog.d/), לא רק את היומן המרכזי.
 - שלב 3 הושלם — כשרצים שני פיתוחים יחד, כל אחד כותב את היומן שלו לקובץ-פתק נפרד (במקום להתנגש בראש היומן המרכזי).
+- שלב 4 הושלם — התיעוד עודכן והפיתוח נסגר. מעכשיו שני פיתוחי dev-stage יכולים לרוץ במקביל בלי להידרס.
