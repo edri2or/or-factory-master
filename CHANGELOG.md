@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 129 — feat: per-system agent identity in orientation docs (operator card + system purpose + human agent name)
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | feat | Every provisioned system's `AGENTS.md` now carries three identity additions, all kept short per the over-context research (ETH Zürich arXiv:2602.11988 / context-rot): (1) a CONSTANT operator-identity block (who Or is, how to work with him in Hebrew, the agent's hands-and-eyes role, human red lines) — literal text in `templates/system/AGENTS.md.template`, identical across systems, edited in one place; (2) the system **Purpose** is now filled from a new optional `system_purpose` provision input (falls back to the original `TODO(human)` placeholder when empty); (3) a new optional `agent_name` provision input — empty ⇒ a deterministic, collision-free human name generated from `SYSTEM_NAME` (sha256 → adjective+noun word lists), non-empty ⇒ operator override. Rendered via the existing soft-fail orientation step; two new placeholders (`${SYSTEM_PURPOSE}`, `${AGENT_NAME}`) added to the explicit `envsubst` allow-list; the final agent name is surfaced in `GITHUB_STEP_SUMMARY`. No change to secret handling, the soft-fail contract, or branch protection. |
+
 ## Stage 128 — feat: allowlist deploy-mcp-server.yml for dispatch (activates the OIL approval bridge)
 
 | PR | Type | Summary |

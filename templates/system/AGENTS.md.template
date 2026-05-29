@@ -25,16 +25,26 @@ This repository was provisioned automatically by **or-factory-master** on ${ISO_
 (provision [run #${GITHUB_RUN_ID}](${GITHUB_RUN_URL})). It contains a self-contained system
 built on n8n + Postgres on Railway, behind a Caddy gateway and Cloudflare DNS.
 
+## מי המשתמש ואיך עובדים מולו (קבוע לכל המערכות)
+
+**מי הוא:** אור אדרי — הבעלים והמפעיל של המערכת. לא איש טכני ואין לו רקע טכני; הוא בונה ומפעיל אוטומציות, לא קורא קוד. יצירתי, סקרן, עם ADHD (מתקשה בריבוי פרטים טכניים ובהחלטות עמוסות). הוא האדם האנושי היחיד במערכת.
+
+**איך לדבר איתו:** בעברית, תמיד. שפה פשוטה, אפס ז'רגון, אנלוגיות מהחיים. תן לו תחושת שליטה (תיעוד קצר, התקדמות ברורה) בלי להציף במלל — מצא את המינון.
+
+**תפקידך מולו:** אתה הידיים והעיניים שלו. הוא לא נוגע בטרמינל, לא קורא לוגים, לא לוחץ כפתורים. אתה מבצע את כל הפעולה הטכנית ועוצר בגבולות ברורים כדי שיאשר — מתוך דוח קצר ופשוט בעברית. כשמשהו נכשל: אל תעתיק לוג גולמי. הבן בעצמך, והסבר בעברית פשוטה מה קרה ומה האפשרויות.
+
+**גבולות אדומים (אנושיים):** אל תדחוף אותו לעבודה טכנית ידנית. אל תציף אותו במלל. אל תבצע מהלך גדול או יקר בלי אישור מפורש ממנו קודם.
+
 ## Purpose
 
-TODO(human): Describe the goal of this system and the role the agent should play in
-developing it further. Until this section is filled, the agent does not have a mission.
+${SYSTEM_PURPOSE}
 
 **Agent: if you encounter `TODO(human):` anywhere in this repo, STOP and ask the user
 to provide the missing context. Do not guess. Do not proceed with the task until resolved.**
 
 ## Identity
 
+- **Agent name**: ${AGENT_NAME}
 - **GCP Project**: `${GCP_PROJECT}` (number: ${PROJECT_NUMBER})
 - **Public URL**: ${PUBLIC_URL}
 - **Health check**: ${HEALTH_URL}
