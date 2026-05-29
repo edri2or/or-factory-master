@@ -5,7 +5,7 @@ set -euo pipefail
 
 sum_two() {
   local a="$1" b="$2"
-  echo "$(( a - b ))"
+  echo "$(( a + b ))"
 }
 
 sum_two "${1:-0}" "${2:-0}"
