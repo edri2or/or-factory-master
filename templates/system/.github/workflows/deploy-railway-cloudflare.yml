@@ -822,19 +822,36 @@ jobs:
             }
             _rgql 'mutation($id:String!){customDomainDelete(id:$id)}' \
               "$(jq -cn --arg id "$CUSTOM_DOMAIN_ID" '{id:$id}')" >/dev/null
-            sleep 5
-            resp=$(_rgql 'mutation($i:CustomDomainCreateInput!){
-                customDomainCreate(input:$i){
-                  id status {
-                    dnsRecords { hostlabel recordType requiredValue }
-                    verificationDnsHost verificationToken verified
-                    certificateStatusDetailed certificateErrorMessage
+            # Railway needs a beat to release the just-deleted domain, and its
+            # customDomainCreate flakes with INTERNAL_SERVER_ERROR for minutes at a
+            # time. Wait, then retry PATIENTLY (~5 min). A single attempt here once
+            # 500'd and left the domain DELETED-without-recreate, so the next step
+            # wasted its 15-min cert poll on a domain that no longer existed
+            # (factory-test-83 run 26660480702). If it still can't recreate, fail
+            # fast — never proceed with no custom domain.
+            sleep 30
+            NEW_STATUS='{}'
+            for rc_n in 1 2 3 4 5 6 7 8 9 10; do
+              resp=$(_rgql 'mutation($i:CustomDomainCreateInput!){
+                  customDomainCreate(input:$i){
+                    id status {
+                      dnsRecords { hostlabel recordType requiredValue }
+                      verificationDnsHost verificationToken verified
+                      certificateStatusDetailed certificateErrorMessage
+                    }
                   }
-                }
-              }' \
-              "$(jq -cn --arg pid "$PROJECT_ID_RW" --arg eid "$ENV_ID" --arg sid "$N8N_ID" --arg d "$DOMAIN" \
-                '{i:{projectId:$pid,environmentId:$eid,serviceId:$sid,domain:$d,targetPort:5678}}')")
-            NEW_STATUS=$(printf '%s' "$resp" | jq -c '.data.customDomainCreate // {}')
+                }' \
+                "$(jq -cn --arg pid "$PROJECT_ID_RW" --arg eid "$ENV_ID" --arg sid "$N8N_ID" --arg d "$DOMAIN" \
+                  '{i:{projectId:$pid,environmentId:$eid,serviceId:$sid,domain:$d,targetPort:5678}}')")
+              NEW_STATUS=$(printf '%s' "$resp" | jq -c '.data.customDomainCreate // {}')
+              [ "$(printf '%s' "$NEW_STATUS" | jq -r '.id // ""')" != "" ] && break
+              echo "  customDomainCreate attempt ${rc_n}/10 got no id (Railway 500?); retry in 30s. resp=${resp}" >&2
+              sleep 30
+            done
+            if [ "$(printf '%s' "$NEW_STATUS" | jq -r '.id // ""')" = "" ]; then
+              echo "::error::Railway customDomainCreate failed after delete (10 attempts) — the domain would be left deleted. Aborting; re-dispatch to retry." >&2
+              exit 1
+            fi
             NEW_VERIFIED=$(printf '%s' "$NEW_STATUS" | jq -r '.status.verified // false')
             NEW_CNAME_TARGET=$(printf '%s' "$NEW_STATUS" | jq -r \
               '.status.dnsRecords // [] | map(select(.recordType=="DNS_RECORD_TYPE_CNAME")) | .[0].requiredValue // ""')
@@ -918,12 +935,15 @@ jobs:
             echo "  customDomainDelete id=${CUSTOM_DOMAIN_ID}" >&2
             _rgql 'mutation($id:String!){customDomainDelete(id:$id)}' \
               "$(jq -cn --arg id "$CUSTOM_DOMAIN_ID" '{id:$id}')" >/dev/null
-            sleep 5
+            sleep 30
             local resp new_status new_id new_target rc_n
             new_id=""; new_target=""
             # Railway's customDomainCreate is flaky (intermittent INTERNAL_SERVER_ERROR /
-            # "please try again"). Retry it instead of dying on the first 500.
-            for rc_n in 1 2 3 4 5 6; do
+            # "please try again") for MINUTES at a time. Retry patiently (~5 min) so a
+            # transient Railway 500 window is outlasted within one run instead of
+            # failing the deploy (factory-test-83 run 26660480702: 6×10s≈1min wasn't
+            # enough — all 6 hit the 500 and the deploy died).
+            for rc_n in 1 2 3 4 5 6 7 8 9 10; do
               resp=$(_rgql 'mutation($i:CustomDomainCreateInput!){
                   customDomainCreate(input:$i){
                     id status {
@@ -939,11 +959,11 @@ jobs:
               new_target=$(printf '%s' "$new_status" | jq -r \
                 '.status.dnsRecords // [] | map(select(.recordType=="DNS_RECORD_TYPE_CNAME")) | .[0].requiredValue // ""')
               if [ -n "$new_id" ] && [ -n "$new_target" ]; then break; fi
-              echo "  customDomainCreate attempt ${rc_n}/6 got no id/target (Railway may have 500'd); retry in 10s. resp=${resp}" >&2
-              sleep 10
+              echo "  customDomainCreate attempt ${rc_n}/10 got no id/target (Railway may have 500'd); retry in 30s. resp=${resp}" >&2
+              sleep 30
             done
             if [ -z "$new_id" ] || [ -z "$new_target" ]; then
-              echo "::error::customDomain recreate failed after 6 attempts. resp=${resp}" >&2
+              echo "::error::customDomain recreate failed after 10 attempts. resp=${resp}" >&2
               return 1
             fi
             CUSTOM_DOMAIN_ID="$new_id"
@@ -1306,10 +1326,21 @@ jobs:
           echo "PASS: Caddy /health -> 200."
 
           # 2. /webhook/* without a signature -> 401 (rejected at the edge).
-          H2=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 \
-            -X POST "https://${CADDY_URL}/webhook/agent-router" \
-            -H "Content-Type: application/json" --data '{"text":"smoke test"}' || echo "000")
-          [ "$H2" = "401" ] || { echo "FAIL: Caddy /webhook without HMAC expected 401, got $H2" >&2; exit 1; }
+          #    The /webhook/* matcher warms up a beat AFTER /health goes 200, so a
+          #    fresh Caddy briefly returns 404 here before hmacguard is serving the
+          #    route. Poll until 401 (the fail-closed response) — only a persistent
+          #    non-401 after the cap is a real failure. (factory-test-83: /health=200
+          #    one poll before /webhook still 404 -> false failure on a single shot.)
+          H2=000
+          for i in $(seq 1 18); do
+            H2=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 \
+              -X POST "https://${CADDY_URL}/webhook/agent-router" \
+              -H "Content-Type: application/json" --data '{"text":"smoke test"}' || echo "000")
+            [ "$H2" = "401" ] && break
+            echo "[caddy /webhook no-hmac ${i}/18] HTTP ${H2}; route warming, sleeping 10s..."
+            sleep 10
+          done
+          [ "$H2" = "401" ] || { echo "FAIL: Caddy /webhook without HMAC expected 401, got $H2 after ~3 min" >&2; exit 1; }
           echo "PASS: Caddy /webhook without HMAC -> 401."
 
           # 3. /webhook/* with a valid HMAC -> passes Caddy and reaches n8n
