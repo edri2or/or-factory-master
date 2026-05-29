@@ -212,7 +212,7 @@ polling ל-`mergeable_state=clean` עד ~90s (מכבד branch protection); (ג) 
 המיזוג **הצליח** (PR #190 מוזג ע"י `oil-autofix-approver[bot]` — **הפרדת-זהויות הוכחה!**) אבל:
 (1) מוזג למרות `Changelog gates` **אדום** — כי ל-main אין branch protection, ו-`mergeable_state`
 לא-אמין (מתועד: automerge-action #103/#164); (2) ה-smoke עשה `git add -A` ו**דלף `gha-creds-*.json`**
-(WIF external_account — לא מפתח, אבל לא ב-main). **תוקן (Stage 137):** המאשר עבר ל-auto-merge מובנה
+(WIF external_account — לא מפתח, אבל לא ב-main). **תוקן (Stage 138):** המאשר עבר ל-auto-merge מובנה
 (`enablePullRequestAutoMerge` — GitHub ממזג רק כש-required checks ירוקות, אכיפת-פלטפורמה במקום
 אמון ב-mergeable_state); smoke מוסיף רק 2 קבצים מפורשים; root `.gitignore` ל-gha-creds; ניקוי
 הקבצים שדלפו מ-main. **נותר:** workflow חד-פעמי ל-branch protection (required checks + no-bypass +

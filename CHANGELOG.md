@@ -1,10 +1,16 @@
 # Changelog
 
-## Stage 137 — fix: OIL approver merges SAFELY (native auto-merge, no mergeable_state trust) + gha-creds leak cleanup
+## Stage 138 — fix: OIL approver merges SAFELY (native auto-merge, no mergeable_state trust) + gha-creds leak cleanup
 
 | PR | Type | Summary |
 |---|---|---|
 | TBD | fix | The `mode=smoke` live test reached the bridge end-to-end and proved identity separation (PR #190 `merged_by==oil-autofix-approver[bot]`, not the broker) — but surfaced two real safety problems. **(1) Merged with red CI:** `or-factory-master/main` has no branch protection, and `mergePullRequestAsApprover` trusted REST `mergeable_state` (documented unreliable for merge automation — pascalgn/automerge-action #103/#164; it reports `clean` without protection even when checks fail). So the approver merged PR #190 although its `Changelog gates` check was red. **(2) Credential leak:** the smoke job's `git add -A` captured the `google-github-actions/auth` WIF file (`gha-creds-*.json`, an `external_account` config — not a raw key, but it must never reach `main`); that `.json` also tripped the changelog/devplan gate. Fixes (per industry-standard research 2026-05-29): `mergePullRequestAsApprover` now **un-drafts via GraphQL** then **arms GitHub native auto-merge** (`enablePullRequestAutoMerge`, SQUASH) — GitHub merges only when branch protection's required checks pass, so green-CI is platform-enforced, not judged by us (falls back to a direct merge only when the PR is already mergeable, which protection still gates); `oil-approval.ts` reports the auto-merge-armed outcome ("יתמזג כשהבדיקות ירוקות"). The smoke job stages only its two intended files (never `git add -A`); a root **`.gitignore`** ignores `gha-creds-*.json` (official auth-action guidance). Cleanup: removed the leaked `gha-creds-2654f35b0743ab12.json` + `docs/oil-smoke-1780046093.md` + the stray smoke changelog entry from `main`. Also adds the matching platform-level half — a one-shot `set-factory-branch-protection.yml` (operator-dispatched, broker token scoped to `administration:write` on the factory repo) that puts required-checks branch protection on `main` with `enforce_admins:true` (no bypass) + `allow_auto_merge:true`, so green-CI becomes a platform-enforced precondition for every merge incl. the approver. Verified: `tsc` + 7 unit tests green; `yamllint` + shellcheck clean on the new workflow. |
+
+## Stage 137 — feat: parallel dev-stage — changelog gate accepts changelog.d/ fragments (Stage 2/4)
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | feat | Stage 2 of the parallel-dev-stage development. `scripts/check-changelog-updated.sh` now accepts EITHER a touch to `CHANGELOG.md` OR a `changelog.d/<YYYY-MM-DD>-<slug>.md` fragment as satisfying the documentation requirement — mirroring how the devplan twin (`check-devplan-updated.sh`) accepts `devplans/*.md`. Regex `^(CHANGELOG\.md\|changelog\.d/.+\.md)$` (verified: accepts `CHANGELOG.md` + dated `.md` fragments, rejects non-`.md` files under `changelog.d/`, `docs/CHANGELOG.md`, and code files). This readies the gate for Stage 3, where `/dev-stage` writes a fragment instead of pushing to the head of `CHANGELOG.md` when a parallel development is active — without it, a correctly-documented parallel development would fail CI. Single-development flow is unchanged (the `CHANGELOG.md` branch still matches first). |
 
 ## Stage 136 — feat: parallel dev-stage — plan-file always-per-dev + devplan gate multi-active (Stage 1/4)
 

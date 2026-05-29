@@ -21,8 +21,8 @@ itself declares "manage this in ordered, documented stages."
 
 Before anything, read:
 1. `templates/devplan/DEVPLAN.template.md` — the plan template you instantiate.
-2. `devplans/*.md`, if any exist — to detect any parallel active developments
-   (needed in Step 3 for the changelog fragment rule).
+2. `devplans/*.md`, if any exist — to see which other developments are active in parallel
+   (so you coordinate, and the devplan CI gate stays satisfied).
 
 ## Instructions
 
@@ -42,10 +42,19 @@ confirmation, in plain Hebrew. Do not touch any code yet. Wait for his OK on the
 ### Step 3: Execution Loop (one stage at a time)
 For each stage, in order:
 - **(a) Implement** the stage.
-- **(b) Update the plan file**: set the stage's status (`in-progress` → `completed`)
-  in the stages table, write the "הערת התקדמות אחרונה", and add the stage's line to
-  the "יומן ל-Or". Commit this DEVPLAN.md update together with the stage's code in the
-  same change, so the CI devplan gate stays green.
+- **(b) Update the bookkeeping** in the same change as the stage's code, so the CI gates
+  stay green:
+  - **Plan file**: set the stage's status (`in-progress` → `completed`) in the stages
+    table, write the "הערת התקדמות אחרונה", and add the stage's line to the "יומן ל-Or".
+  - **Changelog** — write the stage's entry to a per-development fragment
+    `changelog.d/<YYYY-MM-DD>-<slug>.md` (append each stage to that same fragment), NOT to
+    the head of `CHANGELOG.md`. This is the default for **every** development: a fragment
+    file is unique per dev, so concurrent PRs never collide on a hand-picked `Stage N`. The
+    CI changelog gate (`scripts/check-changelog-updated.sh`) accepts the fragment. The
+    numbered `CHANGELOG.md` is built later — and only — by the **Compile changelog** workflow
+    (`scripts/compile-changelog.sh`), which folds all fragments in one single-threaded run
+    (so `Stage N` numbers are assigned with no concurrency) and auto-archives past the size
+    cap. Never hand-edit the top of `CHANGELOG.md` from a stage.
 - **(c) Report to Or** in plain Hebrew: which stage, what was done, what's next. Short.
 - **(d) Stop at the boundary** and wait for Or's approval before the next stage.
 - **If it gets complicated / the plan no longer fits**: update the plan first — add or
