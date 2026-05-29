@@ -43,8 +43,15 @@ if ! printf '%s' "$test_cmd" | grep -Eq '^(bash|bats) [A-Za-z0-9_./-]+$'; then
   fi
 fi
 
-test_file=$(printf '%s' "$test_cmd" | awk '{print $2}')
-[ -f "$test_file" ] || failed "declared test file does not exist on main: $test_file"
+if printf '%s' "$test_cmd" | grep -q '^npm '; then
+  # npm path: this script gets only test_cmd (no fix-meta.json/test_paths), so
+  # validate the --prefix dir (word 3) instead of a single `$2` file.
+  prefix_dir=$(printf '%s' "$test_cmd" | awk '{print $3}')
+  [ -d "$prefix_dir" ] || failed "declared npm --prefix dir does not exist on main: $prefix_dir"
+else
+  test_file=$(printf '%s' "$test_cmd" | awk '{print $2}')
+  [ -f "$test_file" ] || failed "declared test file does not exist on main: $test_file"
+fi
 
 # Run the AI-authored reproducer in a SCRUBBED environment (inherits no secrets),
 # exactly like oil-autofix-validate.sh's run_test. On the merged main tree the fix
@@ -55,7 +62,7 @@ if printf '%s' "$test_cmd" | grep -q '^npm '; then
   (cd "$prefix_dir" && npm ci --prefer-offline \
     --cache /tmp/npmcache \
     --userconfig /dev/null \
-    && tsc --build --force) >/dev/null 2>&1 || rc=$?
+    && npm run build) >/dev/null 2>&1 || rc=$?
   if [ "$rc" -eq 0 ]; then
     env -i \
       PATH=/usr/local/bin:/usr/bin:/bin \
