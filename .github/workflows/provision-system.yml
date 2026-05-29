@@ -557,8 +557,12 @@ jobs:
           SYSTEM_NAME: ${{ inputs.system_name }}
         run: |
           set -euo pipefail
+          # allow_auto_merge:true so the OIL auto-fix approver can arm GitHub's
+          # native auto-merge on this system's PRs (it errors "Auto merge is not
+          # allowed for this repository" otherwise) — the system's first auto-fix
+          # ✅ then merges with no manual repo-setting flip, matching the factory.
           BODY=$(jq -cn --arg name "$SYSTEM_NAME" \
-            '{name: $name, private: true, auto_init: true, has_issues: true, has_wiki: false, delete_branch_on_merge: true}')
+            '{name: $name, private: true, auto_init: true, has_issues: true, has_wiki: false, delete_branch_on_merge: true, allow_auto_merge: true}')
           resp=$(curl -sS -w '\nHTTP_STATUS:%{http_code}' -X POST \
             -H "Authorization: Bearer ${APP_TOKEN}" \
             -H "Accept: application/vnd.github+json" \
