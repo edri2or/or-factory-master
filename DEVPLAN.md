@@ -143,6 +143,14 @@ or-factory-master. ה-placeholder `__NOT_CONFIGURED__` מזוהה ב-`approverCo
 כך שהגשר נשאר רדום עד מילוי אמיתי. אומת: `tsc`+7 בדיקות ירוקות, yamllint נקי, שלבי-ה-bash
 החדשים shellcheck-נקיים, supply-chain ירוק.
 
+**אקטיבציה — באג שנתפס חי + תיקון:** PR-A+B מוזגו → `deploy-mcp-server.yml` רץ אוטומטית
+(06:41), פרס את ה-MCP עם קוד הגשר, יצר את 5 הסודות כ-placeholders, ורשם את webhook הטלגרם
+(`setWebhook` → `/telegram-webhook`, HTTP 200 — הבוט חי). אבל כשהמפעיל הדליק את
+`register-oil-approver-app.yml`, הוא **דילג בטעות**: בדיקת ה-`exists` בדקה רק *קיום* סוד, וה-
+placeholder shells מ-deploy "ניצחו" אותה → האפליקציה לא נרשמה. **תוקן** (PR קטן): בדיקת ה-
+`exists` עכשיו קוראת את *הערך* ומתייחסת ל-`__NOT_CONFIGURED__`/ריק כ"חסר", כך שהרישום ימשיך.
+נותר: להריץ שוב את הרישום (2 קליקים), למלא את ה-allowlist במזהה הטלגרם של Or, ואימות חי.
+
 **שינוי תוכנית:** **שער-ה-GitHub ננטש לטובת טלגרם, ושלבים 4+5 אוחדו.** הסיבה: חוקי-הגנה על
 environment ב-repo פרטי דורשים GitHub Enterprise (אומת חד-משמעית מול ה-API: branch-policy=200,
 אבל `prevent_self_review`=422 ו-`required_reviewers`=422, וב-changelog רשמי של GitHub). ה-

@@ -61,15 +61,34 @@ jobs:
         id: check-secrets
         run: |
           set -euo pipefail
+          # "Already registered" means the secrets hold REAL credentials — not the
+          # __NOT_CONFIGURED__ placeholder shells deploy-mcp-server.yml creates so
+          # its --set-secrets mount resolves before registration. Checking mere
+          # existence would let those empty shells make this workflow skip and the
+          # App would never actually register (caught live on the first run).
+          # So we read the value and treat the placeholder (or empty) as "missing".
           have_key=false; have_install=false
-          gcloud secrets describe "${SECRET_PREFIX}private-key"     --project="${GCP_PROJECT}" &>/dev/null && have_key=true || true
-          gcloud secrets describe "${SECRET_PREFIX}installation-id" --project="${GCP_PROJECT}" &>/dev/null && have_install=true || true
+          if gcloud secrets describe "${SECRET_PREFIX}private-key" --project="${GCP_PROJECT}" &>/dev/null; then
+            KEY_VAL=$(gcloud secrets versions access latest --secret="${SECRET_PREFIX}private-key" --project="${GCP_PROJECT}" 2>/dev/null | tr -d '\r\n' || true)
+            # A real RSA key is a long PEM; the placeholder is the literal token.
+            case "$KEY_VAL" in
+              ""|"__NOT_CONFIGURED__") have_key=false ;;
+              *) have_key=true ;;
+            esac
+          fi
+          if gcloud secrets describe "${SECRET_PREFIX}installation-id" --project="${GCP_PROJECT}" &>/dev/null; then
+            INST_VAL=$(gcloud secrets versions access latest --secret="${SECRET_PREFIX}installation-id" --project="${GCP_PROJECT}" 2>/dev/null | tr -d '\r\n' || true)
+            case "$INST_VAL" in
+              ""|"__NOT_CONFIGURED__") have_install=false ;;
+              *) have_install=true ;;
+            esac
+          fi
           if [ "$have_key" = "true" ] && [ "$have_install" = "true" ]; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
-            echo "✅ approver App already registered — skipping."
+            echo "✅ approver App already registered (real credentials present) — skipping."
           else
             echo "exists=false" >> "$GITHUB_OUTPUT"
-            echo "Missing credentials (key=$have_key install=$have_install) — proceeding."
+            echo "No real credentials yet (key=$have_key install=$have_install; placeholders don't count) — proceeding."
           fi
 
       - name: Compute predictable Cloud Run URL + generate POLL_TOKEN

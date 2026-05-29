@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 126 — fix: OIL auto-fix Stage 4 — approver-registration idempotency (placeholder shells no longer skip)
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | fix | Live activation of Stage 4 surfaced a real ordering bug. Merging PR-B auto-triggered `deploy-mcp-server.yml`, which (correctly) created the 3 `oil-autofix-approver-app-*` secrets as `__NOT_CONFIGURED__` **placeholder shells** so the Cloud Run `--set-secrets` mount resolves before registration. But `register-oil-approver-app.yml`'s `check-secrets` step tested mere secret **existence**, so those empty shells made it report "already registered" and **skip** — the App never actually registered (every downstream step `skipped`). Fix: `check-secrets` now reads the secret **values** and treats `__NOT_CONFIGURED__` (or empty) as "missing", so registration proceeds and the receiver writes the real credentials as new `latest` versions over the shells. The deploy itself was otherwise fully successful and idempotent — MCP redeployed with the bridge code, all 5 secrets mounted, and the Telegram webhook registered live (`setWebhook → /telegram-webhook` HTTP 200 on the send-only control alerts bot). The bridge remains **dormant** (approver creds still placeholders + allowlist still placeholder) until the re-run registers the App and the operator fills the allowlist. Verified: `yamllint` + shellcheck clean on the changed step. No runtime/loop logic changed. |
+
 ## Stage 125 — feat: OIL auto-fix Stage 4 — Telegram approval bridge wiring (PR-B; dormant)
 
 | PR | Type | Summary |
