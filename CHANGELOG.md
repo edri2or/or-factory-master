@@ -1,5 +1,11 @@
 # Changelog
 
+## Stage 127 — feat: OIL auto-fix Stage 4 — one-shot allowlist writer (set-oil-allowlist.yml)
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | feat | After the idempotency fix (Stage 126), the operator re-dispatched `register-oil-approver-app.yml` and the **`oil-autofix-approver` App registered successfully** (narrow scope verified == 1 repo; the 3 `oil-autofix-approver-app-*` secrets advanced from placeholder to a real version 2). This PR adds `.github/workflows/set-oil-allowlist.yml` — a one-shot helper (modeled on `seed-test-bot-token.yml`) that takes comma-separated Telegram numeric user ids as input, validates each is a positive integer (a typo can't lock the gate open or write garbage), and writes them to `oil-approver-telegram-allowlist` in the control SM server-side under the broker SA via WIF. **Not** on the `dispatch_workflow` allowlist (operator dispatches from the UI). The bridge stays dormant until the operator runs this with their id and the MCP is redeployed to mount the real allowlist + approver creds. Verified: `yamllint` + shellcheck clean; actions SHA-pinned. No runtime/loop logic changed. |
+
 ## Stage 126 — fix: OIL auto-fix Stage 4 — approver-registration idempotency (placeholder shells no longer skip)
 
 | PR | Type | Summary |

@@ -1,0 +1,101 @@
+name: Set OIL approver Telegram allowlist (one-shot)
+
+# One-time helper. Writes the comma-separated list of Telegram user ids permitted
+# to approve OIL auto-fix merges into the `oil-approver-telegram-allowlist` secret
+# in or-factory-master-control, server-side under the broker SA via WIF. The
+# value is a non-secret numeric id list, but we still keep it off the logs (the
+# input flows through env, never echoed). Idempotent: re-running adds a new
+# version with whatever ids you pass.
+#
+# After running this, re-deploy the MCP (deploy-mcp-server.yml) so the new
+# allowlist version is mounted. NOT on the dispatch_workflow allowlist — the
+# operator dispatches it from the GitHub UI.
+
+on:
+  workflow_dispatch:
+    inputs:
+      user_ids:
+        description: "Comma-separated Telegram numeric user ids allowed to approve (e.g. 5786217215 or 111,222)."
+        required: true
+        type: string
+
+permissions: {}
+
+jobs:
+  set-allowlist:
+    name: Write oil-approver-telegram-allowlist
+    runs-on: ubuntu-latest
+    environment: production
+    # Broker WIF CEL pins ref=refs/heads/main.
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      id-token: write
+
+    env:
+      GCP_PROJECT: "or-factory-master-control"
+      SECRET_NAME: "oil-approver-telegram-allowlist"
+      WIF_PROVIDER: "projects/140345952904/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
+      BROKER_SA: "factory-master-broker@or-factory-master-control.iam.gserviceaccount.com"
+
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
+
+      - name: Authenticate to GCP via WIF
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093  # v3.0.0
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.BROKER_SA }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db  # v3.0.1
+
+      - name: Validate + write the allowlist
+        env:
+          USER_IDS: ${{ inputs.user_ids }}
+        run: |
+          set -euo pipefail
+          # Normalise: strip spaces, collapse blank entries. Then validate every
+          # entry is a positive integer (a Telegram numeric user id) so a typo
+          # can never lock the gate open or write garbage. Comma-separated.
+          CLEAN=$(printf '%s' "$USER_IDS" | tr -d '[:space:]')
+          if [ -z "$CLEAN" ]; then
+            echo "FAIL: user_ids is empty after trimming." >&2
+            exit 1
+          fi
+          IFS=',' read -ra PARTS <<< "$CLEAN"
+          for p in "${PARTS[@]}"; do
+            [ -n "$p" ] || continue
+            if ! [[ "$p" =~ ^[0-9]+$ ]]; then
+              echo "FAIL: '$p' is not a positive integer Telegram user id." >&2
+              exit 1
+            fi
+          done
+          echo "Validated $(printf '%s' "$CLEAN" | tr ',' '\n' | grep -c .) id(s)."
+
+          # The secret shell is created (placeholder) by deploy-mcp-server.yml;
+          # create it here too if this runs first. Then add the real version.
+          if ! gcloud secrets describe "$SECRET_NAME" --project="$GCP_PROJECT" >/dev/null 2>&1; then
+            gcloud secrets create "$SECRET_NAME" \
+              --project="$GCP_PROJECT" \
+              --replication-policy=automatic \
+              --labels="owner=factory-master,purpose=oil-approver-allowlist" \
+              --quiet
+            echo "PASS: created $SECRET_NAME."
+          fi
+          printf '%s' "$CLEAN" | gcloud secrets versions add "$SECRET_NAME" \
+            --project="$GCP_PROJECT" --data-file=- --quiet
+          COUNT=$(gcloud secrets versions list "$SECRET_NAME" \
+            --project="$GCP_PROJECT" --filter="state=ENABLED" --format="value(name)" | wc -l)
+          echo "PASS: $SECRET_NAME now has ${COUNT} enabled version(s)."
+
+      - name: Summary
+        if: success()
+        run: |
+          {
+            echo "## ✅ OIL approver allowlist written"
+            echo ""
+            echo "Secret \`${SECRET_NAME}\` in \`${GCP_PROJECT}\` updated with the supplied Telegram user id(s)."
+            echo ""
+            echo "**Next step**: re-deploy the MCP (\`deploy-mcp-server.yml\`) so the new allowlist version is mounted, then live-verify the bridge."
+          } >> "$GITHUB_STEP_SUMMARY"
