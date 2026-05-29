@@ -58,6 +58,15 @@ The previous factory (`edri2or/factory`) automated everything end-to-end. Failur
 2. **Pre-flight checks first.** Before any dispatch, verify the inputs and the absence/presence of collisions via read-only MCP tools.
 3. **Dispatch via the `dispatch_workflow` MCP tool.** The agent triggers the allowlisted workflows itself (`provision-system.yml`, `register-system-app.yml`, `deploy-railway-cloudflare.yml`, `configure-agent-router.yml`, `decommission-test-system.yml`, `oil-autofix-investigate.yml`, `deploy-mcp-server.yml`) — no operator button-click, no env-var PAT. Confirm cost/scope with the user before a fresh provision/deploy unless they've opted into autonomy. `decommission-test-system.yml` runs only on an explicit user teardown request (never auto-chained). The real-system `decommission-system.yml` is NOT dispatchable by the tool (destructive — written approval required).
 4. **Watch the run.** Poll the workflow run. Read failed step logs directly. Report what failed.
+   - Polling protocol — always follow this when waiting for a workflow run:
+     - Call `get_workflow_run` (factory MCP) every ~30 seconds.
+     - Continue up to 40 iterations (~20 minutes maximum).
+     - While status is `in_progress` or `queued` — wait and retry.
+     - On `success` — proceed to the verify step (`verify_*` tools).
+     - On `failure`/`cancelled` — read failed step logs via `get_run_jobs` and report to the user.
+     - If 40 iterations pass with no terminal status — stop and report; never assume completion.
+     - Never advance to the next step without a confirmed terminal status from `get_workflow_run`.
+   - The browser session cannot listen for events between messages, so this active poll is required. A `workflow_run`-triggered Telegram nudge (`notify-workflow-complete.yml`) independently pings the user when a key workflow finishes, so they can return to the session.
 5. **Verify outputs.** After success, call the relevant `verify_*` MCP tool to confirm the real state matches the expected state.
 6. **Stop at the boundary.** Each skill ends at a clear handoff point. Ask the user what's next; don't chain.
 

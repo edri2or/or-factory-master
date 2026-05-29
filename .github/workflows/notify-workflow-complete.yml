@@ -1,0 +1,106 @@
+name: Notify Workflow Complete
+
+# A "knock on the door" for the interactive browser session. When one of the
+# key factory workflows finishes (success OR failure), this sends Or a Telegram
+# nudge so he can return to his Claude Code session — instead of acting as the
+# agent's alarm clock. The browser session cannot listen for events between
+# messages; this workflow_run-triggered layer does the listening for it.
+#
+# It uses ONLY existing infrastructure: WIF -> Secret Manager (telegram-bot-token
+# / telegram-chat-id), no new GitHub secret, no AI, no token cost. It also emits
+# one info-severity observability event to Axiom via scripts/emit-event.sh
+# (info => Axiom only; never Telegram/Linear, so no duplicate ping and no stray
+# Linear ticket). Every step is soft-fail: a notification can never break anything.
+#
+# Limitation: workflow_run is in-repo, so the per-system deploy
+# (deploy-railway-cloudflare.yml, which runs in a SYSTEM repo) is NOT covered —
+# only these four factory workflows.
+
+on:
+  workflow_run:
+    workflows:
+      - "Provision System (step 1 — GCP + GitHub + secrets)"
+      - "Deploy MCP Server (Cloud Run)"
+      - "Register System App (per-system GitHub App, 2-click)"
+      - "Decommission Test System (Railway + DNS + repo archive)"
+    types: [completed]
+
+permissions: {}
+
+jobs:
+  notify:
+    name: Telegram session nudge
+    runs-on: ubuntu-latest
+    environment: production
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      id-token: write
+
+    env:
+      WF_NAME: ${{ github.event.workflow_run.name }}
+      WF_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+      WF_URL: ${{ github.event.workflow_run.html_url }}
+      WF_RUN_ID: ${{ github.event.workflow_run.id }}
+
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
+
+      - name: Authenticate to GCP via WIF
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093  # v3.0.0
+        with:
+          workload_identity_provider: "projects/140345952904/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
+          service_account: "factory-master-broker@or-factory-master-control.iam.gserviceaccount.com"
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db  # v3.0.1
+
+      - name: Emit observability event (Axiom only)
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          BODY=$(jq -cn \
+            --arg wf "$WF_NAME" \
+            --arg con "$WF_CONCLUSION" \
+            --arg url "$WF_URL" \
+            '{triggering_workflow:$wf, conclusion:$con, run_url:$url}')
+          bash scripts/emit-event.sh \
+            --name="factory.session_nudge.ready" \
+            --severity="info" \
+            --layer="factory" \
+            --workflow="notify-workflow-complete.yml" \
+            --run-id="${GITHUB_RUN_ID}" \
+            --action-required="false" \
+            --body="$BODY"
+
+      - name: Send Telegram session nudge
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+
+          # Read destination secrets; mask each the instant it lands so it can
+          # never surface in a log. A missing secret just skips the nudge.
+          TG_TOKEN=$(gcloud secrets versions access latest --secret=telegram-bot-token --project=or-factory-master-control 2>/dev/null || echo "")
+          [ -n "$TG_TOKEN" ] && echo "::add-mask::${TG_TOKEN}"
+          TG_CHAT=$(gcloud secrets versions access latest --secret=telegram-chat-id --project=or-factory-master-control 2>/dev/null || echo "")
+          [ -n "$TG_CHAT" ] && echo "::add-mask::${TG_CHAT}"
+
+          if [ -z "$TG_TOKEN" ] || [ -z "$TG_CHAT" ]; then
+            echo "[nudge] telegram='skipped' reason='no-secret'"
+            exit 0
+          fi
+
+          if [ "$WF_CONCLUSION" = "success" ]; then
+            MSG="✅ ${WF_NAME} הסתיים בהצלחה — חזור לסשן Claude Code להמשך."$'\n\n'"run: ${WF_URL}"
+          else
+            MSG="❌ ${WF_NAME} הסתיים עם ${WF_CONCLUSION} — חזור לסשן Claude Code לטיפול."$'\n\n'"run: ${WF_URL}"
+          fi
+
+          TG_HTTP=$(curl -sS -m 10 -o /dev/null -w '%{http_code}' -X POST \
+            "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${TG_CHAT}" \
+            --data-urlencode "text=${MSG}" 2>/dev/null) || TG_HTTP="000"
+          case "$TG_HTTP" in
+            2*) echo "[nudge] telegram='ok'" ;;
+            *)  echo "[nudge] telegram='failed' http='${TG_HTTP}'" ;;
+          esac
