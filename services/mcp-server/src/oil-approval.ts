@@ -96,10 +96,11 @@ async function emitApproval(
 }
 
 // Parse the allowlist of Telegram user ids permitted to approve. CSV in
-// OIL_APPROVER_TELEGRAM_ALLOWLIST (e.g. "12345678,87654321"). Empty/absent →
-// nobody is allowed (closed by default).
+// OIL_APPROVER_TELEGRAM_ALLOWLIST (e.g. "12345678,87654321"). Empty/absent or the
+// deploy placeholder → nobody is allowed (closed by default).
 function allowedUserIds(): Set<string> {
   const raw = process.env.OIL_APPROVER_TELEGRAM_ALLOWLIST ?? '';
+  if (raw === '__NOT_CONFIGURED__') return new Set();
   return new Set(
     raw
       .split(',')

@@ -129,6 +129,20 @@ gated, תמיד 200). `observability-client.ts`: `sendTelegramKeyboard`/`answerC
 `editTelegramMessage`. הכל רדום עד שהאפליקציה תירשם + ה-MCP ייפרס (PR-B). אומת: `tsc` נקי,
 7 בדיקות-יחידה ירוקות (`npm test`).
 
+**PR-B (חיווט workflow — בטוח):** חובר הכל. `register-oil-approver-app.yml` חדש (workflow ייעודי
+מינימלי, דפוס `register-system-app.yml` + אותו receiver גנרי): רושם את `oil-autofix-approver`
+עם הרשאות `{contents:write, pull_requests:write, metadata:read}`, single-repo על
+or-factory-master, 3 סודות ל-SM של הבקרה, אימות-scope צר, teardown. **לא** ב-allowlist (המפעיל
+מדליק מה-UI). `deploy-mcp-server.yml`: שלבי mint-if-missing ל-`telegram-approval-webhook-secret`
++ placeholder ל-`oil-approver-telegram-allowlist` + 3 shells ל-`oil-autofix-approver-app-*`
+(כדי שה-mount תמיד ייפתר גם לפני הרישום), מאונט 5 הסודות ל-env, ורישום webhook מול Telegram
+(`setWebhook` על בוט-ההתראות הקיים — send-only היום, אז בטוח — עם secret_token + allowed_updates
+=callback_query). `oil-autofix-investigate.yml`: שלב `approval` אחרי `openpr` (soft-fail) שקורא
+`POST /oil-approval-register` (admin secret נקרא ב-lockdown לפני שלילת ה-creds), רק לתיקוני
+or-factory-master. ה-placeholder `__NOT_CONFIGURED__` מזוהה ב-`approverConfigured()` וב-allowlist
+כך שהגשר נשאר רדום עד מילוי אמיתי. אומת: `tsc`+7 בדיקות ירוקות, yamllint נקי, שלבי-ה-bash
+החדשים shellcheck-נקיים, supply-chain ירוק.
+
 **שינוי תוכנית:** **שער-ה-GitHub ננטש לטובת טלגרם, ושלבים 4+5 אוחדו.** הסיבה: חוקי-הגנה על
 environment ב-repo פרטי דורשים GitHub Enterprise (אומת חד-משמעית מול ה-API: branch-policy=200,
 אבל `prevent_self_review`=422 ו-`required_reviewers`=422, וב-changelog רשמי של GitHub). ה-

@@ -1,0 +1,297 @@
+name: Register OIL Approver App (2-click)
+
+# Manual dispatch only. Registers the `oil-autofix-approver` GitHub App — the
+# SEPARATE identity that MERGES OIL auto-fix draft PRs after a human Telegram ✅
+# (the broker opens the PR; this App merges it; the same principal can never do
+# both). Minimal permissions: contents:write + pull_requests:write + metadata:read
+# (merge needs the first two). Installed on edri2or/or-factory-master ONLY.
+# Credentials land in the CONTROL project's SM as
+# oil-autofix-approver-app-{id,private-key,installation-id}. The same Cloud Run
+# receiver image as register-system-app.yml is reused (it is generic over
+# APP_NAME / APP_PERMISSIONS / SECRET_PREFIX); it is torn down at the end.
+#
+# Operator action (ADR-012 vendor floor): 2 browser clicks on GitHub.
+#   1. "Create GitHub App"
+#   2. "Install" — choose 'Only select repositories' and tick
+#      edri2or/or-factory-master. Do NOT choose 'All repositories'.
+#
+# Idempotent: if the 3 SM secrets already exist the job is a no-op. NOT on the
+# dispatch_workflow allowlist — the operator dispatches it from the GitHub UI.
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  register:
+    name: Register oil-autofix-approver (2-click)
+    runs-on: ubuntu-latest
+    environment: production
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      id-token: write
+
+    env:
+      GCP_PROJECT: "or-factory-master-control"
+      GCP_PROJECT_NUMBER: "140345952904"
+      BROKER_SA: "factory-master-broker@or-factory-master-control.iam.gserviceaccount.com"
+      GCP_REGION: "me-west1"
+      WIF_PROVIDER: "projects/140345952904/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
+      IMAGE: "me-west1-docker.pkg.dev/or-factory-master-control/bootstrap-images/receiver:latest"
+      APP_NAME: "oil-autofix-approver"
+      SERVICE_NAME: "oil-approver-receiver"
+      SECRET_PREFIX: "oil-autofix-approver-app-"
+      TARGET_REPO: "or-factory-master"
+
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
+
+      - name: Authenticate to GCP via WIF
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093  # v3.0.0
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.BROKER_SA }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db  # v3.0.1
+
+      - name: Check if approver App credentials already exist
+        id: check-secrets
+        run: |
+          set -euo pipefail
+          have_key=false; have_install=false
+          gcloud secrets describe "${SECRET_PREFIX}private-key"     --project="${GCP_PROJECT}" &>/dev/null && have_key=true || true
+          gcloud secrets describe "${SECRET_PREFIX}installation-id" --project="${GCP_PROJECT}" &>/dev/null && have_install=true || true
+          if [ "$have_key" = "true" ] && [ "$have_install" = "true" ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "✅ approver App already registered — skipping."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "Missing credentials (key=$have_key install=$have_install) — proceeding."
+          fi
+
+      - name: Compute predictable Cloud Run URL + generate POLL_TOKEN
+        if: steps.check-secrets.outputs.exists == 'false'
+        run: |
+          set -euo pipefail
+          SERVICE_URL="https://${SERVICE_NAME}-${GCP_PROJECT_NUMBER}.${GCP_REGION}.run.app"
+          echo "SERVICE_URL=${SERVICE_URL}" >> "$GITHUB_ENV"
+          POLL_TOKEN=$(openssl rand -hex 32)
+          echo "POLL_TOKEN=${POLL_TOKEN}" >> "$GITHUB_ENV"
+          echo "::add-mask::${POLL_TOKEN}"
+
+      - name: Ensure receiver image is present (build only if missing)
+        if: steps.check-secrets.outputs.exists == 'false'
+        run: |
+          set -euo pipefail
+          if gcloud artifacts docker images describe "${IMAGE}" \
+               --project="${GCP_PROJECT}" >/dev/null 2>&1; then
+            echo "Receiver image already in Artifact Registry — reusing."
+            exit 0
+          fi
+          echo "Image missing — building from src/bootstrap-receiver/"
+          gcloud artifacts repositories create bootstrap-images \
+            --repository-format=docker \
+            --location="${GCP_REGION}" \
+            --project="${GCP_PROJECT}" \
+            --quiet 2>/dev/null || true
+          gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
+          docker build -t "${IMAGE}" src/bootstrap-receiver/
+          docker push "${IMAGE}"
+
+      - name: Deploy Cloud Run receiver (single shot with REDIRECT_URL baked in)
+        if: steps.check-secrets.outputs.exists == 'false'
+        run: |
+          set -euo pipefail
+          # Minimal merge-only permissions: contents:write + pull_requests:write
+          # (merge a PR) + metadata:read (always required). No administration, no
+          # actions/workflows/secrets — this identity exists solely to merge an
+          # already-opened PR after a human approves.
+          APP_PERMISSIONS_JSON='{"contents":"write","pull_requests":"write","metadata":"read"}'
+          APP_PERMISSIONS_B64=$(printf '%s' "${APP_PERMISSIONS_JSON}" | base64 -w 0)
+
+          gcloud run deploy "${SERVICE_NAME}" \
+            --image="${IMAGE}" \
+            --platform=managed \
+            --region="${GCP_REGION}" \
+            --project="${GCP_PROJECT}" \
+            --allow-unauthenticated \
+            --service-account="${BROKER_SA}" \
+            --max-instances=1 \
+            --set-env-vars="GCP_PROJECT_ID=${GCP_PROJECT},GITHUB_ORG=edri2or,APP_NAME=${APP_NAME},SECRET_PREFIX=${SECRET_PREFIX},APP_PERMISSIONS=${APP_PERMISSIONS_B64},GITHUB_REPO=edri2or/${TARGET_REPO},POLL_TOKEN=${POLL_TOKEN},REDIRECT_URL=${SERVICE_URL}/callback" \
+            --quiet
+
+      - name: Probe health (verify predicted URL is reachable)
+        if: steps.check-secrets.outputs.exists == 'false'
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 24); do
+            if [ "$(curl -sS -m 8 -o /dev/null -w '%{http_code}' "${SERVICE_URL}/health")" = "200" ]; then
+              echo "✅ Receiver healthy after ${i} attempt(s) at ${SERVICE_URL}"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::Receiver did not become healthy at ${SERVICE_URL} in 120s"
+          exit 1
+
+      - name: Operator instructions
+        if: steps.check-secrets.outputs.exists == 'false'
+        run: |
+          {
+            echo "## OIL approver App registration — Action Required"
+            echo ""
+            echo "**App name**: \`${APP_NAME}\`  •  installs on \`edri2or/${TARGET_REPO}\` only"
+            echo ""
+            echo "👉 **[Start App registration](${SERVICE_URL})**"
+            echo ""
+            echo "### Click 1 — Create the App"
+            echo "GitHub shows 'Create GitHub App' — click it."
+            echo ""
+            echo "### Click 2 — Install (CRITICAL: pick the right radio)"
+            echo "On the install page choose **'Only select repositories'** and tick \`edri2or/${TARGET_REPO}\`."
+            echo ""
+            echo "⚠ **Do NOT pick 'All repositories'.** This identity only ever merges PRs in the factory repo."
+            echo ""
+            echo "Credentials are written automatically to GCP Secret Manager (project \`${GCP_PROJECT}\`):"
+            echo "- \`${SECRET_PREFIX}id\`"
+            echo "- \`${SECRET_PREFIX}private-key\`"
+            echo "- \`${SECRET_PREFIX}installation-id\`"
+            echo ""
+            echo "_This job polls for up to 10 minutes._"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Notify operator via Telegram
+        if: steps.check-secrets.outputs.exists == 'false'
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          TG_TOKEN=$(gcloud secrets versions access latest --secret=telegram-bot-token --project="${GCP_PROJECT}" 2>/dev/null || true)
+          TG_CHAT_ID=$(gcloud secrets versions access latest --secret=telegram-chat-id --project="${GCP_PROJECT}" 2>/dev/null || true)
+          [ -n "$TG_TOKEN" ] && echo "::add-mask::$TG_TOKEN" || true
+          [ -n "$TG_CHAT_ID" ] && echo "::add-mask::$TG_CHAT_ID" || true
+          if [ -z "$TG_TOKEN" ] || [ -z "$TG_CHAT_ID" ]; then
+            echo "WARN: telegram secrets unreadable — skipping notification."
+            exit 0
+          fi
+          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          TEXT=$(printf '%s\n%s\n\n%s\n%s\n\n%s' \
+            "🔧 רישום אפליקציית oil-autofix-approver — דרושות 2 לחיצות" \
+            "${SERVICE_URL}" \
+            '1. "Create GitHub App"' \
+            "2. \"Install\" → \"Only select repositories\" → edri2or/${TARGET_REPO}" \
+            "Run: ${RUN_URL}")
+          PAYLOAD=$(jq -n --arg chat "$TG_CHAT_ID" --arg text "$TEXT" \
+            '{chat_id:$chat, text:$text, disable_web_page_preview:true}')
+          curl -sS -m 20 -o /dev/null -w 'telegram HTTP %{http_code}\n' \
+            -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
+            -H "Content-Type: application/json" --data "$PAYLOAD" || true
+
+      - name: Poll for App credentials (up to 10 min)
+        if: steps.check-secrets.outputs.exists == 'false'
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 20); do
+            CREDS=$(curl -sf "${SERVICE_URL}/credentials?token=${POLL_TOKEN}" 2>/dev/null || echo "{}")
+            read -r HAS_ID HAS_KEY HAS_INSTALL <<< "$(echo "$CREDS" | python3 -c \
+              "import sys,json; d=json.load(sys.stdin); print(int(bool(d.get('id'))),int(bool(d.get('private_key'))),int(bool(d.get('installation_id'))))" \
+              2>/dev/null || echo "0 0 0")"
+            if [ "$HAS_ID" = "1" ] && [ "$HAS_KEY" = "1" ] && [ "$HAS_INSTALL" = "1" ]; then
+              echo "✅ All credentials received after ${i} poll(s)."
+              exit 0
+            fi
+            echo "  Poll ${i}/20 — id=${HAS_ID} key=${HAS_KEY} install=${HAS_INSTALL}"
+            [ "$i" -lt 20 ] && sleep 30
+          done
+          echo "::error::Timed out waiting for App credentials. Did you complete both clicks?"
+          exit 1
+
+      - name: Verify 3 approver App secrets in control SM
+        if: steps.check-secrets.outputs.exists == 'false'
+        run: |
+          set -euo pipefail
+          for SECRET in "${SECRET_PREFIX}id" "${SECRET_PREFIX}private-key" "${SECRET_PREFIX}installation-id"; do
+            if gcloud secrets describe "${SECRET}" --project="${GCP_PROJECT}" &>/dev/null; then
+              echo "PASS: ${SECRET} exists in SM (${GCP_PROJECT})"
+            else
+              echo "::error::${SECRET} missing from SM (${GCP_PROJECT})"
+              exit 1
+            fi
+          done
+
+      - name: Verify install scope is narrow (single repo only)
+        if: steps.check-secrets.outputs.exists == 'false'
+        run: |
+          set -euo pipefail
+          # Mint an installation token for the NEW approver App, then call
+          # /installation/repositories. repository_selection=='all' would return
+          # every org repo — we assert exactly 1 (edri2or/or-factory-master).
+          APP_ID=$(gcloud secrets versions access latest --secret="${SECRET_PREFIX}id" --project="${GCP_PROJECT}")
+          INSTALL_ID=$(gcloud secrets versions access latest --secret="${SECRET_PREFIX}installation-id" --project="${GCP_PROJECT}")
+          gcloud secrets versions access latest --secret="${SECRET_PREFIX}private-key" --project="${GCP_PROJECT}" > /tmp/approver-key.pem
+          chmod 600 /tmp/approver-key.pem
+          APP_TOKEN=$(bash scripts/generate-app-token.sh /tmp/approver-key.pem "$APP_ID" "$INSTALL_ID")
+          shred -u /tmp/approver-key.pem 2>/dev/null || rm -f /tmp/approver-key.pem
+          [ -n "$APP_TOKEN" ] || { echo "::error::could not mint approver App token" >&2; exit 1; }
+          echo "::add-mask::${APP_TOKEN}"
+
+          RESP=$(curl -sS \
+            -H "Authorization: Bearer ${APP_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/installation/repositories?per_page=100")
+          TOTAL=$(echo "$RESP" | jq -r '.total_count // empty')
+          FIRST=$(echo "$RESP" | jq -r '.repositories[0].full_name // empty')
+          if [ "$TOTAL" = "1" ] && [ "$FIRST" = "edri2or/${TARGET_REPO}" ]; then
+            echo "PASS: install scope is narrow (1 repo: ${FIRST})"
+          else
+            echo "::error::install scope too broad — total_count=${TOTAL} first=${FIRST}"
+            {
+              echo "## ⚠ Install scope check FAILED"
+              echo "App \`${APP_NAME}\` was installed with the wrong scope (total_count=${TOTAL}, first=\`${FIRST}\`). Recover:"
+              echo "1. Uninstall: **Settings → Developer settings → GitHub Apps → ${APP_NAME} → Uninstall**."
+              echo "2. Delete the SM secrets: \`gcloud secrets delete ${SECRET_PREFIX}id ${SECRET_PREFIX}private-key ${SECRET_PREFIX}installation-id --project=${GCP_PROJECT}\`"
+              echo "3. Re-dispatch this workflow; on click 2 pick **'Only select repositories'** → \`edri2or/${TARGET_REPO}\`."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+      - name: Tear down Cloud Run receiver
+        if: always() && steps.check-secrets.outputs.exists == 'false'
+        run: |
+          gcloud run services delete "${SERVICE_NAME}" \
+            --platform=managed \
+            --region="${GCP_REGION}" \
+            --project="${GCP_PROJECT}" \
+            --quiet 2>/dev/null || true
+          echo "Receiver torn down."
+
+      - name: Summary
+        if: success()
+        run: |
+          set -euo pipefail
+          if [ "${{ steps.check-secrets.outputs.exists }}" = "true" ]; then
+            {
+              echo "## ✅ Skipped — approver App already registered"
+              echo "Credentials present in SM (\`${GCP_PROJECT}\`): \`${SECRET_PREFIX}{id,private-key,installation-id}\`"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          APP_ID=$(gcloud secrets versions access latest --secret="${SECRET_PREFIX}id" --project="${GCP_PROJECT}")
+          INSTALL_ID=$(gcloud secrets versions access latest --secret="${SECRET_PREFIX}installation-id" --project="${GCP_PROJECT}")
+          {
+            echo "## ✅ OIL approver App registered: \`${APP_NAME}\`"
+            echo ""
+            echo "| Resource | Value |"
+            echo "|---|---|"
+            echo "| App name | \`${APP_NAME}\` |"
+            echo "| App ID | \`${APP_ID}\` |"
+            echo "| Installation ID | \`${INSTALL_ID}\` |"
+            echo "| Install scope | \`selected\` (1 repo: \`edri2or/${TARGET_REPO}\`) |"
+            echo "| Permissions | \`contents:write\`, \`pull_requests:write\`, \`metadata:read\` |"
+            echo "| SM secrets | \`${SECRET_PREFIX}{id,private-key,installation-id}\` in \`${GCP_PROJECT}\` |"
+            echo ""
+            echo "**Next step**: deploy the MCP server (deploy-mcp-server.yml) to mount these as \`OIL_APPROVER_*\` and activate the Telegram approval bridge."
+          } >> "$GITHUB_STEP_SUMMARY"
