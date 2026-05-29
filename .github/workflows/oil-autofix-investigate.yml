@@ -188,14 +188,30 @@ jobs:
               exit 0
             fi
             echo "::add-mask::$CLONE_TOKEN"
-            B64=$(printf 'x-access-token:%s' "$CLONE_TOKEN" | base64 | tr -d '\n')
+            # Clone with the URL-embed auth the rest of this repo uses for App
+            # tokens (the openpr push uses the same form). It survives GitHub's
+            # clone redirects, unlike `http.extraheader`, which GitHub can drop on
+            # the redirect to the pack server → a silent 403. Retry for the brief
+            # window a freshly-provisioned repo / scoped token needs to propagate,
+            # and SURFACE the git error (scrubbed) instead of swallowing it.
             rm -rf target
-            if ! git -c http.extraheader="AUTHORIZATION: basic ${B64}" \
-                   clone --depth 1 "https://github.com/edri2or/${TARGET_REPO}.git" target >/dev/null 2>&1; then
-              echo "::error::clone of edri2or/${TARGET_REPO} failed"
+            cloned=false
+            for attempt in 1 2 3; do
+              if clone_err=$(git clone --depth 1 \
+                   "https://x-access-token:${CLONE_TOKEN}@github.com/edri2or/${TARGET_REPO}.git" target 2>&1); then
+                cloned=true; break
+              fi
+              echo "clone attempt ${attempt}/3 failed: $(printf '%s' "$clone_err" | sed "s/${CLONE_TOKEN}/***/g")"
+              rm -rf target; sleep 5
+            done
+            if [ "$cloned" != "true" ]; then
+              echo "::error::clone of edri2or/${TARGET_REPO} failed after 3 attempts"
               echo "prepared=false" >> "$GITHUB_OUTPUT"
               exit 0
             fi
+            # Scrub the token from the persisted remote URL — nothing on disk under
+            # ./target should carry the credential when the AI-authored code runs.
+            git -C target remote set-url origin "https://github.com/edri2or/${TARGET_REPO}.git"
           fi
           echo "CODE_ROOT=${TARGET_DIR}" >> "$GITHUB_ENV"
           echo "TARGET_DIR=${TARGET_DIR}" >> "$GITHUB_ENV"
