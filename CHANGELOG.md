@@ -1,5 +1,12 @@
 # Changelog
 
+## OIL bridge smoke test — 2026-05-29T11:18Z
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | chore | Inert draft PR opened by the Stage-4 Telegram approval-bridge smoke test (mode=smoke). Proves register→Telegram→✅→merge-by-approver deterministically, without the AI fixer. Removed after the test. |
+
+
 ## Stage 138 — fix: OIL approver merges SAFELY (native auto-merge, no mergeable_state trust) + gha-creds leak cleanup
 
 | PR | Type | Summary |
