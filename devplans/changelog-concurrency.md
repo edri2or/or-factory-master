@@ -25,7 +25,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
 | 1 | מנוע-איחוד (compile) + ארכוב-אוטומטי + README | completed | `scripts/compile-changelog.sh`, `.github/workflows/compile-changelog.yml`, `changelog.d/README.md` |
-| 2 | פתק כברירת-מחדל לכל PR (קונבנציה) | pending | `.claude/commands/dev-stage.md` (+mirror `templates/system/.claude/commands/dev-stage.md`), `CLAUDE.md` |
+| 2 | פתק כברירת-מחדל לכל PR (קונבנציה) | completed | `.claude/commands/dev-stage.md` (+mirror `templates/system/.claude/commands/dev-stage.md`), `CLAUDE.md` |
 | 3 | הפצה לתבנית המערכות | pending | `templates/system/changelog.d/`, `.github/workflows/provision-system.yml` |
 | 4 | הגנת-strict על main של הפקטורי + תיעוד וסגירה | pending | branch protection (or-factory-master), `CLAUDE.md`, `docs/bootstrap-record.md` |
 
@@ -51,11 +51,11 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 ### שלב 2 — פתק כברירת-מחדל לכל PR (קונבנציה)
 
 **Acceptance:**
-- [ ] `.claude/commands/dev-stage.md` (+ mirror זהה ב-`templates/system/`) מנחה לכתוב פתק `changelog.d/` כברירת-מחדל לכל PR קוד — לא רק כשרצים שני פיתוחים מקביליים.
-- [ ] `CLAUDE.md` ("Development workflow") מתעד שזו הדרך הרגילה; CHANGELOG.md מתעדכן רק ע"י מנוע-האיחוד.
-- [ ] `check-skills-mirror.sh` עובר (ה-mirror זהה byte-for-byte).
+- [x] `.claude/commands/dev-stage.md` (+ mirror זהה ב-`templates/system/`) מנחה לכתוב פתק `changelog.d/` כברירת-מחדל לכל PR קוד — לא רק כשרצים שני פיתוחים מקביליים.
+- [x] `CLAUDE.md` ("Development workflow") מתעד שזו הדרך הרגילה; CHANGELOG.md מתעדכן רק ע"י מנוע-האיחוד.
+- [x] `check-skills-mirror.sh` עובר (ה-mirror זהה byte-for-byte).
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם — Step 3(b) ב-`dev-stage.md` (+mirror) הופך פתק `changelog.d/` לברירת-מחדל לכל PR (הוסר הפיצול single/parallel ו"הניקוי האופציונלי"); `CLAUDE.md` עודכן. `check-skills-mirror.sh` ירוק (mirror זהה). זה החלק שסוגר את המרוץ ל-PR רגיל. PR ממתין ל-CI ומיזוג ואישורך לשלב 3.
 
 **שינוי תוכנית:** —
 
@@ -92,4 +92,5 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 
 > שורה פשוטה אחת לכל שלב שהסתיים — בשפה ש-Or מבין, בלי ז'רגון.
 
-- שלב 1 הושלם — נבנה "מנוע האיחוד": כל פתק מתקפל ל-CHANGELOG ממוספר אוטומטית (המספר נקבע בריצה אחת חד-נתיבית → אפס התנגשות), והרשומות הישנות עוברות לארכיון לבד. אומת בעותק זמני. PR פתוח, ממתין ל-CI ומיזוג.
+- שלב 1 הושלם ומוזג — נבנה "מנוע האיחוד": כל פתק מתקפל ל-CHANGELOG ממוספר אוטומטית (המספר נקבע בריצה אחת חד-נתיבית → אפס התנגשות), והרשומות הישנות עוברות לארכיון לבד.
+- שלב 2 הושלם — הפתק הפך לברירת-המחדל לכל PR קוד (לא רק במצב מקביל). מעכשיו שום PR לא בוחר מספר Stage ידני; ה-CHANGELOG הממוספר נבנה רק ע"י מנוע-האיחוד. זה החלק שסוגר את המרוץ ל-PR רגיל.
