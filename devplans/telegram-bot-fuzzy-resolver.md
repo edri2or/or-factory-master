@@ -2,7 +2,7 @@
 dev_name: הבנת שפה חופשית בבוט הטלגרם (resolver מטושטש)
 slug: telegram-bot-fuzzy-resolver
 opened: 2026-05-30
-status: active   # active בזמן פיתוח → completed בסיום (משחרר את שער ה-CI)
+status: completed   # active בזמן פיתוח → completed בסיום (משחרר את שער ה-CI)
 ---
 
 # תוכנית פיתוח — הבנת שפה חופשית ולא-מדויקת בבוט הטלגרם
@@ -23,7 +23,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 | 1 | שכבת הקטלוג — producer + אחסון + רישום בהקמה | completed | `file-catalog-refresh.json` (חדש), `db-setup.json`, `configure-agent-router.yml` |
 | 2 | תיקון ה-prompts + חשיפת רשימת-תיקייה | completed | `ops-agent.json`, `unknown-agent.json`, `github-readonly.json` |
 | 3 | ה-Resolver בראוטר (הליבה) | completed | `agent-router.json`, `configure-agent-router.yml` |
-| 4 | תיעוד | pending | `AGENTS.md.template` |
+| 4 | תיעוד | completed | `AGENTS.md.template` |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
 
@@ -77,9 +77,9 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 
 **Acceptance:**
 - [ ] `AGENTS.md.template`: הערה קצרה על auto-resolve של שמות לא-מדויקים (+ תיקון `AGENT.md`→`AGENTS.md` בדוגמה שלו).
-- [ ] התבנית מתרנדרת נקי; Playground ירוק.
+- [x] התבנית מתרנדרת נקי; Playground ירוק.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם. נוספה הערה ב-`AGENTS.md.template` שמתארת את ה-resolver (קטלוג שעתי + התאמה fuzzy בראוטר, ספי ≥0.85 / 0.70–0.84 / <0.70, ו-soft-fail), ותוקנה הדוגמה `read_file:AGENT.md`→`read_file:AGENTS.md`. הפיתוח נסגר (status: completed).
 
 **שינוי תוכנית:** —
 
@@ -92,3 +92,4 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 - שלב 1 הושלם — הבוט מקבל "רשימת קבצים אמיתית" שמתעדכנת כל שעה ונשמרת במסד הנתונים. זו הקרקע שעליה ה-resolver יתאים שמות לא מדויקים בשלבים הבאים.
 - שלב 2 הושלם — תיקנתי דוגמה של קובץ שלא קיים, ולימדתי את הבוט: כשנותנים לו נתיב מאומת — להשתמש בו; כששואלים "מה יש פה" — להראות תוכן תיקייה; ולעולם לא להמציא. גם הודעת "לא נמצא" עכשיו מציעה מה לעשות במקום סתם להיכשל.
 - שלב 3 הושלם (הלב) — הבוט מזהה את שם הקובץ שכתבת, משווה אותו לרשימה האמיתית, ולפי כמה הוא בטוח: קורא לבד / שואל "התכוונת ל-X?" / מציע תיקייה. בדקתי בפועל ש"agnts.md" מזהה את AGENTS.md ו-"cnfig.json" מזהה את config.json. אם אין קטלוג — פשוט ממשיך כרגיל בלי להישבר.
+- שלב 4 הושלם — תיעדתי את היכולת. הפיתוח סגור: כל 4 השלבים הושלמו ונבדקו, ה-PR פתוח ומחכה למיזוג.

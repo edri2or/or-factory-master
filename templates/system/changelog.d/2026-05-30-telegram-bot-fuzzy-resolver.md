@@ -4,6 +4,12 @@
 |---|---|
 | feat | New `file-catalog-refresh` workflow keeps an hourly snapshot of this repo's file paths (one recursive Git Trees call as the system's GitHub App) in a new Postgres `file_catalog` table. This is the catalog the Telegram bot's resolver fuzzy-matches against, so an imprecise file name ("cnfig", a name with a missing letter) can be mapped to the real path — the bot never has to give up or guess. Read-only; soft-fail (a failed refresh never wipes the existing catalog); no new secret. |
 
+## docs: document the imprecise-file-name resolver (Stage 4)
+
+| Type | Summary |
+|---|---|
+| docs | `AGENTS.md.template` now explains that imprecise/misspelled file references are auto-resolved to a real path (hourly file catalog + fuzzy match in the router; confident → reads it, near → asks "did you mean X?", otherwise offers a folder listing; soft-fail to normal chat). Stale `read_file:AGENT.md` example corrected to `read_file:AGENTS.md`. |
+
 ## feat: resolve imprecise file names to real paths (Stage 3)
 
 | Type | Summary |

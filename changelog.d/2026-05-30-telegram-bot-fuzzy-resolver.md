@@ -13,6 +13,12 @@
 
 | Type | Summary |
 |---|---|
+## docs: telegram-bot-fuzzy-resolver — document the file resolver (Stage 4)
+
+| Type | Summary |
+|---|---|
+| docs | Stage 4 (final, closes the development) of telegram-bot-fuzzy-resolver. `templates/system/AGENTS.md.template` now documents the file resolver in its System-aware-tools section: the hourly `file-catalog-refresh` → Postgres `file_catalog`, the router's Jaro-Winkler match of the user's file mention against that catalog, the ≥0.85 / 0.70–0.84 / <0.70 behaviour (auto-resolve verified path / "did you mean X?" or numbered list / offer a folder listing), and the soft-fail fallback. Also corrects the doc's own stale `read_file:AGENT.md` example to `read_file:AGENTS.md` and notes that a directory path returns a folder listing. Docs-only; `validate-templates.sh` renders the template cleanly. |
+
 ## feat: telegram-bot-fuzzy-resolver — deterministic resolver in the router (Stage 3)
 
 | Type | Summary |
