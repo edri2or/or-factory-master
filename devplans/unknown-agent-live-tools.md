@@ -2,7 +2,7 @@
 dev_name: unknown-agent — אותם כלי קריאה חיים (GitHub + Railway + read_file)
 slug: unknown-agent-live-tools
 opened: 2026-05-30
-status: active
+status: completed
 ---
 
 # תוכנית פיתוח — כלי קריאה חיים גם ל-unknown-agent
@@ -23,7 +23,7 @@ status: active
 | # | כותרת | סטטוס | קבצים |
 |---|---|---|---|
 | 1 | חיווט שני הכלים ל-unknown-agent + הרחבת ה-strip | completed | `templates/system/workflows/n8n/unknown-agent.json`, `templates/system/.github/workflows/configure-agent-router.yml` |
-| 2 | תיעוד מערכת | pending | `templates/system/AGENTS.md.template`, `CHANGELOG.md`, `changelog.d/` |
+| 2 | תיעוד מערכת | completed | `templates/system/AGENTS.md.template`, `CHANGELOG.md`, `changelog.d/` |
 
 ---
 
@@ -49,10 +49,10 @@ ai_tool + עדכון SYSTEM AWARENESS. ה-strip ב-configure הורחב מ-`ops-
 ### שלב 2 — תיעוד מערכת
 
 **Acceptance:**
-- [ ] `AGENTS.md.template` (unknown-agent נושא גם את הכלים) + `CHANGELOG.md` + פתק `changelog.d/`,
-      בלי `${...}` חדש; `validate-templates.sh` עובר.
+- [x] `AGENTS.md.template` — עודכן ש-unknown-agent נושא גם את github_readonly/railway_readonly (4 מקומות);
+      `CHANGELOG.md` שורת feat + פתק `changelog.d/`; בלי `${...}` חדש; `validate-templates.sh` עובר.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** תיעדתי שהכלים עכשiv על שני הסוכנים. **הפיתוח הקודי הושלם.**
 **שינוי תוכנית:** —
 
 ---
@@ -65,3 +65,4 @@ ai_tool + עדכון SYSTEM AWARENESS. ה-strip ב-configure הורחב מ-`ops-
 ## יומן ל-Or (עברית)
 
 - שלב 1 הושלם — נתתי לסוכן השיחה הכללי את אותם כלי גיטהאב+Railway (כולל קריאת קבצים), כדי שיענה בכל ניסוח.
+- שלב 2 הושלם — תיעדתי. **הפיתוח הקודי הושלם.** נשאר רק אימות חי (מערכת test טרייה) באישורך.
