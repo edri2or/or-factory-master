@@ -177,6 +177,27 @@ ${GENERIC_SECRETS}
 - `openrouter-api-key`
 - `openrouter-key-hash`
 
+### GitHub App (this system's GitHub identity)
+
+- `github-app-id`
+- `github-app-private-key`
+- `github-app-installation-id`
+
+## GitHub App (this system's GitHub identity)
+
+This system has its own dedicated GitHub App, **locked to this repo only**. Permissions:
+`contents:write`, `metadata:read`, `actions:write`, `workflows:write`, `secrets:write`. Its
+credentials live in Secret Manager (`github-app-id`, `github-app-private-key`,
+`github-app-installation-id`); the App ID and installation ID are also repo variables `APP_ID`
+and `APP_INSTALLATION_ID`.
+
+To act on GitHub **as this App**:
+
+- **Inside a workflow:** use `actions/create-github-app-token` (preferred — auto-masks and
+  auto-revokes the token), or read the private key from Secret Manager via WIF and mint a token.
+- **Interactively:** never fetch the private key. Use the GitHub tools you already have, or run a
+  workflow. See the `github-app-operations` skill for details.
+
 ## External Resources
 
 - [GCP Console — Project home](https://console.cloud.google.com/home/dashboard?project=${GCP_PROJECT})
@@ -193,6 +214,7 @@ ${GENERIC_SECRETS}
 - **Never disable branch protection** on the `main` branch.
 - **Never modify** the per-system Railway project or Cloudflare DNS without dispatching the deploy workflow.
 - **Never give the chat bot free-SQL or write tools.** Its DB access is the fixed read-only `postgres_named_query` whitelist; state-changing actions must route through the (deferred) HITL `pending_actions` flow.
+- **Never print, log, or write to disk the `github-app-private-key` or any minted installation token.** Never fetch the private key outside a GitHub Actions workflow.
 
 ## Further reading (load only when relevant to the task at hand)
 

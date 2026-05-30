@@ -4,6 +4,10 @@ description: Deploy a temporary Cloud Run receiver, register a GitHub App via ma
 
 # create-github-app
 
+> NOTE: This system's GitHub App already exists (created by the factory). This command is for
+> CREATING an App from scratch and is normally NOT needed here. To USE the existing App, see the
+> `github-app-operations` skill.
+
 ## Role
 
 You are a Platform Engineer. You register a new GitHub App in a GitHub org using
