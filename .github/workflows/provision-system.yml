@@ -1310,3 +1310,37 @@ jobs:
             --system="${SYSTEM_NAME}" \
             --action-required="true" \
             --body="$(jq -cn --arg mode "${REUSE:-}" --arg adopt "${ADOPT:-}" --arg gcp "${GCP_PROJECT:-}" '{mode: (if $mode == "true" then "reuse" elif $adopt == "true" then "adopt" else "normal" end), gcp_project: $gcp}')"
+
+      # "Knock on the door" so Or can return to his idle browser Claude Code
+      # session the moment provisioning finishes. Runs IN this job (WIF already
+      # authenticated above), which is why it fires reliably — a separate
+      # workflow_run listener does NOT, because the factory dispatches this
+      # workflow via the broker App and GitHub does not emit workflow_run for
+      # bot-initiated runs. Success only: the failure path already pings Telegram
+      # via the "Emit provision failed" step above.
+      - name: Telegram session nudge (success)
+        if: success()
+        continue-on-error: true
+        env:
+          SYSTEM_NAME: ${{ inputs.system_name }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -uo pipefail
+          # Read the Telegram secrets and mask each the instant it lands so it
+          # can never surface in a log. A missing secret just skips the nudge.
+          TG_TOKEN=$(gcloud secrets versions access latest --secret=telegram-bot-token --project=or-factory-master-control 2>/dev/null || echo "")
+          [ -n "$TG_TOKEN" ] && echo "::add-mask::${TG_TOKEN}"
+          TG_CHAT=$(gcloud secrets versions access latest --secret=telegram-chat-id --project=or-factory-master-control 2>/dev/null || echo "")
+          [ -n "$TG_CHAT" ] && echo "::add-mask::${TG_CHAT}"
+          if [ -z "$TG_TOKEN" ] || [ -z "$TG_CHAT" ]; then
+            echo "[nudge] telegram='skipped' reason='no-secret'"; exit 0
+          fi
+          MSG="✅ provision-system הסתיים בהצלחה — חזור לסשן Claude Code להמשך."$'\n'"מערכת: ${SYSTEM_NAME}"$'\n\n'"run: ${RUN_URL}"
+          TG_HTTP=$(curl -sS -m 10 -o /dev/null -w '%{http_code}' -X POST \
+            "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${TG_CHAT}" \
+            --data-urlencode "text=${MSG}" 2>/dev/null) || TG_HTTP="000"
+          case "$TG_HTTP" in
+            2*) echo "[nudge] telegram='ok'" ;;
+            *)  echo "[nudge] telegram='failed' http='${TG_HTTP}'" ;;
+          esac
