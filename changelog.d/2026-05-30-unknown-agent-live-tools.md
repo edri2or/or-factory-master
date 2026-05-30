@@ -1,0 +1,16 @@
+# Changelog fragment — unknown-agent-live-tools (2026-05-30)
+
+> Per-development changelog fragment. Folded into `CHANGELOG.md` with running Stage numbers by
+> `scripts/compile-changelog.sh`.
+
+## feat: unknown-agent-live-tools — give the general chat agent the live GitHub/Railway readers (Stage 1)
+
+| Type | Summary |
+|---|---|
+| feat | Stage 1 of unknown-agent-live-tools. Live testing of the prior wave showed the routing gap: general-phrasing questions ("what can you do?", "what's in AGENT.md?") are classified to **unknown-agent** (the general chat agent), which lacked `github_readonly`/`railway_readonly` (those were only on ops-agent) — so the bot listed its three old tools and couldn't read the file (confirmed in n8n: `github_readonly` never executed; `unknown-agent` handled the questions). Per Or's decision, `templates/system/workflows/n8n/unknown-agent.json` now also carries both read-only tools: two `@n8n/n8n-nodes-langchain.toolWorkflow` nodes `github_readonly` (`@@WF_GITHUB_READONLY_ID@@`, incl. the `read_file:<path>` command) and `railway_readonly` (`@@WF_RAILWAY_READONLY_ID@@`) connected to the `Chat Agent` via `ai_tool` (5 tools total), with the "SYSTEM AWARENESS" block of its systemMessage updated to describe them (and to allow returning GitHub/Railway links). `configure-agent-router.yml`'s two graceful-degradation `jq` strips were widened from `ops-agent.json` only to `{ops-agent.json || unknown-agent.json}`, so a system missing the GitHub/Railway secrets still degrades cleanly on both agents. The sub-agent loop's `sed` already injects the two `@@WF_*_READONLY_ID@@` ids into every agent file, so no install-logic change was needed beyond the strip. Verified locally: `jq .` valid, `Chat Agent` wired to 5 `ai_tool`s, `shellcheck -S error` + `yamllint` clean on the workflow, and a sed+strip simulation confirmed both tools present with ids and cleanly stripped (nodes + connections) when the ids are empty. Research (n8n docs + community) confirmed toolWorkflow-on-a-memory-agent is supported and there is no hard tool-count limit (ops-agent already runs 4 tools live); tool-selection behaviour at 5 tools is flagged for the live test. No secret in JSON; token kept opaque. Template-only. |
+
+## docs: unknown-agent-live-tools — document the general agent's live readers (Stage 2)
+
+| Type | Summary |
+|---|---|
+| docs | Stage 2 (final) of unknown-agent-live-tools. `templates/system/AGENTS.md.template` now states that **both** `ops-agent` and `unknown-agent` carry `github_readonly` (incl. `read_file`) and `railway_readonly` (the sub-workflow bullets, the System-aware tools section intro, the per-tool lines, and the graceful-degradation note all updated). `templates/system/CHANGELOG.md` gets a `feat` row + a convention fragment. Closes the development; live verification on a fresh test system remains as a separate user-triggered step. `validate-templates.sh` renders both templates cleanly (no new `${...}`). Template-only. |

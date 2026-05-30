@@ -575,12 +575,14 @@ jobs:
                 || echo "WARN: ${file} postgres_named_query strip failed — placeholder may remain" >&2
               echo "INFO: ${file} postgres_named_query → stripped (no Postgres credential)"
             fi
-            # Stage 114: graceful degradation for the two live read-only tools. If a
-            # sub-workflow wasn't installed (missing GitHub App / Railway credential, or
-            # an install failure), strip its tool node + ai_tool connection from
-            # ops-agent so it never references a missing workflow id. Same jq pattern as
-            # postgres_named_query above. Only ops-agent carries these two tools.
-            if [ "$file" = "ops-agent.json" ] && { [ -z "$WF_GITHUB_READONLY_ID" ] || [ "$WF_GITHUB_READONLY_ID" = "null" ]; }; then
+            # Stage 114 (+ unknown-agent-live-tools): graceful degradation for the two
+            # live read-only tools. If a sub-workflow wasn't installed (missing GitHub App
+            # / Railway credential, or an install failure), strip its tool node + ai_tool
+            # connection from any agent that carries it so it never references a missing
+            # workflow id. Same jq pattern as postgres_named_query above. Both ops-agent
+            # and unknown-agent now carry these two tools.
+            if { [ "$file" = "ops-agent.json" ] || [ "$file" = "unknown-agent.json" ]; } \
+               && { [ -z "$WF_GITHUB_READONLY_ID" ] || [ "$WF_GITHUB_READONLY_ID" = "null" ]; }; then
               jq '(.nodes |= map(select(.name != "github_readonly")))
                   | del(.connections."github_readonly")' \
                 "/tmp/ar-prep-${file}" > "/tmp/ar-prep-${file}.tmp" \
@@ -588,7 +590,8 @@ jobs:
                 || echo "WARN: ${file} github_readonly strip failed — placeholder may remain" >&2
               echo "INFO: ${file} github_readonly → stripped (no GitHub App credential)"
             fi
-            if [ "$file" = "ops-agent.json" ] && { [ -z "$WF_RAILWAY_READONLY_ID" ] || [ "$WF_RAILWAY_READONLY_ID" = "null" ]; }; then
+            if { [ "$file" = "ops-agent.json" ] || [ "$file" = "unknown-agent.json" ]; } \
+               && { [ -z "$WF_RAILWAY_READONLY_ID" ] || [ "$WF_RAILWAY_READONLY_ID" = "null" ]; }; then
               jq '(.nodes |= map(select(.name != "railway_readonly")))
                   | del(.connections."railway_readonly")' \
                 "/tmp/ar-prep-${file}" > "/tmp/ar-prep-${file}.tmp" \
