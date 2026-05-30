@@ -66,7 +66,7 @@ The previous factory (`edri2or/factory`) automated everything end-to-end. Failur
      - On `failure`/`cancelled` — read failed step logs via `get_run_jobs` and report to the user.
      - If 40 iterations pass with no terminal status — stop and report; never assume completion.
      - Never advance to the next step without a confirmed terminal status from `get_workflow_run`.
-   - The browser session cannot listen for events between messages, so this active poll is required. A `workflow_run`-triggered Telegram nudge (`notify-workflow-complete.yml`) independently pings the user when a key workflow finishes, so they can return to the session.
+   - The browser session cannot listen for events between messages, so this active poll is required. As a backstop, `provision-system.yml` sends a Telegram nudge from *inside its own run* when it finishes (success ✅; failure already alerts via the `Emit provision failed` step), so the user can return to the session even if the browser tab is idle. This is an in-run step, not a separate `workflow_run` listener — GitHub does not emit `workflow_run` for the broker-App/bot-dispatched runs the factory uses, so an external listener never fires.
 5. **Verify outputs.** After success, call the relevant `verify_*` MCP tool to confirm the real state matches the expected state.
 6. **Stop at the boundary.** Each skill ends at a clear handoff point. Ask the user what's next; don't chain.
 
