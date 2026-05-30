@@ -248,6 +248,56 @@ jobs:
             echo "WARN: railway-api-token/project-id/postgres-service-id missing in SM — Postgres features skipped" >&2
           fi
 
+          # Stage 114: live read-only telemetry credentials for the ops-agent.
+          # (a) Railway Bearer credential — reuse the per-system railway-api-token
+          #     (already read above) as an httpHeaderAuth "Authorization: Bearer …"
+          #     credential so railway-readonly's HTTP nodes authenticate server-side and
+          #     the token never lands in workflow JSON. Additive + soft (a miss only
+          #     skips the railway_readonly tool; the router still configures).
+          CRED_RAILWAY_ID=""
+          if [ -n "$RAILWAY_TOKEN" ]; then
+            RW_CRED_NAME="Railway API (Bearer)"
+            CRED_RAILWAY_ID=$(jq -r --arg n "$RW_CRED_NAME" '[(.data // .) | .[]? | select(.name==$n)][0].id // empty' /tmp/ar-creds.json || echo "")
+            if [ -z "$CRED_RAILWAY_ID" ]; then
+              RW_CRED_BODY=$(jq -cn --arg n "$RW_CRED_NAME" --arg k "Bearer ${RAILWAY_TOKEN}" '{name:$n, type:"httpHeaderAuth", data:{name:"Authorization", value:$k}}')
+              HTTP=$(_napi POST "$BASE/rest/credentials" /tmp/ar-cred-rw.json "$RW_CRED_BODY")
+              { [ "$HTTP" = "200" ] || [ "$HTTP" = "201" ]; } || { head -c 300 /tmp/ar-cred-rw.json >&2 || true; echo "WARN: POST /rest/credentials (Railway Bearer) HTTP $HTTP — railway-readonly skipped" >&2; }
+              CRED_RAILWAY_ID=$(jq -r '.data.id // .id // empty' /tmp/ar-cred-rw.json || echo "")
+            fi
+            { [ -n "$CRED_RAILWAY_ID" ] && [ "$CRED_RAILWAY_ID" != "null" ]; } \
+              && echo "INFO: Railway Bearer credential id=${CRED_RAILWAY_ID}" \
+              || { echo "WARN: no Railway credential id — railway-readonly skipped" >&2; CRED_RAILWAY_ID=""; }
+          else
+            echo "WARN: railway-api-token missing in SM — railway-readonly tool skipped" >&2
+          fi
+
+          # (b) GitHub App secrets → a jwtAuth (RS256 + PEM) credential that
+          #     github-readonly's built-in JWT node uses to sign the App JWT. The App id
+          #     + installation id are NON-secret and injected as placeholders; only the
+          #     private key becomes a credential (never written to workflow JSON).
+          #     Registration (register-system-app.yml) is a SEPARATE manual flow, so
+          #     these secrets may be ABSENT → degrade gracefully (no tool). Soft.
+          GH_APP_ID=$(_sm_read "github-app-id" || echo "")
+          GH_APP_INSTALL_ID=$(_sm_read "github-app-installation-id" || echo "")
+          GH_APP_PRIVATE_KEY=$(_sm_read "github-app-private-key" || echo "")
+          [ -n "$GH_APP_PRIVATE_KEY" ] && echo "::add-mask::${GH_APP_PRIVATE_KEY}" || true
+          CRED_GITHUB_JWT_ID=""
+          if [ -n "$GH_APP_ID" ] && [ -n "$GH_APP_INSTALL_ID" ] && [ -n "$GH_APP_PRIVATE_KEY" ]; then
+            GH_CRED_NAME="GitHub App JWT (RS256)"
+            CRED_GITHUB_JWT_ID=$(jq -r --arg n "$GH_CRED_NAME" '[(.data // .) | .[]? | select(.name==$n)][0].id // empty' /tmp/ar-creds.json || echo "")
+            if [ -z "$CRED_GITHUB_JWT_ID" ]; then
+              GH_CRED_BODY=$(jq -cn --arg n "$GH_CRED_NAME" --arg k "$GH_APP_PRIVATE_KEY" '{name:$n, type:"jwtAuth", data:{keyType:"pemKey", privateKey:$k, algorithm:"RS256"}}')
+              HTTP=$(_napi POST "$BASE/rest/credentials" /tmp/ar-cred-ghjwt.json "$GH_CRED_BODY")
+              { [ "$HTTP" = "200" ] || [ "$HTTP" = "201" ]; } || { head -c 300 /tmp/ar-cred-ghjwt.json >&2 || true; echo "WARN: POST /rest/credentials (jwtAuth) HTTP $HTTP — github-readonly skipped" >&2; }
+              CRED_GITHUB_JWT_ID=$(jq -r '.data.id // .id // empty' /tmp/ar-cred-ghjwt.json || echo "")
+            fi
+            { [ -n "$CRED_GITHUB_JWT_ID" ] && [ "$CRED_GITHUB_JWT_ID" != "null" ]; } \
+              && echo "INFO: GitHub App JWT credential id=${CRED_GITHUB_JWT_ID}" \
+              || { echo "WARN: no GitHub JWT credential id — github-readonly skipped" >&2; CRED_GITHUB_JWT_ID=""; }
+          else
+            echo "INFO: github-app-{id,installation-id,private-key} not all present in SM — github-readonly tool skipped (App registration is a separate manual step)" >&2
+          fi
+
           # Phase F: Telegram chat bot. Read the per-system bot token + chat id from
           # THIS system's SM. We check the SYSTEM copy (n8n-telegram-bot-token, seeded
           # by provision), NOT the control default — deploy-sa can read this project's
@@ -401,6 +451,45 @@ jobs:
             fi
           fi
 
+          # Stage 114: install the two live read-only sub-workflows BEFORE the sub-agent
+          # loop, so their ids are available for the @@WF_*_READONLY_ID@@ substitutions
+          # in ops-agent.json. Each is gated on its own credential; soft-fail. The
+          # ops-agent strip in the loop removes any tool whose sub-workflow wasn't
+          # installed, so a placeholder is never left dangling.
+          WF_RAILWAY_READONLY_ID=""
+          if [ -n "$CRED_RAILWAY_ID" ] && [ "$CRED_RAILWAY_ID" != "null" ]; then
+            RWRO_SRC="${WF_DIR}/railway-readonly.json"
+            if [ -f "$RWRO_SRC" ]; then
+              sed -e "s#@@CRED_RAILWAY_ID@@#${CRED_RAILWAY_ID}#g" \
+                  -e "s#@@RAILWAY_PROJECT_ID@@#${RW_PROJECT_ID}#g" \
+                  "$RWRO_SRC" > /tmp/ar-prep-railway-readonly.json
+              WF_RAILWAY_READONLY_ID=$(_upsert_wf "factory-master: railway-readonly" /tmp/ar-prep-railway-readonly.json no) || WF_RAILWAY_READONLY_ID=""
+              { [ -n "$WF_RAILWAY_READONLY_ID" ] && [ "$WF_RAILWAY_READONLY_ID" != "null" ]; } \
+                && echo "PASS: factory-master: railway-readonly → id=${WF_RAILWAY_READONLY_ID} (לא-פעיל by design — subworkflow)" \
+                || { echo "WARN: railway-readonly install failed" >&2; WF_RAILWAY_READONLY_ID=""; }
+            else
+              echo "WARN: railway-readonly.json not found in repo — skipping" >&2
+            fi
+          fi
+
+          WF_GITHUB_READONLY_ID=""
+          if [ -n "$CRED_GITHUB_JWT_ID" ] && [ "$CRED_GITHUB_JWT_ID" != "null" ]; then
+            GHRO_SRC="${WF_DIR}/github-readonly.json"
+            if [ -f "$GHRO_SRC" ]; then
+              sed -e "s#@@CRED_GITHUB_JWT_ID@@#${CRED_GITHUB_JWT_ID}#g" \
+                  -e "s#@@GITHUB_APP_ID@@#${GH_APP_ID}#g" \
+                  -e "s#@@GITHUB_INSTALLATION_ID@@#${GH_APP_INSTALL_ID}#g" \
+                  -e "s#@@SYSTEM_NAME@@#${SYSTEM_NAME}#g" \
+                  "$GHRO_SRC" > /tmp/ar-prep-github-readonly.json
+              WF_GITHUB_READONLY_ID=$(_upsert_wf "factory-master: github-readonly" /tmp/ar-prep-github-readonly.json no) || WF_GITHUB_READONLY_ID=""
+              { [ -n "$WF_GITHUB_READONLY_ID" ] && [ "$WF_GITHUB_READONLY_ID" != "null" ]; } \
+                && echo "PASS: factory-master: github-readonly → id=${WF_GITHUB_READONLY_ID} (לא-פעיל by design — subworkflow)" \
+                || { echo "WARN: github-readonly install failed" >&2; WF_GITHUB_READONLY_ID=""; }
+            else
+              echo "WARN: github-readonly.json not found in repo — skipping" >&2
+            fi
+          fi
+
           # 4. Sub-workflows FIRST (so we know their IDs for the router). The new
           #    code/research/infra agents carry only @@CRED_OPENROUTER_ID@@; the
           #    @@CRED_N8N_API_ID@@/@@N8N_DOMAIN@@ substitutions are harmless no-ops on
@@ -425,6 +514,8 @@ jobs:
                 -e "s#@@CHAT_ID@@#${CHAT_ID}#g" \
                 -e "s#@@SYSTEM_NAME@@#${SYSTEM_NAME}#g" \
                 -e "s#@@WF_PG_NAMED_QUERIES_ID@@#${PG_NAMED_WF_ID}#g" \
+                -e "s#@@WF_GITHUB_READONLY_ID@@#${WF_GITHUB_READONLY_ID}#g" \
+                -e "s#@@WF_RAILWAY_READONLY_ID@@#${WF_RAILWAY_READONLY_ID}#g" \
                 "$src" > "/tmp/ar-prep-${file}"
             # Phase F follow-up (Stage 108 + Stage 110): inject the SYSTEM-INFO JSON
             # into the chat-AI-agent node's systemMessage via jq gsub (not sed) so the
@@ -471,6 +562,27 @@ jobs:
                 && mv "/tmp/ar-prep-${file}.tmp" "/tmp/ar-prep-${file}" \
                 || echo "WARN: ${file} postgres_named_query strip failed — placeholder may remain" >&2
               echo "INFO: ${file} postgres_named_query → stripped (no Postgres credential)"
+            fi
+            # Stage 114: graceful degradation for the two live read-only tools. If a
+            # sub-workflow wasn't installed (missing GitHub App / Railway credential, or
+            # an install failure), strip its tool node + ai_tool connection from
+            # ops-agent so it never references a missing workflow id. Same jq pattern as
+            # postgres_named_query above. Only ops-agent carries these two tools.
+            if [ "$file" = "ops-agent.json" ] && { [ -z "$WF_GITHUB_READONLY_ID" ] || [ "$WF_GITHUB_READONLY_ID" = "null" ]; }; then
+              jq '(.nodes |= map(select(.name != "github_readonly")))
+                  | del(.connections."github_readonly")' \
+                "/tmp/ar-prep-${file}" > "/tmp/ar-prep-${file}.tmp" \
+                && mv "/tmp/ar-prep-${file}.tmp" "/tmp/ar-prep-${file}" \
+                || echo "WARN: ${file} github_readonly strip failed — placeholder may remain" >&2
+              echo "INFO: ${file} github_readonly → stripped (no GitHub App credential)"
+            fi
+            if [ "$file" = "ops-agent.json" ] && { [ -z "$WF_RAILWAY_READONLY_ID" ] || [ "$WF_RAILWAY_READONLY_ID" = "null" ]; }; then
+              jq '(.nodes |= map(select(.name != "railway_readonly")))
+                  | del(.connections."railway_readonly")' \
+                "/tmp/ar-prep-${file}" > "/tmp/ar-prep-${file}.tmp" \
+                && mv "/tmp/ar-prep-${file}.tmp" "/tmp/ar-prep-${file}" \
+                || echo "WARN: ${file} railway_readonly strip failed — placeholder may remain" >&2
+              echo "INFO: ${file} railway_readonly → stripped (no Railway credential)"
             fi
             # Phase F follow-up (Stage 105): all 5 sub-agents now read style_profile from
             # Postgres and inject it into their system prompt. If no Postgres credential
@@ -708,6 +820,16 @@ jobs:
             echo "| infra model | \`openai/gpt-5-mini\` |"
             echo "| sub-agents | 5 (כולם לא-פעילים by design — מופעלים ע\"י ה-router דרך Execute Sub-workflow) |"
             echo "| Webhook | ${BASE}/webhook/agent-router |"
+            if [ -n "${WF_GITHUB_READONLY_ID:-}" ] && [ "${WF_GITHUB_READONLY_ID:-}" != "null" ]; then
+              echo "| ops-agent: github_readonly | \`${WF_GITHUB_READONLY_ID}\` (חי, read-only — CI/commits/PRs) |"
+            else
+              echo "| ops-agent: github_readonly | ⚠️ דולג — secrets של github-app חסרים (App registration נפרד) |"
+            fi
+            if [ -n "${WF_RAILWAY_READONLY_ID:-}" ] && [ "${WF_RAILWAY_READONLY_ID:-}" != "null" ]; then
+              echo "| ops-agent: railway_readonly | \`${WF_RAILWAY_READONLY_ID}\` (חי, read-only — deploy status/logs) |"
+            else
+              echo "| ops-agent: railway_readonly | ⚠️ דולג — railway-api-token חסר |"
+            fi
             if [ -n "${CRED_POSTGRES_ID:-}" ] && [ "${CRED_POSTGRES_ID:-}" != "null" ]; then
               echo "| Postgres | credential \`${CRED_POSTGRES_ID}\` + טבלאות (db-setup \`${DB_SETUP_ID:-?}\`) |"
               if [ -n "${PG_NAMED_WF_ID:-}" ] && [ "${PG_NAMED_WF_ID:-}" != "null" ]; then

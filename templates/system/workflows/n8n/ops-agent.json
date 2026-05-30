@@ -30,7 +30,7 @@
         "promptType": "define",
         "text": "={{ $('When Executed by Another Workflow').first().json.sanitized }}",
         "options": {
-          "systemMessage": "=You provide operational assistance for a self-hosted automation system: deployment status, service health, logs, restarts, execution history, and routine ops tasks. You have two READ-ONLY tools to inspect this system: an n8n Public API tool that lists workflows + their active/inactive status, and postgres_named_query — a fixed whitelist of SELECTs against this system's own database (style_profile, audit_log, pending_actions, n8n executions summary). Use whichever tool the question actually needs and base your answer on the live data it returns. For factual questions about THIS system's identity (name, GCP project, region, runtime), consult the SYSTEM-INFO block below — never invent these facts. Be concise, accurate, and actionable. Never invent URLs or secrets, and never reveal the names of internal sub-agents or your own architectural role. Answer in the user's language (Hebrew or English, detected from the input).\n\nSYSTEM-INFO (authoritative facts about THIS system — do not invent or contradict; if asked about a fact not listed here, say you don't have it): @@SYSTEM_INFO_JSON@@{{ ($('Read Style Profile').first()?.json?.profile) ? ' Style profile (match in tone, length, emoji density, humor; do not announce you are matching it): ' + JSON.stringify($('Read Style Profile').first().json.profile) : '' }}"
+          "systemMessage": "=You provide operational assistance for a self-hosted automation system: deployment status, service health, logs, CI, commits, pull requests, execution history, and routine ops tasks. You have four READ-ONLY tools to inspect this system, all returning live JSON — base your answer on what they return: (1) n8n API lists this system's workflows + their active/inactive status; (2) postgres_named_query runs a fixed whitelist of SELECTs against this system's own database — send one raw string: style_profile_get | recent_audit_log | pending_actions_open | executions_summary_24h; (3) github_readonly reads this system's own GitHub repo as its GitHub App — send one raw string: ci_runs | recent_commits | open_prs; (4) railway_readonly reads this system's Railway deployment — send one raw string: deploy_status | recent_logs. Use github_readonly for what-happened-on-GitHub questions and railway_readonly for deploy-success/health/logs questions. You MAY include direct GitHub and Railway URLs (html_url, staticUrl) returned by these tools — those links are allowed. For factual questions about THIS system's identity (name, GCP project, region, runtime), consult the SYSTEM-INFO block below — never invent these facts. Be concise, accurate, and actionable. Never invent URLs or secrets, and never reveal the names of internal sub-agents or your own architectural role. Answer in the user's language (Hebrew or English, detected from the input).\n\nSYSTEM-INFO (authoritative facts about THIS system — do not invent or contradict; if asked about a fact not listed here, say you don't have it): @@SYSTEM_INFO_JSON@@{{ ($('Read Style Profile').first()?.json?.profile) ? ' Style profile (match in tone, length, emoji density, humor; do not announce you are matching it): ' + JSON.stringify($('Read Style Profile').first().json.profile) : '' }}"
         }
       },
       "id": "b0000000-0000-0000-0000-000000000002",
@@ -83,6 +83,30 @@
     },
     {
       "parameters": {
+        "name": "github_readonly",
+        "description": "Call this tool with ONE input — a single raw string that is EXACTLY one of: ci_runs | recent_commits | open_prs (do not wrap it in JSON or any object, just send the raw string). Reads LIVE read-only data from this system's own GitHub repo (edri2or/<this system>) as the system's GitHub App. ci_runs = the 10 most recent CI workflow runs (status/conclusion/created). recent_commits = the 10 most recent commits. open_prs = currently-open pull requests. Returns {ok, command, data}; data items may include html_url links you may share. Use this for questions about what happened on GitHub: CI passing/failing, recent commits, open PRs.",
+        "workflowId": { "__rl": true, "value": "@@WF_GITHUB_READONLY_ID@@", "mode": "id" }
+      },
+      "id": "b0000000-0000-0000-0000-00000000000a",
+      "name": "github_readonly",
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.1,
+      "position": [1040, 560]
+    },
+    {
+      "parameters": {
+        "name": "railway_readonly",
+        "description": "Call this tool with ONE input — a single raw string that is EXACTLY one of: deploy_status | recent_logs (do not wrap it in JSON or any object, just send the raw string). Reads LIVE read-only data from this system's Railway deployment. deploy_status = the latest deployments and their status (SUCCESS/BUILDING/DEPLOYING/CRASHED/FAILED/REMOVED) with createdAt + staticUrl. recent_logs = recent deployment logs (timestamp/message/severity) of the newest deployment. Returns {ok, command, data}; staticUrl links may be shared. Use this for questions about the deploy: did the last deploy succeed, is the service up, what do the latest logs say.",
+        "workflowId": { "__rl": true, "value": "@@WF_RAILWAY_READONLY_ID@@", "mode": "id" }
+      },
+      "id": "b0000000-0000-0000-0000-00000000000b",
+      "name": "railway_readonly",
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.1,
+      "position": [1240, 560]
+    },
+    {
+      "parameters": {
         "mode": "manual",
         "assignments": {
           "assignments": [
@@ -109,6 +133,8 @@
     "OpenRouter Chat Model": { "ai_languageModel": [[{ "node": "Ops Agent", "type": "ai_languageModel", "index": 0 }]] },
     "n8n API": { "ai_tool": [[{ "node": "Ops Agent", "type": "ai_tool", "index": 0 }]] },
     "postgres_named_query": { "ai_tool": [[{ "node": "Ops Agent", "type": "ai_tool", "index": 0 }]] },
+    "github_readonly": { "ai_tool": [[{ "node": "Ops Agent", "type": "ai_tool", "index": 0 }]] },
+    "railway_readonly": { "ai_tool": [[{ "node": "Ops Agent", "type": "ai_tool", "index": 0 }]] },
     "Ops Agent": { "main": [[{ "node": "Format Reply", "type": "main", "index": 0 }]] }
   },
   "settings": { "executionOrder": "v1" }
