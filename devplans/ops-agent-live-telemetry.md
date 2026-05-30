@@ -44,7 +44,7 @@ opaque — בלי אורך/regex קבוע.
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
 | 1 | `railway-readonly.json` — sub-workflow חדש (deploy_status / recent_logs) | completed | `templates/system/workflows/n8n/railway-readonly.json` |
-| 2 | `github-readonly.json` — sub-workflow חדש (ci_runs / recent_commits / open_prs) + JWT mint | pending | `templates/system/workflows/n8n/github-readonly.json` |
+| 2 | `github-readonly.json` — sub-workflow חדש (ci_runs / recent_commits / open_prs) + JWT mint | completed | `templates/system/workflows/n8n/github-readonly.json` |
 | 3 | חיווט ל-`ops-agent.json` — שני כלי toolWorkflow + systemMessage | pending | `templates/system/workflows/n8n/ops-agent.json` |
 | 4 | התקנה ב-`configure-agent-router.yml` — creds + install + sed + graceful degradation | pending | `templates/system/.github/workflows/configure-agent-router.yml` |
 | 5 | הרשאת PRs + הרחבת Egress allow-list | pending | `.github/workflows/register-system-app.yml`, `templates/system/workflows/n8n/agent-router.json` |
@@ -85,20 +85,25 @@ project id placeholder. אומת מקומית: JSON תקין + JS תקין + bod
 
 **Acceptance:**
 - [ ] `jq . github-readonly.json` עובר.
-- [ ] `Normalize Input` (string גולמי; `ci_runs` | `recent_commits` | `open_prs`) → `Switch`.
-- [ ] שלב mint משותף: JWT RS256 (iat≈now−60s, exp≤10ד', iss=App ID) דרך נוד JWT מובנה עם
-      credential PEM (`@@CRED_GITHUB_JWT_ID@@`) → POST ל-
-      `/app/installations/@@GITHUB_INSTALLATION_ID@@/access_tokens` → token לשעה.
-- [ ] caching ב-`$getStaticData('github_token_cache')` לפי expiry (refresh ~5ד' לפני פקיעה);
-      token כ-opaque (בלי אורך/regex קבוע).
-- [ ] כל ענף קורא ל-REST עם `owner=edri2or`, `repo=@@SYSTEM_NAME@@`:
-      `actions/runs?per_page=10` / `commits?per_page=10` / `pulls?state=open&per_page=10`.
-- [ ] `Format Output` → `{ ok, command, data }`, משאיר `html_url`.
-- [ ] private key אף פעם לא ב-JSON — רק credential id. placeholders: `@@SYSTEM_NAME@@`,
+- [x] `Normalize Input` (string גולמי; `ci_runs` | `recent_commits` | `open_prs`) → `Switch`.
+- [x] שלב mint משותף: JWT RS256 (iat≈now−60s, exp+540s, iss=App ID) דרך נוד JWT מובנה
+      (`n8n-nodes-base.jwt`, operation=sign) עם credential `jwtAuth` PEM (`@@CRED_GITHUB_JWT_ID@@`)
+      → POST ל-`/app/installations/@@GITHUB_INSTALLATION_ID@@/access_tokens` → token לשעה.
+- [x] caching ב-`$getStaticData('global').github_token_cache` לפי `exp` (refresh רק כשפחות מ-300s
+      לפקיעה, דרך נוד `Token Cache Check` + IF `Token Valid?`); token כ-opaque (בלי אורך/regex).
+- [x] כל ענף קורא ל-REST עם `owner=edri2or`, `repo=@@SYSTEM_NAME@@`:
+      `actions/runs?per_page=10` / `commits?per_page=10` / `pulls?state=open&per_page=10`,
+      Authorization: Bearer דרך header דינמי (לא credential — הטוקן runtime).
+- [x] `Format Output` → `{ ok, command, data }`, משאיר `html_url`.
+- [x] private key אף פעם לא ב-JSON — רק credential id. placeholders: `@@SYSTEM_NAME@@`,
       `@@GITHUB_APP_ID@@`, `@@GITHUB_INSTALLATION_ID@@`, `@@CRED_GITHUB_JWT_ID@@`.
-- [ ] Playground ירוק (JSON בלבד).
+- [x] `jq .` עובר; כל 5 ה-Code nodes עוברים `node --check`; אין מפתח/אורך-token בקובץ.
+- [ ] Playground ירוק (JSON בלבד) — ייבדק ב-CI אחרי push.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** נבנה בדיוק לפי שלד postgres. החתימה דרך נוד ה-JWT המובנה (לא Code+crypto)
+כדי להימנע מ-`NODE_FUNCTION_ALLOW_BUILTIN=crypto`. cache לטוקן ב-static data עם IF שמדלג על mint
+כשהטוקן עדיין בתוקף. אומת מקומית. **לאימות חי בשלב מאוחר:** שמות הפרמטרים של נוד ה-JWT
+(`useJson`/`jsonPayload`) ושמבנה תשובת ה-REST (array vs object) — מטופלים אבל דורשים אימות במערכת test.
 **שינוי תוכנית:** —
 
 ---
@@ -178,3 +183,4 @@ project id placeholder. אומת מקומית: JSON תקין + JS תקין + bod
 ## יומן ל-Or (עברית)
 
 - שלב 1 הושלם — בניתי את הכלי שקורא מ-Railway: סטטוס ה-deploy האחרון ולוגים אחרונים, קריאה בלבד.
+- שלב 2 הושלם — בניתי את הכלי שקורא מגיטהאב (CI, commits, PRs). n8n מייצר לעצמו טוקן זמני ושומר אותו בזיכרון.
