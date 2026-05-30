@@ -47,7 +47,7 @@ opaque — בלי אורך/regex קבוע.
 | 2 | `github-readonly.json` — sub-workflow חדש (ci_runs / recent_commits / open_prs) + JWT mint | completed | `templates/system/workflows/n8n/github-readonly.json` |
 | 3 | חיווט ל-`ops-agent.json` — שני כלי toolWorkflow + systemMessage | completed | `templates/system/workflows/n8n/ops-agent.json` |
 | 4 | התקנה ב-`configure-agent-router.yml` — creds + install + sed + graceful degradation | completed | `templates/system/.github/workflows/configure-agent-router.yml` |
-| 5 | הרשאת PRs + הרחבת Egress allow-list | pending | `.github/workflows/register-system-app.yml`, `templates/system/workflows/n8n/agent-router.json` |
+| 5 | הרשאת PRs + הרחבת Egress allow-list | completed | `.github/workflows/register-system-app.yml`, `templates/system/workflows/n8n/agent-router.json` |
 | 6 | תיעוד מערכת — CHANGELOG של התבנית + AGENTS.md.template | pending | `templates/system/CHANGELOG.md`, `templates/system/changelog.d/`, `templates/system/AGENTS.md.template` |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`. כל שלב = commit אחד ל-PR,
@@ -156,13 +156,15 @@ project id placeholder. אומת מקומית: JSON תקין + JS תקין + bod
 ### שלב 5 — הרשאת PRs + הרחבת Egress
 
 **Acceptance:**
-- [ ] `.github/workflows/register-system-app.yml`: הוספת `"pull_requests":"read"` ל-
-      `APP_PERMISSIONS_JSON` + הערה שמערכת קיימת דורשת מחיקת App + רישום מחדש.
-- [ ] `agent-router.json`: הרחבת **רק** ה-`ALLOW` regex ל-`github.com`, `railway.app`,
-      `railway.com`. לא נוגעים ב-strip script / exec-eval block / 4000-char cap.
-- [ ] `jq . agent-router.json` עובר. actionlint/yamllint על register-system-app עוברים.
+- [x] `.github/workflows/register-system-app.yml`: הוספת `"pull_requests":"read"` ל-
+      `APP_PERMISSIONS_JSON` + הערה שמערכת קיימת דורשת מחיקת App + רישום מחדש, חדשה מקבלת מההתחלה.
+- [x] `agent-router.json`: הרחבת **רק** ה-`ALLOW` regex ל-`github.com`, `railway.app`,
+      `railway.com`. אומת ש-3 ההגנות האחרות (withheld policy / script strip / 4000-cap) נשמרו.
+- [x] `jq . agent-router.json` עובר; ה-JS של Egress עובר `node --check`; `shellcheck -S error`
+      + `yamllint` על register-system-app נקיים.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** שתי עריכות שורה-אחת: הרשאת PRs באפליקציית גיטהאב (מקור אמת יחיד —
+ה-receiver קורא משם), והרחבת ה-allow-list ב-router. נגעתי רק ב-regex עצמו.
 **שינוי תוכנית:** —
 
 ---
@@ -192,3 +194,4 @@ project id placeholder. אומת מקומית: JSON תקין + JS תקין + bod
 - שלב 2 הושלם — בניתי את הכלי שקורא מגיטהאב (CI, commits, PRs). n8n מייצר לעצמו טוקן זמני ושומר אותו בזיכרון.
 - שלב 3 הושלם — חיברתי את שני הכלים החדשים למוח של ה-ops-agent ועדכנתי לו את ההוראות (כולל: מותר לתת קישורים).
 - שלב 4 הושלם — workflow ההקמה יודע עכשיו להרכיב את שני הכלים אוטומטית, ואם חסר סוד — הכלי יורד בחן בלי לשבור כלום.
+- שלב 5 הושלם — הוספתי לאפליקציית גיטהאב הרשאה לקרוא PRs, והרשיתי קישורי גיטהאב/Railway לחזור בתשובה.

@@ -223,10 +223,15 @@ jobs:
         run: |
           set -euo pipefail
           # Narrow per-system App permissions. No administration, no
-          # organization_administration, no pull_requests — the system's own
-          # workflows act on a single repo via deploy-sa for GCP and this App
-          # for GitHub-side actions.
-          APP_PERMISSIONS_JSON='{"contents":"write","metadata":"read","actions":"write","workflows":"write","secrets":"write"}'
+          # organization_administration — the system's own workflows act on a single
+          # repo via deploy-sa for GCP and this App for GitHub-side actions.
+          # pull_requests:read is the ONLY source of truth for the App's PR scope
+          # (the receiver main.py reads APP_PERMISSIONS from this env var); the
+          # ops-agent's github-readonly tool needs it to list open PRs. NOTE: an
+          # already-registered system does NOT pick this up on a normal re-run
+          # (register skips when App creds exist) — it needs App delete + re-register;
+          # newly provisioned systems get it natively from this line.
+          APP_PERMISSIONS_JSON='{"contents":"write","metadata":"read","actions":"write","workflows":"write","secrets":"write","pull_requests":"read"}'
           APP_PERMISSIONS_B64=$(printf '%s' "${APP_PERMISSIONS_JSON}" | base64 -w 0)
 
           gcloud run deploy "${SERVICE_NAME}" \
