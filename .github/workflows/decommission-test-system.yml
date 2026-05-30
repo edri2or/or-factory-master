@@ -18,7 +18,7 @@ on:
   workflow_dispatch:
     inputs:
       system_name:
-        description: "Test system to tear down (e.g. factory-test-26). Must match a test pattern."
+        description: "Test system to tear down (e.g. factory-test-26). Either a test-prefixed name (factory-test-*/v2-test-*/or-test-*), OR any name whose repo is reuse-backed by a shared TEST project — in which case also set shared_gcp_project, and the workflow proves it via the repo's GCP_PROJECT_ID before touching anything."
         required: true
         type: string
       shared_gcp_project:
@@ -59,12 +59,8 @@ jobs:
           SHARED_GCP_PROJECT: ${{ inputs.shared_gcp_project }}
         run: |
           set -euo pipefail
-          # Test systems only — this workflow must never touch a real system.
-          if ! [[ "$SYSTEM_NAME" =~ ^(factory-test-|v2-test-|or-test-)[a-z0-9-]{1,26}[a-z0-9]$ ]]; then
-            echo "FAIL: '$SYSTEM_NAME' is not a test system (must match factory-test-*/v2-test-*/or-test-*)" >&2
-            exit 1
-          fi
-          # Never tear down a control project or the shared test backend.
+          # Hard refusals first — never tear down a control project or the shared
+          # test backend, however the name arrives.
           case "$SYSTEM_NAME" in
             or-factory-master-control|factory-control-9piybr)
               echo "FAIL: refusing to decommission a control project" >&2; exit 1 ;;
@@ -81,11 +77,31 @@ jobs:
             esac
             SYS_PROJECT="$SHARED_GCP_PROJECT"
           fi
+
+          # Acceptance gate — this workflow must never touch a real system.
+          #  (a) Fast path: a recognised test-prefixed name is self-evidently a test
+          #      system, no further proof needed.
+          #  (b) Reuse-mode path: a non-test-prefixed name is allowed ONLY when its
+          #      creds live in a shared TEST project (shared_gcp_project matches a
+          #      test pattern) AND the repo itself proves it — verified in the next
+          #      step (after auth) by reading the repo's own GCP_PROJECT_ID variable.
+          #      A real system's GCP_PROJECT_ID is its OWN project, never a shared
+          #      test backend, so this can never archive a real repo.
+          REQUIRE_REPO_PROOF="false"
+          if [[ "$SYSTEM_NAME" =~ ^(factory-test-|v2-test-|or-test-)[a-z0-9-]{1,26}[a-z0-9]$ ]]; then
+            echo "PASS: '$SYSTEM_NAME' is a test-prefixed system; creds project = ${SYS_PROJECT}."
+          elif [[ "$SHARED_GCP_PROJECT" =~ ^(factory-test-|v2-test-|or-test-)[a-z0-9-]*[a-z0-9]$ ]]; then
+            REQUIRE_REPO_PROOF="true"
+            echo "DEFER: '$SYSTEM_NAME' is not test-prefixed but is reuse-backed by '${SHARED_GCP_PROJECT}' — will verify via the repo's GCP_PROJECT_ID before any teardown."
+          else
+            echo "FAIL: '$SYSTEM_NAME' is not a test system (name must match factory-test-*/v2-test-*/or-test-*, or pass shared_gcp_project pointing at a shared TEST project)" >&2
+            exit 1
+          fi
           {
             echo "SYSTEM_NAME=${SYSTEM_NAME}"
             echo "SYS_PROJECT=${SYS_PROJECT}"
+            echo "REQUIRE_REPO_PROOF=${REQUIRE_REPO_PROOF}"
           } >> "$GITHUB_ENV"
-          echo "PASS: '$SYSTEM_NAME' is a test system; creds project = ${SYS_PROJECT}."
 
       - name: Authenticate to GCP via WIF
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093  # v3.0.0
@@ -114,6 +130,35 @@ jobs:
           [ -n "$BROKER_TOKEN" ] || { echo "FAIL: could not mint broker App token" >&2; exit 1; }
           echo "::add-mask::${BROKER_TOKEN}"
           echo "BROKER_TOKEN=${BROKER_TOKEN}" >> "$GITHUB_ENV"
+
+      - name: Verify reuse-mode test system (repo proof)
+        run: |
+          set -euo pipefail
+          if [ "${REQUIRE_REPO_PROOF:-false}" != "true" ]; then
+            echo "SKIP: test-prefixed name — no repo proof needed."
+            exit 0
+          fi
+          # Prove '${SYSTEM_NAME}' is a reuse-mode TEST system from its OWN
+          # provisioned metadata: the repo variable GCP_PROJECT_ID must equal the
+          # shared TEST project (${SYS_PROJECT}). A real system's GCP_PROJECT_ID is
+          # its own project, so this gate refuses to archive a real repo. Runs
+          # BEFORE any destructive step, so a failure aborts the whole teardown.
+          code=$(curl -sS -o /tmp/gcpvar.json -w '%{http_code}' \
+            -H "Authorization: Bearer ${BROKER_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/edri2or/${SYSTEM_NAME}/actions/variables/GCP_PROJECT_ID")
+          if [ "$code" != "200" ]; then
+            echo "FAIL: cannot read GCP_PROJECT_ID var on edri2or/${SYSTEM_NAME} (HTTP $code) — refusing to treat '${SYSTEM_NAME}' as a test system." >&2
+            exit 1
+          fi
+          VAR_VALUE=$(jq -r '.value // ""' /tmp/gcpvar.json)
+          rm -f /tmp/gcpvar.json
+          if [ "$VAR_VALUE" != "$SYS_PROJECT" ]; then
+            echo "FAIL: edri2or/${SYSTEM_NAME} GCP_PROJECT_ID='${VAR_VALUE}' != shared test project '${SYS_PROJECT}' — NOT a reuse-mode test system. Refusing teardown." >&2
+            exit 1
+          fi
+          echo "PASS: edri2or/${SYSTEM_NAME} is reuse-backed by '${SYS_PROJECT}' (GCP_PROJECT_ID matches) — safe to tear down."
 
       - name: Read Railway + Cloudflare credentials from SM
         run: |

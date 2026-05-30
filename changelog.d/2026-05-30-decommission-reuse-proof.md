@@ -1,0 +1,5 @@
+## feat: decommission-test-system accepts reuse-mode test systems by repo proof
+
+| Type | Summary |
+|---|---|
+| feat | `decommission-test-system.yml` can now tear down a reuse-mode test system whose repo name does **not** carry a `factory-test-*`/`v2-test-*`/`or-test-*` prefix — but only when it is provably a test system, so the safety gate is broadened without being weakened. The validate step keeps the fast path (test-prefixed name) and the hard refusals (control projects, `factory-test-25`); for a non-prefixed name it now defers acceptance to a new post-auth **repo-proof** step that reads the repo's OWN `GCP_PROJECT_ID` Actions variable via the broker App and requires it to equal the passed shared TEST project (e.g. `factory-test-25`). A real system's `GCP_PROJECT_ID` is its own project, never a shared test backend, so this can never archive a real repo; the proof runs before any Railway/DNS/archive action, so a mismatch (or unreadable var) aborts the whole teardown. Closes the gap where a test system provisioned with a non-test name (e.g. `nudge-verify-01`, reuse-backed by `factory-test-25`) could not be decommissioned by its own tool. |
