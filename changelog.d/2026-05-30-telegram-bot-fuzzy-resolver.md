@@ -1,0 +1,10 @@
+# Changelog fragment — telegram-bot-fuzzy-resolver (2026-05-30)
+
+> Per-development changelog fragment. Folded into `CHANGELOG.md` with running Stage numbers by
+> `scripts/compile-changelog.sh`.
+
+## feat: telegram-bot-fuzzy-resolver — file catalog layer (Stage 1)
+
+| Type | Summary |
+|---|---|
+| feat | Stage 1 of telegram-bot-fuzzy-resolver: the data layer for a deterministic file resolver that lets every provisioned system's Telegram bot map an imprecise/misspelled file name to a real repo path (instead of giving up, demanding an exact path, or inventing one). New `templates/system/workflows/n8n/file-catalog-refresh.json` — an hourly n8n workflow (`scheduleTrigger 0 * * * *`) that reuses `github-readonly.json`'s GitHub-App JWT mint+cache chain (opaque token, `onError: continueRegularOutput`), fetches the system repo's full file list in one call (`GET /repos/edri2or/@@SYSTEM_NAME@@/git/trees/HEAD?recursive=1`), extracts every `type:"blob"` path, and upserts the array into Postgres `file_catalog` keyed by `@@CHAT_ID@@` (mirrors `style-refresh.json`'s upsert). Soft-fail throughout: a `Has Paths?` guard skips the upsert on an empty/failed fetch so an existing catalog is never wiped, and a `truncated` flag is carried if GitHub caps the tree (>100k files / 7MB — not expected for factory systems). `db-setup.json` gains `CREATE TABLE IF NOT EXISTS file_catalog (chat_id BIGINT PRIMARY KEY, paths JSONB NOT NULL, refreshed_at TIMESTAMPTZ NOT NULL DEFAULT now())` and `'file_catalog'` in its verification SELECT. `configure-agent-router.yml` registers + activates the workflow (gated on the GitHub-App JWT credential + Postgres + chat id; same `_upsert_wf` pattern as `style-refresh`) and triggers one initial `/rest/.../run` so the catalog is seeded at install rather than waiting for the first cron. Only `@@…@@` placeholders, no secret literals. Template-only; no live system touched. Verified locally: all n8n JSON valid, `yamllint` + `actionlint -shellcheck "shellcheck -S error"` clean on the workflow, `validate-templates.sh` + BATS green. |
