@@ -32,7 +32,7 @@ token כ-opaque.
 | # | כותרת | סטטוס | קבצים |
 |---|---|---|---|
 | 1 | מודעות-כלים — עדכון SYSTEM-INFO | completed | `templates/system/.github/workflows/configure-agent-router.yml` |
-| 2 | פקודת `read_file` + תיאור הכלי | pending | `templates/system/workflows/n8n/github-readonly.json`, `.../ops-agent.json` |
+| 2 | פקודת `read_file` + תיאור הכלי | completed | `templates/system/workflows/n8n/github-readonly.json`, `.../ops-agent.json` |
 | 3 | תיעוד מערכת | pending | `templates/system/AGENTS.md.template`, `CHANGELOG.md`, `changelog.d/` |
 
 > כל שלב = commit ל-PR + עדכון התוכנית + פתק changelog, ועוצר לאישור Or.
@@ -66,10 +66,15 @@ token כ-opaque.
 - `ops-agent.json`: עדכון `description` של `github_readonly` לכלול `read_file:<path>`.
 
 **Acceptance:**
-- [ ] `jq .` תקין; כל Code node עובר `node --check`; סימולציה: `read_file:AGENT.md`→`{command:"read_file",path:"AGENT.md"}`.
-- [ ] אין סוד ב-JSON; read-only; הזרימה הקיימת לא נשברה.
+- [x] `jq .` תקין (שני הקבצים); כל Code node עובר `node --check`; Switch=4 rules/5 outputs, GH File Contents מחווט.
+- [x] סימולציה פונקציונלית: `read_file:AGENT.md`→`{command:"read_file",path:"AGENT.md"}`;
+      תתי-תיקיות + strip של `/`/רווחים; ci_runs/open_prs לא נחטפו; Format מפענח base64,
+      מטפל בתיקייה (רשימה) וב-404 (`ok:false`).
+- [x] אין סוד ב-JSON (רק placeholders); read-only (`onError:continueRegularOutput`); הזרימה הקיימת שלמה.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** Normalize מזהה `read_file:<path>` בלוגיקת-מחרוזות (בלי regex);
+Switch קיבל ענף רביעי; נוד `GH File Contents` קורא את ה-Contents API; Format מפענח base64
+עם תקרת 16K. ה-path מועבר דרך `$('Normalize Input')` (כי ה-mint stage דורס $json). אומת בסימולציה.
 **שינוי תוכנית:** —
 
 ---
@@ -93,3 +98,4 @@ token כ-opaque.
 ## יומן ל-Or (עברית)
 
 - שלב 1 הושלם — עדכנתי את "כרטיס היכולות" של הבוט שיכלול את גיטהאב ו-Railway, כדי שיפסיק לסרב כששואלים אותו כללית.
+- שלב 2 הושלם — הוספתי לבוט יכולת לקרוא תוכן של קובץ מהריפו (`read_file:<נתיב>`), קריאה בלבד.
