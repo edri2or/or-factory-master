@@ -69,7 +69,7 @@
       "parameters": {
         "operation": "sign",
         "useJson": true,
-        "jsonPayload": "={{ JSON.stringify({ iat: $json.iat, exp: $json.exp, iss: $json.iss }) }}",
+        "claimsJson": "={{ JSON.stringify({ iat: $json.iat, exp: $json.exp, iss: $json.iss }) }}",
         "options": {}
       },
       "id": "70000000-0000-0000-0000-000000000005",
