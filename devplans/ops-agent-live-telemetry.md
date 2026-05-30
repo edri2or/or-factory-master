@@ -43,7 +43,7 @@ opaque — בלי אורך/regex קבוע.
 
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
-| 1 | `railway-readonly.json` — sub-workflow חדש (deploy_status / recent_logs) | pending | `templates/system/workflows/n8n/railway-readonly.json` |
+| 1 | `railway-readonly.json` — sub-workflow חדש (deploy_status / recent_logs) | completed | `templates/system/workflows/n8n/railway-readonly.json` |
 | 2 | `github-readonly.json` — sub-workflow חדש (ci_runs / recent_commits / open_prs) + JWT mint | pending | `templates/system/workflows/n8n/github-readonly.json` |
 | 3 | חיווט ל-`ops-agent.json` — שני כלי toolWorkflow + systemMessage | pending | `templates/system/workflows/n8n/ops-agent.json` |
 | 4 | התקנה ב-`configure-agent-router.yml` — creds + install + sed + graceful degradation | pending | `templates/system/.github/workflows/configure-agent-router.yml` |
@@ -61,16 +61,20 @@ opaque — בלי אורך/regex קבוע.
 
 **Acceptance:**
 - [ ] `jq . railway-readonly.json` עובר.
-- [ ] `executeWorkflowTrigger` → `Normalize Input` (Code, string גולמי; `deploy_status` |
+- [x] `executeWorkflowTrigger` → `Normalize Input` (Code, string גולמי; `deploy_status` |
       `recent_logs`, דפוס חילוץ defensive כמו postgres) → `Switch`.
-- [ ] ענף `deploy_status`: HTTP POST ל-`https://backboard.railway.com/graphql/v2` עם status
+- [x] ענף `deploy_status`: HTTP POST ל-`https://backboard.railway.com/graphql/v2` עם status
       query, משתנה `{pid:"@@RAILWAY_PROJECT_ID@@"}`, auth דרך credential Bearer (`@@CRED_RAILWAY_ID@@`).
-- [ ] ענף `recent_logs`: resolve של deployment id אחרון → POST של `deploymentLogs`.
-- [ ] `Format Output` (Code) → `{ ok, command, data }`, משאיר `staticUrl`/URLs.
-- [ ] שום ערך סודי ב-JSON — רק `@@RAILWAY_PROJECT_ID@@` + `@@CRED_RAILWAY_ID@@`.
-- [ ] Playground ירוק (JSON בלבד).
+- [x] ענף `recent_logs`: resolve של deployment id אחרון (`Pick Latest Deployment`) → POST של `deploymentLogs`.
+- [x] `Format Output` (Code) → `{ ok, command, data }`, משאיר `staticUrl`/URLs.
+- [x] שום ערך סודי ב-JSON — רק `@@RAILWAY_PROJECT_ID@@` + `@@CRED_RAILWAY_ID@@`.
+- [x] `jq .` עובר; שלושת ה-Code nodes עוברים `node --check`; ה-GraphQL body תקין כ-JSON.
+- [ ] Playground ירוק (JSON בלבד) — ייבדק ב-CI אחרי push.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הקובץ נבנה בדיוק לפי שלד postgres-named-queries (trigger →
+Normalize → Switch → ענפים → Format Output). recent_logs עושה שתי קפיצות: status query →
+חילוץ deployment id אחרון → deploymentLogs. auth דרך credential Bearer (placeholder),
+project id placeholder. אומת מקומית: JSON תקין + JS תקין + body תקין.
 **שינוי תוכנית:** —
 
 ---
@@ -173,4 +177,4 @@ opaque — בלי אורך/regex קבוע.
 
 ## יומן ל-Or (עברית)
 
-- (יתמלא תוך כדי.)
+- שלב 1 הושלם — בניתי את הכלי שקורא מ-Railway: סטטוס ה-deploy האחרון ולוגים אחרונים, קריאה בלבד.
