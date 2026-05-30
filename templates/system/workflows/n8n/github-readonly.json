@@ -24,7 +24,7 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "// Reuse a cached installation token across executions to avoid minting on every\n// call. Tokens live 1h; refresh only when within 5 min (300s) of expiry. The\n// token is treated as an OPAQUE string — no length/format assumptions (GitHub's\n// 2026 stateless tokens are ~520 chars and growing).\nconst sd = $getStaticData('global');\nconst cache = (sd && sd.github_token_cache) || {};\nconst now = Math.floor(Date.now() / 1000);\nconst valid = !!(cache.token && cache.exp && (cache.exp - now > 300));\nif (valid) {\n  return [{ json: { cached: true, token: cache.token, exp: cache.exp } }];\n}\nreturn [{ json: { cached: false } }];"
+        "jsCode": "// Reuse a cached installation token across executions to avoid minting on every\n// call. Tokens live 1h; refresh only when within 5 min (300s) of expiry. The\n// token is treated as an OPAQUE string — no length/format assumptions (GitHub's\n// 2026 stateless tokens are ~520 chars and growing).\nconst sd = $getWorkflowStaticData('global');\nconst cache = (sd && sd.github_token_cache) || {};\nconst now = Math.floor(Date.now() / 1000);\nconst valid = !!(cache.token && cache.exp && (cache.exp - now > 300));\nif (valid) {\n  return [{ json: { cached: true, token: cache.token, exp: cache.exp } }];\n}\nreturn [{ json: { cached: false } }];"
       },
       "id": "70000000-0000-0000-0000-000000000002",
       "name": "Token Cache Check",
@@ -103,7 +103,7 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "// Persist the freshly-minted installation token in workflow static data so the\n// next execution reuses it (Token Cache Check). exp from GitHub's expires_at\n// (ISO) → epoch seconds; fall back to now+50min if missing. Token kept opaque.\nconst resp = ($input.first() && $input.first().json) || {};\nconst token = resp.token || '';\nconst exp = resp.expires_at ? Math.floor(new Date(resp.expires_at).getTime() / 1000) : (Math.floor(Date.now() / 1000) + 3000);\nconst sd = $getStaticData('global');\nsd.github_token_cache = { token: token, exp: exp };\nreturn [{ json: { cached: false, token: token, exp: exp } }];"
+        "jsCode": "// Persist the freshly-minted installation token in workflow static data so the\n// next execution reuses it (Token Cache Check). exp from GitHub's expires_at\n// (ISO) → epoch seconds; fall back to now+50min if missing. Token kept opaque.\nconst resp = ($input.first() && $input.first().json) || {};\nconst token = resp.token || '';\nconst exp = resp.expires_at ? Math.floor(new Date(resp.expires_at).getTime() / 1000) : (Math.floor(Date.now() / 1000) + 3000);\nconst sd = $getWorkflowStaticData('global');\nsd.github_token_cache = { token: token, exp: exp };\nreturn [{ json: { cached: false, token: token, exp: exp } }];"
       },
       "id": "70000000-0000-0000-0000-000000000007",
       "name": "Cache Token",
