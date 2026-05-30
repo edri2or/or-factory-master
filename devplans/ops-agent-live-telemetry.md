@@ -45,7 +45,7 @@ opaque — בלי אורך/regex קבוע.
 |---|---|---|---|
 | 1 | `railway-readonly.json` — sub-workflow חדש (deploy_status / recent_logs) | completed | `templates/system/workflows/n8n/railway-readonly.json` |
 | 2 | `github-readonly.json` — sub-workflow חדש (ci_runs / recent_commits / open_prs) + JWT mint | completed | `templates/system/workflows/n8n/github-readonly.json` |
-| 3 | חיווט ל-`ops-agent.json` — שני כלי toolWorkflow + systemMessage | pending | `templates/system/workflows/n8n/ops-agent.json` |
+| 3 | חיווט ל-`ops-agent.json` — שני כלי toolWorkflow + systemMessage | completed | `templates/system/workflows/n8n/ops-agent.json` |
 | 4 | התקנה ב-`configure-agent-router.yml` — creds + install + sed + graceful degradation | pending | `templates/system/.github/workflows/configure-agent-router.yml` |
 | 5 | הרשאת PRs + הרחבת Egress allow-list | pending | `.github/workflows/register-system-app.yml`, `templates/system/workflows/n8n/agent-router.json` |
 | 6 | תיעוד מערכת — CHANGELOG של התבנית + AGENTS.md.template | pending | `templates/system/CHANGELOG.md`, `templates/system/changelog.d/`, `templates/system/AGENTS.md.template` |
@@ -111,15 +111,17 @@ project id placeholder. אומת מקומית: JSON תקין + JS תקין + bod
 ### שלב 3 — חיווט ל-ops-agent.json
 
 **Acceptance:**
-- [ ] שני נודי `@n8n/n8n-nodes-langchain.toolWorkflow`: `github_readonly`
+- [x] שני נודי `@n8n/n8n-nodes-langchain.toolWorkflow`: `github_readonly`
       (`@@WF_GITHUB_READONLY_ID@@`) + `railway_readonly` (`@@WF_RAILWAY_READONLY_ID@@`), כל אחד
       עם `description` שמסביר ל-LLM איזו פקודת-string לשלוח ומתי.
-- [ ] שניהם מחוברים ל-`Ops Agent` ב-`ai_tool` (אותה צורה כמו `postgres_named_query`).
-- [ ] `systemMessage` עודכן: מתאר את שני הכלים + הפקודות, ומציין שמותר להחזיר קישורי
-      GitHub/Railway ישירים.
-- [ ] `jq . ops-agent.json` עובר. Playground ירוק.
+- [x] שניהם מחוברים ל-`Ops Agent` ב-`ai_tool` (אותה צורה כמו `postgres_named_query`).
+- [x] `systemMessage` עודכן: 4 כלים + הפקודות שלהם, ומציין שמותר להחזיר קישורי GitHub/Railway.
+- [x] `jq .` עובר; שמות הנודים `github_readonly`/`railway_readonly` תואמים בדיוק את ה-jq-strip
+      שייכתב בשלב 4 (graceful degradation).
+- [ ] Playground ירוק — ייבדק ב-CI אחרי push.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הוספתי שני נודים + חיבורי `ai_tool` + עדכנתי systemMessage לארבעה כלים.
+שמות הנודים נבחרו במדויק כך שה-`jq`-strip בשלב 4 יוכל להוריד אותם בחן אם secret חסר.
 **שינוי תוכנית:** —
 
 ---
@@ -184,3 +186,4 @@ project id placeholder. אומת מקומית: JSON תקין + JS תקין + bod
 
 - שלב 1 הושלם — בניתי את הכלי שקורא מ-Railway: סטטוס ה-deploy האחרון ולוגים אחרונים, קריאה בלבד.
 - שלב 2 הושלם — בניתי את הכלי שקורא מגיטהאב (CI, commits, PRs). n8n מייצר לעצמו טוקן זמני ושומר אותו בזיכרון.
+- שלב 3 הושלם — חיברתי את שני הכלים החדשים למוח של ה-ops-agent ועדכנתי לו את ההוראות (כולל: מותר לתת קישורים).
