@@ -4,10 +4,10 @@
   "nodes": [
     {
       "parameters": {
-        "rule": { "interval": [{ "field": "cronExpression", "expression": "0 3 * * 0" }] }
+        "rule": { "interval": [{ "field": "cronExpression", "expression": "0 3 * * *" }] }
       },
       "id": "30000000-0000-0000-0000-000000000001",
-      "name": "Weekly Sun 03:00",
+      "name": "Daily 03:00",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
       "position": [220, 320]
@@ -93,7 +93,7 @@
     }
   ],
   "connections": {
-    "Weekly Sun 03:00": { "main": [[{ "node": "Read Recent Messages", "type": "main", "index": 0 }]] },
+    "Daily 03:00": { "main": [[{ "node": "Read Recent Messages", "type": "main", "index": 0 }]] },
     "Read Recent Messages": { "main": [[{ "node": "Collect Messages", "type": "main", "index": 0 }]] },
     "Collect Messages": { "main": [[{ "node": "Extract Style", "type": "main", "index": 0 }]] },
     "OpenRouter Chat Model": { "ai_languageModel": [[{ "node": "Extract Style", "type": "ai_languageModel", "index": 0 }]] },

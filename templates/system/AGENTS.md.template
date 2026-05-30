@@ -108,7 +108,7 @@ operator → Telegram → ${PUBLIC_URL}/webhook/telegram-in/inbound
 
 - **`tg-inbound`** — inbound handler (active): webhook → normalize + chat_id filter → Dedup Guard (`tg_updates_seen`) → call router → 🤖 reply.
 - **`tg-proactive`** — daily 08:00 UTC (active): aggregates the last 24 h (audit + spend) + recent failed executions → Haiku summary → 🟢 message.
-- **`style-refresh`** — weekly Sunday 03:00 UTC (active): reads the last 50 messages → Haiku extracts a style-profile JSON → upserts `style_profile`.
+- **`style-refresh`** — daily 03:00 UTC (active): reads the last 50 messages → Haiku extracts a style-profile JSON → upserts `style_profile`.
 - **`postgres-named-queries`** — subworkflow (Stage 108): the read-only query whitelist behind the `postgres_named_query` tool (below).
 - **`db-setup`** — one-shot manual workflow: creates the 7 Postgres tables (idempotent, `IF NOT EXISTS`).
 - **`github-readonly`** — subworkflow (Stage 114): read-only live GitHub for `ops-agent` + `unknown-agent` (recent CI runs / commits / open PRs, and file contents via `read_file:<path>`) as the system's own GitHub App; installed only when the `github-app-*` secrets are present.
@@ -122,7 +122,7 @@ pre-date Phase F; `unknown-agent` and `ops-agent` were upgraded with the system-
 | Table | Key columns | Purpose |
 |---|---|---|
 | `n8n_chat_histories` | `session_id` (= `tg:<chat_id>`), `message` (JSONB) | Conversation memory (Postgres Chat Memory) |
-| `style_profile` | `chat_id` (PK), `profile` (JSONB), `refreshed_at` | Per-operator learned style; refreshed weekly |
+| `style_profile` | `chat_id` (PK), `profile` (JSONB), `refreshed_at` | Per-operator learned style; refreshed daily |
 | `audit_log` | `ts`, `chat_id`, `action`, `params`, `decision`, `intent_confidence` | Bot decisions / intent records |
 | `spend_log` | `ts`, `model`, `prompt_tokens`, `completion_tokens`, `cost_usd` | LLM spend per call (see Deferred) |
 | `tg_updates_seen` | `update_id` (PK), `seen_at` | Telegram update dedup |
