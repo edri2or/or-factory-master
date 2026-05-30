@@ -653,7 +653,7 @@ jobs:
           [ -n "$ROUTER_ID" ] && [ "$ROUTER_ID" != "null" ] || _soft_exit0 "לא התקבל id עבור Agent Router"
           echo "PASS: factory-master: Agent Router → id=${ROUTER_ID}"
 
-          # 5c. Phase F follow-up (PR 3/5): install + activate style-refresh — weekly
+          # 5c. Phase F follow-up (PR 3/5): install + activate style-refresh — daily
           #     extraction of the operator's chat style into Postgres `style_profile`,
           #     used by tg-proactive's daily summary (PR 4/5). Postgres-dependent: skip
           #     if no PG credential or chat id. Soft-fail; never blocks the router.
@@ -668,7 +668,7 @@ jobs:
               STYLE_WF_ID=$(_upsert_wf "factory-master: style-refresh" /tmp/ar-prep-style-refresh.json yes) \
                 || STYLE_WF_ID=""
               if [ -n "$STYLE_WF_ID" ] && [ "$STYLE_WF_ID" != "null" ]; then
-                echo "PASS: factory-master: style-refresh → id=${STYLE_WF_ID} (פעיל, cron 0 3 * * 0)"
+                echo "PASS: factory-master: style-refresh → id=${STYLE_WF_ID} (פעיל, cron 0 3 * * *)"
               else
                 echo "WARN: style-refresh install failed" >&2
                 STYLE_WF_ID=""
@@ -895,7 +895,7 @@ jobs:
                 echo "| postgres-named-queries | \`${PG_NAMED_WF_ID}\` (subworkflow — whitelist של 4 שאילתות SELECT לקריאה ע\"י unknown-agent) |"
               fi
               if [ -n "${STYLE_WF_ID:-}" ] && [ "${STYLE_WF_ID:-}" != "null" ]; then
-                echo "| style-refresh | \`${STYLE_WF_ID}\` (פעיל, cron 0 3 * * 0 — שבועי, יום ראשון 03:00 UTC) |"
+                echo "| style-refresh | \`${STYLE_WF_ID}\` (פעיל, cron 0 3 * * * — יומי 03:00 UTC) |"
               fi
               if [ -n "${PROACT_WF_ID:-}" ] && [ "${PROACT_WF_ID:-}" != "null" ]; then
                 echo "| tg-proactive | \`${PROACT_WF_ID}\` (פעיל, cron 0 8 * * * — יומי 08:00 UTC, סיכום 24ש' לטלגרם) |"
