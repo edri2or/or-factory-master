@@ -31,7 +31,7 @@
           "messageValues": [
             {
               "type": "SystemMessagePromptTemplate",
-              "message": "You are an intent classifier for an operations assistant. Classify the user message into exactly one intent: ops, code, research, infra, or unknown.\n- ops: operations, monitoring, status, deployments, restarts, logs, service health.\n- code: writing, editing, reviewing, or explaining code.\n- research: open-ended questions, summaries, information lookup.\n- infra: provisioning or changing infrastructure (DNS, secrets, cloud resources).\n- unknown: ambiguous, empty, or anything not clearly in the set above.\nReturn ONLY a single-line JSON object and nothing else (no markdown, no code fences, no prose): {\"intent\":\"<one of ops|code|research|infra|unknown>\",\"confidence\":<number between 0 and 1>}. If unsure, use intent unknown with a low confidence."
+              "message": "You are an intent classifier for an operations assistant. Classify the user message into exactly one intent: ops, code, research, infra, or unknown.\n- ops: operations, monitoring, status, deployments, restarts, logs, service health.\n- code: writing, editing, reviewing, or explaining code.\n- research: open-ended questions, summaries, information lookup.\n- infra: provisioning or changing infrastructure (DNS, secrets, cloud resources).\n- unknown: ambiguous, empty, or anything not clearly in the set above.\nReturn ONLY a single-line JSON object and nothing else (no markdown, no code fences, no prose): {\"intent\":\"<one of ops|code|research|infra|unknown>\",\"confidence\":<number between 0 and 1>,\"entity_mention\":<the exact file name or repo path the user referenced, as a JSON string (e.g. \"config.json\" or \"src/app.ts\"), or null if no specific file is referenced>}. Extract entity_mention verbatim from the user's words even if it looks misspelled or partial — never correct or invent it. If unsure of the intent, use intent unknown with a low confidence."
             }
           ]
         }
@@ -57,13 +57,96 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "// Parse the classifier's raw JSON text robustly (no throwing output-parser):\n// any parse failure -> intent 'unknown' (graceful; OWASP LLM01 bounded refusal).\n// Also re-attach the sanitized text, which the chain node drops from the item.\nconst cls = $input.first().json;\nconst sanitized = $('Sanitize Input').first().json.sanitized;\nlet intent = 'unknown';\nlet confidence = 0;\ntry {\n  let parsed = null;\n  if (cls.output && typeof cls.output === 'object') {\n    parsed = cls.output;\n  } else {\n    const raw = String(cls.text != null ? cls.text : (cls.response != null ? cls.response : (cls.output != null ? cls.output : '')));\n    const m = raw.match(/\\{[\\s\\S]*\\}/);\n    if (m) { parsed = JSON.parse(m[0]); }\n  }\n  if (parsed && typeof parsed === 'object') {\n    if (typeof parsed.intent === 'string') { intent = parsed.intent.toLowerCase().trim(); }\n    const c = (typeof parsed.confidence === 'number') ? parsed.confidence : Number(parsed.confidence);\n    if (c >= 0 && c <= 1) { confidence = c; }\n  }\n} catch (e) { intent = 'unknown'; confidence = 0; }\nconst allowed = ['ops', 'code', 'research', 'infra', 'unknown'];\nif (allowed.indexOf(intent) === -1) { intent = 'unknown'; }\nreturn [{ json: { sanitized: sanitized, intent: intent, confidence: confidence } }];"
+        "jsCode": "// Parse the classifier's raw JSON text robustly (no throwing output-parser):\n// any parse failure -> intent 'unknown' (graceful; OWASP LLM01 bounded refusal).\n// Also re-attach the sanitized text, which the chain node drops from the item.\nconst cls = $input.first().json;\nconst sanitized = $('Sanitize Input').first().json.sanitized;\nlet intent = 'unknown';\nlet confidence = 0;\nlet entity_mention = null;\ntry {\n  let parsed = null;\n  if (cls.output && typeof cls.output === 'object') {\n    parsed = cls.output;\n  } else {\n    const raw = String(cls.text != null ? cls.text : (cls.response != null ? cls.response : (cls.output != null ? cls.output : '')));\n    const m = raw.match(/\\{[\\s\\S]*\\}/);\n    if (m) { parsed = JSON.parse(m[0]); }\n  }\n  if (parsed && typeof parsed === 'object') {\n    if (typeof parsed.intent === 'string') { intent = parsed.intent.toLowerCase().trim(); }\n    const c = (typeof parsed.confidence === 'number') ? parsed.confidence : Number(parsed.confidence);\n    if (c >= 0 && c <= 1) { confidence = c; }\n    if (typeof parsed.entity_mention === 'string' && parsed.entity_mention.trim()) { entity_mention = parsed.entity_mention.trim(); }\n  }\n} catch (e) { intent = 'unknown'; confidence = 0; entity_mention = null; }\nconst allowed = ['ops', 'code', 'research', 'infra', 'unknown'];\nif (allowed.indexOf(intent) === -1) { intent = 'unknown'; }\nreturn [{ json: { sanitized: sanitized, intent: intent, confidence: confidence, entity_mention: entity_mention } }];"
       },
       "id": "a0000000-0000-0000-0000-000000000006",
       "name": "Build Dispatch",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [880, 320]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT paths FROM file_catalog WHERE chat_id = {{ '@@CHAT_ID@@' }} LIMIT 1;",
+        "options": {}
+      },
+      "id": "a0000000-0000-0000-0000-000000000010",
+      "name": "Load Catalog",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        880,
+        540
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "@@CRED_POSTGRES_ID@@",
+          "name": "Postgres (n8n)"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Resolve a possibly-imprecise file mention to a REAL path from the catalog,\n// deterministically (no LLM guessing). Zero-dependency Jaro-Winkler vs each\n// catalog path's basename AND full path, case-insensitive. Reads the dispatch\n// fields from Build Dispatch and the catalog from Load Catalog. Graceful: any\n// error, no mention, or empty catalog -> gate 'continue' with the dispatch\n// unchanged (normal routing). Thresholds per the research synthesis (7.3):\n//   >=0.85 auto-resolve (inject verified path) | 0.70-0.84 ask / list candidates\n//   <0.70 offer a folder listing. Never gives up, never invents.\nconst d = $('Build Dispatch').first().json || {};\nconst sanitized = d.sanitized || '';\nconst intent = (typeof d.intent === 'string') ? d.intent : 'unknown';\nconst confidence = (typeof d.confidence === 'number') ? d.confidence : 0;\nconst mention = (typeof d.entity_mention === 'string') ? d.entity_mention.trim() : '';\nconst base = { sanitized: sanitized, intent: intent, confidence: confidence, entity_mention: mention || null };\nfunction jaro(a, b) {\n  if (a === b) return 1;\n  const al = a.length, bl = b.length;\n  if (al === 0 || bl === 0) return 0;\n  const md = Math.max(0, Math.floor(Math.max(al, bl) / 2) - 1);\n  const am = new Array(al).fill(false), bm = new Array(bl).fill(false);\n  let matches = 0;\n  for (let i = 0; i < al; i++) {\n    const lo = Math.max(0, i - md), hi = Math.min(i + md + 1, bl);\n    for (let j = lo; j < hi; j++) { if (!bm[j] && a[i] === b[j]) { am[i] = true; bm[j] = true; matches++; break; } }\n  }\n  if (matches === 0) return 0;\n  let tr = 0, k = 0;\n  for (let i = 0; i < al; i++) { if (am[i]) { while (!bm[k]) k++; if (a[i] !== b[k]) tr++; k++; } }\n  tr = tr / 2;\n  return (matches / al + matches / bl + (matches - tr) / matches) / 3;\n}\nfunction jw(a, b) {\n  const j = jaro(a, b);\n  let p = 0; const mx = Math.min(4, Math.min(a.length, b.length));\n  while (p < mx && a[p] === b[p]) p++;\n  return j + p * 0.1 * (1 - j);\n}\ntry {\n  const cat = $('Load Catalog').first().json || {};\n  let paths = cat.paths;\n  if (typeof paths === 'string') { try { paths = JSON.parse(paths); } catch (e) { paths = []; } }\n  if (!Array.isArray(paths)) paths = [];\n  if (!mention || paths.length === 0) {\n    return [{ json: Object.assign({}, base, { gate: 'continue', resolved: false }) }];\n  }\n  const q = mention.toLowerCase();\n  const scored = [];\n  for (let i = 0; i < paths.length; i++) {\n    const full = String(paths[i]);\n    const bn = full.split('/').pop();\n    const sc = Math.max(jw(q, full.toLowerCase()), jw(q, bn.toLowerCase()));\n    scored.push({ path: full, score: sc });\n  }\n  scored.sort(function (x, y) { return y.score - x.score; });\n  const best = scored[0];\n  const cands = scored.filter(function (x) { return x.score >= 0.70; }).slice(0, 4);\n  if (best.score >= 0.85) {\n    const note = sanitized + '\\n\\n[\\u05d4\\u05de\\u05e2\\u05e8\\u05db\\u05ea \\u05d0\\u05d9\\u05de\\u05ea\\u05d4: \\u05d4\\u05e0\\u05ea\\u05d9\\u05d1 \\u05d4\\u05de\\u05d3\\u05d5\\u05d9\\u05e7 \\u05d4\\u05d5\\u05d0 \"' + best.path + '\". \\u05e7\\u05e8\\u05d0 \\u05d0\\u05d5\\u05ea\\u05d5 \\u05e2\\u05dd read_file:' + best.path + '.]';\n    return [{ json: { sanitized: note, intent: intent, confidence: confidence, entity_mention: mention, gate: 'continue', resolved: true, resolved_path: best.path, score: best.score } }];\n  }\n  if (best.score >= 0.70) {\n    let reply;\n    if (cands.length > 1) {\n      let lines = '\\u05d4\\u05ea\\u05db\\u05d5\\u05d5\\u05e0\\u05ea \\u05dc:';\n      for (let i = 0; i < cands.length; i++) { lines += '\\n' + (i + 1) + ') ' + cands[i].path; }\n      lines += '\\n\\u05e2\\u05e0\\u05d4 \\u05d1\\u05de\\u05e1\\u05e4\\u05e8.';\n      reply = lines;\n    } else {\n      reply = '\\u05d4\\u05ea\\u05db\\u05d5\\u05d5\\u05e0\\u05ea \\u05dc-`' + best.path + '`? (\\u05db\\u05df/\\u05dc\\u05d0)';\n    }\n    return [{ json: Object.assign({}, base, { gate: 'stop', resolved: false, reply: reply, score: best.score }) }];\n  }\n  return [{ json: Object.assign({}, base, { gate: 'stop', resolved: false, reply: '\\u05dc\\u05d0 \\u05de\\u05e6\\u05d0\\u05ea\\u05d9 \\u05e7\\u05d5\\u05d1\\u05e5 \\u05e9\\u05de\\u05ea\\u05d0\\u05d9\\u05dd. \\u05e8\\u05d5\\u05e6\\u05d4 \\u05e9\\u05d0\\u05e6\\u05d9\\u05d2 \\u05d0\\u05ea \\u05ea\\u05d5\\u05db\\u05df \\u05d4\\u05ea\\u05d9\\u05e7\\u05d9\\u05d9\\u05d4 \\u05d4\\u05e8\\u05d0\\u05e9\\u05d9\\u05ea? \\u05ea\\u05df \\u05e9\\u05dd \\u05de\\u05d3\\u05d5\\u05d9\\u05e7 \\u05d0\\u05dd \\u05d9\\u05e9.', score: best.score }) }];\n} catch (e) {\n  return [{ json: Object.assign({}, base, { gate: 'continue', resolved: false }) }];\n}"
+      },
+      "id": "a0000000-0000-0000-0000-000000000011",
+      "name": "Resolve Entity",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1000,
+        320
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "c2000000-0000-0000-0000-000000000001",
+                    "leftValue": "={{ $json.gate }}",
+                    "rightValue": "continue",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "continue"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "stop"
+        }
+      },
+      "id": "a0000000-0000-0000-0000-000000000012",
+      "name": "Resolver Gate",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        1100,
+        460
+      ]
     },
     {
       "parameters": {
@@ -245,7 +328,15 @@
     "Sanitize Input": { "main": [[{ "node": "Classify Intent", "type": "main", "index": 0 }]] },
     "Classify Intent": { "main": [[{ "node": "Build Dispatch", "type": "main", "index": 0 }]] },
     "Classifier Model": { "ai_languageModel": [[{ "node": "Classify Intent", "type": "ai_languageModel", "index": 0 }]] },
-    "Build Dispatch": { "main": [[{ "node": "Route by Intent", "type": "main", "index": 0 }]] },
+    "Build Dispatch": { "main": [[{ "node": "Load Catalog", "type": "main", "index": 0 }]] },
+    "Load Catalog": { "main": [[{ "node": "Resolve Entity", "type": "main", "index": 0 }]] },
+    "Resolve Entity": { "main": [[{ "node": "Resolver Gate", "type": "main", "index": 0 }]] },
+    "Resolver Gate": {
+      "main": [
+        [{ "node": "Route by Intent", "type": "main", "index": 0 }],
+        [{ "node": "Egress Validation", "type": "main", "index": 0 }]
+      ]
+    },
     "Route by Intent": {
       "main": [
         [{ "node": "Call ops Sub-workflow", "type": "main", "index": 0 }],

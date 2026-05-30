@@ -645,6 +645,8 @@ jobs:
               -e "s#@@SUB_CODE_WF_ID@@#${SUB_CODE_WF_ID}#g" \
               -e "s#@@SUB_RESEARCH_WF_ID@@#${SUB_RESEARCH_WF_ID}#g" \
               -e "s#@@SUB_INFRA_WF_ID@@#${SUB_INFRA_WF_ID}#g" \
+              -e "s#@@CRED_POSTGRES_ID@@#${CRED_POSTGRES_ID}#g" \
+              -e "s#@@CHAT_ID@@#${CHAT_ID}#g" \
               "$ROUTER_SRC" > /tmp/ar-prep-router.json
           ROUTER_ID=$(_upsert_wf "factory-master: Agent Router" "/tmp/ar-prep-router.json" yes) \
             || _soft_exit0 "כשל ביצירת/עדכון Agent Router"
@@ -735,6 +737,48 @@ jobs:
               fi
             else
               echo "WARN: spend-track.json not found in repo — skipping" >&2
+            fi
+          fi
+
+          # 5f. Free-form file resolver: install + activate file-catalog-refresh —
+          #     hourly Git Trees (recursive) snapshot of the system repo's file paths
+          #     into Postgres `file_catalog`, which the router's Resolve Entity step
+          #     fuzzy-matches so an imprecise file name maps to a real path. Needs the
+          #     GitHub App JWT credential (same as github-readonly) + Postgres + chat id.
+          #     Soft-fail; never blocks the router.
+          FCAT_WF_ID=""
+          if [ -n "$CRED_GITHUB_JWT_ID" ] && [ "$CRED_GITHUB_JWT_ID" != "null" ] \
+             && [ -n "$CRED_POSTGRES_ID" ] && [ "$CRED_POSTGRES_ID" != "null" ] \
+             && [ -n "$CHAT_ID" ]; then
+            FCAT_SRC="${WF_DIR}/file-catalog-refresh.json"
+            if [ -f "$FCAT_SRC" ]; then
+              sed -e "s#@@CRED_GITHUB_JWT_ID@@#${CRED_GITHUB_JWT_ID}#g" \
+                  -e "s#@@GITHUB_APP_ID@@#${GH_APP_ID}#g" \
+                  -e "s#@@GITHUB_INSTALLATION_ID@@#${GH_APP_INSTALL_ID}#g" \
+                  -e "s#@@SYSTEM_NAME@@#${SYSTEM_NAME}#g" \
+                  -e "s#@@CRED_POSTGRES_ID@@#${CRED_POSTGRES_ID}#g" \
+                  -e "s#@@CHAT_ID@@#${CHAT_ID}#g" \
+                  "$FCAT_SRC" > /tmp/ar-prep-file-catalog-refresh.json
+              FCAT_WF_ID=$(_upsert_wf "factory-master: file-catalog-refresh" /tmp/ar-prep-file-catalog-refresh.json yes) \
+                || FCAT_WF_ID=""
+              if [ -n "$FCAT_WF_ID" ] && [ "$FCAT_WF_ID" != "null" ]; then
+                echo "PASS: factory-master: file-catalog-refresh → id=${FCAT_WF_ID} (פעיל, cron 0 * * * *)"
+                # Seed the catalog once at install so the resolver works immediately
+                # (otherwise it waits up to an hour for the first cron). Same /run shape
+                # as db-setup. Soft: a failure here only delays the first refresh.
+                FCAT_RUN_BODY=$(jq -cn --slurpfile wf /tmp/ar-prep-file-catalog-refresh.json --arg id "$FCAT_WF_ID" \
+                  '{workflowData: ($wf[0] + {id:$id}), runData:{}, startNodes:[{name:"Hourly", sourceData:null}], destinationNode:"Upsert Catalog"}')
+                FCAT_HTTP=$(_napi POST "$BASE/rest/workflows/${FCAT_WF_ID}/run" /tmp/ar-fcat-run.json "$FCAT_RUN_BODY")
+                if [ "$FCAT_HTTP" = "200" ] || [ "$FCAT_HTTP" = "201" ]; then
+                  echo "PASS: file-catalog-refresh initial run (id=${FCAT_WF_ID}) — file_catalog seeded"
+                else
+                  echo "WARN: file-catalog-refresh initial run HTTP ${FCAT_HTTP} — catalog fills on the next cron" >&2
+                fi
+              else
+                echo "WARN: file-catalog-refresh install failed" >&2; FCAT_WF_ID=""
+              fi
+            else
+              echo "WARN: file-catalog-refresh.json not found in repo — skipping" >&2
             fi
           fi
 
@@ -858,6 +902,9 @@ jobs:
               fi
               if [ -n "${SPEND_WF_ID:-}" ] && [ "${SPEND_WF_ID:-}" != "null" ]; then
                 echo "| spend-track | \`${SPEND_WF_ID}\` (פעיל, cron 0 * * * * — עלות OpenRouter אמיתית ל-spend_log) |"
+              fi
+              if [ -n "${FCAT_WF_ID:-}" ] && [ "${FCAT_WF_ID:-}" != "null" ]; then
+                echo "| file-catalog-refresh | \`${FCAT_WF_ID}\` (פעיל, cron 0 * * * * — קטלוג קבצים ל-resolver) |"
               fi
             else
               echo "| Postgres | ⚠️ דולג — לא נשלפו פרטי חיבור מ-Railway (זיכרון/סגנון/סיכום מושבתים) |"
