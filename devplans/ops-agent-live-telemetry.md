@@ -2,7 +2,7 @@
 dev_name: טלמטריה חיה ל-ops-agent (GitHub + Railway, read-only)
 slug: ops-agent-live-telemetry
 opened: 2026-05-30
-status: active
+status: completed
 ---
 
 # תוכנית פיתוח — טלמטריה חיה ל-ops-agent
@@ -48,7 +48,7 @@ opaque — בלי אורך/regex קבוע.
 | 3 | חיווט ל-`ops-agent.json` — שני כלי toolWorkflow + systemMessage | completed | `templates/system/workflows/n8n/ops-agent.json` |
 | 4 | התקנה ב-`configure-agent-router.yml` — creds + install + sed + graceful degradation | completed | `templates/system/.github/workflows/configure-agent-router.yml` |
 | 5 | הרשאת PRs + הרחבת Egress allow-list | completed | `.github/workflows/register-system-app.yml`, `templates/system/workflows/n8n/agent-router.json` |
-| 6 | תיעוד מערכת — CHANGELOG של התבנית + AGENTS.md.template | pending | `templates/system/CHANGELOG.md`, `templates/system/changelog.d/`, `templates/system/AGENTS.md.template` |
+| 6 | תיעוד מערכת — CHANGELOG של התבנית + AGENTS.md.template | completed | `templates/system/CHANGELOG.md`, `templates/system/changelog.d/`, `templates/system/AGENTS.md.template` |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`. כל שלב = commit אחד ל-PR,
 > כולל עדכון התוכנית + פתק ה-changelog של הפקטורי, ועוצר לאישור Or לפני השלב הבא.
@@ -172,12 +172,13 @@ project id placeholder. אומת מקומית: JSON תקין + JS תקין + bod
 ### שלב 6 — תיעוד מערכת
 
 **Acceptance:**
-- [ ] `templates/system/CHANGELOG.md` + פתק ב-`templates/system/changelog.d/` בפורמט הקיים.
-- [ ] `templates/system/AGENTS.md.template` — הערה עובדתית קצרה על הקריאה החיה החדשה, בלי
-      placeholder `${...}` חדש שאינו ב-allow-list.
-- [ ] Playground ירוק (כולל רינדור AGENTS.md.template).
+- [x] `templates/system/CHANGELOG.md` (שורת feat ל-Initial) + פתק
+      `templates/system/changelog.d/2026-05-30-ops-agent-live-telemetry.md` בפורמט הקיים.
+- [x] `templates/system/AGENTS.md.template` — הערות עובדתיות על github_readonly/railway_readonly
+      (כלים + sub-workflows + soft-fail), בלי placeholder `${...}` חדש.
+- [x] `validate-templates.sh` עובר (AGENTS.md.template + CLAUDE.md.template מתרנדרים נקי).
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** תיעדתי את היכולת בשלושה מקומות בתבנית. ה-`validate-templates` רץ נקי.
 **שינוי תוכנית:** —
 
 ---
@@ -195,3 +196,5 @@ project id placeholder. אומת מקומית: JSON תקין + JS תקין + bod
 - שלב 3 הושלם — חיברתי את שני הכלים החדשים למוח של ה-ops-agent ועדכנתי לו את ההוראות (כולל: מותר לתת קישורים).
 - שלב 4 הושלם — workflow ההקמה יודע עכשיו להרכיב את שני הכלים אוטומטית, ואם חסר סוד — הכלי יורד בחן בלי לשבור כלום.
 - שלב 5 הושלם — הוספתי לאפליקציית גיטהאב הרשאה לקרוא PRs, והרשיתי קישורי גיטהאב/Railway לחזור בתשובה.
+- שלב 6 הושלם — תיעדתי את היכולת החדשה בתבנית (CHANGELOG + AGENTS). **הפיתוח הקודי הושלם.**
+- נותר רק אימות חי (הקמת מערכת test ושליחת הודעה לבוט) — צעד נפרד שדורש אישור שלך, לא חלק מהקוד.
