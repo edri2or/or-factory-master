@@ -21,7 +21,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
 | 1 | שכבת הקטלוג — producer + אחסון + רישום בהקמה | completed | `file-catalog-refresh.json` (חדש), `db-setup.json`, `configure-agent-router.yml` |
-| 2 | תיקון ה-prompts + חשיפת רשימת-תיקייה | pending | `ops-agent.json`, `unknown-agent.json`, `github-readonly.json` |
+| 2 | תיקון ה-prompts + חשיפת רשימת-תיקייה | completed | `ops-agent.json`, `unknown-agent.json`, `github-readonly.json` |
 | 3 | ה-Resolver בראוטר (הליבה) | pending | `agent-router.json` |
 | 4 | תיעוד | pending | `AGENTS.md.template` |
 
@@ -50,9 +50,9 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 - [ ] נוספה הוראה: נתיב מאומת → read_file; שאלה רחבה → רשימת תיקייה; לעולם אל תמציא.
 - [ ] תיאור הכלי `github_readonly` מציין ש-`read_file:<folder>` מחזיר רשימת תיקייה.
 - [ ] `github-readonly.json` `Format Output`: הודעת כשל מועשרת במקום "Not Found" גולמי.
-- [ ] אפס `read_file:AGENT.md` נותר; כל ה-JSON תקין; Playground ירוק.
+- [x] אפס `read_file:AGENT.md` נותר; כל ה-JSON תקין; Playground ירוק.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם. תוקן `AGENT.md`→`AGENTS.md` בשני הסוכנים (3 מופעים ב-ops, 5 ב-unknown). נוספה לכל סוכן הוראה: נתיב מאומת → read_file מדויק; שאלה רחבה → רשימת תיקייה; לעולם אל תמציא. תיאור הכלי `github_readonly` מציין עכשיו שנתיב תיקייה מחזיר רשימה. ב-`github-readonly.json` הודעת "Not Found" מועשרת עם hint במקום שגיאה גולמית. אומת: אפס AGENT.md, כל ה-JSON תקין, validate-templates ירוק.
 
 **שינוי תוכנית:** —
 
@@ -90,3 +90,4 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 > שורה פשוטה אחת לכל שלב שהסתיים — בשפה ש-Or מבין, בלי ז'רגון.
 
 - שלב 1 הושלם — הבוט מקבל "רשימת קבצים אמיתית" שמתעדכנת כל שעה ונשמרת במסד הנתונים. זו הקרקע שעליה ה-resolver יתאים שמות לא מדויקים בשלבים הבאים.
+- שלב 2 הושלם — תיקנתי דוגמה של קובץ שלא קיים, ולימדתי את הבוט: כשנותנים לו נתיב מאומת — להשתמש בו; כששואלים "מה יש פה" — להראות תוכן תיקייה; ולעולם לא להמציא. גם הודעת "לא נמצא" עכשיו מציעה מה לעשות במקום סתם להיכשל.
