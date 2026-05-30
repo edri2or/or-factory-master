@@ -408,6 +408,13 @@ jobs:
           # not on a GCP VM, so http://metadata.google.internal/... is unreachable.
           # Same proven pattern as Stage 103's style_profile injection: facts go into
           # the prompt, no runtime tool call, no new per-system SM secret.
+          # capabilities.live_read_sources lists what THIS system can read LIVE, read-only
+          # — described at the system level (the Agent Router sends each question to the
+          # agent that owns the matching tool). Keeping this card in sync with the real
+          # tools matters: it is framed as authoritative ("never invent"), so an
+          # out-of-date card makes the bot wrongly deny a capability it actually has
+          # (e.g. refusing GitHub questions). Updated when github_readonly/railway_readonly
+          # were added, including the read_file file-contents command.
           SYSTEM_INFO_JSON=$(jq -cn \
             --arg sys "$SYSTEM_NAME" \
             --arg dom "$N8N_DOMAIN" \
@@ -417,7 +424,12 @@ jobs:
               runtime:"Railway (n8n 1.121 + Postgres + Caddy)",
               capabilities:{
                 read_only:true, write:false,
-                tools:["list_workflows","recent_errors","postgres_named_query"],
+                live_read_sources:[
+                  "n8n workflows + recent executions/errors (n8n Public API)",
+                  "Postgres fixed-query set: style profile, audit log, pending actions, 24h executions",
+                  "GitHub for THIS repo (edri2or/\($sys)): recent CI runs, recent commits, open PRs, and file contents via read_file:<path>",
+                  "Railway: latest deploy status + recent deployment logs"
+                ],
                 hitl_required_for_writes:true
               }}' 2>/dev/null || echo '{}')
           echo "INFO: SYSTEM_INFO_JSON built (length=${#SYSTEM_INFO_JSON})"

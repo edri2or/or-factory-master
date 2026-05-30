@@ -111,7 +111,7 @@ operator → Telegram → ${PUBLIC_URL}/webhook/telegram-in/inbound
 - **`style-refresh`** — weekly Sunday 03:00 UTC (active): reads the last 50 messages → Haiku extracts a style-profile JSON → upserts `style_profile`.
 - **`postgres-named-queries`** — subworkflow (Stage 108): the read-only query whitelist behind the `postgres_named_query` tool (below).
 - **`db-setup`** — one-shot manual workflow: creates the 7 Postgres tables (idempotent, `IF NOT EXISTS`).
-- **`github-readonly`** — subworkflow (Stage 114): read-only live GitHub for `ops-agent` (recent CI runs / commits / open PRs) as the system's own GitHub App; installed only when the `github-app-*` secrets are present.
+- **`github-readonly`** — subworkflow (Stage 114): read-only live GitHub for `ops-agent` (recent CI runs / commits / open PRs, and file contents via `read_file:<path>`) as the system's own GitHub App; installed only when the `github-app-*` secrets are present.
 - **`railway-readonly`** — subworkflow (Stage 114): read-only live Railway for `ops-agent` (latest deploy status / recent deployment logs); installed only when `railway-api-token` is present.
 
 The Agent Router and its five sub-agents (`ops`, `code`, `research`, `infra`, `unknown`)
@@ -135,7 +135,7 @@ pre-date Phase F; `unknown-agent` and `ops-agent` were upgraded with the system-
 
 - **`postgres_named_query`** — a fixed whitelist of four read-only SELECTs (no free SQL): `style_profile_get`, `recent_audit_log`, `pending_actions_open`, `executions_summary_24h`.
 - **SYSTEM-INFO injection** — `configure-agent-router.yml` injects a JSON block (`system_name`, `n8n_domain`, `gcp_project_id`, `gcp_region`, `runtime`, `capabilities`) into the system prompt at install time, so the bot can answer "where am I / what am I" with no runtime dependency.
-- **`github_readonly`** (`ops-agent`, Stage 114) — live read-only GitHub for this repo as the system's GitHub App: send one raw string `ci_runs` | `recent_commits` | `open_prs`. It mints a short-lived installation token inside n8n (built-in JWT node, RS256) and caches it; returns `{ok, command, data}`, and `html_url` links are allowed in replies.
+- **`github_readonly`** (`ops-agent`, Stage 114) — live read-only GitHub for this repo as the system's GitHub App: send one raw string `ci_runs` | `recent_commits` | `open_prs`, or `read_file:<path>` to read a repo file's text contents (e.g. `read_file:AGENT.md`; directory paths return a listing, files >1 MB are out of scope). It mints a short-lived installation token inside n8n (built-in JWT node, RS256) and caches it; returns `{ok, command, data}` (for `read_file`, `data` is `{path, size, content, truncated, html_url}`), and `html_url` links are allowed in replies.
 - **`railway_readonly`** (`ops-agent`, Stage 114) — live read-only Railway: send one raw string `deploy_status` | `recent_logs`. Returns `{ok, command, data}`, and `staticUrl` links are allowed in replies.
 
 Every Postgres path is **soft-fail**: if the Postgres credential is missing, `configure-agent-router.yml` logs a WARN and the bot keeps working with in-memory window memory (the `postgres_named_query` tool is `jq`-stripped out). Likewise `github_readonly` is installed + wired only when the `github-app-*` secrets exist, and `railway_readonly` only when `railway-api-token` exists; otherwise each tool node is `jq`-stripped from `ops-agent` (graceful degradation — never a dangling reference).

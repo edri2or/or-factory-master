@@ -13,7 +13,7 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "// Normalize the LLM's tool args into a uniform { command } shape.\n// Mirrors postgres-named-queries 'Normalize Input' (Stage 113): the toolWorkflow\n// node uses specifyInputSchema:false, so the LLM passes a single RAW STRING as the\n// tool's arg. With the trigger in passthrough mode that string arrives at\n// $json.query. Valid commands: ci_runs | recent_commits | open_prs.\nconst items = $input.all();\nconst raw = (items[0] && items[0].json) || {};\nconst valid = ['ci_runs', 'recent_commits', 'open_prs'];\nconst tryString = (s) => {\n  if (typeof s !== 'string') return '';\n  const t = s.trim();\n  if (!t) return '';\n  if (valid.indexOf(t) >= 0) return t;\n  try { const p = JSON.parse(t); if (p && typeof p.command === 'string') return p.command; } catch (e) { /* ignore */ }\n  return '';\n};\nlet cmd = '';\nif (typeof raw.command === 'string' && raw.command) {\n  cmd = valid.indexOf(raw.command.trim()) >= 0 ? raw.command.trim() : tryString(raw.command);\n} else if (typeof raw.query === 'string') {\n  cmd = tryString(raw.query);\n} else if (raw.query && typeof raw.query === 'object' && typeof raw.query.command === 'string') {\n  cmd = raw.query.command;\n} else if (raw.input && typeof raw.input.command === 'string') {\n  cmd = raw.input.command;\n} else if (typeof raw.arguments === 'string') {\n  cmd = tryString(raw.arguments);\n}\nreturn [{ json: { command: cmd, _raw_input: raw } }];"
+        "jsCode": "// Normalize the LLM's tool args into a uniform { command } shape.\n// Mirrors postgres-named-queries 'Normalize Input' (Stage 113): the toolWorkflow\n// node uses specifyInputSchema:false, so the LLM passes a single RAW STRING as the\n// tool's arg. With the trigger in passthrough mode that string arrives at\n// $json.query. Commands: ci_runs | recent_commits | open_prs | read_file:<path>.\nconst items = $input.all();\nconst raw = (items[0] && items[0].json) || {};\nconst valid = ['ci_runs', 'recent_commits', 'open_prs'];\n// read_file:<path> carries an argument. Detect it on any string source first, with\n// plain string ops (no regex → no JSON-escaping pitfalls). Strips leading ':'/spaces\n// and leading '/'. Path may contain subdirs (slashes preserved).\nconst parseReadFile = (s) => {\n  if (typeof s !== 'string') return null;\n  const t = s.trim();\n  if (t.toLowerCase().indexOf('read_file') !== 0) return null;\n  let rest = t.slice(9);\n  let k = 0;\n  while (k < rest.length && (rest.charAt(k) === ':' || rest.charAt(k) === ' ')) k++;\n  rest = rest.slice(k);\n  while (rest.length && rest.charAt(0) === '/') rest = rest.slice(1);\n  rest = rest.trim();\n  return rest ? rest : null;\n};\nconst _cands = [];\nif (typeof raw.command === 'string') _cands.push(raw.command);\nif (typeof raw.query === 'string') _cands.push(raw.query);\nif (typeof raw.arguments === 'string') _cands.push(raw.arguments);\nfor (let _i = 0; _i < _cands.length; _i++) { const _p = parseReadFile(_cands[_i]); if (_p) return [{ json: { command: 'read_file', path: _p, _raw_input: raw } }]; }\nconst tryString = (s) => {\n  if (typeof s !== 'string') return '';\n  const t = s.trim();\n  if (!t) return '';\n  if (valid.indexOf(t) >= 0) return t;\n  try { const p = JSON.parse(t); if (p && typeof p.command === 'string') return p.command; } catch (e) { /* ignore */ }\n  return '';\n};\nlet cmd = '';\nif (typeof raw.command === 'string' && raw.command) {\n  cmd = valid.indexOf(raw.command.trim()) >= 0 ? raw.command.trim() : tryString(raw.command);\n} else if (typeof raw.query === 'string') {\n  cmd = tryString(raw.query);\n} else if (raw.query && typeof raw.query === 'object' && typeof raw.query.command === 'string') {\n  cmd = raw.query.command;\n} else if (raw.input && typeof raw.input.command === 'string') {\n  cmd = raw.input.command;\n} else if (typeof raw.arguments === 'string') {\n  cmd = tryString(raw.arguments);\n}\nreturn [{ json: { command: cmd, path: '', _raw_input: raw } }];"
       },
       "id": "70000000-0000-0000-0000-00000000000a",
       "name": "Normalize Input",
@@ -163,6 +163,22 @@
               },
               "renameOutput": true,
               "outputKey": "open_prs"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose", "version": 2 },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "72000000-0000-0000-0000-000000000004",
+                    "leftValue": "={{ $('Normalize Input').first().json.command }}",
+                    "rightValue": "read_file",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "read_file"
             }
           ]
         },
@@ -242,8 +258,29 @@
     },
     {
       "parameters": {
+        "method": "GET",
+        "url": "=https://api.github.com/repos/edri2or/@@SYSTEM_NAME@@/contents/{{ $('Normalize Input').first().json.path }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $json.token }}" },
+            { "name": "Accept", "value": "application/vnd.github+json" },
+            { "name": "X-GitHub-Api-Version", "value": "2022-11-28" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "70000000-0000-0000-0000-00000000000f",
+      "name": "GH File Contents",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1860, 720],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "// Flatten whichever GitHub branch ran into a uniform tool response, keeping\n// html_url links intact (links are allowed downstream — the router egress\n// allow-list permits github.com). command comes from Normalize Input. A GitHub\n// REST error arrives as a single { message, documentation_url } object → ok:false.\nconst command = String($('Normalize Input').first().json.command || '');\nconst items = $input.all().map(i => i && i.json).filter(Boolean);\nconst firstObj = items[0] || {};\nlet ok = true;\nlet data = items;\nif (firstObj && typeof firstObj.message === 'string' && (firstObj.documentation_url || firstObj.status)) {\n  ok = false;\n  data = firstObj;\n} else if (command === 'ci_runs') {\n  data = (firstObj && Array.isArray(firstObj.workflow_runs)) ? firstObj.workflow_runs : items;\n} else {\n  data = items;\n}\nreturn [{ json: { ok: ok, command: command, data: data } }];"
+        "jsCode": "// Flatten whichever GitHub branch ran into a uniform tool response, keeping\n// html_url links intact (links are allowed downstream — the router egress\n// allow-list permits github.com). command comes from Normalize Input. A GitHub\n// REST error arrives as a single { message, documentation_url } object → ok:false.\nconst command = String($('Normalize Input').first().json.command || '');\nconst items = $input.all().map(i => i && i.json).filter(Boolean);\nconst firstObj = items[0] || {};\nlet ok = true;\nlet data = items;\nif (firstObj && typeof firstObj.message === 'string' && (firstObj.documentation_url || firstObj.status)) {\n  ok = false;\n  data = firstObj;\n} else if (command === 'ci_runs') {\n  data = (firstObj && Array.isArray(firstObj.workflow_runs)) ? firstObj.workflow_runs : items;\n} else if (command === 'read_file') {\n  if (firstObj && firstObj.type === 'file' && typeof firstObj.content === 'string') {\n    let content = '';\n    try { content = Buffer.from(firstObj.content, 'base64').toString('utf8'); } catch (e) { content = ''; }\n    let truncated = false;\n    if (content.length > 16000) { content = content.slice(0, 16000); truncated = true; }\n    data = { path: firstObj.path, size: firstObj.size, html_url: firstObj.html_url, truncated: truncated, content: content };\n  } else if (items.length && firstObj && firstObj.type) {\n    data = items.map(e => ({ name: e.name, path: e.path, type: e.type }));\n  } else {\n    data = firstObj;\n  }\n} else {\n  data = items;\n}\nreturn [{ json: { ok: ok, command: command, data: data } }];"
       },
       "id": "70000000-0000-0000-0000-00000000000d",
       "name": "Format Output",
@@ -272,7 +309,7 @@
               "id": "73000000-0000-0000-0000-000000000003",
               "name": "error",
               "type": "string",
-              "value": "unknown command — valid: ci_runs, recent_commits, open_prs"
+              "value": "unknown command — valid: ci_runs, recent_commits, open_prs, read_file:<path>"
             },
             {
               "id": "73000000-0000-0000-0000-000000000004",
@@ -288,7 +325,7 @@
       "name": "Unknown Command",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
-      "position": [1860, 720]
+      "position": [1860, 900]
     }
   ],
   "connections": {
@@ -310,12 +347,14 @@
         [{ "node": "GH CI Runs", "type": "main", "index": 0 }],
         [{ "node": "GH Recent Commits", "type": "main", "index": 0 }],
         [{ "node": "GH Open PRs", "type": "main", "index": 0 }],
+        [{ "node": "GH File Contents", "type": "main", "index": 0 }],
         [{ "node": "Unknown Command", "type": "main", "index": 0 }]
       ]
     },
     "GH CI Runs": { "main": [[{ "node": "Format Output", "type": "main", "index": 0 }]] },
     "GH Recent Commits": { "main": [[{ "node": "Format Output", "type": "main", "index": 0 }]] },
-    "GH Open PRs": { "main": [[{ "node": "Format Output", "type": "main", "index": 0 }]] }
+    "GH Open PRs": { "main": [[{ "node": "Format Output", "type": "main", "index": 0 }]] },
+    "GH File Contents": { "main": [[{ "node": "Format Output", "type": "main", "index": 0 }]] }
   },
   "settings": { "executionOrder": "v1" }
 }
