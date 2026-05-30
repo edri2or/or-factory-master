@@ -22,7 +22,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 |---|---|---|---|
 | 1 | שכבת הקטלוג — producer + אחסון + רישום בהקמה | completed | `file-catalog-refresh.json` (חדש), `db-setup.json`, `configure-agent-router.yml` |
 | 2 | תיקון ה-prompts + חשיפת רשימת-תיקייה | completed | `ops-agent.json`, `unknown-agent.json`, `github-readonly.json` |
-| 3 | ה-Resolver בראוטר (הליבה) | pending | `agent-router.json` |
+| 3 | ה-Resolver בראוטר (הליבה) | completed | `agent-router.json`, `configure-agent-router.yml` |
 | 4 | תיעוד | pending | `AGENTS.md.template` |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
@@ -65,9 +65,9 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 - [ ] `Build Dispatch`: מעביר `entity_mention`.
 - [ ] נוספו `Load Catalog` (Postgres) + `Resolve Entity` (code, Jaro-Winkler אפס-תלות) + `Resolver Gate` (switch).
 - [ ] חיווט: Build Dispatch → Load Catalog → Resolve Entity → Resolver Gate; continue→Route by Intent, stop→Egress Validation.
-- [ ] ספים לפי 7.3; הזרקת נתיב מאומת ל-`sanitized`; degrade חיננית אם אין קטלוג; Playground ירוק.
+- [x] ספים לפי 7.3; הזרקת נתיב מאומת ל-`sanitized`; degrade חיננית אם אין קטלוג; Playground ירוק.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם. ה-Classify Intent מחלץ עכשיו `entity_mention`; נוספו 3 צמתים (Load Catalog מ-Postgres, Resolve Entity עם Jaro-Winkler אפס-תלות, Resolver Gate switch) בין Build Dispatch ל-Route by Intent, עם הזרקת נתיב מאומת ל-sanitized ומסלולי STOP ל-Egress. ה-router install מזריק עכשיו @@CRED_POSTGRES_ID@@/@@CHAT_ID@@. אומת: JSON תקין (15 צמתים), eval_router --check ירוק, actionlint+yamllint נקי, ובדיקת Node של המנוע (cnfig.json→config.json, agnts.md→AGENTS.md, ללא-התאמה→הצעת תיקייה, אין-ישות/קטלוג-ריק→דילוג).
 
 **שינוי תוכנית:** —
 
@@ -91,3 +91,4 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 
 - שלב 1 הושלם — הבוט מקבל "רשימת קבצים אמיתית" שמתעדכנת כל שעה ונשמרת במסד הנתונים. זו הקרקע שעליה ה-resolver יתאים שמות לא מדויקים בשלבים הבאים.
 - שלב 2 הושלם — תיקנתי דוגמה של קובץ שלא קיים, ולימדתי את הבוט: כשנותנים לו נתיב מאומת — להשתמש בו; כששואלים "מה יש פה" — להראות תוכן תיקייה; ולעולם לא להמציא. גם הודעת "לא נמצא" עכשיו מציעה מה לעשות במקום סתם להיכשל.
+- שלב 3 הושלם (הלב) — הבוט מזהה את שם הקובץ שכתבת, משווה אותו לרשימה האמיתית, ולפי כמה הוא בטוח: קורא לבד / שואל "התכוונת ל-X?" / מציע תיקייה. בדקתי בפועל ש"agnts.md" מזהה את AGENTS.md ו-"cnfig.json" מזהה את config.json. אם אין קטלוג — פשוט ממשיך כרגיל בלי להישבר.

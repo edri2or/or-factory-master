@@ -645,6 +645,8 @@ jobs:
               -e "s#@@SUB_CODE_WF_ID@@#${SUB_CODE_WF_ID}#g" \
               -e "s#@@SUB_RESEARCH_WF_ID@@#${SUB_RESEARCH_WF_ID}#g" \
               -e "s#@@SUB_INFRA_WF_ID@@#${SUB_INFRA_WF_ID}#g" \
+              -e "s#@@CRED_POSTGRES_ID@@#${CRED_POSTGRES_ID}#g" \
+              -e "s#@@CHAT_ID@@#${CHAT_ID}#g" \
               "$ROUTER_SRC" > /tmp/ar-prep-router.json
           ROUTER_ID=$(_upsert_wf "factory-master: Agent Router" "/tmp/ar-prep-router.json" yes) \
             || _soft_exit0 "כשל ביצירת/עדכון Agent Router"
