@@ -46,7 +46,7 @@ opaque — בלי אורך/regex קבוע.
 | 1 | `railway-readonly.json` — sub-workflow חדש (deploy_status / recent_logs) | completed | `templates/system/workflows/n8n/railway-readonly.json` |
 | 2 | `github-readonly.json` — sub-workflow חדש (ci_runs / recent_commits / open_prs) + JWT mint | completed | `templates/system/workflows/n8n/github-readonly.json` |
 | 3 | חיווט ל-`ops-agent.json` — שני כלי toolWorkflow + systemMessage | completed | `templates/system/workflows/n8n/ops-agent.json` |
-| 4 | התקנה ב-`configure-agent-router.yml` — creds + install + sed + graceful degradation | pending | `templates/system/.github/workflows/configure-agent-router.yml` |
+| 4 | התקנה ב-`configure-agent-router.yml` — creds + install + sed + graceful degradation | completed | `templates/system/.github/workflows/configure-agent-router.yml` |
 | 5 | הרשאת PRs + הרחבת Egress allow-list | pending | `.github/workflows/register-system-app.yml`, `templates/system/workflows/n8n/agent-router.json` |
 | 6 | תיעוד מערכת — CHANGELOG של התבנית + AGENTS.md.template | pending | `templates/system/CHANGELOG.md`, `templates/system/changelog.d/`, `templates/system/AGENTS.md.template` |
 
@@ -131,20 +131,24 @@ project id placeholder. אומת מקומית: JSON תקין + JS תקין + bod
 מראה את לוגיקת ההתקנה של postgres-named-queries לשני ה-sub-workflows החדשים.
 
 **Acceptance:**
-- [ ] קריאת secrets: `github-app-id`/`github-app-private-key`/`github-app-installation-id`
-      (Railway כבר נקרא).
-- [ ] יצירת credentials (find-by-name → POST): Bearer ל-Railway → `CRED_RAILWAY_ID`;
-      PEM ל-JWT של GitHub → `CRED_GITHUB_JWT_ID`.
-- [ ] התקנת `railway-readonly.json` + `github-readonly.json` **לפני** לולאת הסוכנים עם
+- [x] קריאת secrets: `github-app-id`/`github-app-private-key`/`github-app-installation-id`
+      (Railway כבר נקרא; ה-PEM ממוסך ב-`::add-mask::`).
+- [x] יצירת credentials (find-by-name → POST, מול `/tmp/ar-creds.json` הקיים): Bearer ל-Railway
+      (`httpHeaderAuth` Authorization) → `CRED_RAILWAY_ID`; `jwtAuth` PEM RS256 ל-GitHub → `CRED_GITHUB_JWT_ID`.
+- [x] התקנת `railway-readonly.json` + `github-readonly.json` **לפני** לולאת הסוכנים עם
       `_upsert_wf`, לכידת `WF_RAILWAY_READONLY_ID` + `WF_GITHUB_READONLY_ID`, והזרקת placeholders
-      ב-`sed` (`@@RAILWAY_PROJECT_ID@@`/`@@SYSTEM_NAME@@`/`@@GITHUB_APP_ID@@`/`@@GITHUB_INSTALLATION_ID@@`).
-- [ ] בלולאת הסוכנים: `sed` מזריק את שני ה-WF ids ל-ops-agent.
-- [ ] graceful degradation (jq strip): GitHub App secrets חסרים → לא מתקינים github-readonly +
-      מורידים את נוד `github_readonly` + ה-connection מ-ops-agent. אותו דבר ל-Railway.
-- [ ] כל ענף כשל חדש = soft-fail `exit 0` עם אזהרה בעברית ל-`$GITHUB_STEP_SUMMARY` + שורות summary.
-- [ ] actionlint + shellcheck(-S error) + yamllint עוברים (Playground ירוק).
+      ב-`sed` (`@@RAILWAY_PROJECT_ID@@`/`@@CRED_RAILWAY_ID@@`; `@@SYSTEM_NAME@@`/`@@GITHUB_APP_ID@@`/`@@GITHUB_INSTALLATION_ID@@`/`@@CRED_GITHUB_JWT_ID@@`).
+- [x] בלולאת הסוכנים: `sed` מזריק את שני ה-WF ids ל-ops-agent (שתי שורות `-e` חדשות).
+- [x] graceful degradation (jq strip, רק על ops-agent.json): WF id ריק → מורידים את נוד
+      `github_readonly`/`railway_readonly` + ה-connection. אומת מקומית בשני המצבים → JSON תקין.
+- [x] כל ענף כשל חדש = `WARN`/soft (אין `exit 1` חדש; הקיים `_soft_exit0` נשמר) + שורות summary לשני הכלים.
+- [x] `yamllint` עובר; `shellcheck -S error` נקי; `bash -n` נקי; YAML עדיין job אחד (3 צעדים).
+- [ ] Playground (actionlint) ירוק — ייבדק ב-CI אחרי push.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** 5 עריכות נקודתיות: (א) שני credentials, (ב) התקנת שני ה-sub-workflows לפני
+הלולאה, (ג) שתי שורות sed בלולאה, (ד) שני jq-strips ל-degradation, (ה) שתי שורות summary. הכל additive
+ו-soft. סימולציה מקומית של sed+strip על ops-agent הוכיחה JSON תקין גם כששני הכלים קיימים וגם כששניהם יורדים.
+**לאימות חי:** סכמת ה-credential של `jwtAuth` (keyType/privateKey/algorithm) — דורשת אימות במערכת test.
 **שינוי תוכנית:** —
 
 ---
@@ -187,3 +191,4 @@ project id placeholder. אומת מקומית: JSON תקין + JS תקין + bod
 - שלב 1 הושלם — בניתי את הכלי שקורא מ-Railway: סטטוס ה-deploy האחרון ולוגים אחרונים, קריאה בלבד.
 - שלב 2 הושלם — בניתי את הכלי שקורא מגיטהאב (CI, commits, PRs). n8n מייצר לעצמו טוקן זמני ושומר אותו בזיכרון.
 - שלב 3 הושלם — חיברתי את שני הכלים החדשים למוח של ה-ops-agent ועדכנתי לו את ההוראות (כולל: מותר לתת קישורים).
+- שלב 4 הושלם — workflow ההקמה יודע עכשיו להרכיב את שני הכלים אוטומטית, ואם חסר סוד — הכלי יורד בחן בלי לשבור כלום.
