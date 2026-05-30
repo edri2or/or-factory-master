@@ -2,7 +2,7 @@
 dev_name: ops-agent — מודעות-כלים + קריאת קבצים מהריפו
 slug: ops-agent-file-read
 opened: 2026-05-30
-status: active
+status: completed
 ---
 
 # תוכנית פיתוח — מודעות-כלים של הבוט + קריאת קבצים
@@ -33,7 +33,7 @@ token כ-opaque.
 |---|---|---|---|
 | 1 | מודעות-כלים — עדכון SYSTEM-INFO | completed | `templates/system/.github/workflows/configure-agent-router.yml` |
 | 2 | פקודת `read_file` + תיאור הכלי | completed | `templates/system/workflows/n8n/github-readonly.json`, `.../ops-agent.json` |
-| 3 | תיעוד מערכת | pending | `templates/system/AGENTS.md.template`, `CHANGELOG.md`, `changelog.d/` |
+| 3 | תיעוד מערכת | completed | `templates/system/AGENTS.md.template`, `CHANGELOG.md`, `changelog.d/` |
 
 > כל שלב = commit ל-PR + עדכון התוכנית + פתק changelog, ועוצר לאישור Or.
 
@@ -82,10 +82,11 @@ Switch קיבל ענף רביעי; נוד `GH File Contents` קורא את ה-Co
 ### שלב 3 — תיעוד מערכת
 
 **Acceptance:**
-- [ ] `AGENTS.md.template` (read_file) + `CHANGELOG.md` + פתק `changelog.d/`, בלי `${...}` חדש.
-- [ ] `validate-templates.sh` עובר.
+- [x] `AGENTS.md.template` (read_file בשני המקומות) + `CHANGELOG.md` (שורת feat) + פתק
+      `templates/system/changelog.d/`, בלי `${...}` חדש.
+- [x] `validate-templates.sh` עובר (AGENTS + CLAUDE templates נקי).
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** תיעדתי את read_file + מודעות-הכלים בשלושה מקומות בתבנית. **הפיתוח הקודי הושלם.**
 **שינוי תוכנית:** —
 
 ---
@@ -99,3 +100,4 @@ Switch קיבל ענף רביעי; נוד `GH File Contents` קורא את ה-Co
 
 - שלב 1 הושלם — עדכנתי את "כרטיס היכולות" של הבוט שיכלול את גיטהאב ו-Railway, כדי שיפסיק לסרב כששואלים אותו כללית.
 - שלב 2 הושלם — הוספתי לבוט יכולת לקרוא תוכן של קובץ מהריפו (`read_file:<נתיב>`), קריאה בלבד.
+- שלב 3 הושלם — תיעדתי הכל בתבנית. **הפיתוח הקודי הושלם.** נשאר רק אימות חי (מערכת test טרייה) — צעד נפרד באישורך.
