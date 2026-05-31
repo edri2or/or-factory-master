@@ -69,3 +69,12 @@ jobs:
 
       - name: Template validation
         run: bash scripts/tests/validate-templates.sh
+
+      - name: System golden gate
+        # Re-renders the whole templates/system mould with the same fixed
+        # allow-list a provision uses and compares it byte-for-byte (sha256
+        # manifest + the two rendered orientation docs) to the committed
+        # golden under tests/golden/system/. Drift fails the build; the twin
+        # gate in changelog-check.yml forces a `--update` whenever the mould
+        # changes. Stays in THIS job so no new required status context is added.
+        run: bash scripts/check-system-golden.sh
