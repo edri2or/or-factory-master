@@ -16,6 +16,7 @@ import {
   listSecretsExtendedMetadata as gcpListSecretsExtendedMetadata,
   getProjectNumber as gcpGetProjectNumber,
   listAllProjects as gcpListAllProjects,
+  getProjectQuotaStatus as gcpGetProjectQuotaStatus,
   getProjectIamPolicy as gcpGetProjectIamPolicy,
   listWifPools as gcpListWifPools,
   listWifProviders as gcpListWifProviders,
@@ -1350,6 +1351,20 @@ export function registerTools(server: McpServer): void {
         timestamp: new Date().toISOString(),
         projectCount: projects.length,
         projects,
+      };
+      return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
+    },
+  );
+
+  server.tool(
+    'gcp_project_quota_status',
+    'Report GCP project-quota usage so the agent can answer "how many projects are free to open, and when do deleted ones free up?" autonomously — no operator click. Returns activeCount, softDeletedCount, and per soft-deleted (DELETE_REQUESTED) project its deleteTime + estimated freeUpDate (deleteTime + ~30d GCP retention) + daysRemaining (sorted soonest-first). Soft-deleted projects keep counting toward the org project-creation quota until purged, so this is the recoverable pool for adopt mode (supersedes manually dispatching list-recoverable-projects.yml). Read-only; runs as the broker SA. Note: counts reflect only projects the SA can enumerate, free-up is an estimate, and the absolute org cap is not exposed via API.',
+    {},
+    async () => {
+      const status = await gcpGetProjectQuotaStatus();
+      const result = {
+        timestamp: new Date().toISOString(),
+        ...status,
       };
       return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
     },
