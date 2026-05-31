@@ -18,7 +18,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
-| 1 | תבנית המערכת: hook + חיווט שער CI | pending | `templates/system/.claude/settings.json`, `templates/system/.github/workflows/changelog-check.yml` |
+| 1 | תבנית המערכת: hook + חיווט שער CI | completed | `templates/system/.claude/settings.json`, `templates/system/.github/workflows/changelog-check.yml` |
 | 2 | provision-system.yml: שליחת הסקריפטים + תבנית ה-devplan | pending | `.github/workflows/provision-system.yml` |
 | 3 | תיעוד: גילוי במערכת + עקביות בפקטורי | pending | `templates/system/AGENTS.md.template`, `CLAUDE.md` |
 
@@ -29,11 +29,11 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 ### שלב 1 — תבנית המערכת: hook + חיווט שער CI
 
 **Acceptance:**
-- [ ] נוצר `templates/system/.claude/settings.json` עם SessionStart hook יחיד שמצביע על `$CLAUDE_PROJECT_DIR/scripts/devplan-session-start-hook.sh` (JSON תקין).
-- [ ] `templates/system/.github/workflows/changelog-check.yml` כולל צעד "Check devplan updated" באותו job "Changelog gates", מיד אחרי "Check changelog updated".
-- [ ] `yamllint` + `jq` עוברים על הקבצים שנגעתי בהם.
+- [x] נוצר `templates/system/.claude/settings.json` עם SessionStart hook יחיד שמצביע על `$CLAUDE_PROJECT_DIR/scripts/devplan-session-start-hook.sh` (JSON תקין).
+- [x] `templates/system/.github/workflows/changelog-check.yml` כולל צעד "Check devplan updated" באותו job "Changelog gates", מיד אחרי "Check changelog updated".
+- [x] `yamllint` + `jq` עוברים על הקבצים שנגעתי בהם.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם — settings.json (hook יחיד) נוצר ועבר jq; צעד "Check devplan updated" נוסף ל-job "Changelog gates" של התבנית ועבר yamllint.
 
 **שינוי תוכנית:** —
 
@@ -69,4 +69,4 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 
 > שורה פשוטה אחת לכל שלב שהסתיים — בשפה ש-Or מבין, בלי ז'רגון.
 
--
+- שלב 1 הושלם — הוספתי לתבנית של כל מערכת חדשה את ה"מזכיר" (hook) ואת בלם הבטיחות (שער ה-CI) של dev-stage.
