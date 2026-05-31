@@ -2,7 +2,7 @@
 dev_name: שומר-העל
 slug: meta-monitoring-watchdog
 opened: 2026-05-31
-status: active   # active בזמן פיתוח → completed בסיום (משחרר את שער ה-CI)
+status: completed   # active בזמן פיתוח → completed בסיום (משחרר את שער ה-CI)
 ---
 
 # תוכנית פיתוח — שומר-העל (Meta-Monitoring Watchdog)
@@ -88,7 +88,9 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 - [x] `run-watchdog.sh` מאמת ביצועי n8n דרך ה-REST API per-system (`gh` proof `n8n-execution`, fan-out דינמי): קורא `n8n-api-key` מ-SM של כל מערכת ושואל `GET /api/v1/executions?limit=1`. רשומת `system-n8n-executions` ב-`enabled:true`.
 - [x] מערכות שלא ניתן לפתור מסומנות "❓" ולא 🚨 (אין-מפתח/אין-ביצוע/לא-פרוס; 0 מערכות → ❓). `factory-test-25` המשותף מדולג.
 - [x] הדוח היומי (טלגרם + step-summary) כולל שורת provenance: כתובת ריצת השומר + SHA קצר.
-- [ ] CI ירוק על ה-PR + ריצה אמיתית של השומר (18 רשומות) באישור Or. (E2E של ✅/🚨 per-system יתאפשר רק כשתיפרס מערכת אמיתית — עד אז שורת n8n = ❓.)
+- [x] CI ירוק על ה-PR (#246) + ריצה אמיתית של השומר (18 רשומות, run 26711714508): `done ok=17 red=0 unknown=1` — ה-❓ היחיד הוא שורת ה-n8n ("אין מערכות פרוסות"), שורת provenance בדוח, `factory.watchdog.ok`. (E2E של ✅/🚨 per-system יתאפשר רק כשתיפרס מערכת אמיתית — עד אז שורת n8n = ❓.)
+
+**סגירה:** כל 4 השלבים הושלמו, מוזגו, ואומתו בריצות אמיתיות. התוכנית `completed`.
 
 **הערת התקדמות אחרונה:** מומש: שיטת `n8n-execution` (fan-out דינמי כמו `system-runtime-audit`) + helper `_n8n_latest_status` + רשומת `system-n8n-executions` בפנקס + שורת provenance בדוח + עדכון README. שדרגתי `CURRENT_STAGE` ל-4. אימות מקומי: shellcheck נקי, כל 27 בדיקות ה-bats עוברות (6 חדשות ל-n8n), וסמוק-ראן על הפנקס המלא (18 רשומות) מסתיים ב-exit 0 עם שורת n8n=❓ ("אין מערכות פרוסות") ושורת provenance תקינה. נותר: מיזוג + ריצה אמיתית.
 
