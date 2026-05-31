@@ -400,12 +400,33 @@ export function computeFreeUpDate(
   return { freeUpDate: freeUp.toISOString(), daysRemaining };
 }
 
-// Lists soft-deleted (DELETE_REQUESTED) projects via Cloud Resource Manager v3,
-// whose `projects:search` exposes the `deleteTime` field that the v1 list lacks.
+// Fetches a single project's `deleteTime` via Cloud Resource Manager v3
+// `projects.get`. Needed because v3 `projects:search` returns a REDUCED
+// projection that OMITS `deleteTime` (confirmed empirically 2026-05-31: search
+// yields only `createTime`, while `projects.get` on the same project yields
+// `deleteTime`). Best-effort — a failed get just yields a null free-up date for
+// that one project, never breaking the aggregate. Same `resourcemanager.projects.get`
+// permission the search already proves; no audit-log / logging.viewer needed.
+async function getProjectDeleteTimeV3(projectId: string): Promise<string | null> {
+  if (!projectId) return null;
+  try {
+    const data = (await gcpFetch(
+      `https://cloudresourcemanager.googleapis.com/v3/projects/${encodeURIComponent(projectId)}`,
+    )) as { deleteTime?: string };
+    return data.deleteTime ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// Lists soft-deleted (DELETE_REQUESTED) projects via Cloud Resource Manager v3.
+// `projects:search` enumerates them (the v1 list lacks any delete metadata) but
+// its reduced projection omits `deleteTime`, so we hydrate each project's
+// `deleteTime` with a per-project `projects.get` (see getProjectDeleteTimeV3).
 // Result depth depends on the SA's IAM (same caveat as listAllProjects).
-// Paginates via nextPageToken.
+// Paginates via nextPageToken; the per-project gets run in parallel.
 export async function listSoftDeletedProjects(now: Date = new Date()): Promise<SoftDeletedProject[]> {
-  const out: SoftDeletedProject[] = [];
+  const enumerated: Array<{ projectId: string; displayName: string; projectNumber: string }> = [];
   let pageToken: string | undefined;
   do {
     const qs = new URLSearchParams({ query: 'state:DELETE_REQUESTED', pageSize: '200' });
@@ -417,24 +438,26 @@ export async function listSoftDeletedProjects(now: Date = new Date()): Promise<S
         projectId?: string;
         name?: string; // "projects/<number>"
         displayName?: string;
-        deleteTime?: string;
       }>;
       nextPageToken?: string;
     };
     for (const p of data.projects ?? []) {
-      const { freeUpDate, daysRemaining } = computeFreeUpDate(p.deleteTime ?? null, now);
-      out.push({
+      enumerated.push({
         projectId: p.projectId ?? '',
         displayName: p.displayName ?? '',
         projectNumber: (p.name ?? '').replace(/^projects\//, ''),
-        deleteTime: p.deleteTime ?? null,
-        freeUpDate,
-        daysRemaining,
       });
     }
     pageToken = data.nextPageToken;
   } while (pageToken);
-  return out;
+
+  return Promise.all(
+    enumerated.map(async (e) => {
+      const deleteTime = await getProjectDeleteTimeV3(e.projectId);
+      const { freeUpDate, daysRemaining } = computeFreeUpDate(deleteTime, now);
+      return { ...e, deleteTime, freeUpDate, daysRemaining };
+    }),
+  );
 }
 
 // Aggregates project-quota status: ACTIVE count (v1) + soft-deleted (v3, with
