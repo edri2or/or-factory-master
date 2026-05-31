@@ -20,7 +20,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
 | 1 | תיוג 65 הפקודות הקיימות כ-`shared` (שתי התיקיות, זהות byte) | completed | `.claude/commands/*.md`, `templates/system/.claude/commands/*.md` |
-| 2 | שומר מודע-audience + סקריפט סנכרון + בדיקות bats | pending | `scripts/check-skills-mirror.sh`, `scripts/sync-skills-mirror.sh`, `scripts/tests/check-skills-mirror.bats` |
+| 2 | שומר מודע-audience + סקריפט סנכרון + בדיקות bats | completed | `scripts/check-skills-mirror.sh`, `scripts/sync-skills-mirror.sh`, `scripts/tests/check-skills-mirror.bats` |
 | 3 | חיווט ההחלטה ליצירת סקיל + תיעוד | pending | `.claude/commands/build-skill.md` (+מראה), `docs/skills-audience.md`, `CLAUDE.md`, הערת provision |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
@@ -42,11 +42,11 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 ### שלב 2 — שומר מודע-audience + סקריפט סנכרון + בדיקות
 
 **Acceptance:**
-- [ ] `check-skills-mirror.sh` החדש: דורש `audience:` תקין בכל פקודה; מאמת שהמראה = בדיוק קבוצת ה-`shared`, זהה byte, בלי דליפת `factory-only`.
-- [ ] `scripts/sync-skills-mirror.sh` חדש: בונה מחדש את המראה מתוך התגיות; מסרב לרוץ אם תגית חסרה/לא-תקינה.
-- [ ] `scripts/tests/check-skills-mirror.bats` ירוק: חסר-תגית→כשל, ערך-לא-תקין→כשל, דליפת factory-only→כשל, shared חסר→כשל, drift→כשל, נקי→PASS.
+- [x] `check-skills-mirror.sh` החדש: דורש `audience:` תקין בכל פקודה; מאמת שהמראה = בדיוק קבוצת ה-`shared`, זהה byte, בלי דליפת `factory-only`.
+- [x] `scripts/sync-skills-mirror.sh` חדש: בונה מחדש את המראה מתוך התגיות; מסרב לרוץ אם תגית חסרה/לא-תקינה.
+- [x] `scripts/tests/check-skills-mirror.bats` ירוק: חסר-תגית→כשל, ערך-לא-תקין→כשל, דליפת factory-only→כשל, shared חסר→כשל, drift→כשל, נקי→PASS.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** בוצע. השומר על העץ האמיתי → `PASS: 65 shared shipped, 0 factory-only excluded`; `shellcheck --severity=error` נקי; כל 11 בדיקות ה-bats עוברות. תיקון בדרך: ב-awk, `exit` תמיד מריץ את `END`, אז עברנו לדגל `found` ו-`END` שמחליט את קוד היציאה.
 
 **שינוי תוכנית:** —
 
@@ -70,3 +70,4 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 > שורה פשוטה אחת לכל שלב שהסתיים — בשפה ש-Or מבין, בלי ז'רגון.
 
 - שלב 1 הושלם — סימנתי את כל 65 הסקילים הקיימים כ"עוברים למערכות" (כמו שהיה), בלי לשבור כלום. עכשיו אפשר לבנות עליהם את ההפרדה האמיתית.
+- שלב 2 הושלם — בניתי את ה"מנוע": השומר עכשיו בונה את חבילת המערכות רק מהסקילים שמתויגים "כללי", סקיל בלי תווית מפיל את ה-CI, ויש סקריפט שמסנכרן אוטומטית. הוספתי 11 בדיקות שמוכיחות שהכול עובד.
