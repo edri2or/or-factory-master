@@ -350,3 +350,86 @@ run_n8n() {
   assert_success
   assert_output --partial "red=1"
 }
+
+# --- system-branch-protection (stage 4, dynamic per-system fan-out) ----------
+# A one-entry system-branch-protection registry requiring two CI contexts;
+# systems are injected via WATCHDOG_SYSTEMS_OVERRIDE and each system's branch
+# rules via fx/_sysbp_<sys>.json. Asserts the watchdog catches a context that
+# was dropped from a system's branch protection (🚨), while unresolvable
+# systems (no rules fixture) and zero systems stay ❓ — never a false 🚨.
+make_sysbp_dir() {
+  local dir
+  dir="$(make_tmpdir)"
+  mkdir -p "$dir/fx"
+  cat > "$dir/registry.json" <<'EOF'
+{ "version": 1, "entries": [
+  { "id": "sbp", "name_he": "הגנת-ענף במערכות", "type": "system-github", "layer": "system",
+    "proof_method": "system-branch-protection",
+    "evidence": { "systems_folder": "123180924297", "branch": "main",
+                  "required_contexts": ["Changelog gates", "shellcheck + yamllint"] },
+    "stage": 4, "enabled": true } ] }
+EOF
+  printf '%s\n' "$dir"
+}
+
+run_sysbp() {
+  local dir="$1" systems="$2"
+  REGISTRY_FILE="$dir/registry.json" \
+  WATCHDOG_FIXTURE_DIR="$dir/fx" \
+  WATCHDOG_SYSTEMS_OVERRIDE="$systems" \
+  WATCHDOG_EMIT=0 TG_TOKEN="" TG_CHAT="" HEARTBEAT_URL="" \
+    bash "$WATCHDOG"
+}
+
+# Rules document where both required contexts are enforced.
+SBP_RULES_OK='[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"Changelog gates"},{"context":"shellcheck + yamllint"}]}}]'
+# Rules document missing the second required context (protection weakened).
+SBP_RULES_WEAK='[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"Changelog gates"}]}}]'
+
+@test "sysbp unknown: zero deployed systems is ❓, not 🚨" {
+  dir="$(make_sysbp_dir)"
+  run run_sysbp "$dir" ""
+  assert_success
+  assert_output --partial "unknown=1"
+  refute_output --partial "red=1"
+}
+
+@test "sysbp unknown: the shared factory-test-25 backend is skipped" {
+  dir="$(make_sysbp_dir)"
+  run run_sysbp "$dir" "factory-test-25"
+  assert_success
+  assert_output --partial "unknown=1"
+}
+
+@test "sysbp ok: a system enforcing every required context is green" {
+  dir="$(make_sysbp_dir)"
+  printf '%s' "$SBP_RULES_OK" > "$dir/fx/_sysbp_sys-a.json"
+  run run_sysbp "$dir" "sys-a"
+  assert_success
+  assert_output --partial "ok=1 warn=0 red=0 unknown=0"
+}
+
+@test "sysbp red: a system missing a required context is 🚨" {
+  dir="$(make_sysbp_dir)"
+  printf '%s' "$SBP_RULES_WEAK" > "$dir/fx/_sysbp_sys-a.json"
+  run run_sysbp "$dir" "sys-a"
+  assert_success
+  assert_output --partial "red=1"
+}
+
+@test "sysbp ❓: a system with no rules fixture is unresolvable, not 🚨" {
+  dir="$(make_sysbp_dir)"
+  run run_sysbp "$dir" "sys-a"
+  assert_success
+  assert_output --partial "unknown=1"
+  refute_output --partial "red=1"
+}
+
+@test "sysbp red: one weakened system among healthy ones makes the aggregate 🚨" {
+  dir="$(make_sysbp_dir)"
+  printf '%s' "$SBP_RULES_OK"   > "$dir/fx/_sysbp_ok-sys.json"
+  printf '%s' "$SBP_RULES_WEAK" > "$dir/fx/_sysbp_bad-sys.json"
+  run run_sysbp "$dir" "ok-sys bad-sys"
+  assert_success
+  assert_output --partial "red=1"
+}

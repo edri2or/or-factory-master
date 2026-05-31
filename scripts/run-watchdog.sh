@@ -375,6 +375,101 @@ proof_n8n_execution() {
   fi
 }
 
+# Echo the space-separated real-system list for the per-system GitHub fan-out
+# proof methods below. Mirrors proof_n8n_execution's discovery: tests inject the
+# list via WATCHDOG_SYSTEMS_OVERRIDE (no gcloud); otherwise enumerate GCP
+# projects under the Systems folder. The shared test backend factory-test-25 is
+# filtered by the callers, exactly like the n8n fan-out.
+_enumerate_systems() {
+  local folder="$1"
+  if [ -n "${WATCHDOG_SYSTEMS_OVERRIDE:-}" ]; then
+    printf '%s\n' "$WATCHDOG_SYSTEMS_OVERRIDE"
+  elif [ -z "${WATCHDOG_FIXTURE_DIR:-}" ]; then
+    gcloud projects list --filter="parent.id=${folder}" --format='value(projectId)' 2>/dev/null || true
+  fi
+}
+
+# Per-system branch-protection status, reusing proof_gh_branch_protection's
+# rules read + the "context present in any required_status_checks rule" jq
+# filter — applied per system over EVERY required context. Returns:
+#   ok           — every required context is still enforced on the branch
+#   red          — ≥1 required context was removed (protection weakened)
+#   unresolvable — no token / HTTP non-2xx / no repo (❓, never 🚨)
+# Tests inject the rules document via WATCHDOG_FIXTURE_DIR/_sysbp_<sys>.json.
+_system_bp_status() {
+  local sys="$1" branch="$2" contexts_nl="$3" rules_json
+  if [ -n "${WATCHDOG_FIXTURE_DIR:-}" ]; then
+    local fx="${WATCHDOG_FIXTURE_DIR}/_sysbp_${sys}.json"
+    [ -f "$fx" ] || { echo "unresolvable"; return; }
+    rules_json=$(cat "$fx")
+  else
+    [ -n "$GH_API_TOKEN" ] || { echo "unresolvable"; return; }
+    local body http
+    body=$(mktemp)
+    http=$(curl -sS -m 20 -o "$body" -w '%{http_code}' \
+      -H "Authorization: Bearer ${GH_API_TOKEN}" \
+      -H "Accept: application/vnd.github+json" \
+      -H "X-GitHub-Api-Version: 2022-11-28" \
+      "${GH_API}/repos/edri2or/${sys}/rules/branches/${branch}" 2>/dev/null) || http="000"
+    case "$http" in
+      2*) rules_json=$(cat "$body") ;;
+      *)  rm -f "$body"; echo "unresolvable"; return ;;
+    esac
+    rm -f "$body"
+  fi
+
+  local ctx present
+  while IFS= read -r ctx; do
+    [ -n "$ctx" ] || continue
+    present=$(jq -r --arg c "$ctx" \
+      '[ .[]? | select(.type=="required_status_checks")
+              | .parameters.required_status_checks[]? | .context ] | index($c) // empty' \
+      <<<"$rules_json" 2>/dev/null)
+    [ -z "$present" ] && { echo "red"; return; }
+  done <<<"$contexts_nl"
+  echo "ok"
+}
+
+# --- proof: system-branch-protection ----------------------------------------
+# DYNAMIC per-system fan-out: for each real system, confirm its main-branch
+# protection still enforces EVERY required CI context (evidence.required_contexts
+# — the 4 governance gates). A removed context → 🚨 (protection silently
+# weakened); a system that can't be resolved (no repo / no token / API error) →
+# ❓, never 🚨. Zero systems → ❓. Aggregated to ONE line, like n8n-execution.
+proof_system_branch_protection() {
+  local entry="$1" folder branch contexts_nl
+  folder=$(jq -r '.evidence.systems_folder // "123180924297"' <<<"$entry")
+  branch=$(jq -r '.evidence.branch // "main"' <<<"$entry")
+  contexts_nl=$(jq -r '.evidence.required_contexts[]? // empty' <<<"$entry")
+  R_URL="https://github.com/edri2or/or-factory-master/blob/main/monitoring/watchdog-registry.json"
+
+  local systems
+  systems=$(_enumerate_systems "$folder")
+
+  local total=0 okc=0 redc=0 unkc=0 redlist=""
+  local sys st
+  for sys in $systems; do
+    [ "$sys" = "factory-test-25" ] && continue
+    total=$((total + 1))
+    st=$(_system_bp_status "$sys" "$branch" "$contexts_nl")
+    case "$st" in
+      ok)  okc=$((okc + 1)) ;;
+      red) redc=$((redc + 1)); redlist="${redlist}${sys} " ;;
+      *)   unkc=$((unkc + 1)) ;;
+    esac
+  done
+
+  if [ "$total" -eq 0 ]; then
+    R_STATUS="unknown"; R_DETAIL_HE="אין מערכות פרוסות תחת התיקייה"
+  elif [ "$redc" -gt 0 ]; then
+    R_STATUS="red"; R_DETAIL_HE="${total} מערכות: ${okc} ✅ · ${redc} 🚨 הגנת-ענף נחלשה (${redlist%% }) · ${unkc} ❓"
+  elif [ "$okc" -gt 0 ]; then
+    R_STATUS="ok"; R_DETAIL_HE="${total} מערכות: ${okc} ✅ הגנת-ענף אוכפת · ${unkc} ❓"
+  else
+    R_STATUS="unknown"; R_DETAIL_HE="${total} מערכות — הגנת-הענף לא ניתנת-לאימות (❓)"
+  fi
+}
+
 emoji_for() {
   case "$1" in
     ok) printf '✅' ;; warn) printf '⚠️' ;; red) printf '🚨' ;;
@@ -412,6 +507,7 @@ while [ "$i" -lt "$ENTRY_COUNT" ]; do
       gh-last-run)          proof_gh_last_run "$entry" ;;
       static-integrity)     proof_static_integrity "$entry" ;;
       n8n-execution)        proof_n8n_execution "$entry" ;;
+      system-branch-protection) proof_system_branch_protection "$entry" ;;
       *) R_STATUS="unknown"; R_DETAIL_HE="שיטת הוכחה לא נתמכת בשלב זה (${method})" ;;
     esac
   fi
