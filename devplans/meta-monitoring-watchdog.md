@@ -18,8 +18,8 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
-| 1 | יסוד: פנקס + שומר-יומי (workflows מתוזמנים) + שער-CI + dead-man's-switch | in-progress | `monitoring/watchdog-registry.json`, `monitoring/README.md`, `monitoring/registry-exempt.txt`, `scripts/run-watchdog.sh`, `.github/workflows/meta-monitoring-watchdog.yml`, `scripts/check-watchdog-registry-updated.sh`, `scripts/create-watchdog-heartbeat.sh`, `.github/workflows/changelog-check.yml`, `scripts/tests/run-watchdog.bats`, `scripts/tests/check-watchdog-registry-updated.bats` |
-| 2 | כיסוי שערי ה-CI (push/PR) עם הוכחת branch-protection | pending | `monitoring/watchdog-registry.json`, `scripts/run-watchdog.sh` |
+| 1 | יסוד: פנקס + שומר-יומי (workflows מתוזמנים) + שער-CI + dead-man's-switch | completed | `monitoring/watchdog-registry.json`, `monitoring/README.md`, `monitoring/registry-exempt.txt`, `scripts/run-watchdog.sh`, `.github/workflows/meta-monitoring-watchdog.yml`, `scripts/check-watchdog-registry-updated.sh`, `scripts/create-watchdog-heartbeat.sh`, `.github/workflows/changelog-check.yml`, `scripts/tests/run-watchdog.bats`, `scripts/tests/check-watchdog-registry-updated.bats` |
+| 2 | כיסוי שערי ה-CI (push/PR) עם הוכחת branch-protection | in-progress | `monitoring/watchdog-registry.json`, `scripts/run-watchdog.sh`, `scripts/tests/run-watchdog.bats` |
 | 3 | hooks (static-integrity) + workflows מונעי-אירוע (last-real-run) | pending | `monitoring/watchdog-registry.json`, `scripts/run-watchdog.sh` |
 | 4 | כיסוי n8n/מערכות (n8n-execution) + provenance לדוח | pending | `monitoring/watchdog-registry.json`, `scripts/run-watchdog.sh` |
 
@@ -44,9 +44,9 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 - [x] Playground + שאר שערי ה-CI ירוקים על ה-PR.
 - [x] PR #237 מוזג ל-main (squash) — קוד שלב 1 חי; ה-cron של השומר פעיל.
 - [x] `meta-monitoring-watchdog.yml` נוסף ל-allowlist של `dispatch_workflow` ב-`services/mcp-server/src/tools.ts` (PR נפרד) — מאפשר לסוכן להריץ את הקמת ה-heartbeat + ריצות אד-הוק ללא לחיצת אופרטור.
-- [ ] הקמת ה-heartbeat האמיתי: dispatch `meta-monitoring-watchdog.yml` עם `setup_heartbeat=true` אחרי שה-MCP מופעל מחדש (תלוי במיזוג שינוי ה-allowlist).
+- [x] הקמת ה-heartbeat האמיתי: dispatch `meta-monitoring-watchdog.yml` עם `setup_heartbeat=true` רץ בהצלחה — `action='created' sm='secret_created'`, `telegram='ok'`, `heartbeat='ok'`. הסוד `watchdog-heartbeat-url` קיים ב-SM (אומת ב-`list_secret_metadata`). Or אישר שהדוח הגיע בטלגרם.
 
-**הערת התקדמות אחרונה:** PR #237 מוזג — שלב 1 כמעט סגור. התגלה שה-workflow לא היה ב-allowlist של `dispatch_workflow`, כך שהסוכן לא יכל להריץ את הקמת ה-heartbeat אוטונומית. הפתרון (אושר ע"י Or): הוספת ה-workflow ל-allowlist ב-`tools.ts` → PR → CI → מיזוג → הפעלה-מחדש של ה-MCP (`deploy-mcp-server.yml`) → dispatch עם `setup_heartbeat=true`. נותר: למזג את שינוי ה-allowlist, להפעיל מחדש את ה-MCP, ולהריץ את הקמת ה-heartbeat.
+**הערת התקדמות אחרונה:** שלב 1 **הושלם ואומת מקצה-לקצה** — השומר רץ, הדוח הגיע ל-Or בטלגרם (4 אוטומציות ✅, 1 ❓ עצמית שתסתדר בריצת ה-cron הבאה), וה-heartbeat החיצוני הוקם ב-Better Stack + נשמר ב-SM. בדרך התגלה שה-workflow לא היה ב-allowlist של `dispatch_workflow`; נפתר אוטונומית (PR #241 → CI → מיזוג → redeploy של ה-MCP → dispatch).
 
 **שינוי תוכנית:** —
 
@@ -55,12 +55,13 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 ### שלב 2 — כיסוי שערי ה-CI (push/PR)
 
 **Acceptance:**
-- [ ] רשומות לפנקס עבור 5 שערי ה-CI (`changelog-check`, `pipeline-tests`, `secret-scan`,
-      `supply-chain-check`, `playground-tests`) עם `proof_method: gh-branch-protection`.
-- [ ] `run-watchdog.sh` מאמת שכל context עדיין נדרש ב-branch-protection + הריצה האחרונה על main ירוקה.
-- [ ] שער שהוסר מ-branch-protection מסומן 🚨 גם אם הקובץ קיים.
+- [x] רשומות לפנקס עבור 5 שערי ה-CI (`changelog-check`, `pipeline-tests`, `secret-scan`,
+      `supply-chain-check`, `playground-tests`) עם `proof_method: gh-branch-protection` — ה-contexts נלקחו מ-ground-truth ב-`scripts/ensure-protect-main-ruleset.sh` (Changelog gates / shellcheck + yamllint / Scan for committed secrets / Supply chain gates / Playground tests).
+- [x] `run-watchdog.sh` מאמת שכל context עדיין נדרש ב-branch-protection (דרך `GET /repos/.../rules/branches/main`) + הריצה האחרונה על main ירוקה.
+- [x] שער שהוסר מ-branch-protection מסומן 🚨 גם אם הקובץ קיים (נבדק ב-bats: `bp red: context dropped...`).
+- [ ] CI ירוק על ה-PR + אימות ריצה אמיתית של השומר (10 רשומות) באישור Or.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** מומש: שיטת ההוכחה `gh-branch-protection` ב-`run-watchdog.sh` + 5 רשומות `ci-gate-*` בפנקס + 4 בדיקות bats חדשות (ok / context-dropped→🚨 / run-failed→🚨 / no-runs→❓). שדרגתי את `CURRENT_STAGE` לברירת-מחדל 2. אימות מקומי: shellcheck נקי, כל 10 בדיקות ה-bats עוברות, וריצת-עשן על הפנקס האמיתי (10 רשומות) מסתיימת ב-exit 0. נותר: לאמת ירוק על ה-PR ואז ריצה אמיתית של השומר.
 
 **שינוי תוכנית:** —
 

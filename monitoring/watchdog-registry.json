@@ -55,6 +55,56 @@
       "evidence": { "repo": "edri2or/or-factory-master", "workflow_file": "meta-monitoring-watchdog.yml" },
       "stage": 1,
       "enabled": true
+    },
+    {
+      "id": "ci-gate-changelog",
+      "name_he": "שער CI — צ'יינג'לוג ותוכניות",
+      "type": "ci-gate",
+      "layer": "factory",
+      "proof_method": "gh-branch-protection",
+      "evidence": { "repo": "edri2or/or-factory-master", "branch": "main", "context": "Changelog gates", "workflow_file": "changelog-check.yml" },
+      "stage": 2,
+      "enabled": true
+    },
+    {
+      "id": "ci-gate-lint",
+      "name_he": "שער CI — לינטים (shellcheck+yaml)",
+      "type": "ci-gate",
+      "layer": "factory",
+      "proof_method": "gh-branch-protection",
+      "evidence": { "repo": "edri2or/or-factory-master", "branch": "main", "context": "shellcheck + yamllint", "workflow_file": "pipeline-tests.yml" },
+      "stage": 2,
+      "enabled": true
+    },
+    {
+      "id": "ci-gate-secret-scan",
+      "name_he": "שער CI — סריקת סודות",
+      "type": "ci-gate",
+      "layer": "factory",
+      "proof_method": "gh-branch-protection",
+      "evidence": { "repo": "edri2or/or-factory-master", "branch": "main", "context": "Scan for committed secrets", "workflow_file": "secret-scan.yml" },
+      "stage": 2,
+      "enabled": true
+    },
+    {
+      "id": "ci-gate-supply-chain",
+      "name_he": "שער CI — שרשרת אספקה",
+      "type": "ci-gate",
+      "layer": "factory",
+      "proof_method": "gh-branch-protection",
+      "evidence": { "repo": "edri2or/or-factory-master", "branch": "main", "context": "Supply chain gates", "workflow_file": "supply-chain-check.yml" },
+      "stage": 2,
+      "enabled": true
+    },
+    {
+      "id": "ci-gate-playground",
+      "name_he": "שער CI — Playground",
+      "type": "ci-gate",
+      "layer": "factory",
+      "proof_method": "gh-branch-protection",
+      "evidence": { "repo": "edri2or/or-factory-master", "branch": "main", "context": "Playground tests", "workflow_file": "playground-tests.yml" },
+      "stage": 2,
+      "enabled": true
     }
   ]
 }
