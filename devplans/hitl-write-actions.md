@@ -21,7 +21,7 @@ templates תחת `templates/system/...` עם graceful degradation; provision-onl
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
 | A | סכמה — הרחבת `pending_actions` | completed | `templates/system/workflows/n8n/db-setup.json` |
-| B | מבצע (executor) — n8n activate/deactivate | pending | `pending-actions-executor.json` (חדש) + `configure-agent-router.yml` |
+| B | מבצע (executor) — n8n activate/deactivate | completed | `pending-actions-executor.json` (חדש) + `configure-agent-router.yml` |
 | C | קליטת אישור — Switch על callback ב-tg-inbound | pending | `tg-inbound.json` |
 | D | בקשה — כלי `request_write_action` + prompt | pending | `request-write-action.json` (חדש) + `unknown-agent.json` + `configure-agent-router.yml` |
 | E | חוט GitHub — `workflow_dispatch` ב-executor | pending | `pending-actions-executor.json` + `configure-agent-router.yml` |
@@ -37,7 +37,7 @@ templates תחת `templates/system/...` עם graceful degradation; provision-onl
 - [x] כל העמודות החדשות נוספו כ-`ADD COLUMN IF NOT EXISTS` (אידמפוטנטי, לא שובר טבלה קיימת): `action_type, requester, approver, target_system, target_id, normalized_payload JSONB, human_summary, expires_at, approved_at, executed_at, error_record JSONB, idempotency_key`.
 - [x] `idempotency_key` ייחודי דרך `CREATE UNIQUE INDEX IF NOT EXISTS` (אידמפוטנטי, מתיר NULL מרובים).
 - [x] JSON של `db-setup.json` תקין (`jq`).
-- [ ] CI ירוק: Playground tests + pipeline-tests.
+- [x] CI ירוק: Playground tests + pipeline-tests.
 
 **הערת התקדמות אחרונה:** השלב מומש — נוספו 12 עמודות חדשות ל-`pending_actions` בדפוס `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` (זהה לדפוס שכבר קיים ל-audit_log/spend_log/events), פלוס unique index ל-idempotency_key ו-index ל-expires_at (לתמיכה ב-cleanup העתידי ב-Stage F). JSON אומת ב-jq. ממתין לירוק CI ולאישור Or לפני Stage B.
 
@@ -48,11 +48,13 @@ templates תחת `templates/system/...` עם graceful degradation; provision-onl
 ### שלב B — מבצע (executor)
 
 **Acceptance:**
-- [ ] `pending-actions-executor.json` חדש: קלט `{action_id}`, נעילה אטומית `UPDATE ... WHERE id=$1 AND status='pending' RETURNING *`, Switch לפי `target_system`, ענף n8n activate/deactivate (Public API, `X-N8N-API-KEY`), עדכון status+executed_at/error_record, הודעת תוצאה לטלגרם.
-- [ ] התקנה ב-`configure-agent-router.yml` בדפוס `_upsert_wf` + placeholder `@@WF_PENDING_EXECUTOR_ID@@`.
-- [ ] JSON תקין + CI ירוק.
+- [x] `pending-actions-executor.json` חדש: קלט `{action_id}` (Validate Input מוודא int חיובי), נעילה אטומית `UPDATE pending_actions SET status='processing', approver='telegram', approved_at=now() WHERE id=… AND status='pending' RETURNING *`, Switch לפי `target_system` (n8n / github / unsupported), ענף n8n activate/deactivate (Public API `POST /api/v1/workflows/{id}/{activate|deactivate}`, `httpHeaderAuth`), עדכון `status`+`executed_at` (+`error_record` בכשל), והודעת ✅/❌ לטלגרם.
+- [x] טיפול בשגיאות: `n8n API Call` עם `onError: continueErrorOutput` → ענף Build Failure → Mark Failed (`error_record::jsonb`) → Notify Failure. ענפי github/unsupported מנותבים גם הם ל-Build Failure ("עדיין לא נתמך" — github מיושם ב-Stage E).
+- [x] התקנה ב-`configure-agent-router.yml` (section 5g) בדפוס `_upsert_wf` (לא-פעיל, subworkflow), gated על Postgres+n8n-API+Telegram, soft-fail. ה-id נלכד ל-`PENDING_EXECUTOR_ID` עבור `@@WF_PENDING_EXECUTOR_ID@@` (יצרוך אותו tg-inbound ב-Stage C).
+- [x] JSON תקין (`jq`), yamllint+shellcheck ירוקים מקומית; actionlint ב-CI.
+- [ ] CI ירוק: Playground tests + pipeline-tests.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** השלב מומש. נבנה ה-subworkflow `pending-actions-executor.json` (11 צמתים): Validate→Lock(אטומי)→Switch→ענף n8n(HTTP activate/deactivate)→Build Success/Failure→Mark Done/Failed→Notify. נעילה אטומית בשאילתה אחת מונעת ביצוע כפול; כשל מנותב לרישום error_record + הודעת ❌. נוסף בלוק התקנה (5g) ב-configure-agent-router.yml לפני tg-inbound. ממתין לירוק CI ולאישור Or לפני Stage C.
 
 **שינוי תוכנית:** —
 
@@ -115,3 +117,4 @@ templates תחת `templates/system/...` עם graceful degradation; provision-onl
 > שורה פשוטה אחת לכל שלב שהסתיים — בשפה ש-Or מבין, בלי ז'רגון.
 
 - שלב A הושלם — הכנּתי את ה"טבלה" שבה כל בקשת-פעולה תירשם לפני שתבוצע: הוספתי לה את כל השדות שצריך (איזו פעולה, על מה, סיכום קצר בעברית, מתי פגה, מי אישר, ומפתח שמונע ביצוע כפול). שינוי בטוח שלא נגע בשום דבר קיים.
+- שלב B הושלם — בניתי את ה"זרוע המבצעת": תהליך קטן שמקבל בקשה שאישרת, נועל אותה כך שלא תוכל לרוץ פעמיים בטעות, מפעיל/מכבה את האוטומציה ב-n8n בפועל, ואז שולח לך הודעה אם הצליח (✅) או נכשל (❌). חיבור GitHub יגיע בשלב מאוחר יותר. עדיין לא מחובר לכפתורי טלגרם — זה השלב הבא.

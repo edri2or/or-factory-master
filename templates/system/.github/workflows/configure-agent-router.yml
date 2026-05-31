@@ -782,6 +782,41 @@ jobs:
             fi
           fi
 
+          # 5g. HITL write actions (Stage B): install the pending-actions-executor
+          #     subworkflow. It receives a single approved pending_actions row id,
+          #     atomically locks the row (UPDATE … WHERE id=$1 AND status='pending'
+          #     RETURNING * — so a double-click can never run twice), and (Stage B)
+          #     activates/deactivates an n8n workflow via the Public API, then reports
+          #     ✅/❌ to the operator on Telegram. The GitHub branch is added in Stage E;
+          #     the approval-callback wiring in tg-inbound is added in Stage C. Inactive
+          #     by design (invoked via Execute Workflow). Gated on Postgres + n8n API +
+          #     Telegram credentials; soft-fail (never blocks the router). Its id is
+          #     captured for the @@WF_PENDING_EXECUTOR_ID@@ substitution that tg-inbound
+          #     will consume once Stage C lands.
+          PENDING_EXECUTOR_ID=""
+          if [ -n "$CRED_POSTGRES_ID" ] && [ "$CRED_POSTGRES_ID" != "null" ] \
+             && [ -n "$CRED_N8N_API_ID" ] && [ "$CRED_N8N_API_ID" != "null" ] \
+             && [ -n "$CRED_TELEGRAM_ID" ] && [ "$CRED_TELEGRAM_ID" != "null" ]; then
+            PAE_SRC="${WF_DIR}/pending-actions-executor.json"
+            if [ -f "$PAE_SRC" ]; then
+              sed -e "s#@@CRED_POSTGRES_ID@@#${CRED_POSTGRES_ID}#g" \
+                  -e "s#@@CRED_N8N_API_ID@@#${CRED_N8N_API_ID}#g" \
+                  -e "s#@@CRED_TELEGRAM_ID@@#${CRED_TELEGRAM_ID}#g" \
+                  -e "s#@@N8N_DOMAIN@@#${N8N_DOMAIN}#g" \
+                  -e "s#@@CHAT_ID@@#${CHAT_ID}#g" \
+                  "$PAE_SRC" > /tmp/ar-prep-pending-actions-executor.json
+              PENDING_EXECUTOR_ID=$(_upsert_wf "factory-master: pending-actions-executor" /tmp/ar-prep-pending-actions-executor.json no) \
+                || PENDING_EXECUTOR_ID=""
+              if [ -n "$PENDING_EXECUTOR_ID" ] && [ "$PENDING_EXECUTOR_ID" != "null" ]; then
+                echo "PASS: factory-master: pending-actions-executor → id=${PENDING_EXECUTOR_ID} (לא-פעיל by design — subworkflow)"
+              else
+                echo "WARN: pending-actions-executor install failed" >&2; PENDING_EXECUTOR_ID=""
+              fi
+            else
+              echo "WARN: pending-actions-executor.json not found in repo — HITL executor skipped" >&2
+            fi
+          fi
+
           # 5b. Phase F: install + activate tg-inbound (Telegram Webhook → router →
           #     reply) and register Telegram's webhook at the Caddy /webhook/telegram-in
           #     path, authenticated by the per-system secret token (Caddy validates the
