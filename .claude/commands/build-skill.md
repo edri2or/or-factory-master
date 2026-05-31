@@ -162,6 +162,13 @@ Only after routing verification passes:
 
 2. Edit `plugin.json` to append the new skill path to the `skills` array.
 
+3. **If this skill is also installed as a factory slash command** (a file under
+   `.claude/commands/<name>.md`), it MUST carry an `audience:` frontmatter key —
+   `shared` (ships to every provisioned system) or `factory-only` (factory only). Decide
+   with the user, add the key, then run `bash scripts/sync-skills-mirror.sh` so the system
+   mirror is regenerated. CI fails an untagged command. See `docs/skills-audience.md`.
+   (Plugin SKILL.md files under `.claude/plugins/` do not need this key — only `.claude/commands/`.)
+
 ## Safety Rules
 
 1. **NEVER write any file** before showing the complete SKILL.md to the user and receiving explicit approval.

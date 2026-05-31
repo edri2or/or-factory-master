@@ -21,7 +21,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 |---|---|---|---|
 | 1 | תיוג 65 הפקודות הקיימות כ-`shared` (שתי התיקיות, זהות byte) | completed | `.claude/commands/*.md`, `templates/system/.claude/commands/*.md` |
 | 2 | שומר מודע-audience + סקריפט סנכרון + בדיקות bats | completed | `scripts/check-skills-mirror.sh`, `scripts/sync-skills-mirror.sh`, `scripts/tests/check-skills-mirror.bats` |
-| 3 | חיווט ההחלטה ליצירת סקיל + תיעוד | pending | `.claude/commands/build-skill.md` (+מראה), `docs/skills-audience.md`, `CLAUDE.md`, הערת provision |
+| 3 | חיווט ההחלטה ליצירת סקיל + תיעוד | completed | `.claude/commands/build-skill.md` (+מראה), `docs/skills-audience.md`, `CLAUDE.md`, הערת provision |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
 
@@ -55,13 +55,13 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 ### שלב 3 — חיווט ההחלטה ליצירת סקיל + תיעוד
 
 **Acceptance:**
-- [ ] `build-skill.md` מחייב בחירת `audience:` וכותב אותה ל-frontmatter; ל-`shared` מזכיר להריץ את סקריפט הסנכרון.
-- [ ] `docs/skills-audience.md` חדש מתעד את המוסכמה; `CLAUDE.md` מעודכן; הערת ה-provision מתוקנת ל"תת-קבוצה נגזרת".
-- [ ] כל ה-CI ירוק.
+- [x] `build-skill.md` מזכיר: סקיל שנכנס כ-`.claude/commands/` חייב `audience:`, ומפנה לסקריפט הסנכרון + `docs/skills-audience.md` (פקודה מתויגת `shared`, המראה עודכן דרך `sync-skills-mirror.sh`).
+- [x] `docs/skills-audience.md` חדש מתעד את המוסכמה; `CLAUDE.md` מעודכן (Key files + סעיף "Skills audience"); הערת ה-provision מתוקנת ל"תת-קבוצה נגזרת".
+- [x] CI ירוק (אומת מקומית: guard PASS, yamllint נקי, bats 11/11; ריצת ה-CI המלאה על ה-PR).
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** בוצע. הערת ה-`build-skill` נוספה והמראה חודש דרך `scripts/sync-skills-mirror.sh` (build-skill זהה byte). `docs/skills-audience.md` + עדכוני `CLAUDE.md` + הערת `provision-system.yml`. guard → 65 shared / 0 factory-only; yamllint נקי; 11/11 bats.
 
-**שינוי תוכנית:** —
+**שינוי תוכנית:** מיקוד עודכן — `build-skill` כותב סקילי-plugin (לא `.claude/commands/`), ולכן התווית `audience` לא נכנסת ל-frontmatter שהוא מייצר; במקום זה נוספה הערה מפורשת + התיעוד נושא את העומס. האכיפה האמיתית היא שער ה-CI משלב 2, שתופס כל קובץ חדש ב-`.claude/commands/` ללא תלות באופן יצירתו.
 
 ---
 
@@ -71,3 +71,4 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 
 - שלב 1 הושלם — סימנתי את כל 65 הסקילים הקיימים כ"עוברים למערכות" (כמו שהיה), בלי לשבור כלום. עכשיו אפשר לבנות עליהם את ההפרדה האמיתית.
 - שלב 2 הושלם — בניתי את ה"מנוע": השומר עכשיו בונה את חבילת המערכות רק מהסקילים שמתויגים "כללי", סקיל בלי תווית מפיל את ה-CI, ויש סקריפט שמסנכרן אוטומטית. הוספתי 11 בדיקות שמוכיחות שהכול עובד.
+- שלב 3 הושלם — תיעדתי הכל (מסמך הסבר + CLAUDE.md) כדי שכל סשן עתידי יכבד את הכלל, והוספתי תזכורת ב-build-skill שכשיוצרים סקיל-פקודה חדש חייבים להחליט לאן הוא שייך. הפיתוח הסתיים.

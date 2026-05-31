@@ -190,7 +190,21 @@ Pattern: retry only on the specific error class (`PERMISSION_DENIED`, `does not 
 | `scripts/lib.sh` | Shared helpers sourced by check scripts (`get_code_files`). |
 | `scripts/check-changelog-updated.sh` | CI guard: fails if code changed without a `CHANGELOG.md` entry. |
 | `scripts/check-changelog-size.sh` | CI guard: fails if `CHANGELOG.md` exceeds 20 KB. |
+| `scripts/check-skills-mirror.sh` | CI guard: every `.claude/commands/*.md` must declare `audience: shared`/`factory-only`, and the system mirror must equal exactly the `shared` set. Factory-only; not shipped to systems. See `docs/skills-audience.md`. |
+| `scripts/sync-skills-mirror.sh` | Regenerates `templates/system/.claude/commands/` from the `audience` tags (copies only `shared`). Run after adding/retagging a command. |
 | `src/bootstrap-receiver/` | Receiver code used once to register the App. Reference, not active. |
+
+### Skills audience (factory-only vs shared)
+
+Every slash command in `.claude/commands/*.md` carries an `audience:` frontmatter key —
+`shared` (used by the factory **and** shipped to every provisioned system) or `factory-only`
+(factory only, never copied into a system). `provision-system.yml` copies
+`templates/system/.claude/` into each new system, so `templates/system/.claude/commands/` is a
+**derived subset** = exactly the `shared` commands, byte-identical (it is no longer a byte clone
+of all factory commands). When adding or retagging a command, set its `audience:` and run
+`bash scripts/sync-skills-mirror.sh`, then commit both. CI (`check-skills-mirror.sh`) fails any
+command with a missing/invalid tag (forcing the shared/factory-only decision) or any mirror
+drift. Full reference: `docs/skills-audience.md`.
 
 ## MCP
 
