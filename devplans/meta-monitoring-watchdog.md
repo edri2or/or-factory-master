@@ -41,9 +41,12 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 - [x] `scripts/check-watchdog-registry-updated.sh` (תאום `check-devplan-updated.sh`) חוסם הוספה/מחיקה
       של workflow/n8n ללא עדכון הפנקס, עם allowlist `monitoring/registry-exempt.txt`; מחווט ל-job "Changelog gates".
 - [x] `scripts/create-watchdog-heartbeat.sh` מקים heartbeat ב-Better Stack (אידמפוטנטי), והשומר פינג אליו בכל ריצה.
-- [ ] Playground + שאר שערי ה-CI ירוקים על ה-PR.
+- [x] Playground + שאר שערי ה-CI ירוקים על ה-PR.
+- [x] PR #237 מוזג ל-main (squash) — קוד שלב 1 חי; ה-cron של השומר פעיל.
+- [x] `meta-monitoring-watchdog.yml` נוסף ל-allowlist של `dispatch_workflow` ב-`services/mcp-server/src/tools.ts` (PR נפרד) — מאפשר לסוכן להריץ את הקמת ה-heartbeat + ריצות אד-הוק ללא לחיצת אופרטור.
+- [ ] הקמת ה-heartbeat האמיתי: dispatch `meta-monitoring-watchdog.yml` עם `setup_heartbeat=true` אחרי שה-MCP מופעל מחדש (תלוי במיזוג שינוי ה-allowlist).
 
-**הערת התקדמות אחרונה:** מומש מלא ונבדק מקומית — shellcheck (severity=error), yamllint, actionlint, ו-12 בדיקות bats חדשות (לוגיקת freshness + שער הפנקס) ירוקות; כל חבילת ה-bats (44) עוברת; ריצת-עשן של `run-watchdog.sh` מול הפנקס האמיתי מסתיימת ב-exit 0. נותר: לאמת ירוק על ה-PR, ואז הקמת ה-heartbeat האמיתי (dispatch עם `setup_heartbeat=true`) באישור Or.
+**הערת התקדמות אחרונה:** PR #237 מוזג — שלב 1 כמעט סגור. התגלה שה-workflow לא היה ב-allowlist של `dispatch_workflow`, כך שהסוכן לא יכל להריץ את הקמת ה-heartbeat אוטונומית. הפתרון (אושר ע"י Or): הוספת ה-workflow ל-allowlist ב-`tools.ts` → PR → CI → מיזוג → הפעלה-מחדש של ה-MCP (`deploy-mcp-server.yml`) → dispatch עם `setup_heartbeat=true`. נותר: למזג את שינוי ה-allowlist, להפעיל מחדש את ה-MCP, ולהריץ את הקמת ה-heartbeat.
 
 **שינוי תוכנית:** —
 
