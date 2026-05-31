@@ -54,6 +54,16 @@ policy-as-code catalog. משכפל תבניות קיימות בפקטורי (`sc
   (`GET /api/v1/executions?limit=1`, header `X-N8N-API-KEY`): ביצוע אחרון `success`→✅,
   `error`/`crashed`→🚨, אין-ביצוע/אין-מפתח/לא-פרוס→❓. מאוגד לשורה אחת; **0 מערכות → ❓**
   (לא 🚨). הוכחת ✅/🚨 per-system תאיר רק כשתיפרס מערכת אמיתית.
+- **`system-branch-protection`** (הצד-GitHub של מערכות; שלב 4): **fan-out דינמי** per-system (כמו
+  `n8n-execution`) — מונה את המערכות האמיתיות (`factory-test-25` מדולג) ולכל אחת קורא
+  `GET /repos/edri2or/<system>/rules/branches/main` דרך ה-broker App ומוודא שכל אחד מ-
+  `evidence.required_contexts` (4 שערי-ה-CI) עדיין נדרש. context שהוסר מההגנה → 🚨 (הגנת-ענף נחלשה
+  בשקט); מערכת לא-פתירה (אין repo/טוקן/שגיאת API) או **0 מערכות → ❓**, לעולם לא 🚨. מאוגד לשורה אחת.
+- **`system-ci-runs`** (הצד-GitHub של מערכות; שלב 4): התאום-בזמן-ריצה של `system-branch-protection` —
+  במקום "האם השער עדיין נדרש?" הוא שואל "האם השער באמת עבר?". **fan-out דינמי** per-system: לכל מערכת
+  בודק שהריצה האחרונה על main של כל אחד מ-`evidence.workflows` (4 שערי-ה-CI + `deploy-railway-cloudflare`)
+  אינה כשל — ריצה אחרונה `success`/`skipped`/`neutral`→✅, `failure`/`cancelled`/`timed_out`/וכו'→🚨,
+  אין-ריצות/אין-token/אין-repo או **0 מערכות → ❓**, לעולם לא 🚨. מאוגד לשורה אחת.
 
 כל דוח (טלגרם + step-summary) חותם בשורת **provenance** — כתובת ריצת השומר עצמו + ה-SHA,
 כך שה"ירוק" ניתן-למעקב עד הריצה המדויקת שהפיקה אותו.

@@ -2,7 +2,7 @@
 dev_name: כיסוי הצד-GitHub של מערכות בשומר-העל
 slug: watchdog-system-github-coverage
 opened: 2026-05-31
-status: active   # active בזמן פיתוח → completed בסיום (משחרר את שער ה-CI)
+status: completed   # active בזמן פיתוח → completed בסיום (משחרר את שער ה-CI)
 ---
 
 # תוכנית פיתוח — כיסוי הצד-GitHub של מערכות בשומר-העל
@@ -21,7 +21,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
 | 1 | הגנת-הענף של כל מערכת (`system-branch-protection`) | completed | `scripts/run-watchdog.sh`, `monitoring/watchdog-registry.json`, `scripts/tests/run-watchdog.bats` |
-| 2 | ריצות שערי-CI + deploy של כל מערכת (`system-ci-runs`) + סגירה | pending | `scripts/run-watchdog.sh`, `monitoring/watchdog-registry.json`, `monitoring/README.md`, `scripts/tests/run-watchdog.bats` |
+| 2 | ריצות שערי-CI + deploy של כל מערכת (`system-ci-runs`) + סגירה | completed | `scripts/run-watchdog.sh`, `monitoring/watchdog-registry.json`, `monitoring/README.md`, `scripts/tests/run-watchdog.bats` |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
 
@@ -45,16 +45,16 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 ### שלב 2 — ריצות שערי-CI + deploy של כל מערכת + סגירה
 
 **Acceptance:**
-- [ ] שיטת הוכחה `system-ci-runs` (fan-out דינמי): לכל מערכת בודקת שהריצה האחרונה על main של כל אחד מ-4 שערי ה-CI (`changelog-check`/`pipeline-tests`/`secret-scan`/`supply-chain-check`) + `deploy-railway-cloudflare` ירוקה — בשימוש חוזר בלוגיקת `_conclusion_is_failing` (skipped/neutral=תקין).
-- [ ] כשל אמיתי → 🚨; אין ריצות/לא-פתיר → ❓; 0 מערכות → ❓. מאוגד לשורה אחת.
-- [ ] רשומת `system-ci-runs` בפנקס.
-- [ ] בדיקות bats (success→ok / failure→red / skipped→ok / no-runs→❓).
-- [ ] `monitoring/README.md` מתעד את שתי שיטות ה-system-github; shellcheck נקי; Playground ירוק.
-- [ ] סגירה: `status: completed` בתוכנית (משחרר את שער ה-CI).
+- [x] שיטת הוכחה `system-ci-runs` (fan-out דינמי): לכל מערכת בודקת שהריצה האחרונה על main של כל אחד מ-4 שערי ה-CI (`changelog-check`/`pipeline-tests`/`secret-scan`/`supply-chain-check`) + `deploy-railway-cloudflare` ירוקה — בשימוש חוזר בלוגיקת `_conclusion_is_failing` (skipped/neutral=תקין).
+- [x] כשל אמיתי → 🚨; אין ריצות/לא-פתיר → ❓; 0 מערכות → ❓. מאוגד לשורה אחת.
+- [x] רשומת `system-ci-runs` בפנקס.
+- [x] בדיקות bats (success→ok / failure→red / skipped→ok / no-runs→❓).
+- [x] `monitoring/README.md` מתעד את שתי שיטות ה-system-github; shellcheck נקי; Playground ירוק.
+- [x] סגירה: `status: completed` בתוכנית (משחרר את שער ה-CI).
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם ונבדק מקומית — `shellcheck` נקי, 41 בדיקות bats עוברות (8 חדשות ל-`system-ci-runs`), וריצת-עשן מול הפנקס המלא מראה ❓ ל-0 מערכות ו-🚨 למערכת סינתטית עם ריצת-deploy שנכשלה. הפיתוח נסגר (`status: completed`).
 
-**שינוי תוכנית:** —
+**שינוי תוכנית:** ה-helper `_system_ci_status` קורא היסטוריית-ריצות per-workflow per-system (אובייקט fixture `_syscir_<sys>.json` הממפה `workflow_file`→`{workflow_runs}`), בשימוש חוזר ב-jq של `proof_gh_run_freshness` ובלוגיקת `_conclusion_is_failing` — מערכת היא 🚨 אם הריצה האחרונה של *כל* workflow היא כשל, ✅ אם לפחות אחת נפתרה וכולן לא-כושלות, ❓ אם אף ריצה לא נפתרה.
 
 ---
 
@@ -63,3 +63,4 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 > שורה פשוטה אחת לכל שלב שהסתיים — בשפה ש-Or מבין, בלי ז'רגון.
 
 - שלב 1 הושלם — השומר המרכזי בודק עכשיו שלכל מערכת הגנת-הענף עדיין שומרת על 4 שערי-האיכות; אם מישהו פתח פרצה במערכת — נדע (🚨). מערכת שעוד לא נפרסה פשוט מסומנת "לא ידוע" (❓), בלי אזעקת-שווא.
+- שלב 2 הושלם — השומר גם בודק שהבדיקות-האוטומטיות וה-deploy של כל מערכת באמת *רצו ועברו* בפעם האחרונה, לא רק שהן "נדרשות". אם משהו נשבר בשקט במערכת — נדע (🚨). הפיתוח הזה סגור: עכשיו לכל מערכת יש שמירה מלאה גם מצד-GitHub, מהמרכז.
