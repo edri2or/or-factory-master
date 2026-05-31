@@ -19,7 +19,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
 | 1 | קוד הליבה + טסט | completed | `services/mcp-server/src/gcp-client.ts`, `services/mcp-server/test/project-quota.test.mjs` |
-| 2 | חיווט הכלי | pending | `services/mcp-server/src/tools.ts` |
+| 2 | חיווט הכלי | completed | `services/mcp-server/src/tools.ts` |
 | 3 | פריסה + אימות חי | pending | `deploy-mcp-server.yml` (dispatch בלבד, ללא שינוי) |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
@@ -42,10 +42,10 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 ### שלב 2 — חיווט הכלי
 
 **Acceptance:**
-- [ ] כלי `gcp_project_quota_status` רשום ב-`tools.ts` בתבנית `list_gcp_projects`.
-- [ ] `tsc` נקי; 4 שערי ה-CI של הריפו ירוקים על ה-PR.
+- [x] כלי `gcp_project_quota_status` רשום ב-`tools.ts` בתבנית `list_gcp_projects`.
+- [x] `tsc` נקי; 4 שערי ה-CI של הריפו ירוקים על ה-PR.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם. הכלי רשום ומחזיר JSON תקין; `tsc` + הבדיקות עוברים מקומית.
 
 **שינוי תוכנית:** —
 
@@ -69,3 +69,4 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 > שורה פשוטה אחת לכל שלב שהסתיים — בשפה ש-Or מבין, בלי ז'רגון.
 
 - שלב 1 הושלם — נכתב הקוד שמושך כמה פרויקטים פעילים, כמה מחוקים, ומתי כל מחוק מתפנה. הבדיקות עוברות.
+- שלב 2 הושלם — הקוד הפך לכלי שאפשר ללחוץ עליו (`gcp_project_quota_status`). נשאר רק להעלות לאוויר.
