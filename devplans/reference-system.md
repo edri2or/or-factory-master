@@ -23,7 +23,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 | 1 | רישום ותיעוד | completed | `reference-system/config.yml`, `scripts/reference-config.sh`, `docs/reference-system.md` |
 | 2 | שער golden סטטי (הרחבת Playground) | completed | `scripts/render-system-golden.sh`, `scripts/check-system-golden.sh`, `scripts/tests/check-system-golden.bats`, `tests/golden/system/**`, `.github/workflows/playground-tests.yml` |
 | 3 | שער אנטי-סטייה תאום (CI) | completed | `scripts/check-reference-sync.sh`, `scripts/tests/check-reference-sync.bats`, `.github/workflows/changelog-check.yml` |
-| 4 | reconciliation מתוזמן | pending | `.github/workflows/reference-system-reconcile.yml` |
+| 4 | reconciliation מתוזמן | completed | `.github/workflows/reference-system-reconcile.yml` |
 | 5 | שער אימות חי על העומדת | pending | `scripts/reference-system-smoke.sh`, (אופ') `.github/workflows/reference-system-validate.yml` |
 | 6 | הסקיל `/dev-stage-factory` | pending | `.claude/commands/dev-stage-factory.md`, mirror sync |
 | 7 | חיווט, תיעוד, roadmap | pending | `CLAUDE.md`, `docs/roadmap.md`, `README.md` |
@@ -105,17 +105,13 @@ no-op אחרת. תאום ל-`check-changelog-updated.sh`. צעד חדש ב-job *
 פער → `emit-event.sh` (Axiom + Telegram + Linear) + אופ' dispatch rebuild.
 
 **Acceptance:**
-- [ ] dispatch ידני מחזיר `ok` כשהמערכת תואמת
-- [ ] הזרקת סטייה מכוונת → אירוע `alert` (Axiom + Telegram + Linear) דרך emit-event
-- [ ] actionlint/yamllint ירוקים על ה-workflow
+- [x] לוגיקת ההחלטה: `in_sync`+בריא → `factory.reference_reconcile.ok` (info); אחרת → `factory.reference_reconcile.drift` (error+action_required) — הוכח ב-dry-run לכל 4 המקרים
+- [x] אות-הסטייה (`git diff built_from..main -- templates/system provision`) מזהה נכון מולד-שלא-השתנה (in_sync) מול מולד-שהשתנה (stale_mould)
+- [x] actionlint + yamllint ירוקים; no-op נקי כשהמערכת לא מוקמה (provisioned=false → skip, בלי GCP)
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם. `reference-system-reconcile.yml` (cron 6h + dispatch ידני, מודל על system-runtime-audit). קורא `config.yml`; **no-op נקי** עד שלב 0 (provisioned=false → דילוג בלי WIF). כשמוקם: בודק drift-מולד (git diff מ-built_from ל-main על `templates/system`+provision) + בריאות /healthz, ופולט אירוע אחד (ok info / drift error+action_required → Axiom+Telegram+Linear). **התראה-בלבד — אין rebuild אוטומטי** (גארדרייל: מהלך יקר נשאר human-gated). אומת: לינטרים נקיים, no-op נכון, החלטה ו-git-signal הוכחו. ה-ok/drift החי ייבחן אחרי שלב 0. ממתין לאישור לפני שלב 5.
 
-**שינוי תוכנית:** —
-
----
-
-### שלב 5 — שער אימות חי על העומדת
+**שינוי תוכנית:** ה-"dispatch rebuild" האופציונלי מהתוכנית הושמט בכוונה — re-provision/redeploy הוא מהלך בעלות שנשאר human-gated לפי "החוק האחד"; ה-reconcile מתריע ואור מחליט.
 
 `reference-system-smoke.sh`: smoke/E2E מול העומדת (n8n `/healthz`, edge של Caddy,
 probe ל-agent-router). אופ': `reference-system-validate.yml` שמחיל שינוי + מריץ smoke.
@@ -171,3 +167,4 @@ probe ל-agent-router). אופ': `reference-system-validate.yml` שמחיל שי
 - שלב 1 הושלם — רשמנו "מי" המערכת העומדת בקובץ קונפיג + כתבנו מסמך שמסביר את הרעיון (שתי שכבות + איך מונעים סטייה). עדיין בלי הקמה אמיתית.
 - שלב 2 הושלם — בנינו "שער זהב": המחשב שומר תמונת-אמת של מה שמערכת חדשה אמורה לקבל, ומשווה אליה אוטומטית בכל שינוי. אם מישהו משנה תבנית בלי לעדכן את התמונה — ה-CI עוצר. בדקנו שזה תופס סטייה ושאפשר לעדכן את התמונה בכוונה.
 - שלב 3 הושלם — הוספנו את החוק שמשלים את שער-הזהב: "נגעת בתבניות? חובה לעדכן את התמונה, אחרת חסום", ובנוסף שמירה שרשימת-המשתנים של הרינדור זהה בכל שלושת המקומות שמשתמשים בה. כך אי אפשר "לשכוח" לעדכן את התמונה.
+- שלב 4 הושלם — בנינו "שומר" אוטומטי שירוץ כל 6 שעות (אחרי שנקים את המערכת): בודק אם המערכת החיה "נשארה מאחור" מול הקוד העדכני ואם היא בריאה, ושולח התראה לטלגרם אם יש בעיה. הוא **רק מתריע** — לא בונה מחדש לבד (זה מהלך שעולה כסף ודורש את האישור שלך). בדקנו שכל ההחלטות נכונות ושכל עוד אין מערכת הוא פשוט שותק.
