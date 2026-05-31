@@ -2,7 +2,7 @@
 dev_name: הפרדת סקילים — לפקטורי בלבד מול כללי (גם למערכות)
 slug: skills-audience-split
 opened: 2026-05-31
-status: active   # active בזמן פיתוח → completed בסיום (משחרר את שער ה-CI)
+status: completed   # active בזמן פיתוח → completed בסיום (משחרר את שער ה-CI)
 ---
 
 # תוכנית פיתוח — הפרדת סקילים: "לפקטורי בלבד" מול "כללי (גם למערכות)"
