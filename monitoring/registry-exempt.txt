@@ -1,0 +1,30 @@
+# Watchdog registry exemptions — monitorable surfaces that DELIBERATELY are
+# not registered in monitoring/watchdog-registry.json, so the CI registry gate
+# (scripts/check-watchdog-registry-updated.sh) does not block their add/remove.
+#
+# One path per line, repo-relative, exact match. Lines starting with # ignored.
+# Keep this list short and reviewed — every entry is a conscious "this has no
+# daily proof" decision (one-shots, internal verifiers, manual operator tools).
+
+# One-shot / already-used registrations (run once, never on a cadence):
+.github/workflows/register-broker-app.yml
+.github/workflows/register-oil-approver-app.yml
+.github/workflows/register-system-app.yml
+.github/workflows/seed-test-bot-token.yml
+
+# Internal verification helpers (manual, ad-hoc):
+.github/workflows/_verify-bs-webhook.yml
+.github/workflows/_verify-sentry.yml
+.github/workflows/observability-pilot.yml
+.github/workflows/tail-mcp-logs.yml
+.github/workflows/probe-project-deletetime.yml
+
+# Manual operator tools (workflow_dispatch only, no schedule to prove):
+.github/workflows/compile-changelog.yml
+.github/workflows/list-recoverable-projects.yml
+.github/workflows/set-factory-branch-protection.yml
+.github/workflows/set-oil-allowlist.yml
+.github/workflows/decommission-railway-projects.yml
+.github/workflows/decommission-test-projects.yml
+.github/workflows/decommission-test-system.yml
+.github/workflows/provision-system.yml

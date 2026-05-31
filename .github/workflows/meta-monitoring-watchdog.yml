@@ -1,0 +1,74 @@
+name: Meta-Monitoring Watchdog
+
+# שומר-העל: כל בוקר עובר על פנקס האוטומציות (monitoring/watchdog-registry.json),
+# מוכיח שכל תהליך רשום רץ ועבד, שולח דוח טלגרם בעברית עם קישור ישיר לכל שורה, פולט
+# אירוע observability (factory.watchdog.ok/degraded), כותב טבלת step-summary, ופינג
+# ל-dead-man's-switch החיצוני (Better Stack heartbeat). הקלט setup_heartbeat=true
+# מריץ חד-פעמית את הקמת ה-heartbeat ושומר את כתובתו ב-SM.
+
+on:
+  schedule:
+    - cron: "0 5 * * *"   # 05:00 UTC ≈ 08:00 בישראל — "כל בוקר, תמיד"
+  workflow_dispatch:
+    inputs:
+      setup_heartbeat:
+        description: "One-time: create the Better Stack heartbeat + store its URL in SM"
+        type: boolean
+        default: false
+
+permissions: {}
+
+jobs:
+  watchdog:
+    name: Meta-monitoring watchdog
+    runs-on: ubuntu-latest
+    environment: production
+    # Scheduled runs only matter on main; workflow_dispatch is allowed on any
+    # branch so the watchdog can be verified pre-merge (sends a real report).
+    if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
+
+      - name: Authenticate to GCP via WIF
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093  # v3.0.0
+        with:
+          workload_identity_provider: "projects/140345952904/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
+          service_account: "factory-master-broker@or-factory-master-control.iam.gserviceaccount.com"
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db  # v3.0.1
+
+      - name: Setup heartbeat (one-time)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.setup_heartbeat }}
+        run: bash scripts/create-watchdog-heartbeat.sh
+
+      - name: Run watchdog
+        env:
+          GITHUB_RUN_ID: ${{ github.run_id }}
+        run: |
+          set -uo pipefail
+          CONTROL="or-factory-master-control"
+
+          # Broker App token — lets the watchdog read workflow-run history.
+          APP_ID=$(gcloud secrets versions access latest --secret="factory-master-broker-app-id" --project="$CONTROL")
+          gcloud secrets versions access latest --secret="factory-master-broker-app-private-key" --project="$CONTROL" > /tmp/broker-app-key.pem
+          chmod 600 /tmp/broker-app-key.pem
+          INSTALL_ID=$(gcloud secrets versions access latest --secret="factory-master-broker-app-installation-id" --project="$CONTROL")
+          GH_API_TOKEN=$(bash scripts/generate-app-token.sh /tmp/broker-app-key.pem "$APP_ID" "$INSTALL_ID")
+          echo "::add-mask::${GH_API_TOKEN}"
+          shred -u /tmp/broker-app-key.pem 2>/dev/null || rm -f /tmp/broker-app-key.pem
+
+          # Telegram (best-effort) + the dead-man's-switch ping URL.
+          TG_TOKEN=$(gcloud secrets versions access latest --secret="telegram-bot-token" --project="$CONTROL" 2>/dev/null || echo "")
+          TG_CHAT=$(gcloud secrets versions access latest --secret="telegram-chat-id" --project="$CONTROL" 2>/dev/null || echo "")
+          HEARTBEAT_URL=$(gcloud secrets versions access latest --secret="watchdog-heartbeat-url" --project="$CONTROL" 2>/dev/null || echo "")
+          [ -n "$TG_TOKEN" ] && echo "::add-mask::${TG_TOKEN}"
+          [ -n "$TG_CHAT" ] && echo "::add-mask::${TG_CHAT}"
+          [ -n "$HEARTBEAT_URL" ] && echo "::add-mask::${HEARTBEAT_URL}"
+
+          export GH_API_TOKEN TG_TOKEN TG_CHAT HEARTBEAT_URL
+          bash scripts/run-watchdog.sh
