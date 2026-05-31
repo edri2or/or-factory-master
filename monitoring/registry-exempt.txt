@@ -27,6 +27,7 @@
 # run to prove. Their executions are covered collectively by the system-wide
 # "system-n8n-executions" registry entry):
 templates/system/workflows/n8n/pending-actions-executor.json
+templates/system/workflows/n8n/request-write-action.json
 
 # Manual operator tools (workflow_dispatch only, no schedule to prove):
 .github/workflows/compile-changelog.yml
