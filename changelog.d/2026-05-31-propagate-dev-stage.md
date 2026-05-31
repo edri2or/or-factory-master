@@ -14,3 +14,8 @@
   `/dev-stage` can instantiate `devplans/<slug>.md`, adds `templates` to the scaffold
   `git add`, and refreshes the PASS summary (now 11 portable scripts + settings.json +
   devplan template seed).
+- **Stage 3 — docs.** Added a "Development workflow (`/dev-stage`)" discovery section to
+  `templates/system/AGENTS.md.template` so a system's agent knows the staged-development
+  workflow is available locally, and corrected the factory `CLAUDE.md` (the "factory-internal
+  — not propagated" note, plus the provision Governance row) to reflect that the full
+  machinery now ships to systems provisioned after this change.

@@ -2,7 +2,7 @@
 dev_name: dev-stage עצמאי לכל מערכת חדשה
 slug: propagate-dev-stage
 opened: 2026-05-31
-status: active   # active בזמן פיתוח → completed בסיום (משחרר את שער ה-CI)
+status: completed   # active בזמן פיתוח → completed בסיום (משחרר את שער ה-CI)
 ---
 
 # תוכנית פיתוח — dev-stage עצמאי לכל מערכת חדשה
@@ -20,7 +20,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 |---|---|---|---|
 | 1 | תבנית המערכת: hook + חיווט שער CI | completed | `templates/system/.claude/settings.json`, `templates/system/.github/workflows/changelog-check.yml` |
 | 2 | provision-system.yml: שליחת הסקריפטים + תבנית ה-devplan | completed | `.github/workflows/provision-system.yml` |
-| 3 | תיעוד: גילוי במערכת + עקביות בפקטורי | pending | `templates/system/AGENTS.md.template`, `CLAUDE.md` |
+| 3 | תיעוד: גילוי במערכת + עקביות בפקטורי | completed | `templates/system/AGENTS.md.template`, `CLAUDE.md` |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
 
@@ -56,10 +56,10 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 ### שלב 3 — תיעוד: גילוי במערכת + עקביות בפקטורי
 
 **Acceptance:**
-- [ ] `templates/system/AGENTS.md.template` כולל סעיף קצר על `/dev-stage` + `/dev-status` (איך יוצרים `devplans/<slug>.md` וכותבים fragment ל-`changelog.d/`).
-- [ ] `CLAUDE.md` בפקטורי מתוקן: המשפט "factory-internal — not propagated" כבר לא נכון, ושורת ה-Governance מזכירה את שער/הוק/תבנית ה-devplan שעוברים למערכות חדשות.
+- [x] `templates/system/AGENTS.md.template` כולל סעיף קצר על `/dev-stage` + `/dev-status` (איך יוצרים `devplans/<slug>.md` וכותבים fragment ל-`changelog.d/`).
+- [x] `CLAUDE.md` בפקטורי מתוקן: המשפט "factory-internal — not propagated" כבר לא נכון, ושורת ה-Governance מזכירה את שער/הוק/תבנית ה-devplan שעוברים למערכות חדשות.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם — נוסף סעיף "Development workflow" ל-AGENTS.md.template; תוקנו ב-CLAUDE.md גם פסקת ה-/dev-stage וגם שורת ה-Governance של provision.
 
 **שינוי תוכנית:** —
 
@@ -71,3 +71,4 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 
 - שלב 1 הושלם — הוספתי לתבנית של כל מערכת חדשה את ה"מזכיר" (hook) ואת בלם הבטיחות (שער ה-CI) של dev-stage.
 - שלב 2 הושלם — דאגתי שה-provision באמת ישלח לכל מערכת חדשה את הסקריפטים ואת תבנית התוכנית, כך שהמנגנון מגיע בפועל.
+- שלב 3 הושלם — עדכנתי תיעוד: המערכת עכשיו "יודעת" שהכלי קיים אצלה, והתיעוד שלנו בפקטורי כבר לא אומר בטעות שזה לא עובר. הפיתוח נסגר.
