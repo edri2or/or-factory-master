@@ -1,0 +1,308 @@
+{
+  "name": "factory-master: pending-actions-executor",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": { "inputSource": "passthrough" },
+      "id": "60000000-0000-0000-0000-000000000001",
+      "name": "When Executed by Another Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [220, 360]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// HITL executor entrypoint. The caller (tg-inbound's approval handler, Stage C)\n// passes a single approved pending_actions row id. Coerce it to a positive\n// integer defensively (it may arrive as action_id / id / query.action_id) and\n// DROP the run on anything invalid, so a malformed call can never build bad SQL.\nconst raw = ($input.first() && $input.first().json) || {};\nlet id = raw.action_id;\nif (id === undefined || id === null) { id = raw.id; }\nif ((id === undefined || id === null) && raw.query && typeof raw.query === 'object') { id = raw.query.action_id; }\nid = Number(id);\nif (!Number.isInteger(id) || id <= 0) { return []; }\nreturn [{ json: { action_id: id } }];"
+      },
+      "id": "60000000-0000-0000-0000-000000000002",
+      "name": "Validate Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [420, 360]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE pending_actions SET status='processing', approver='telegram', approved_at=now() WHERE id={{ $json.action_id }} AND status='pending' AND (expires_at IS NULL OR expires_at > now()) RETURNING *;",
+        "options": {}
+      },
+      "id": "60000000-0000-0000-0000-000000000003",
+      "name": "Lock Action",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [620, 360],
+      "credentials": { "postgres": { "id": "@@CRED_POSTGRES_ID@@", "name": "Postgres (n8n)" } }
+    },
+    {
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose", "version": 2 },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "61000000-0000-0000-0000-000000000001",
+                    "leftValue": "={{ $json.target_system }}",
+                    "rightValue": "n8n",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "n8n"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose", "version": 2 },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "61000000-0000-0000-0000-000000000002",
+                    "leftValue": "={{ $json.target_system }}",
+                    "rightValue": "github",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "github"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "unsupported"
+        }
+      },
+      "id": "60000000-0000-0000-0000-000000000004",
+      "name": "Route by Target",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [820, 360]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://@@N8N_DOMAIN@@/api/v1/workflows/{{ $json.target_id }}/{{ $json.action_type }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "60000000-0000-0000-0000-000000000005",
+      "name": "n8n API Call",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1040, 240],
+      "credentials": { "httpHeaderAuth": { "id": "@@CRED_N8N_API_ID@@", "name": "n8n Public API (X-N8N-API-KEY)" } },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// GitHub branch (Stage E): build the App JWT claims. iat backdated 60s for clock\n// skew; exp 9 min (GitHub max 10). iss = App ID (non-secret placeholder). Signing\n// happens in the built-in JWT node (RS256 + PEM credential). Mirrors github-readonly.\nconst now = Math.floor(Date.now() / 1000);\nreturn [{ json: { iat: now - 60, exp: now + 540, iss: '@@GITHUB_APP_ID@@' } }];"
+      },
+      "id": "60000000-0000-0000-0000-000000000010",
+      "name": "GH Build JWT Claims",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1040, 560]
+    },
+    {
+      "parameters": {
+        "operation": "sign",
+        "useJson": true,
+        "claimsJson": "={{ JSON.stringify({ iat: $json.iat, exp: $json.exp, iss: $json.iss }) }}",
+        "options": {}
+      },
+      "id": "60000000-0000-0000-0000-000000000011",
+      "name": "GH Sign JWT",
+      "type": "n8n-nodes-base.jwt",
+      "typeVersion": 1,
+      "position": [1240, 560],
+      "credentials": { "jwtAuth": { "id": "@@CRED_GITHUB_JWT_ID@@", "name": "GitHub App JWT (RS256)" } }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.github.com/app/installations/@@GITHUB_INSTALLATION_ID@@/access_tokens",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $json.token }}" },
+            { "name": "Accept", "value": "application/vnd.github+json" },
+            { "name": "X-GitHub-Api-Version", "value": "2022-11-28" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ repositories: ['@@SYSTEM_NAME@@'], permissions: { actions: 'write' } }) }}",
+        "options": {}
+      },
+      "id": "60000000-0000-0000-0000-000000000012",
+      "name": "GH Mint Token",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1440, 560],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Build the workflow_dispatch body. target_id = the workflow file (or id) on the\n// default branch. inputs MUST be strings (GitHub 422s otherwise) and ≤25 top-level\n// keys; objects are JSON-stringified. An optional __ref in the payload overrides\n// the default 'main'. Carries the repo-scoped installation token forward.\nconst lock = $('Lock Action').first().json;\nconst tok = ($input.first() && $input.first().json && $input.first().json.token) || '';\nlet payload = lock.normalized_payload;\nif (typeof payload === 'string') { try { payload = JSON.parse(payload); } catch (e) { payload = {}; } }\nif (!payload || typeof payload !== 'object') { payload = {}; }\nconst inputs = {};\nconst keys = Object.keys(payload).filter(k => k !== '__ref').slice(0, 25);\nfor (const k of keys) { const v = payload[k]; if (v === null || v === undefined) { continue; } inputs[String(k)] = (typeof v === 'object') ? JSON.stringify(v) : String(v); }\nconst ref = (payload.__ref && String(payload.__ref)) || 'main';\nreturn [{ json: { token: tok, workflow_file: String(lock.target_id || ''), ref: ref, body: JSON.stringify({ ref: ref, inputs: inputs }) } }];"
+      },
+      "id": "60000000-0000-0000-0000-000000000013",
+      "name": "GH Build Dispatch",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1640, 560]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.github.com/repos/edri2or/@@SYSTEM_NAME@@/actions/workflows/{{ encodeURIComponent($json.workflow_file) }}/dispatches",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $json.token }}" },
+            { "name": "Accept", "value": "application/vnd.github+json" },
+            { "name": "X-GitHub-Api-Version", "value": "2022-11-28" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.body }}",
+        "options": {}
+      },
+      "id": "60000000-0000-0000-0000-000000000014",
+      "name": "GH Dispatch",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1840, 560],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Carry the locked row's fields forward for the done-update + success notice.\nconst lock = $('Lock Action').first().json;\nreturn [{ json: { id: lock.id, chat_id: lock.chat_id, human_summary: lock.human_summary, action_type: lock.action_type, target_system: lock.target_system } }];"
+      },
+      "id": "60000000-0000-0000-0000-000000000006",
+      "name": "Build Success",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1260, 200]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE pending_actions SET status='done', executed_at=now() WHERE id={{ $('Build Success').first().json.id }};",
+        "options": {}
+      },
+      "id": "60000000-0000-0000-0000-000000000007",
+      "name": "Mark Done",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1460, 200],
+      "credentials": { "postgres": { "id": "@@CRED_POSTGRES_ID@@", "name": "Postgres (n8n)" } },
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $('Build Success').first().json.chat_id || '@@CHAT_ID@@' }}",
+        "text": "={{ '✅ בוצע: ' + ($('Build Success').first().json.human_summary || 'הפעולה') }}",
+        "additionalFields": { "appendAttribution": false }
+      },
+      "id": "60000000-0000-0000-0000-000000000008",
+      "name": "Notify Success",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1660, 200],
+      "credentials": { "telegramApi": { "id": "@@CRED_TELEGRAM_ID@@", "name": "Telegram (factory-master)" } }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Build a failure record for any non-success path: an n8n API error (item carries\n// .error), or an unsupported target_system (github is wired in Stage E; the\n// fallback output lands here too). Single-quotes in the message are doubled so the\n// JSON can be embedded as a SQL text literal cast to jsonb without breaking out.\nconst lock = $('Lock Action').first().json;\nconst inp = ($input.first() && $input.first().json) || {};\nlet msg;\nconst e = inp.error;\nif (e) { msg = (typeof e === 'object' && e.message) ? e.message : String(e); }\nelse if (inp.message) { msg = String(inp.message); }\nelse if (lock.target_system && lock.target_system !== 'n8n') { msg = 'פעולת ' + lock.target_system + ' עדיין לא נתמכת (תופעל בשלב מאוחר יותר).'; }\nelse { msg = 'הפעולה נכשלה.'; }\nmsg = String(msg).slice(0, 500);\nconst rec = { target_system: lock.target_system || null, action_type: lock.action_type || null, message: msg, at: new Date().toISOString() };\nconst err_json = JSON.stringify(rec).replace(/'/g, \"''\");\nreturn [{ json: { id: lock.id, chat_id: lock.chat_id, human_summary: lock.human_summary, err_msg: msg, err_json: err_json } }];"
+      },
+      "id": "60000000-0000-0000-0000-000000000009",
+      "name": "Build Failure",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1260, 440]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE pending_actions SET status='failed', executed_at=now(), error_record='{{ $('Build Failure').first().json.err_json }}'::jsonb WHERE id={{ $('Build Failure').first().json.id }};",
+        "options": {}
+      },
+      "id": "60000000-0000-0000-0000-00000000000a",
+      "name": "Mark Failed",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1460, 440],
+      "credentials": { "postgres": { "id": "@@CRED_POSTGRES_ID@@", "name": "Postgres (n8n)" } },
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $('Build Failure').first().json.chat_id || '@@CHAT_ID@@' }}",
+        "text": "={{ '❌ נכשל: ' + ($('Build Failure').first().json.human_summary || 'הפעולה') + ($('Build Failure').first().json.err_msg ? ' — ' + $('Build Failure').first().json.err_msg : '') }}",
+        "additionalFields": { "appendAttribution": false }
+      },
+      "id": "60000000-0000-0000-0000-00000000000b",
+      "name": "Notify Failure",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1660, 440],
+      "credentials": { "telegramApi": { "id": "@@CRED_TELEGRAM_ID@@", "name": "Telegram (factory-master)" } }
+    }
+  ],
+  "connections": {
+    "When Executed by Another Workflow": { "main": [[{ "node": "Validate Input", "type": "main", "index": 0 }]] },
+    "Validate Input": { "main": [[{ "node": "Lock Action", "type": "main", "index": 0 }]] },
+    "Lock Action": { "main": [[{ "node": "Route by Target", "type": "main", "index": 0 }]] },
+    "Route by Target": {
+      "main": [
+        [{ "node": "n8n API Call", "type": "main", "index": 0 }],
+        [{ "node": "GH Build JWT Claims", "type": "main", "index": 0 }],
+        [{ "node": "Build Failure", "type": "main", "index": 0 }]
+      ]
+    },
+    "n8n API Call": {
+      "main": [
+        [{ "node": "Build Success", "type": "main", "index": 0 }],
+        [{ "node": "Build Failure", "type": "main", "index": 0 }]
+      ]
+    },
+    "GH Build JWT Claims": { "main": [[{ "node": "GH Sign JWT", "type": "main", "index": 0 }]] },
+    "GH Sign JWT": { "main": [[{ "node": "GH Mint Token", "type": "main", "index": 0 }]] },
+    "GH Mint Token": {
+      "main": [
+        [{ "node": "GH Build Dispatch", "type": "main", "index": 0 }],
+        [{ "node": "Build Failure", "type": "main", "index": 0 }]
+      ]
+    },
+    "GH Build Dispatch": { "main": [[{ "node": "GH Dispatch", "type": "main", "index": 0 }]] },
+    "GH Dispatch": {
+      "main": [
+        [{ "node": "Build Success", "type": "main", "index": 0 }],
+        [{ "node": "Build Failure", "type": "main", "index": 0 }]
+      ]
+    },
+    "Build Success": { "main": [[{ "node": "Mark Done", "type": "main", "index": 0 }]] },
+    "Mark Done": { "main": [[{ "node": "Notify Success", "type": "main", "index": 0 }]] },
+    "Build Failure": { "main": [[{ "node": "Mark Failed", "type": "main", "index": 0 }]] },
+    "Mark Failed": { "main": [[{ "node": "Notify Failure", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" }
+}
