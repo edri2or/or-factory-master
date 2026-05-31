@@ -1,4 +1,5 @@
 ---
+audience: shared
 description: Silently inject an env-var secret into the current task. With a name: use that exact var. Without: infer from context. Never expose the value. Use when you want Claude to use a session secret without repeating safety boilerplate.
 synthesis-required: false
 adapted-by: skill-adapter

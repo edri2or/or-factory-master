@@ -1,4 +1,5 @@
 ---
+audience: shared
 description: Reads a source document (pasted or file path), researches the stated goal, and generates a context-aware dev plan tied to the current repo. Use when you have a doc and a goal and want a grounded plan before building.
 ---
 

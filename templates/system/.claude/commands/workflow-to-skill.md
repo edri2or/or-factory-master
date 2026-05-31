@@ -1,4 +1,5 @@
 ---
+audience: shared
 description: Turns a completed project workflow (Stage N, bootstrap, deploy) into a reusable SKILL.md by researching JOURNEY.md, ADRs, and code files. Use when packaging a proven process for future agent reuse.
 ---
 

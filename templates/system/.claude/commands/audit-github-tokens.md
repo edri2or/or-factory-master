@@ -1,4 +1,5 @@
 ---
+audience: shared
 description: Audit all SKILL.md files across org repos for GitHub token usage, map each skill's operations to required permission scopes, and report least-privilege recommendations per skill. Use when you want a token permission inventory across org skills.
 ---
 

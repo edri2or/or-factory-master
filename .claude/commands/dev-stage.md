@@ -1,4 +1,5 @@
 ---
+audience: shared
 description: Run a new development as documented, gated stages tracked in a living DEVPLAN.md. Use when starting a new development, when the user says "פיתוח חדש" / "נהל את זה בשלבים" / "dev-stage", or whenever a change should be managed step-by-step with a stop-for-approval at each boundary.
 ---
 

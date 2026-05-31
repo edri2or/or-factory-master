@@ -1,4 +1,5 @@
 ---
+audience: shared
 description: Find which skill to use for your task or request. Ranks all installed skills by confidence score and explains the right choice. Use when you do not know which skill or command matches your intent.
 ---
 

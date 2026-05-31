@@ -1,4 +1,5 @@
 ---
+audience: shared
 description: Researches professional industry standards on any topic with justified metrics, dated evidence, and ranked recommendations. Use when you need a world-class benchmark or current industry standard on a topic from input or session.
 ---
 

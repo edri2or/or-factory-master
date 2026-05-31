@@ -1,4 +1,5 @@
 ---
+audience: shared
 description: Internet research tool for planning a new SKILL.md slash command. Queries GitHub, Anthropic docs, YouTube, and web to find prior art, failure modes, and patterns. Use before /build-skill to sharpen skill design with evidence.
 ---
 

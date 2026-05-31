@@ -1,4 +1,5 @@
 ---
+audience: shared
 description: Syncs a newly created skill from the current repo to the central ripo-skills-main, triggering the build-skill generalization pipeline. Use when you want to centralize a skill so it's available across all systems.
 ---
 

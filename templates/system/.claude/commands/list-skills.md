@@ -1,4 +1,5 @@
 ---
+audience: shared
 description: Scans all installed skills (commands + plugins) and prints a categorized table with name and description. Use when the user asks to list skills, show available commands, or discover what slash commands exist.
 ---
 

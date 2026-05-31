@@ -1,4 +1,5 @@
 ---
+audience: shared
 description: Analyzes a critique/review transcript: extracts criticisms + suggestions with provenance, validates against repo, researches refinements, and emits an evidence-backed action plan. Use when you have a review-dialog transcript and need a grounded plan.
 ---
 

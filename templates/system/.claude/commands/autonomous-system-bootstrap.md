@@ -1,4 +1,5 @@
 ---
+audience: shared
 description: Generates and executes idempotent GCP Cloud Shell command batches for autonomous system bootstrap, with checkpoint validation and a structured runbook. Use when bootstrapping WIF, Secret Manager, or [your-railway] for a new agent deployment.
 synthesis-required: false
 adapted-by: skill-adapter

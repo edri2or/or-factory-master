@@ -1,4 +1,5 @@
 ---
+audience: shared
 description: Deploy a temporary Cloud Run receiver, register a GitHub App via manifest flow, capture credentials to GCP Secret Manager, then teardown. Vendor floor: 2 operator clicks.
 ---
 

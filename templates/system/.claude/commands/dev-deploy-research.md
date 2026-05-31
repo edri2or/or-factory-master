@@ -1,4 +1,5 @@
 ---
+audience: shared
 description: Parses a completed deep-research document, confirms with the user, then scaffolds the file structure (product or infra track) under dev/ideas/ or dev/changes/ and updates dev/README.md. Use after research is complete.
 synthesis-required: false
 adapted-by: skill-adapter

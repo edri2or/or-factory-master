@@ -1,4 +1,5 @@
 ---
+audience: shared
 description: Compact conversation context: compress and summarize session messages, signal compact-ready. Use when compact, compress, token limit, or session too long.
 ---
 

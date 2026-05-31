@@ -1,4 +1,5 @@
 ---
+audience: shared
 description: Decodes scattered thoughts into clear intent: explains your reasoning, validates terms against the codebase, researches online, then proposes or executes. Use when you have a vague idea, half-formed question, or messy words to explore.
 synthesis-required: false
 adapted-by: skill-adapter

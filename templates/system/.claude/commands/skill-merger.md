@@ -1,4 +1,5 @@
 ---
+audience: shared
 description: Merges two or more SKILL.md workflows into one unified skill. Reads source skills, validates handoff types, gates on merge-vs-orchestrate, then proposes a merged SKILL.md. Use when combining tightly coupled skill workflows.
 synthesis-required: false
 adapted-by: skill-adapter

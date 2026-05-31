@@ -1,4 +1,5 @@
 ---
+audience: shared
 description: Produces document records for all GitHub Actions automations: SLSA provenance, OWASP permission planes, Evidence/Assumption traceability. Use when documenting workflows, building a workflow registry, or creating reproducible guides.
 ---
 

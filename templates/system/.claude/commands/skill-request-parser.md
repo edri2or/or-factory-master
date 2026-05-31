@@ -1,4 +1,5 @@
 ---
+audience: shared
 description: Reformulates a scattered or informal skill request into a clean, structured block ready for /build-skill. Use when you have a rough idea for a skill and want it phrased clearly before building.
 ---
 

@@ -1,4 +1,5 @@
 ---
+audience: shared
 description: Creates a new Claude Code SKILL.md from scratch. Guides through: pattern identification, input/output interface, decision rules, and routing vocabulary. Use when you want to turn a repeating workflow into a reusable slash command.
 ---
 
@@ -160,6 +161,13 @@ Only after routing verification passes:
    Write SKILL.md using the Write tool.
 
 2. Edit `plugin.json` to append the new skill path to the `skills` array.
+
+3. **If this skill is also installed as a factory slash command** (a file under
+   `.claude/commands/<name>.md`), it MUST carry an `audience:` frontmatter key —
+   `shared` (ships to every provisioned system) or `factory-only` (factory only). Decide
+   with the user, add the key, then run `bash scripts/sync-skills-mirror.sh` so the system
+   mirror is regenerated. CI fails an untagged command. See `docs/skills-audience.md`.
+   (Plugin SKILL.md files under `.claude/plugins/` do not need this key — only `.claude/commands/`.)
 
 ## Safety Rules
 

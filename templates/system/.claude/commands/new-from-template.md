@@ -1,4 +1,5 @@
 ---
+audience: shared
 description: Create a new GitHub repo from a template and rename all template references to the new project name. Use when scaffolding a new project from a template repo in one step.
 ---
 

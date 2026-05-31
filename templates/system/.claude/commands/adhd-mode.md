@@ -1,4 +1,5 @@
 ---
+audience: shared
 description: Adapts Claude's responses for ADHD throughout the session: chunked output, situational analogy, reduced cognitive load. Optional context token: scattered/overload/hyper/flow. Use when you need ADHD-friendly communication for the rest of the session.
 ---
 

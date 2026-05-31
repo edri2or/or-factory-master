@@ -615,11 +615,15 @@ jobs:
           SYSTEM_NAME: ${{ inputs.system_name }}
         run: |
           set -euo pipefail
-          # Scaffold the factory's .claude package into the new repo: the global
-          # reusable command-skills (.claude/commands/*.md) AND project skills
+          # Scaffold the factory's .claude package into the new repo: the
+          # command-skills (.claude/commands/*.md) AND project skills
           # such as .claude/skills/gcp-hands-client/SKILL.md (lets the new repo
-          # dispatch GCP ops to edri2or/gcp-hands out of the box). Copy the whole
-          # .claude tree so any future additions propagate automatically.
+          # dispatch GCP ops to edri2or/gcp-hands out of the box). The commands
+          # dir under templates/system/.claude is the DERIVED `audience: shared`
+          # subset (NOT a byte clone of all factory commands) — factory-only
+          # commands stay in the factory. check-skills-mirror.sh keeps it in sync;
+          # scripts/sync-skills-mirror.sh regenerates it. See docs/skills-audience.md.
+          # Copy the whole templates/system/.claude tree so additions propagate.
           # Runs before branch protection so the push to main needs no bypass.
           # APP_TOKEN is masked (::add-mask::); keep `set -x` off so the token
           # embedded in the clone URL is never echoed.

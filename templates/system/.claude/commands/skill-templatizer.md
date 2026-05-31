@@ -1,4 +1,5 @@
 ---
+audience: shared
 description: Automatically classifies a new SKILL.md as portable or project-specific, synthesizes placeholders where needed, and copies it to exported-skills/. Runs after /build-skill. Use to export a skill for cross-repo deployment.
 synthesis-required: false
 adapted-by: skill-adapter
