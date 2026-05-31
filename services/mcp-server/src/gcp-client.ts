@@ -358,6 +358,105 @@ export async function listAllProjects(): Promise<ProjectSummary[]> {
   }));
 }
 
+// === GCP project-quota status (mcp-project-quota dev) ===
+//
+// The org counts ACTIVE + soft-deleted (DELETE_REQUESTED) projects toward its
+// project-creation quota. GCP keeps a deleted project for ~30 days before it is
+// permanently purged and its quota slot frees up. This constant drives the
+// estimated free-up date.
+const PROJECT_DELETE_RETENTION_DAYS = 30;
+
+export interface SoftDeletedProject {
+  projectId: string;
+  displayName: string;
+  projectNumber: string;
+  deleteTime: string | null; // when deletion was requested (v3 deleteTime)
+  freeUpDate: string | null; // deleteTime + ~30d — estimated quota free-up
+  daysRemaining: number | null; // whole days from now until freeUpDate (>= 0)
+}
+
+export interface ProjectQuotaStatus {
+  activeCount: number;
+  softDeletedCount: number;
+  softDeletedProjects: SoftDeletedProject[];
+  retentionDays: number;
+  note: string;
+}
+
+// Pure helper (no network — exported for unit testing): given a v3 `deleteTime`
+// (ISO 8601), compute the estimated quota free-up date (deleteTime + retention)
+// and whole days remaining from `now`. Returns nulls for a missing/unparseable
+// deleteTime; clamps a past free-up to 0 days remaining.
+export function computeFreeUpDate(
+  deleteTime: string | null | undefined,
+  now: Date = new Date(),
+): { freeUpDate: string | null; daysRemaining: number | null } {
+  if (!deleteTime) return { freeUpDate: null, daysRemaining: null };
+  const deleted = new Date(deleteTime);
+  if (Number.isNaN(deleted.getTime())) return { freeUpDate: null, daysRemaining: null };
+  const dayMs = 24 * 60 * 60 * 1000;
+  const freeUp = new Date(deleted.getTime() + PROJECT_DELETE_RETENTION_DAYS * dayMs);
+  const daysRemaining = Math.max(0, Math.ceil((freeUp.getTime() - now.getTime()) / dayMs));
+  return { freeUpDate: freeUp.toISOString(), daysRemaining };
+}
+
+// Lists soft-deleted (DELETE_REQUESTED) projects via Cloud Resource Manager v3,
+// whose `projects:search` exposes the `deleteTime` field that the v1 list lacks.
+// Result depth depends on the SA's IAM (same caveat as listAllProjects).
+// Paginates via nextPageToken.
+export async function listSoftDeletedProjects(now: Date = new Date()): Promise<SoftDeletedProject[]> {
+  const out: SoftDeletedProject[] = [];
+  let pageToken: string | undefined;
+  do {
+    const qs = new URLSearchParams({ query: 'state:DELETE_REQUESTED', pageSize: '200' });
+    if (pageToken) qs.set('pageToken', pageToken);
+    const data = (await gcpFetch(
+      `https://cloudresourcemanager.googleapis.com/v3/projects:search?${qs.toString()}`,
+    )) as {
+      projects?: Array<{
+        projectId?: string;
+        name?: string; // "projects/<number>"
+        displayName?: string;
+        deleteTime?: string;
+      }>;
+      nextPageToken?: string;
+    };
+    for (const p of data.projects ?? []) {
+      const { freeUpDate, daysRemaining } = computeFreeUpDate(p.deleteTime ?? null, now);
+      out.push({
+        projectId: p.projectId ?? '',
+        displayName: p.displayName ?? '',
+        projectNumber: (p.name ?? '').replace(/^projects\//, ''),
+        deleteTime: p.deleteTime ?? null,
+        freeUpDate,
+        daysRemaining,
+      });
+    }
+    pageToken = data.nextPageToken;
+  } while (pageToken);
+  return out;
+}
+
+// Aggregates project-quota status: ACTIVE count (v1) + soft-deleted (v3, with
+// each project's estimated free-up). No new IAM — runs as the broker SA that
+// list-recoverable-projects.yml already uses. The org's absolute
+// project-creation cap is not exposed via API, so this reports usage + the
+// free-up schedule, not the absolute ceiling.
+export async function getProjectQuotaStatus(now: Date = new Date()): Promise<ProjectQuotaStatus> {
+  const [active, softDeleted] = await Promise.all([listAllProjects(), listSoftDeletedProjects(now)]);
+  softDeleted.sort((a, b) => (a.daysRemaining ?? 0) - (b.daysRemaining ?? 0));
+  return {
+    activeCount: active.length,
+    softDeletedCount: softDeleted.length,
+    softDeletedProjects: softDeleted,
+    retentionDays: PROJECT_DELETE_RETENTION_DAYS,
+    note:
+      'Counts reflect only projects the broker SA can enumerate. freeUpDate is an ' +
+      'estimate (deleteTime + ~30d GCP retention). The org-wide absolute ' +
+      'project-creation cap is not exposed via API.',
+  };
+}
+
 export interface IamBinding {
   role: string;
   members: string[];
