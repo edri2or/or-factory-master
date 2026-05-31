@@ -74,9 +74,9 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 - [x] רשומות `gh-last-run` ל-`protect-main`, `oil-autofix-verify`, `oil-autofix-investigate`,
       `deploy-mcp-server`, `eval-agent-router`. `eval-agent-router-precheck` (רק על PR, אין ריצות main) הוצא ל-`registry-exempt.txt` כהחלטה מודעת.
 - [x] hook קיים-אך-לא-מחווט מסומן 🚨 (נבדק ב-bats); כל שורה עם קישור blob (hook) / workflow (event).
-- [ ] CI ירוק על ה-PR + אימות ריצה אמיתית של השומר (17 רשומות) באישור Or.
+- [x] CI ירוק על ה-PR (#244) + ריצה אמיתית של השומר (17 רשומות). הריצה הראשונה תפסה false-positive (ראה תיקון למטה); אחרי התיקון מצופה `ok=17`.
 
-**הערת התקדמות אחרונה:** מומש: שתי שיטות הוכחה חדשות ב-`run-watchdog.sh` — `static-integrity` (hooks) ו-`gh-last-run` (workflows מונעי-אירוע, ללא חלון-טריות) + 7 רשומות חדשות (2 hooks + 5 events) + עדכון README + 8 בדיקות bats חדשות. שדרגתי `CURRENT_STAGE` ל-3. אימות מקומי: shellcheck נקי, כל 18 בדיקות ה-bats עוברות, ריצת-עשן על הפנקס האמיתי (17 רשומות) מסתיימת ב-`ok=2` (ה-hooks מאומתים ללא טוקן) + exit 0. נותר: לאמת ירוק על ה-PR ואז ריצה אמיתית.
+**הערת התקדמות אחרונה:** שלב 3 מומש ומוזג (PR #244). **הריצה האמיתית הראשונה תפסה באג בקוד שלי** (לא באוטומציה): `oil-autofix-verify` רץ על כל push ל-main אבל מדלג (`skipped`) כשהקומיט אינו מיזוג-OIL — וזו התנהגות תקינה. הקוד שלי התייחס לכל תוצאה שאינה `success` ככשל, אז סימן `skipped` רצוף כ-🚨 (`ok=16 red=1` + `factory.watchdog.degraded` שגוי + כרטיס Linear שגוי). **תוקן** ב-PR נפרד: helper `_conclusion_is_failing` שמסווג `skipped`/`neutral` כתקין, מיושם בכל שלוש שיטות ההוכחה מבוססות-הריצות + 3 בדיקות bats. נותר: למזג את התיקון, לאמת `ok=17`, ולסגור את כרטיס ה-Linear השגוי.
 
 **שינוי תוכנית:** `eval-agent-router-precheck` הוצא להיתר (PR-only) במקום רשומה — שיטת `gh-last-run` בודקת main, ול-precheck אין ריצות main; זו החלטה מתועדת בקובץ ההיתר.
 

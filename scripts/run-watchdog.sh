@@ -44,6 +44,17 @@ R_STATUS=""    # ok | warn | red | unknown | pending
 R_DETAIL_HE="" # Hebrew one-liner
 R_URL=""       # clickable evidence link
 
+# GitHub run conclusions that mean the automation actually FAILED. NOTE that
+# `skipped` (a conditional no-op — e.g. oil-autofix-verify runs on every push to
+# main but skips unless the commit is an OIL merge) and `neutral`/`stale` are
+# healthy, NOT failures — treating them as red is a false positive.
+_conclusion_is_failing() {
+  case "$1" in
+    failure|cancelled|timed_out|startup_failure|action_required) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 # --- proof: gh-run-freshness ------------------------------------------------
 # Asserts a scheduled/event workflow has a recent successful run on main.
 proof_gh_run_freshness() {
@@ -95,7 +106,9 @@ proof_gh_run_freshness() {
   if [ -n "$succ_time" ] && [ "$succ_epoch" -gt 0 ] && [ "$age_h" -le "$tol" ]; then
     if [ "$c1" = "success" ]; then
       R_STATUS="ok"; R_URL="$succ_url"; R_DETAIL_HE="רץ בהצלחה לפני ${age_h}ש'"
-    elif [ -n "$c2" ] && [ "$c2" != "success" ]; then
+    elif ! _conclusion_is_failing "$c1"; then
+      R_STATUS="ok"; R_URL="$succ_url"; R_DETAIL_HE="הצלחה אחרונה לפני ${age_h}ש' (אחרון דילג: ${c1})"
+    elif [ -n "$c2" ] && _conclusion_is_failing "$c2"; then
       R_STATUS="red"; R_URL="$u1"; R_DETAIL_HE="2 כשלים רצופים (אחרון: ${c1})"
     else
       R_STATUS="warn"; R_URL="$u1"; R_DETAIL_HE="כשל אחרון (${c1}) — עוקב"
@@ -107,7 +120,9 @@ proof_gh_run_freshness() {
   if [ "$c1" = "success" ]; then
     R_STATUS="red"; [ -n "$succ_url" ] && R_URL="$succ_url"
     R_DETAIL_HE="הריצה האחרונה הצליחה אך מעבר לחלון (${tol}ש')"
-  elif [ -n "$c2" ] && [ "$c2" != "success" ]; then
+  elif ! _conclusion_is_failing "$c1"; then
+    R_STATUS="unknown"; R_URL="$u1"; R_DETAIL_HE="אין הצלחה טרייה (אחרון דילג: ${c1})"
+  elif [ -n "$c2" ] && _conclusion_is_failing "$c2"; then
     R_STATUS="red"; R_URL="$u1"; R_DETAIL_HE="2 כשלים רצופים (אחרון: ${c1})"
   else
     R_STATUS="warn"; R_URL="$u1"; R_DETAIL_HE="כשל אחרון (${c1}) — עוקב"
@@ -191,7 +206,7 @@ proof_gh_branch_protection() {
 
   if [ -z "$c1" ]; then
     R_STATUS="unknown"; R_DETAIL_HE="נדרש בהגנת-הענף, אך אין ריצות שהושלמו"
-  elif [ "$c1" = "success" ]; then
+  elif ! _conclusion_is_failing "$c1"; then
     R_STATUS="ok"; R_DETAIL_HE="נדרש בהגנת-הענף + הריצה האחרונה על ${branch} ירוקה"
   else
     R_STATUS="red"; R_DETAIL_HE="נדרש בהגנת-הענף, אך הריצה האחרונה נכשלה (${c1})"
@@ -242,7 +257,9 @@ proof_gh_last_run() {
     R_STATUS="unknown"; R_DETAIL_HE="אין ריצות שהושלמו (לא רץ עדיין)"
   elif [ "$c1" = "success" ]; then
     R_STATUS="ok"; R_DETAIL_HE="הריצה האחרונה על ${branch} הצליחה"
-  elif [ -n "$c2" ] && [ "$c2" != "success" ]; then
+  elif ! _conclusion_is_failing "$c1"; then
+    R_STATUS="ok"; R_DETAIL_HE="הריצה האחרונה דילגה (no-op תקין: ${c1})"
+  elif [ -n "$c2" ] && _conclusion_is_failing "$c2"; then
     R_STATUS="red"; R_DETAIL_HE="2 כשלים רצופים (אחרון: ${c1})"
   else
     R_STATUS="warn"; R_DETAIL_HE="כשל אחרון (${c1}) — עוקב"
