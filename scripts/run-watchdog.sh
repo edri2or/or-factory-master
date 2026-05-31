@@ -470,6 +470,102 @@ proof_system_branch_protection() {
   fi
 }
 
+# The system CI/deploy workflows whose latest main run must not be a failure.
+# 4 governance gates + the deploy workflow — exactly the files provision-system.yml
+# ships into every new system repo. Overridable per registry entry via
+# evidence.workflows[].
+SYSTEM_CI_WORKFLOWS_DEFAULT="changelog-check.yml pipeline-tests.yml secret-scan.yml supply-chain-check.yml deploy-railway-cloudflare.yml"
+
+# Per-system CI-runs status, the runtime twin of _system_bp_status: instead of
+# asking "is the gate still required?", it asks "did the gate's last run actually
+# pass?". For each of the system's CI+deploy workflows it reads the newest
+# COMPLETED run on the branch (same jq as proof_gh_run_freshness) and folds it
+# through _conclusion_is_failing (skipped/neutral are healthy). Returns:
+#   ok           — ≥1 workflow resolved and none is failing (success/skipped)
+#   red          — ≥1 workflow's newest completed run is a failure
+#   unresolvable — no token / no repo / no completed runs anywhere (❓, never 🚨)
+# Tests inject runs via WATCHDOG_FIXTURE_DIR/_syscir_<sys>.json — an object
+# mapping each workflow_file to a { "workflow_runs": [...] } document.
+_system_ci_status() {
+  local sys="$1" branch="$2" workflows="$3"
+  local fxdoc="" wf runs concl resolved=0 failing=0
+  if [ -n "${WATCHDOG_FIXTURE_DIR:-}" ]; then
+    local fx="${WATCHDOG_FIXTURE_DIR}/_syscir_${sys}.json"
+    [ -f "$fx" ] || { echo "unresolvable"; return; }
+    fxdoc=$(cat "$fx")
+  else
+    [ -n "$GH_API_TOKEN" ] || { echo "unresolvable"; return; }
+  fi
+
+  for wf in $workflows; do
+    if [ -n "${WATCHDOG_FIXTURE_DIR:-}" ]; then
+      runs=$(jq -c --arg w "$wf" '.[$w] // empty' <<<"$fxdoc" 2>/dev/null)
+      [ -n "$runs" ] || continue
+    else
+      local body http
+      body=$(mktemp)
+      http=$(curl -sS -m 20 -o "$body" -w '%{http_code}' \
+        -H "Authorization: Bearer ${GH_API_TOKEN}" \
+        -H "Accept: application/vnd.github+json" \
+        -H "X-GitHub-Api-Version: 2022-11-28" \
+        "${GH_API}/repos/edri2or/${sys}/actions/workflows/${wf}/runs?branch=${branch}&per_page=10" 2>/dev/null) || http="000"
+      case "$http" in
+        2*) runs=$(cat "$body") ;;
+        *)  rm -f "$body"; continue ;;
+      esac
+      rm -f "$body"
+    fi
+    concl=$(jq -r 'first(.workflow_runs[]? | select(.status=="completed") | .conclusion) // empty' <<<"$runs" 2>/dev/null)
+    [ -n "$concl" ] || continue
+    resolved=$((resolved + 1))
+    _conclusion_is_failing "$concl" && failing=$((failing + 1))
+  done
+
+  if [ "$failing" -gt 0 ]; then echo "red"; return; fi
+  if [ "$resolved" -gt 0 ]; then echo "ok"; return; fi
+  echo "unresolvable"
+}
+
+# --- proof: system-ci-runs --------------------------------------------------
+# DYNAMIC per-system fan-out (twin of proof_system_branch_protection): for each
+# real system, confirm the latest main run of each CI gate + the deploy workflow
+# is not failing. A failing run → 🚨; a system that can't be resolved (no repo /
+# no token / no runs) → ❓, never 🚨. Zero systems → ❓. Aggregated to ONE line.
+proof_system_ci_runs() {
+  local entry="$1" folder branch workflows
+  folder=$(jq -r '.evidence.systems_folder // "123180924297"' <<<"$entry")
+  branch=$(jq -r '.evidence.branch // "main"' <<<"$entry")
+  workflows=$(jq -r '.evidence.workflows[]? // empty' <<<"$entry" | tr '\n' ' ')
+  [ -n "${workflows// /}" ] || workflows="$SYSTEM_CI_WORKFLOWS_DEFAULT"
+  R_URL="https://github.com/edri2or/or-factory-master/blob/main/monitoring/watchdog-registry.json"
+
+  local systems
+  systems=$(_enumerate_systems "$folder")
+
+  local total=0 okc=0 redc=0 unkc=0 redlist=""
+  local sys st
+  for sys in $systems; do
+    [ "$sys" = "factory-test-25" ] && continue
+    total=$((total + 1))
+    st=$(_system_ci_status "$sys" "$branch" "$workflows")
+    case "$st" in
+      ok)  okc=$((okc + 1)) ;;
+      red) redc=$((redc + 1)); redlist="${redlist}${sys} " ;;
+      *)   unkc=$((unkc + 1)) ;;
+    esac
+  done
+
+  if [ "$total" -eq 0 ]; then
+    R_STATUS="unknown"; R_DETAIL_HE="אין מערכות פרוסות תחת התיקייה"
+  elif [ "$redc" -gt 0 ]; then
+    R_STATUS="red"; R_DETAIL_HE="${total} מערכות: ${okc} ✅ · ${redc} 🚨 שער/deploy נכשל (${redlist%% }) · ${unkc} ❓"
+  elif [ "$okc" -gt 0 ]; then
+    R_STATUS="ok"; R_DETAIL_HE="${total} מערכות: ${okc} ✅ שערי-CI/deploy ירוקים · ${unkc} ❓"
+  else
+    R_STATUS="unknown"; R_DETAIL_HE="${total} מערכות — ריצות שערי-CI לא ניתנות-לאימות (❓)"
+  fi
+}
+
 emoji_for() {
   case "$1" in
     ok) printf '✅' ;; warn) printf '⚠️' ;; red) printf '🚨' ;;
@@ -508,6 +604,7 @@ while [ "$i" -lt "$ENTRY_COUNT" ]; do
       static-integrity)     proof_static_integrity "$entry" ;;
       n8n-execution)        proof_n8n_execution "$entry" ;;
       system-branch-protection) proof_system_branch_protection "$entry" ;;
+      system-ci-runs)           proof_system_ci_runs "$entry" ;;
       *) R_STATUS="unknown"; R_DETAIL_HE="שיטת הוכחה לא נתמכת בשלב זה (${method})" ;;
     esac
   fi

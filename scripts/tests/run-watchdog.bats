@@ -433,3 +433,109 @@ SBP_RULES_WEAK='[{"type":"required_status_checks","parameters":{"required_status
   assert_success
   assert_output --partial "red=1"
 }
+
+# --- system-ci-runs (stage 4, dynamic per-system fan-out) --------------------
+# The runtime twin of system-branch-protection: instead of "is the gate still
+# required?" it asks "did the gate's last run actually pass?". A one-entry
+# system-ci-runs registry over two workflows; systems are injected via
+# WATCHDOG_SYSTEMS_OVERRIDE and each system's per-workflow run history via
+# fx/_syscir_<sys>.json (an object mapping workflow_file -> {workflow_runs:[...]}).
+# Asserts a failing latest run → 🚨, while skipped/neutral stay ✅ and
+# unresolvable / zero systems stay ❓ — never a false 🚨.
+make_syscir_dir() {
+  local dir
+  dir="$(make_tmpdir)"
+  mkdir -p "$dir/fx"
+  cat > "$dir/registry.json" <<'EOF'
+{ "version": 1, "entries": [
+  { "id": "scir", "name_he": "ריצות שערי-CI/deploy במערכות", "type": "system-github", "layer": "system",
+    "proof_method": "system-ci-runs",
+    "evidence": { "systems_folder": "123180924297", "branch": "main",
+                  "workflows": ["changelog-check.yml", "deploy-railway-cloudflare.yml"] },
+    "stage": 4, "enabled": true } ] }
+EOF
+  printf '%s\n' "$dir"
+}
+
+run_syscir() {
+  local dir="$1" systems="$2"
+  REGISTRY_FILE="$dir/registry.json" \
+  WATCHDOG_FIXTURE_DIR="$dir/fx" \
+  WATCHDOG_SYSTEMS_OVERRIDE="$systems" \
+  WATCHDOG_EMIT=0 TG_TOKEN="" TG_CHAT="" HEARTBEAT_URL="" \
+    bash "$WATCHDOG"
+}
+
+# Both workflows' latest completed run succeeded.
+SCIR_OK='{"changelog-check.yml":{"workflow_runs":[{"status":"completed","conclusion":"success","html_url":"https://x/1"}]},"deploy-railway-cloudflare.yml":{"workflow_runs":[{"status":"completed","conclusion":"success","html_url":"https://x/2"}]}}'
+# The deploy workflow's latest completed run failed.
+SCIR_FAIL='{"changelog-check.yml":{"workflow_runs":[{"status":"completed","conclusion":"success","html_url":"https://x/1"}]},"deploy-railway-cloudflare.yml":{"workflow_runs":[{"status":"completed","conclusion":"failure","html_url":"https://x/2"}]}}'
+# A skipped latest run is healthy (a conditional no-op, not a failure).
+SCIR_SKIPPED='{"changelog-check.yml":{"workflow_runs":[{"status":"completed","conclusion":"skipped","html_url":"https://x/1"}]}}'
+# No completed runs at all (workflow never ran) → unresolvable, never 🚨.
+SCIR_NORUNS='{"changelog-check.yml":{"workflow_runs":[]},"deploy-railway-cloudflare.yml":{"workflow_runs":[]}}'
+
+@test "syscir unknown: zero deployed systems is ❓, not 🚨" {
+  dir="$(make_syscir_dir)"
+  run run_syscir "$dir" ""
+  assert_success
+  assert_output --partial "unknown=1"
+  refute_output --partial "red=1"
+}
+
+@test "syscir unknown: the shared factory-test-25 backend is skipped" {
+  dir="$(make_syscir_dir)"
+  run run_syscir "$dir" "factory-test-25"
+  assert_success
+  assert_output --partial "unknown=1"
+}
+
+@test "syscir ok: a system whose latest CI+deploy runs all succeeded is green" {
+  dir="$(make_syscir_dir)"
+  printf '%s' "$SCIR_OK" > "$dir/fx/_syscir_sys-a.json"
+  run run_syscir "$dir" "sys-a"
+  assert_success
+  assert_output --partial "ok=1 warn=0 red=0 unknown=0"
+}
+
+@test "syscir red: a system whose latest deploy run failed is 🚨" {
+  dir="$(make_syscir_dir)"
+  printf '%s' "$SCIR_FAIL" > "$dir/fx/_syscir_sys-a.json"
+  run run_syscir "$dir" "sys-a"
+  assert_success
+  assert_output --partial "red=1"
+}
+
+@test "syscir ok: a skipped latest run is healthy, not 🚨" {
+  dir="$(make_syscir_dir)"
+  printf '%s' "$SCIR_SKIPPED" > "$dir/fx/_syscir_sys-a.json"
+  run run_syscir "$dir" "sys-a"
+  assert_success
+  assert_output --partial "ok=1 warn=0 red=0 unknown=0"
+}
+
+@test "syscir ❓: a system with no completed runs is unresolvable, not 🚨" {
+  dir="$(make_syscir_dir)"
+  printf '%s' "$SCIR_NORUNS" > "$dir/fx/_syscir_sys-a.json"
+  run run_syscir "$dir" "sys-a"
+  assert_success
+  assert_output --partial "unknown=1"
+  refute_output --partial "red=1"
+}
+
+@test "syscir ❓: a system with no run fixture is unresolvable, not 🚨" {
+  dir="$(make_syscir_dir)"
+  run run_syscir "$dir" "sys-a"
+  assert_success
+  assert_output --partial "unknown=1"
+  refute_output --partial "red=1"
+}
+
+@test "syscir red: one failing system among healthy ones makes the aggregate 🚨" {
+  dir="$(make_syscir_dir)"
+  printf '%s' "$SCIR_OK"   > "$dir/fx/_syscir_ok-sys.json"
+  printf '%s' "$SCIR_FAIL" > "$dir/fx/_syscir_bad-sys.json"
+  run run_syscir "$dir" "ok-sys bad-sys"
+  assert_success
+  assert_output --partial "red=1"
+}

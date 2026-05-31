@@ -199,6 +199,20 @@
       },
       "stage": 4,
       "enabled": true
+    },
+    {
+      "id": "system-ci-runs",
+      "name_he": "ריצות שערי-CI/deploy במערכות",
+      "type": "system-github",
+      "layer": "system",
+      "proof_method": "system-ci-runs",
+      "evidence": {
+        "systems_folder": "123180924297",
+        "branch": "main",
+        "workflows": ["changelog-check.yml", "pipeline-tests.yml", "secret-scan.yml", "supply-chain-check.yml", "deploy-railway-cloudflare.yml"]
+      },
+      "stage": 4,
+      "enabled": true
     }
   ]
 }
