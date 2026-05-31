@@ -109,7 +109,7 @@ no-op אחרת. תאום ל-`check-changelog-updated.sh`. צעד חדש ב-job *
 - [x] אות-הסטייה (`git diff built_from..main -- templates/system provision`) מזהה נכון מולד-שלא-השתנה (in_sync) מול מולד-שהשתנה (stale_mould)
 - [x] actionlint + yamllint ירוקים; no-op נקי כשהמערכת לא מוקמה (provisioned=false → skip, בלי GCP)
 
-**הערת התקדמות אחרונה:** הושלם. `reference-system-reconcile.yml` (cron 6h + dispatch ידני, מודל על system-runtime-audit). קורא `config.yml`; **no-op נקי** עד שלב 0 (provisioned=false → דילוג בלי WIF). כשמוקם: בודק drift-מולד (git diff מ-built_from ל-main על `templates/system`+provision) + בריאות /healthz, ופולט אירוע אחד (ok info / drift error+action_required → Axiom+Telegram+Linear). **התראה-בלבד — אין rebuild אוטומטי** (גארדרייל: מהלך יקר נשאר human-gated). אומת: לינטרים נקיים, no-op נכון, החלטה ו-git-signal הוכחו. ה-ok/drift החי ייבחן אחרי שלב 0. ממתין לאישור לפני שלב 5.
+**הערת התקדמות אחרונה:** הושלם. `reference-system-reconcile.yml` (cron 6h + dispatch ידני, מודל על system-runtime-audit). קורא `config.yml`; **no-op נקי** עד שלב 0 (provisioned=false → דילוג בלי WIF). כשמוקם: בודק drift-מולד (git diff מ-built_from ל-main על `templates/system`+provision) + בריאות /healthz, ופולט אירוע אחד (ok info / drift error+action_required → Axiom+Telegram+Linear). **התראה-בלבד — אין rebuild אוטומטי** (גארדרייל: מהלך יקר נשאר human-gated). אומת: לינטרים נקיים, no-op נכון, החלטה ו-git-signal הוכחו. ה-ok/drift החי ייבחן אחרי שלב 0. גם נרשם ב-`monitoring/watchdog-registry.json` (שער ה-CI דרש זאת — שומר-העל מנטר שה-cron באמת רץ). ממתין לאישור לפני שלב 5.
 
 **שינוי תוכנית:** ה-"dispatch rebuild" האופציונלי מהתוכנית הושמט בכוונה — re-provision/redeploy הוא מהלך בעלות שנשאר human-gated לפי "החוק האחד"; ה-reconcile מתריע ואור מחליט.
 
