@@ -431,7 +431,7 @@ jobs:
                   "Railway: latest deploy status + recent deployment logs"
                 ],
                 write_actions:[
-                  "n8n activate/deactivate via the request_write_action tool — each request sends the operator Telegram ✅/❌ buttons and runs ONLY after they approve"
+                  "n8n activate/deactivate AND GitHub Actions workflow_dispatch, both via the request_write_action tool — each request sends the operator Telegram ✅/❌ buttons and runs ONLY after they approve"
                 ],
                 hitl_required_for_writes:true
               }}' 2>/dev/null || echo '{}')
@@ -847,7 +847,28 @@ jobs:
                   -e "s#@@CRED_TELEGRAM_ID@@#${CRED_TELEGRAM_ID}#g" \
                   -e "s#@@N8N_DOMAIN@@#${N8N_DOMAIN}#g" \
                   -e "s#@@CHAT_ID@@#${CHAT_ID}#g" \
+                  -e "s#@@CRED_GITHUB_JWT_ID@@#${CRED_GITHUB_JWT_ID}#g" \
+                  -e "s#@@GITHUB_APP_ID@@#${GH_APP_ID}#g" \
+                  -e "s#@@GITHUB_INSTALLATION_ID@@#${GH_APP_INSTALL_ID}#g" \
+                  -e "s#@@SYSTEM_NAME@@#${SYSTEM_NAME}#g" \
                   "$PAE_SRC" > /tmp/ar-prep-pending-actions-executor.json
+              # Stage E: if no GitHub App JWT credential, strip the executor's GitHub
+              # dispatch branch and route github-target requests to the failure path,
+              # so it never references an empty credential. n8n activate/deactivate is
+              # unaffected. Same graceful-degradation jq pattern as the tool strips.
+              if [ -z "$CRED_GITHUB_JWT_ID" ] || [ "$CRED_GITHUB_JWT_ID" = "null" ]; then
+                jq '(.nodes |= map(select(.name as $n | (["GH Build JWT Claims","GH Sign JWT","GH Mint Token","GH Build Dispatch","GH Dispatch"] | index($n)) | not)))
+                    | .connections."Route by Target".main[1] = [{"node":"Build Failure","type":"main","index":0}]
+                    | del(.connections."GH Build JWT Claims")
+                    | del(.connections."GH Sign JWT")
+                    | del(.connections."GH Mint Token")
+                    | del(.connections."GH Build Dispatch")
+                    | del(.connections."GH Dispatch")' \
+                  /tmp/ar-prep-pending-actions-executor.json > /tmp/ar-prep-pending-actions-executor.json.tmp \
+                  && mv /tmp/ar-prep-pending-actions-executor.json.tmp /tmp/ar-prep-pending-actions-executor.json \
+                  || echo "WARN: pending-actions-executor GitHub-branch strip failed — using template as-is" >&2
+                echo "INFO: pending-actions-executor GitHub branch → stripped (no GitHub App credential)"
+              fi
               PENDING_EXECUTOR_ID=$(_upsert_wf "factory-master: pending-actions-executor" /tmp/ar-prep-pending-actions-executor.json no) \
                 || PENDING_EXECUTOR_ID=""
               if [ -n "$PENDING_EXECUTOR_ID" ] && [ "$PENDING_EXECUTOR_ID" != "null" ]; then

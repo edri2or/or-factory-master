@@ -103,6 +103,90 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
+        "jsCode": "// GitHub branch (Stage E): build the App JWT claims. iat backdated 60s for clock\n// skew; exp 9 min (GitHub max 10). iss = App ID (non-secret placeholder). Signing\n// happens in the built-in JWT node (RS256 + PEM credential). Mirrors github-readonly.\nconst now = Math.floor(Date.now() / 1000);\nreturn [{ json: { iat: now - 60, exp: now + 540, iss: '@@GITHUB_APP_ID@@' } }];"
+      },
+      "id": "60000000-0000-0000-0000-000000000010",
+      "name": "GH Build JWT Claims",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1040, 560]
+    },
+    {
+      "parameters": {
+        "operation": "sign",
+        "useJson": true,
+        "claimsJson": "={{ JSON.stringify({ iat: $json.iat, exp: $json.exp, iss: $json.iss }) }}",
+        "options": {}
+      },
+      "id": "60000000-0000-0000-0000-000000000011",
+      "name": "GH Sign JWT",
+      "type": "n8n-nodes-base.jwt",
+      "typeVersion": 1,
+      "position": [1240, 560],
+      "credentials": { "jwtAuth": { "id": "@@CRED_GITHUB_JWT_ID@@", "name": "GitHub App JWT (RS256)" } }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.github.com/app/installations/@@GITHUB_INSTALLATION_ID@@/access_tokens",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $json.token }}" },
+            { "name": "Accept", "value": "application/vnd.github+json" },
+            { "name": "X-GitHub-Api-Version", "value": "2022-11-28" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ repositories: ['@@SYSTEM_NAME@@'], permissions: { actions: 'write' } }) }}",
+        "options": {}
+      },
+      "id": "60000000-0000-0000-0000-000000000012",
+      "name": "GH Mint Token",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1440, 560],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Build the workflow_dispatch body. target_id = the workflow file (or id) on the\n// default branch. inputs MUST be strings (GitHub 422s otherwise) and ≤25 top-level\n// keys; objects are JSON-stringified. An optional __ref in the payload overrides\n// the default 'main'. Carries the repo-scoped installation token forward.\nconst lock = $('Lock Action').first().json;\nconst tok = ($input.first() && $input.first().json && $input.first().json.token) || '';\nlet payload = lock.normalized_payload;\nif (typeof payload === 'string') { try { payload = JSON.parse(payload); } catch (e) { payload = {}; } }\nif (!payload || typeof payload !== 'object') { payload = {}; }\nconst inputs = {};\nconst keys = Object.keys(payload).filter(k => k !== '__ref').slice(0, 25);\nfor (const k of keys) { const v = payload[k]; if (v === null || v === undefined) { continue; } inputs[String(k)] = (typeof v === 'object') ? JSON.stringify(v) : String(v); }\nconst ref = (payload.__ref && String(payload.__ref)) || 'main';\nreturn [{ json: { token: tok, workflow_file: String(lock.target_id || ''), ref: ref, body: JSON.stringify({ ref: ref, inputs: inputs }) } }];"
+      },
+      "id": "60000000-0000-0000-0000-000000000013",
+      "name": "GH Build Dispatch",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1640, 560]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.github.com/repos/edri2or/@@SYSTEM_NAME@@/actions/workflows/{{ encodeURIComponent($json.workflow_file) }}/dispatches",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $json.token }}" },
+            { "name": "Accept", "value": "application/vnd.github+json" },
+            { "name": "X-GitHub-Api-Version", "value": "2022-11-28" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.body }}",
+        "options": {}
+      },
+      "id": "60000000-0000-0000-0000-000000000014",
+      "name": "GH Dispatch",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1840, 560],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
         "jsCode": "// Carry the locked row's fields forward for the done-update + success notice.\nconst lock = $('Lock Action').first().json;\nreturn [{ json: { id: lock.id, chat_id: lock.chat_id, human_summary: lock.human_summary, action_type: lock.action_type, target_system: lock.target_system } }];"
       },
       "id": "60000000-0000-0000-0000-000000000006",
@@ -190,11 +274,26 @@
     "Route by Target": {
       "main": [
         [{ "node": "n8n API Call", "type": "main", "index": 0 }],
-        [{ "node": "Build Failure", "type": "main", "index": 0 }],
+        [{ "node": "GH Build JWT Claims", "type": "main", "index": 0 }],
         [{ "node": "Build Failure", "type": "main", "index": 0 }]
       ]
     },
     "n8n API Call": {
+      "main": [
+        [{ "node": "Build Success", "type": "main", "index": 0 }],
+        [{ "node": "Build Failure", "type": "main", "index": 0 }]
+      ]
+    },
+    "GH Build JWT Claims": { "main": [[{ "node": "GH Sign JWT", "type": "main", "index": 0 }]] },
+    "GH Sign JWT": { "main": [[{ "node": "GH Mint Token", "type": "main", "index": 0 }]] },
+    "GH Mint Token": {
+      "main": [
+        [{ "node": "GH Build Dispatch", "type": "main", "index": 0 }],
+        [{ "node": "Build Failure", "type": "main", "index": 0 }]
+      ]
+    },
+    "GH Build Dispatch": { "main": [[{ "node": "GH Dispatch", "type": "main", "index": 0 }]] },
+    "GH Dispatch": {
       "main": [
         [{ "node": "Build Success", "type": "main", "index": 0 }],
         [{ "node": "Build Failure", "type": "main", "index": 0 }]

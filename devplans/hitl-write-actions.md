@@ -24,7 +24,7 @@ templates תחת `templates/system/...` עם graceful degradation; provision-onl
 | B | מבצע (executor) — n8n activate/deactivate | completed | `pending-actions-executor.json` (חדש) + `configure-agent-router.yml` |
 | C | קליטת אישור — Switch על callback ב-tg-inbound | completed | `tg-inbound.json` + `configure-agent-router.yml` |
 | D | בקשה — כלי `request_write_action` + prompt | completed | `request-write-action.json` (חדש) + `unknown-agent.json` + `configure-agent-router.yml` |
-| E | חוט GitHub — `workflow_dispatch` ב-executor | pending | `pending-actions-executor.json` + `configure-agent-router.yml` |
+| E | חוט GitHub — `workflow_dispatch` ב-executor | completed | `pending-actions-executor.json` + `request-write-action.json` + `unknown-agent.json` + `configure-agent-router.yml` |
 | F | תיעוד + הקשחה — docs, expiry cleanup, edge cases | pending | `docs/telegram-chat-bot.md` + `docs/roadmap.md` + cleanup cron |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
@@ -97,11 +97,16 @@ templates תחת `templates/system/...` עם graceful degradation; provision-onl
 ### שלב E — חוט GitHub
 
 **Acceptance:**
-- [ ] ענף GitHub ב-executor: JWT→repoScopedToken (`repository_ids`)→`POST /actions/workflows/{file}/dispatches`, inputs כ-strings (`.toString()`, ≤25), ref=`main`.
-- [ ] אימות מקדים: App של מערכת היעד מחזיק `actions:write` (אחרת App re-register).
-- [ ] JSON תקין + CI ירוק.
+- [x] ענף GitHub ב-executor: Switch[github] → GH Build JWT Claims → GH Sign JWT (RS256) → GH Mint Token (repo-scoped: body `{repositories:[<repo>],permissions:{actions:write}}` = least-privilege) → GH Build Dispatch (inputs כ-strings, ≤25, אופציונלי `__ref`, ברירת מחדל ref=`main`) → GH Dispatch (`POST /repos/edri2or/<repo>/actions/workflows/{file}/dispatches`). כשל ב-Mint או ב-Dispatch → Build Failure → ❌.
+- [x] `request-write-action` Parse מאמת github (target_id=שם קובץ ה-workflow חובה; action_type ברירת מחדל `dispatch`; normalized_payload=inputs). תיאור הכלי + ה-prompt + כרטיס SYSTEM-INFO עודכנו לכלול github. אומת ב-node שכל המקרים (n8n/github תקין, github בלי target_id, system לא חוקי) מחזירים נכון.
+- [x] graceful-degradation: בחוסר `CRED_GITHUB_JWT_ID` ה-executor נחתך ב-github (jq) ו-Switch[github]→Build Failure; n8n לא מושפע (אומת בסימולציה). placeholders של github מוזרקים ב-5g.
+- [x] JSON תקין (`jq`), yamllint ירוק; actionlint ב-CI.
+- [ ] CI ירוק: Playground tests + pipeline-tests.
 
-**הערת התקדמות אחרונה:** —
+> **אימות מקדים (ops, לא קוד):** מערכת יעד שנרשמה *לפני* שהוספת `actions:write` ל-`register-system-app.yml` לא תקבל את ההרשאה ב-re-run רגיל (skip-when-exists) — צריך App delete + re-register. מערכות חדשות מקבלות `actions:write` אוטומטית. ה-repo-scoped token מבקש `permissions:{actions:write}`; אם ה-App חסר אותה, ה-Mint נכשל → ❌ ברור למשתמש.
+> **אימות-חי (לא ב-CI):** ה-dispatch בפועל ל-GitHub מאומת רק על מערכת מותקנת עם App מתאים.
+
+**הערת התקדמות אחרונה:** השלב מומש. נוסף ענף GitHub מלא ל-executor (JWT→repo-scoped token עם actions:write→workflow_dispatch, inputs כ-strings ≤25). request-write-action מאמת github, ותיאור הכלי+prompt+כרטיס SYSTEM-INFO עודכנו. נוסף strip ל-graceful-degradation בחוסר GitHub cred. אומת ב-jq + הרצת לוגיקת Parse ב-node. ממתין לירוק CI ולאישור Or לפני Stage F.
 
 **שינוי תוכנית:** —
 
@@ -128,3 +133,4 @@ templates תחת `templates/system/...` עם graceful degradation; provision-onl
 - שלב B הושלם — בניתי את ה"זרוע המבצעת": תהליך קטן שמקבל בקשה שאישרת, נועל אותה כך שלא תוכל לרוץ פעמיים בטעות, מפעיל/מכבה את האוטומציה ב-n8n בפועל, ואז שולח לך הודעה אם הצליח (✅) או נכשל (❌). חיבור GitHub יגיע בשלב מאוחר יותר. עדיין לא מחובר לכפתורי טלגרם — זה השלב הבא.
 - שלב C הושלם — חיברתי את לחיצת הכפתור שלך בטלגרם אל ה"זרוע": כשתלחץ ✅ הבקשה תרוץ באמת, וכשתלחץ ❌ היא תסומן כנדחתה; בשני המקרים הכפתורים נסגרים מיד כדי שלא תלחץ פעמיים. שיחה רגילה עם הבוט ממשיכה לעבוד בדיוק כמו קודם. (הכפתורים עצמם נוצרים בשלב הבא — שם נראה את הכול עובד מקצה לקצה.)
 - שלב D הושלם — סגרתי את המעגל: עכשיו אם תבקש מהבוט בשפה חופשית "תפעיל/תכבה לי את האוטומציה X", הוא יבין, ירשום בקשה, וישלח לך הודעה עם כפתורי ✅/❌ — והפעולה תתבצע רק אם תלחץ ✅. הבוט כבר לא "קריאה בלבד" — אבל הוא לעולם לא מבצע כלום בלי האישור שלך. נשאר לבדוק חי שהכפתורים מופיעים יפה על מערכת אמיתית (זה דבר שה-CI לא יכול לבדוק לבד). השלב הבא: לחבר גם הרצת workflows ב-GitHub.
+- שלב E הושלם — הוספתי את היכולת השנייה: עכשיו אפשר לבקש מהבוט (באותו אישור ✅/❌) גם **להריץ workflow ב-GitHub**, לא רק אוטומציות n8n. זה משתמש במפתח גישה זמני וצר (רק "להריץ workflows", כלום מעבר) שנוצר לכל פעולה ומתבטל מיד. אם מערכת מסוימת לא מוגדרת ל-GitHub — הבקשה פשוט תיכשל בעדינות עם הודעה ברורה, וה-n8n ממשיך לעבוד כרגיל. נשאר רק שלב אחרון: תיעוד + ניקוי בקשות שפג תוקפן + ליטוש.

@@ -33,3 +33,12 @@
 | feat | `templates/system/workflows/n8n/unknown-agent.json`: add the `request_write_action` toolWorkflow (`@@WF_REQUEST_WRITE_ID@@`) + ai_tool wiring; update the system prompt from "READ-ONLY access" to an "APPROVED WRITE ACTIONS" domain + a rule that writes are allowed only via `request_write_action`, gated on the operator's Telegram approval. |
 | feat | `templates/system/.github/workflows/configure-agent-router.yml`: install request-write-action before the sub-agent loop (gated on Postgres + Telegram), substitute `@@WF_REQUEST_WRITE_ID@@` in the loop, strip the tool from unknown-agent when the sub-workflow is absent (graceful degradation), and update the injected SYSTEM-INFO card to `write:"approved-only"` + a `write_actions` entry. |
 | chore | `monitoring/registry-exempt.txt`: exempt `request-write-action.json` from the watchdog-registry gate (same rationale as the executor — an on-demand sub-workflow with no own schedule/trigger). |
+
+## feat: hitl-write-actions — GitHub workflow_dispatch branch in the executor (Stage E)
+
+| Type | Summary |
+|---|---|
+| feat | `templates/system/workflows/n8n/pending-actions-executor.json`: add a GitHub branch to the `target_system` switch — App JWT → repo-scoped installation token (`{repositories:[<repo>],permissions:{actions:write}}`, least-privilege) → `POST /repos/edri2or/<repo>/actions/workflows/{file}/dispatches` with `ref` (default `main`, optional `__ref`) and inputs coerced to strings (≤25). Mint/dispatch errors flow to the existing Build Failure → ❌ path. |
+| feat | `templates/system/workflows/n8n/request-write-action.json`: validate `target_system=github` requests (require `target_id` = workflow file; default `action_type=dispatch`; `normalized_payload` carries the workflow_dispatch inputs). |
+| feat | `templates/system/workflows/n8n/unknown-agent.json`: extend the `request_write_action` tool description + system-prompt domain 3 to cover running GitHub Actions workflows (target_system `github`, target_id = workflow file, optional inputs). |
+| feat | `templates/system/.github/workflows/configure-agent-router.yml`: substitute the GitHub App placeholders (`@@CRED_GITHUB_JWT_ID@@`/`@@GITHUB_APP_ID@@`/`@@GITHUB_INSTALLATION_ID@@`/`@@SYSTEM_NAME@@`) into the executor; when the GitHub App JWT credential is absent, jq-strip the GitHub branch and route github requests to the failure path (n8n unaffected); update the SYSTEM-INFO card's `write_actions` to include GitHub workflow_dispatch. |
