@@ -28,7 +28,7 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REGISTRY_FILE="${REGISTRY_FILE:-monitoring/watchdog-registry.json}"
-CURRENT_STAGE="${CURRENT_STAGE:-2}"
+CURRENT_STAGE="${CURRENT_STAGE:-3}"
 GH_API="${GH_API:-https://api.github.com}"
 GH_API_TOKEN="${GH_API_TOKEN:-}"
 TG_TOKEN="${TG_TOKEN:-}"
@@ -198,6 +198,85 @@ proof_gh_branch_protection() {
   fi
 }
 
+# --- proof: gh-last-run -----------------------------------------------------
+# For EVENT-driven workflows (push/repository_dispatch/PR — no cron, so no
+# freshness window): the latest COMPLETED run on the branch must be green.
+# A workflow that legitimately hasn't run yet is ❓ (not 🚨); a single recent
+# failure is ⚠️ "watching"; two consecutive failures escalate to 🚨.
+proof_gh_last_run() {
+  local entry="$1"
+  local repo wf branch
+  repo=$(jq -r '.evidence.repo // empty' <<<"$entry")
+  wf=$(jq -r '.evidence.workflow_file // empty' <<<"$entry")
+  branch=$(jq -r '.evidence.branch // "main"' <<<"$entry")
+  R_URL="https://github.com/${repo}/actions/workflows/${wf}"
+
+  local runs_json
+  if [ -n "${WATCHDOG_FIXTURE_DIR:-}" ]; then
+    local fx="${WATCHDOG_FIXTURE_DIR}/${wf}.json"
+    [ -f "$fx" ] || { R_STATUS="unknown"; R_DETAIL_HE="אין fixture לבדיקה"; return; }
+    runs_json=$(cat "$fx")
+  else
+    [ -n "$GH_API_TOKEN" ] || { R_STATUS="unknown"; R_DETAIL_HE="אין טוקן ל-GitHub API"; return; }
+    local body http
+    body=$(mktemp)
+    http=$(curl -sS -m 20 -o "$body" -w '%{http_code}' \
+      -H "Authorization: Bearer ${GH_API_TOKEN}" \
+      -H "Accept: application/vnd.github+json" \
+      -H "X-GitHub-Api-Version: 2022-11-28" \
+      "${GH_API}/repos/${repo}/actions/workflows/${wf}/runs?branch=${branch}&per_page=10" 2>/dev/null) || http="000"
+    case "$http" in
+      2*) runs_json=$(cat "$body") ;;
+      *)  R_STATUS="unknown"; R_DETAIL_HE="GitHub API HTTP ${http}"; rm -f "$body"; return ;;
+    esac
+    rm -f "$body"
+  fi
+
+  local c1 u1 c2
+  c1=$(jq -r 'first(.workflow_runs[]? | select(.status=="completed") | .conclusion) // empty' <<<"$runs_json" 2>/dev/null)
+  u1=$(jq -r 'first(.workflow_runs[]? | select(.status=="completed") | .html_url)   // empty' <<<"$runs_json" 2>/dev/null)
+  c2=$(jq -r '[.workflow_runs[]? | select(.status=="completed") | .conclusion][1]   // empty' <<<"$runs_json" 2>/dev/null)
+  [ -n "$u1" ] && R_URL="$u1"
+
+  if [ -z "$c1" ]; then
+    R_STATUS="unknown"; R_DETAIL_HE="אין ריצות שהושלמו (לא רץ עדיין)"
+  elif [ "$c1" = "success" ]; then
+    R_STATUS="ok"; R_DETAIL_HE="הריצה האחרונה על ${branch} הצליחה"
+  elif [ -n "$c2" ] && [ "$c2" != "success" ]; then
+    R_STATUS="red"; R_DETAIL_HE="2 כשלים רצופים (אחרון: ${c1})"
+  else
+    R_STATUS="warn"; R_DETAIL_HE="כשל אחרון (${c1}) — עוקב"
+  fi
+}
+
+# --- proof: static-integrity ------------------------------------------------
+# For hooks: the script exists, is executable, and is STILL wired at its
+# registration point (e.g. referenced in .claude/settings.json). A hook that
+# exists but is no longer wired is 🚨 — the file living on is not proof it runs.
+proof_static_integrity() {
+  local entry="$1"
+  local path wired repo
+  path=$(jq -r '.evidence.path // empty' <<<"$entry")
+  wired=$(jq -r '.evidence.wired_in // empty' <<<"$entry")
+  repo=$(jq -r '.evidence.repo // "edri2or/or-factory-master"' <<<"$entry")
+  R_URL="https://github.com/${repo}/blob/main/${path}"
+
+  if [ ! -f "$path" ]; then
+    R_STATUS="red"; R_DETAIL_HE="ה-hook חסר (${path})"; return
+  fi
+  if [ ! -x "$path" ]; then
+    R_STATUS="red"; R_DETAIL_HE="ה-hook קיים אך לא ניתן-להרצה"; return
+  fi
+  if [ -n "$wired" ]; then
+    if [ ! -f "$wired" ] || ! grep -qF "$path" "$wired"; then
+      R_STATUS="red"; R_DETAIL_HE="ה-hook קיים אך לא מחווט ב-${wired}"; return
+    fi
+    R_STATUS="ok"; R_DETAIL_HE="קיים, ניתן-להרצה, ומחווט ב-${wired}"
+  else
+    R_STATUS="ok"; R_DETAIL_HE="קיים וניתן-להרצה"
+  fi
+}
+
 emoji_for() {
   case "$1" in
     ok) printf '✅' ;; warn) printf '⚠️' ;; red) printf '🚨' ;;
@@ -232,6 +311,8 @@ while [ "$i" -lt "$ENTRY_COUNT" ]; do
     case "$method" in
       gh-run-freshness)     proof_gh_run_freshness "$entry" ;;
       gh-branch-protection) proof_gh_branch_protection "$entry" ;;
+      gh-last-run)          proof_gh_last_run "$entry" ;;
+      static-integrity)     proof_static_integrity "$entry" ;;
       *) R_STATUS="unknown"; R_DETAIL_HE="שיטת הוכחה לא נתמכת בשלב זה (${method})" ;;
     esac
   fi

@@ -105,6 +105,76 @@
       "evidence": { "repo": "edri2or/or-factory-master", "branch": "main", "context": "Playground tests", "workflow_file": "playground-tests.yml" },
       "stage": 2,
       "enabled": true
+    },
+    {
+      "id": "hook-devplan-session-start",
+      "name_he": "Hook — תוכנית פיתוח (SessionStart)",
+      "type": "hook",
+      "layer": "factory",
+      "proof_method": "static-integrity",
+      "evidence": { "repo": "edri2or/or-factory-master", "path": "scripts/devplan-session-start-hook.sh", "wired_in": ".claude/settings.json" },
+      "stage": 3,
+      "enabled": true
+    },
+    {
+      "id": "hook-factory-session-start",
+      "name_he": "Hook — התקנת תלויות (SessionStart)",
+      "type": "hook",
+      "layer": "factory",
+      "proof_method": "static-integrity",
+      "evidence": { "repo": "edri2or/or-factory-master", "path": ".claude/hooks/session-start.sh", "wired_in": ".claude/settings.json" },
+      "stage": 3,
+      "enabled": true
+    },
+    {
+      "id": "event-protect-main",
+      "name_he": "הגנת-ענף (protect-main)",
+      "type": "event-workflow",
+      "layer": "factory",
+      "proof_method": "gh-last-run",
+      "evidence": { "repo": "edri2or/or-factory-master", "branch": "main", "workflow_file": "protect-main.yml" },
+      "stage": 3,
+      "enabled": true
+    },
+    {
+      "id": "event-oil-autofix-verify",
+      "name_he": "OIL — אימות אחרי מיזוג",
+      "type": "event-workflow",
+      "layer": "factory",
+      "proof_method": "gh-last-run",
+      "evidence": { "repo": "edri2or/or-factory-master", "branch": "main", "workflow_file": "oil-autofix-verify.yml" },
+      "stage": 3,
+      "enabled": true
+    },
+    {
+      "id": "event-oil-autofix-investigate",
+      "name_he": "OIL — חקירת תקלה",
+      "type": "event-workflow",
+      "layer": "factory",
+      "proof_method": "gh-last-run",
+      "evidence": { "repo": "edri2or/or-factory-master", "branch": "main", "workflow_file": "oil-autofix-investigate.yml" },
+      "stage": 3,
+      "enabled": true
+    },
+    {
+      "id": "event-deploy-mcp-server",
+      "name_he": "פריסת שרת MCP",
+      "type": "event-workflow",
+      "layer": "factory",
+      "proof_method": "gh-last-run",
+      "evidence": { "repo": "edri2or/or-factory-master", "branch": "main", "workflow_file": "deploy-mcp-server.yml" },
+      "stage": 3,
+      "enabled": true
+    },
+    {
+      "id": "event-eval-agent-router",
+      "name_he": "הערכת ראוטר הסוכנים",
+      "type": "event-workflow",
+      "layer": "factory",
+      "proof_method": "gh-last-run",
+      "evidence": { "repo": "edri2or/or-factory-master", "branch": "main", "workflow_file": "eval-agent-router.yml" },
+      "stage": 3,
+      "enabled": true
     }
   ]
 }
