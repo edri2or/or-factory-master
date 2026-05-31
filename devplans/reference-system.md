@@ -24,7 +24,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 | 2 | שער golden סטטי (הרחבת Playground) | completed | `scripts/render-system-golden.sh`, `scripts/check-system-golden.sh`, `scripts/tests/check-system-golden.bats`, `tests/golden/system/**`, `.github/workflows/playground-tests.yml` |
 | 3 | שער אנטי-סטייה תאום (CI) | completed | `scripts/check-reference-sync.sh`, `scripts/tests/check-reference-sync.bats`, `.github/workflows/changelog-check.yml` |
 | 4 | reconciliation מתוזמן | completed | `.github/workflows/reference-system-reconcile.yml` |
-| 5 | שער אימות חי על העומדת | pending | `scripts/reference-system-smoke.sh`, (אופ') `.github/workflows/reference-system-validate.yml` |
+| 5 | שער אימות חי על העומדת | completed | `scripts/reference-system-smoke.sh`, `scripts/tests/reference-system-smoke.bats` |
 | 6 | הסקיל `/dev-stage-factory` | pending | `.claude/commands/dev-stage-factory.md`, mirror sync |
 | 7 | חיווט, תיעוד, roadmap | pending | `CLAUDE.md`, `docs/roadmap.md`, `README.md` |
 
@@ -117,13 +117,13 @@ no-op אחרת. תאום ל-`check-changelog-updated.sh`. צעד חדש ב-job *
 probe ל-agent-router). אופ': `reference-system-validate.yml` שמחיל שינוי + מריץ smoke.
 
 **Acceptance:**
-- [ ] הסקריפט ירוק מול מערכת בריאה
-- [ ] נכשל (exit ≠ 0) כשמשבשים בכוונה רכיב
-- [ ] BATS/lint ירוקים
+- [x] הסקריפט ירוק מול מערכת בריאה (שרת-מוק שמנתב לפי נתיב)
+- [x] נכשל (exit 1) כשהמערכת לא מגיבה; SKIP נקי כשלא מוקמה
+- [x] BATS (3) + shellcheck ירוקים; 102/102 בכלל
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם. `reference-system-smoke.sh` קורא endpoints מ-`config.yml` (override דרך `REF_HEALTH_URL`/`REF_PUBLIC_URL`) ובודק 3 דברים: n8n חי (`/healthz` 2xx), UI דרך Caddy (`/` 200/302), ושער-ה-HMAC של Caddy חוסם webhook לא-חתום (401/429). SKIP נקי עד שלב 0. אומת: 3 bats עם שרת-מוק (skip/pass/fail), shellcheck נקי, 102/102. ממתין לאישור לפני שלב 6.
 
-**שינוי תוכנית:** —
+**שינוי תוכנית:** ה-workflow האופציונלי `reference-system-validate.yml` נדחה ויקופל לתוך הסקיל `/dev-stage-factory` (שלב 6), שם חיה לולאת "החל-על-העומדת → smoke" — כדי לא להוסיף משטח-workflow תת-בדוק (שגם היה דורש רישום ב-watchdog) שרק ידלג עד שלב 0.
 
 ---
 
@@ -168,3 +168,4 @@ probe ל-agent-router). אופ': `reference-system-validate.yml` שמחיל שי
 - שלב 2 הושלם — בנינו "שער זהב": המחשב שומר תמונת-אמת של מה שמערכת חדשה אמורה לקבל, ומשווה אליה אוטומטית בכל שינוי. אם מישהו משנה תבנית בלי לעדכן את התמונה — ה-CI עוצר. בדקנו שזה תופס סטייה ושאפשר לעדכן את התמונה בכוונה.
 - שלב 3 הושלם — הוספנו את החוק שמשלים את שער-הזהב: "נגעת בתבניות? חובה לעדכן את התמונה, אחרת חסום", ובנוסף שמירה שרשימת-המשתנים של הרינדור זהה בכל שלושת המקומות שמשתמשים בה. כך אי אפשר "לשכוח" לעדכן את התמונה.
 - שלב 4 הושלם — בנינו "שומר" אוטומטי שירוץ כל 6 שעות (אחרי שנקים את המערכת): בודק אם המערכת החיה "נשארה מאחור" מול הקוד העדכני ואם היא בריאה, ושולח התראה לטלגרם אם יש בעיה. הוא **רק מתריע** — לא בונה מחדש לבד (זה מהלך שעולה כסף ודורש את האישור שלך). בדקנו שכל ההחלטות נכונות ושכל עוד אין מערכת הוא פשוט שותק.
+- שלב 5 הושלם — בנינו בדיקת-חיות (smoke) שנריץ ידנית כדי לוודא שהמערכת העומדת עובדת מקצה-לקצה: ש-n8n חי, שהשער (Caddy) עומד בחזית וחוסם בקשות לא-מורשות, ושהכל מחובר. בדקנו שזה אומר "תקין" כשהכל עובד ו"נכשל" כשמשהו מנותק.
