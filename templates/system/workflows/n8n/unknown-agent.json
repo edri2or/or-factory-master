@@ -41,8 +41,8 @@
     },
     {
       "parameters": {
-        "model": "anthropic/claude-haiku-4.5",
-        "options": { "temperature": 0.5 }
+        "model": "anthropic/claude-sonnet-4.5",
+        "options": { "temperature": 0.3 }
       },
       "id": "c0000000-0000-0000-0000-000000000003",
       "name": "OpenRouter Chat Model",
@@ -140,8 +140,11 @@
     {
       "parameters": {
         "name": "request_write_action",
-        "description": "Use this ONLY when the operator asks you to RUN / EXECUTE / ACTIVATE / ENABLE / TURN ON / STOP / DEACTIVATE / DISABLE / TURN OFF an n8n automation, or to RUN a GitHub Actions workflow on the default branch. It does NOT perform the action — it records an approval request and sends the operator ✅/❌ buttons in Telegram; the action runs only after they tap ✅. Call it with ONE raw string that is a single JSON object (no extra prose, no markdown). Keys: target_system (\"n8n\" or \"github\"); action_type (for n8n: \"activate\" or \"deactivate\"; for github: \"dispatch\"); target_id (for n8n: the workflow id from list_workflows; for github: the workflow file name on the default branch, e.g. deploy.yml); human_summary (one short, clear Hebrew sentence describing exactly what will happen); optionally normalized_payload (an object of string input values for a github workflow_dispatch). Examples: {\"action_type\":\"activate\",\"target_system\":\"n8n\",\"target_id\":\"abc123\",\"human_summary\":\"להפעיל את האוטומציה גיבוי יומי\"} or {\"action_type\":\"dispatch\",\"target_system\":\"github\",\"target_id\":\"deploy.yml\",\"human_summary\":\"להריץ את ה-workflow deploy\"}. Returns {ok,status,message}. After it returns, tell the operator you sent them an approval request to confirm.",
-        "workflowId": { "__rl": true, "value": "@@WF_REQUEST_WRITE_ID@@", "mode": "id" }
+        "description": "Call this to request an approved write action — when the operator asks to RUN / EXECUTE / ACTIVATE / ENABLE / TURN ON / STOP / DEACTIVATE / DISABLE / TURN OFF an n8n automation, or to RUN a GitHub Actions workflow. Calling this tool IS how the operator's ✅/❌ approval buttons get sent in Telegram; the action runs ONLY after they tap ✅. Fill in the fields. For n8n, get target_id (the workflow id) from list_workflows first if you don't have it. Call it immediately when the operator asks for the action — do NOT ask them for permission first and do NOT describe it in words instead of calling. After it returns, tell the operator you've sent them an approval request to confirm.",
+        "workflowId": { "__rl": true, "value": "@@WF_REQUEST_WRITE_ID@@", "mode": "id" },
+        "specifyInputSchema": true,
+        "schemaType": "manual",
+        "inputSchema": "{\"type\":\"object\",\"required\":[\"target_system\",\"action_type\",\"target_id\",\"human_summary\"],\"properties\":{\"target_system\":{\"type\":\"string\",\"enum\":[\"n8n\",\"github\"],\"description\":\"n8n for an n8n automation; github for a GitHub Actions workflow\"},\"action_type\":{\"type\":\"string\",\"description\":\"for n8n use activate or deactivate; for github use dispatch\"},\"target_id\":{\"type\":\"string\",\"description\":\"for n8n: the workflow id from list_workflows; for github: the workflow file name, e.g. deploy.yml\"},\"human_summary\":{\"type\":\"string\",\"description\":\"one short, clear Hebrew sentence describing exactly what will happen\"}}}"
       },
       "id": "c0000000-0000-0000-0000-00000000000c",
       "name": "request_write_action",
