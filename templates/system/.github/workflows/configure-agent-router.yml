@@ -423,12 +423,15 @@ jobs:
               gcp_region:"me-west1",
               runtime:"Railway (n8n 1.121 + Postgres + Caddy)",
               capabilities:{
-                read_only:true, write:false,
+                read_only:false, write:"approved-only",
                 live_read_sources:[
                   "n8n workflows + recent executions/errors (n8n Public API)",
                   "Postgres fixed-query set: style profile, audit log, pending actions, 24h executions",
                   "GitHub for THIS repo (edri2or/\($sys)): recent CI runs, recent commits, open PRs, and file contents via read_file:<path>",
                   "Railway: latest deploy status + recent deployment logs"
+                ],
+                write_actions:[
+                  "n8n activate/deactivate via the request_write_action tool — each request sends the operator Telegram ✅/❌ buttons and runs ONLY after they approve"
                 ],
                 hitl_required_for_writes:true
               }}' 2>/dev/null || echo '{}')
@@ -460,6 +463,32 @@ jobs:
               fi
             else
               echo "WARN: postgres-named-queries.json not found in repo — skipping" >&2
+            fi
+          fi
+
+          # HITL write actions (Stage D): install the request-write-action
+          # sub-workflow BEFORE the sub-agent loop, so its id is available for the
+          # @@WF_REQUEST_WRITE_ID@@ substitution in unknown-agent.json. The LLM calls
+          # it (tool request_write_action) to RECORD an approval request + send the
+          # operator ✅/❌ Telegram buttons — it never executes anything itself
+          # (the executor does, after a press). Gated on Postgres (writes the pending
+          # row) + Telegram (sends the buttons); soft-fail. The unknown-agent strip in
+          # the loop removes the tool if this id is empty, so it never dangles.
+          WF_REQUEST_WRITE_ID=""
+          if [ -n "$CRED_POSTGRES_ID" ] && [ "$CRED_POSTGRES_ID" != "null" ] \
+             && [ -n "$CRED_TELEGRAM_ID" ] && [ "$CRED_TELEGRAM_ID" != "null" ]; then
+            RWA_SRC="${WF_DIR}/request-write-action.json"
+            if [ -f "$RWA_SRC" ]; then
+              sed -e "s#@@CRED_POSTGRES_ID@@#${CRED_POSTGRES_ID}#g" \
+                  -e "s#@@CRED_TELEGRAM_ID@@#${CRED_TELEGRAM_ID}#g" \
+                  -e "s#@@CHAT_ID@@#${CHAT_ID}#g" \
+                  "$RWA_SRC" > /tmp/ar-prep-request-write-action.json
+              WF_REQUEST_WRITE_ID=$(_upsert_wf "factory-master: request-write-action" /tmp/ar-prep-request-write-action.json no) || WF_REQUEST_WRITE_ID=""
+              { [ -n "$WF_REQUEST_WRITE_ID" ] && [ "$WF_REQUEST_WRITE_ID" != "null" ]; } \
+                && echo "PASS: factory-master: request-write-action → id=${WF_REQUEST_WRITE_ID} (לא-פעיל by design — subworkflow)" \
+                || { echo "WARN: request-write-action install failed" >&2; WF_REQUEST_WRITE_ID=""; }
+            else
+              echo "WARN: request-write-action.json not found in repo — HITL request tool skipped" >&2
             fi
           fi
 
@@ -528,6 +557,7 @@ jobs:
                 -e "s#@@WF_PG_NAMED_QUERIES_ID@@#${PG_NAMED_WF_ID}#g" \
                 -e "s#@@WF_GITHUB_READONLY_ID@@#${WF_GITHUB_READONLY_ID}#g" \
                 -e "s#@@WF_RAILWAY_READONLY_ID@@#${WF_RAILWAY_READONLY_ID}#g" \
+                -e "s#@@WF_REQUEST_WRITE_ID@@#${WF_REQUEST_WRITE_ID}#g" \
                 "$src" > "/tmp/ar-prep-${file}"
             # Phase F follow-up (Stage 108 + Stage 110): inject the SYSTEM-INFO JSON
             # into the chat-AI-agent node's systemMessage via jq gsub (not sed) so the
@@ -598,6 +628,19 @@ jobs:
                 && mv "/tmp/ar-prep-${file}.tmp" "/tmp/ar-prep-${file}" \
                 || echo "WARN: ${file} railway_readonly strip failed — placeholder may remain" >&2
               echo "INFO: ${file} railway_readonly → stripped (no Railway credential)"
+            fi
+            # HITL write actions (Stage D): if the request-write-action sub-workflow
+            # wasn't installed (no Postgres/Telegram), strip the request_write_action
+            # tool + ai_tool connection from unknown-agent so it never references a
+            # missing workflow id. Same jq pattern as the read-only tool strips above.
+            if [ "$file" = "unknown-agent.json" ] \
+               && { [ -z "$WF_REQUEST_WRITE_ID" ] || [ "$WF_REQUEST_WRITE_ID" = "null" ]; }; then
+              jq '(.nodes |= map(select(.name != "request_write_action")))
+                  | del(.connections."request_write_action")' \
+                "/tmp/ar-prep-${file}" > "/tmp/ar-prep-${file}.tmp" \
+                && mv "/tmp/ar-prep-${file}.tmp" "/tmp/ar-prep-${file}" \
+                || echo "WARN: ${file} request_write_action strip failed — placeholder may remain" >&2
+              echo "INFO: ${file} request_write_action → stripped (no Postgres/Telegram credential)"
             fi
             # Phase F follow-up (Stage 105): all 5 sub-agents now read style_profile from
             # Postgres and inject it into their system prompt. If no Postgres credential

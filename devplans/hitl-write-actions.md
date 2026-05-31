@@ -23,7 +23,7 @@ templates תחת `templates/system/...` עם graceful degradation; provision-onl
 | A | סכמה — הרחבת `pending_actions` | completed | `templates/system/workflows/n8n/db-setup.json` |
 | B | מבצע (executor) — n8n activate/deactivate | completed | `pending-actions-executor.json` (חדש) + `configure-agent-router.yml` |
 | C | קליטת אישור — Switch על callback ב-tg-inbound | completed | `tg-inbound.json` + `configure-agent-router.yml` |
-| D | בקשה — כלי `request_write_action` + prompt | pending | `request-write-action.json` (חדש) + `unknown-agent.json` + `configure-agent-router.yml` |
+| D | בקשה — כלי `request_write_action` + prompt | completed | `request-write-action.json` (חדש) + `unknown-agent.json` + `configure-agent-router.yml` |
 | E | חוט GitHub — `workflow_dispatch` ב-executor | pending | `pending-actions-executor.json` + `configure-agent-router.yml` |
 | F | תיעוד + הקשחה — docs, expiry cleanup, edge cases | pending | `docs/telegram-chat-bot.md` + `docs/roadmap.md` + cleanup cron |
 
@@ -80,11 +80,15 @@ templates תחת `templates/system/...` עם graceful degradation; provision-onl
 ### שלב D — בקשה
 
 **Acceptance:**
-- [ ] `request-write-action.json` חדש: קלט `{action_type, target_system, target_id, normalized_payload, human_summary}` → רושם שורת pending (status='pending', expires_at=now()+2h, idempotency_key) → שולח כפתורי ✅/❌ (`app:<id>`/`rej:<id>`, ≤64B) ל-Or.
-- [ ] כלי `request_write_action` ב-`unknown-agent.json` (toolWorkflow, `@@WF_REQUEST_WRITE_ID@@`) + עדכון system prompt מ-READ-ONLY לכתיבה-מאושרת.
-- [ ] התקנה + graceful-degradation strip בחסר credential; JSON תקין + CI ירוק.
+- [x] `request-write-action.json` חדש: Parse Request (מפרק JSON מה-LLM דפנסיבית + whitelist: target_system∈{n8n,github}, n8n⇒action_type∈{activate,deactivate}+target_id) → Valid? → Insert Pending (status='pending', chat_id=@@CHAT_ID@@, expires_at=now()+2h, idempotency_key, `ON CONFLICT DO NOTHING RETURNING id`) → Inserted? → Send Approval Buttons (Telegram inline ✅`app:<id>`/❌`rej:<id>`, ≤64B) → Tool Response. שגיאה→Return Error; כפילות→Return Duplicate.
+- [x] כלי `request_write_action` ב-`unknown-agent.json` (toolWorkflow, `@@WF_REQUEST_WRITE_ID@@`) + system prompt עודכן: domain 3 "APPROVED WRITE ACTIONS" + כלל "writes only via request_write_action, HITL-gated" (במקום READ-ONLY).
+- [x] התקנה (לפני לולאת ה-sub-agents) gated על Postgres+Telegram + `@@WF_REQUEST_WRITE_ID@@` ב-sed הלולאה + graceful-degradation strip של הכלי בחסר credential (אומת בסימולציה). כרטיס SYSTEM-INFO עודכן ל-`write:"approved-only"` + `write_actions`.
+- [x] JSON תקין (`jq`), yamllint ירוק; actionlint ב-CI.
+- [ ] CI ירוק: Playground tests + pipeline-tests.
 
-**הערת התקדמות אחרונה:** —
+> **לאימות-חי (לא ניתן ב-CI):** רינדור כפתורי ה-inline-keyboard ב-n8n הוא האזור ששה-handoff סימן כשביר (n8n #19955), ושם ה-`callback_data` של צומת הטלגרם. צריך לחיצת ✅/❌ אמיתית על מערכת מותקנת כדי לאשר סוף-לסוף — זה לא ניתן להוכחה ב-PR של תבניות (provision-only). המבנה, החיווט, ה-prompt וה-degradation אומתו + CI.
+
+**הערת התקדמות אחרונה:** השלב מומש. נבנה `request-write-action.json` (כלי ה-LLM): מפרק את בקשת ה-LLM, מאמת ומלבין, רושם שורת pending עם idempotency_key ו-expires_at=+2h, ושולח כפתורי ✅/❌ לטלגרם; מחזיר ל-LLM אישור/שגיאה/כפילות. נוסף הכלי + עודכן ה-prompt ב-unknown-agent (domain 3 + כלל כתיבה-מאושרת). הותקן ב-configure-agent-router עם sed + strip ל-graceful-degradation, וכרטיס SYSTEM-INFO עודכן. נותר אימות-חי של רינדור הכפתורים (ראה הערה). ממתין לירוק CI ולאישור Or לפני Stage E.
 
 **שינוי תוכנית:** —
 
@@ -123,3 +127,4 @@ templates תחת `templates/system/...` עם graceful degradation; provision-onl
 - שלב A הושלם — הכנּתי את ה"טבלה" שבה כל בקשת-פעולה תירשם לפני שתבוצע: הוספתי לה את כל השדות שצריך (איזו פעולה, על מה, סיכום קצר בעברית, מתי פגה, מי אישר, ומפתח שמונע ביצוע כפול). שינוי בטוח שלא נגע בשום דבר קיים.
 - שלב B הושלם — בניתי את ה"זרוע המבצעת": תהליך קטן שמקבל בקשה שאישרת, נועל אותה כך שלא תוכל לרוץ פעמיים בטעות, מפעיל/מכבה את האוטומציה ב-n8n בפועל, ואז שולח לך הודעה אם הצליח (✅) או נכשל (❌). חיבור GitHub יגיע בשלב מאוחר יותר. עדיין לא מחובר לכפתורי טלגרם — זה השלב הבא.
 - שלב C הושלם — חיברתי את לחיצת הכפתור שלך בטלגרם אל ה"זרוע": כשתלחץ ✅ הבקשה תרוץ באמת, וכשתלחץ ❌ היא תסומן כנדחתה; בשני המקרים הכפתורים נסגרים מיד כדי שלא תלחץ פעמיים. שיחה רגילה עם הבוט ממשיכה לעבוד בדיוק כמו קודם. (הכפתורים עצמם נוצרים בשלב הבא — שם נראה את הכול עובד מקצה לקצה.)
+- שלב D הושלם — סגרתי את המעגל: עכשיו אם תבקש מהבוט בשפה חופשית "תפעיל/תכבה לי את האוטומציה X", הוא יבין, ירשום בקשה, וישלח לך הודעה עם כפתורי ✅/❌ — והפעולה תתבצע רק אם תלחץ ✅. הבוט כבר לא "קריאה בלבד" — אבל הוא לעולם לא מבצע כלום בלי האישור שלך. נשאר לבדוק חי שהכפתורים מופיעים יפה על מערכת אמיתית (זה דבר שה-CI לא יכול לבדוק לבד). השלב הבא: לחבר גם הרצת workflows ב-GitHub.
