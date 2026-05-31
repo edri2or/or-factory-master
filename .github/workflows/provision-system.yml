@@ -656,6 +656,10 @@ jobs:
           mkdir -p "$CLONE_DIR/workflows" "$CLONE_DIR/.github/workflows"
           cp -r "$WF_SRC"/. "$CLONE_DIR/workflows/"
           cp "$CFG_SRC" "$CLONE_DIR/.github/workflows/configure-agent-router.yml"
+          # Count what actually shipped (the whole workflows/n8n tree is copied above,
+          # so new workflow JSONs ride along automatically) — keeps the PASS summary
+          # honest instead of a hardcoded number that drifts as workflows are added.
+          N8N_COUNT=$(find "$CLONE_DIR/workflows/n8n" -maxdepth 1 -name '*.json' | wc -l | tr -d ' ')
 
           # Phase D: scaffold the Caddy gateway sources so Railway can build the
           # per-system gateway from THIS repo. deploy-railway-cloudflare.yml creates
@@ -734,7 +738,7 @@ jobs:
             || { echo "FAIL: could not push scaffold to edri2or/${SYSTEM_NAME}:main" >&2; exit 1; }
 
           rm -rf "$CLONE_DIR"
-          echo "PASS: .claude package + Agent Router + Caddy gateway + CI governance bundle pushed to edri2or/${SYSTEM_NAME}:main (${COUNT} commands + gcp-hands-client skill + 3 n8n workflows + configure-agent-router.yml + Caddyfile + Dockerfile.caddy + caddy/hmacguard + 4 CI workflows + 11 portable scripts (incl. compile-changelog + devplan gate/hook) + .claude/settings.json (devplan SessionStart hook) + templates/devplan/ seed + .yamllint + CHANGELOG.md + changelog.d/ seed)."
+          echo "PASS: .claude package + Agent Router + Caddy gateway + CI governance bundle pushed to edri2or/${SYSTEM_NAME}:main (${COUNT} commands + gcp-hands-client skill + ${N8N_COUNT} n8n workflows + configure-agent-router.yml + Caddyfile + Dockerfile.caddy + caddy/hmacguard + 4 CI workflows + 11 portable scripts (incl. compile-changelog + devplan gate/hook) + .claude/settings.json (devplan SessionStart hook) + templates/devplan/ seed + .yamllint + CHANGELOG.md + changelog.d/ seed)."
 
       - name: Push system orientation docs (AGENTS.md + CLAUDE.md) to system repo
         continue-on-error: true
