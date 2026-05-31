@@ -28,7 +28,7 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REGISTRY_FILE="${REGISTRY_FILE:-monitoring/watchdog-registry.json}"
-CURRENT_STAGE="${CURRENT_STAGE:-3}"
+CURRENT_STAGE="${CURRENT_STAGE:-4}"
 GH_API="${GH_API:-https://api.github.com}"
 GH_API_TOKEN="${GH_API_TOKEN:-}"
 TG_TOKEN="${TG_TOKEN:-}"
@@ -294,6 +294,87 @@ proof_static_integrity() {
   fi
 }
 
+# Classify ONE system's latest n8n execution. Echoes a token:
+#   success | error | none | unresolvable
+# Mirrors the MCP n8n-client auth: read the system's SM `n8n-api-key` and GET
+# /api/v1/executions?limit=1 with header X-N8N-API-KEY. Tests inject the API
+# response via WATCHDOG_FIXTURE_DIR/n8n_<sys>.json (no gcloud, no network).
+_n8n_latest_status() {
+  local sys="$1" resp st cnt
+  if [ -n "${WATCHDOG_FIXTURE_DIR:-}" ]; then
+    local fx="${WATCHDOG_FIXTURE_DIR}/n8n_${sys}.json"
+    [ -f "$fx" ] || { echo "unresolvable"; return; }
+    resp=$(cat "$fx")
+  else
+    local key body http
+    key=$(gcloud secrets versions access latest --secret="n8n-api-key" --project="$sys" 2>/dev/null) || { echo "unresolvable"; return; }
+    [ -n "$key" ] || { echo "unresolvable"; return; }
+    body=$(mktemp)
+    http=$(curl -sS -m 15 -o "$body" -w '%{http_code}' \
+      -H "X-N8N-API-KEY: ${key}" -H "accept: application/json" \
+      "https://n8n-${sys}.or-infra.com/api/v1/executions?limit=1" 2>/dev/null) || http="000"
+    case "$http" in
+      2*) resp=$(cat "$body") ;;
+      *)  rm -f "$body"; echo "unresolvable"; return ;;
+    esac
+    rm -f "$body"
+  fi
+
+  cnt=$(jq -r '.data | length' <<<"$resp" 2>/dev/null || echo "0")
+  [ "$cnt" = "0" ] && { echo "none"; return; }
+  st=$(jq -r '.data[0].status // empty' <<<"$resp" 2>/dev/null)
+  case "$st" in
+    success)       echo "success" ;;
+    error|crashed) echo "error" ;;
+    *)             echo "none" ;;   # running/waiting/canceled/unknown — not decisive
+  esac
+}
+
+# --- proof: n8n-execution ---------------------------------------------------
+# DYNAMIC fan-out (like system-runtime-audit.yml): enumerate the real systems
+# (own GCP project under the Systems folder; the shared test backend
+# factory-test-25 is skipped), check each system's latest n8n execution, and
+# aggregate into ONE line. Systems that can't be resolved (no api-key / not
+# deployed / no executions) are ❓, never 🚨. Zero systems → ❓.
+proof_n8n_execution() {
+  local entry="$1"
+  local folder
+  folder=$(jq -r '.evidence.systems_folder // "123180924297"' <<<"$entry")
+  R_URL="https://github.com/edri2or/or-factory-master/blob/main/monitoring/watchdog-registry.json"
+
+  local systems
+  if [ -n "${WATCHDOG_SYSTEMS_OVERRIDE:-}" ]; then
+    systems="$WATCHDOG_SYSTEMS_OVERRIDE"
+  elif [ -n "${WATCHDOG_FIXTURE_DIR:-}" ]; then
+    systems=""   # tests drive systems via WATCHDOG_SYSTEMS_OVERRIDE
+  else
+    systems=$(gcloud projects list --filter="parent.id=${folder}" --format='value(projectId)' 2>/dev/null || echo "")
+  fi
+
+  local total=0 okc=0 redc=0 unkc=0 redlist=""
+  local sys concl
+  for sys in $systems; do
+    [ "$sys" = "factory-test-25" ] && continue
+    total=$((total + 1))
+    concl=$(_n8n_latest_status "$sys")
+    case "$concl" in
+      success) okc=$((okc + 1)) ;;
+      error)   redc=$((redc + 1)); redlist="${redlist}${sys} " ;;
+      *)       unkc=$((unkc + 1)) ;;
+    esac
+  done
+
+  if [ "$total" -eq 0 ]; then
+    R_STATUS="unknown"; R_DETAIL_HE="אין מערכות פרוסות תחת התיקייה"
+  elif [ "$redc" -gt 0 ]; then
+    R_STATUS="red"; R_DETAIL_HE="${total} מערכות: ${okc} ✅ · ${redc} 🚨 (${redlist%% }) · ${unkc} ❓"
+  elif [ "$okc" -gt 0 ]; then
+    R_STATUS="ok"; R_DETAIL_HE="${total} מערכות: ${okc} ✅ · ${unkc} ❓"
+  else
+    R_STATUS="unknown"; R_DETAIL_HE="${total} מערכות — אף ביצוע n8n לא ניתן-לאימות (❓)"
+  fi
+}
+
 emoji_for() {
   case "$1" in
     ok) printf '✅' ;; warn) printf '⚠️' ;; red) printf '🚨' ;;
@@ -330,6 +411,7 @@ while [ "$i" -lt "$ENTRY_COUNT" ]; do
       gh-branch-protection) proof_gh_branch_protection "$entry" ;;
       gh-last-run)          proof_gh_last_run "$entry" ;;
       static-integrity)     proof_static_integrity "$entry" ;;
+      n8n-execution)        proof_n8n_execution "$entry" ;;
       *) R_STATUS="unknown"; R_DETAIL_HE="שיטת הוכחה לא נתמכת בשלב זה (${method})" ;;
     esac
   fi
@@ -351,9 +433,18 @@ TODAY=$(date -u +%Y-%m-%d)
 SUMMARY_LINE="✅ ${OK}   ⚠️ ${WARN}   🚨 ${RED}   ❓ ${UNK}"
 [ "$PEND" -gt 0 ] && SUMMARY_LINE="${SUMMARY_LINE}   ⏳ ${PEND}"
 
+# Provenance: the watchdog's OWN run URL + commit SHA, so a green report is
+# itself traceable to the exact run that produced it (anti-spoofing). All
+# GITHUB_* vars are auto-set in Actions; fall back gracefully for local runs.
+PROV_REPO="${GITHUB_REPOSITORY:-edri2or/or-factory-master}"
+PROV_URL="${GITHUB_SERVER_URL:-https://github.com}/${PROV_REPO}/actions/runs/${GITHUB_RUN_ID:-local}"
+PROV_SHA="${GITHUB_SHA:-}"
+PROV_LINE="🔎 ריצת השומר: ${PROV_URL}"
+[ -n "$PROV_SHA" ] && PROV_LINE="${PROV_LINE} · SHA ${PROV_SHA:0:7}"
+
 # --- Telegram heartbeat (direct send — info-severity emit does NOT Telegram) ---
 BODY_TEXT=$(printf '%s\n\n' "${LINES[@]}")
-MSG="🛡️ דוח שמירה יומי — ${TODAY}"$'\n'"${SUMMARY_LINE}"$'\n\n'"${BODY_TEXT}"
+MSG="🛡️ דוח שמירה יומי — ${TODAY}"$'\n'"${SUMMARY_LINE}"$'\n\n'"${BODY_TEXT}"$'\n'"${PROV_LINE}"
 if [ -n "$TG_TOKEN" ] && [ -n "$TG_CHAT" ]; then
   tg_http=$(curl -sS -m 15 -o /dev/null -w '%{http_code}' -X POST \
     "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
@@ -396,6 +487,8 @@ if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
     echo "| אוטומציה | סטטוס | פירוט | קישור |"
     echo "|---|---|---|---|"
     printf '%s\n' "${SUMMARY_ROWS[@]}"
+    echo ""
+    echo "${PROV_LINE}"
   } >> "$GITHUB_STEP_SUMMARY"
 fi
 

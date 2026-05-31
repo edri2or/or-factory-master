@@ -273,3 +273,80 @@ EOF
   assert_success
   assert_output --partial "red=1"
 }
+
+# --- n8n-execution (stage 4, dynamic per-system fan-out) -------------------
+# A one-entry n8n-execution registry; systems are injected via
+# WATCHDOG_SYSTEMS_OVERRIDE and each system's executions via fx/n8n_<sys>.json.
+#   make_n8n_dir  → echoes a case dir with the registry + empty fx/
+make_n8n_dir() {
+  local dir
+  dir="$(make_tmpdir)"
+  mkdir -p "$dir/fx"
+  cat > "$dir/registry.json" <<'EOF'
+{ "version": 1, "entries": [
+  { "id": "n", "name_he": "מערכות n8n", "type": "n8n-systems", "layer": "system",
+    "proof_method": "n8n-execution",
+    "evidence": { "systems_folder": "123180924297" },
+    "stage": 4, "enabled": true } ] }
+EOF
+  printf '%s\n' "$dir"
+}
+
+# Run with an explicit systems list (override gcloud) + fixture dir.
+run_n8n() {
+  local dir="$1" systems="$2"
+  REGISTRY_FILE="$dir/registry.json" \
+  WATCHDOG_FIXTURE_DIR="$dir/fx" \
+  WATCHDOG_SYSTEMS_OVERRIDE="$systems" \
+  WATCHDOG_EMIT=0 TG_TOKEN="" TG_CHAT="" HEARTBEAT_URL="" \
+    bash "$WATCHDOG"
+}
+
+@test "n8n unknown: zero deployed systems is ❓, not 🚨" {
+  dir="$(make_n8n_dir)"
+  run run_n8n "$dir" ""
+  assert_success
+  assert_output --partial "unknown=1"
+  refute_output --partial "red=1"
+}
+
+@test "n8n unknown: the shared factory-test-25 backend is skipped" {
+  dir="$(make_n8n_dir)"
+  run run_n8n "$dir" "factory-test-25"
+  assert_success
+  assert_output --partial "unknown=1"
+}
+
+@test "n8n ok: a system whose latest execution succeeded is green" {
+  dir="$(make_n8n_dir)"
+  printf '%s' '{"data":[{"status":"success","finished":true}]}' > "$dir/fx/n8n_sys-a.json"
+  run run_n8n "$dir" "sys-a"
+  assert_success
+  assert_output --partial "ok=1 warn=0 red=0 unknown=0"
+}
+
+@test "n8n red: a system whose latest execution errored is 🚨" {
+  dir="$(make_n8n_dir)"
+  printf '%s' '{"data":[{"status":"error","finished":true}]}' > "$dir/fx/n8n_sys-a.json"
+  run run_n8n "$dir" "sys-a"
+  assert_success
+  assert_output --partial "red=1"
+}
+
+@test "n8n ❓: a deployed system with no executions is unresolvable, not 🚨" {
+  dir="$(make_n8n_dir)"
+  printf '%s' '{"data":[]}' > "$dir/fx/n8n_sys-a.json"
+  run run_n8n "$dir" "sys-a"
+  assert_success
+  assert_output --partial "unknown=1"
+  refute_output --partial "red=1"
+}
+
+@test "n8n red: one errored system among healthy ones makes the aggregate 🚨" {
+  dir="$(make_n8n_dir)"
+  printf '%s' '{"data":[{"status":"success"}]}' > "$dir/fx/n8n_ok-sys.json"
+  printf '%s' '{"data":[{"status":"error"}]}'   > "$dir/fx/n8n_bad-sys.json"
+  run run_n8n "$dir" "ok-sys bad-sys"
+  assert_success
+  assert_output --partial "red=1"
+}

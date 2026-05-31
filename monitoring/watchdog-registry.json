@@ -175,6 +175,16 @@
       "evidence": { "repo": "edri2or/or-factory-master", "branch": "main", "workflow_file": "eval-agent-router.yml" },
       "stage": 3,
       "enabled": true
+    },
+    {
+      "id": "system-n8n-executions",
+      "name_he": "ביצועי n8n במערכות",
+      "type": "n8n-systems",
+      "layer": "system",
+      "proof_method": "n8n-execution",
+      "evidence": { "systems_folder": "123180924297" },
+      "stage": 4,
+      "enabled": true
     }
   ]
 }
