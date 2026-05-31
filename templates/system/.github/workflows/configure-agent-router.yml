@@ -631,9 +631,11 @@ jobs:
             fi
             # HITL write actions (Stage D): if the request-write-action sub-workflow
             # wasn't installed (no Postgres/Telegram), strip the request_write_action
-            # tool + ai_tool connection from unknown-agent so it never references a
-            # missing workflow id. Same jq pattern as the read-only tool strips above.
-            if [ "$file" = "unknown-agent.json" ] \
+            # tool + ai_tool connection from the agents that carry it (ops-agent owns
+            # operational write-intents; unknown-agent is the general fallback) so they
+            # never reference a missing workflow id. Same jq pattern as the read-only
+            # tool strips above.
+            if { [ "$file" = "unknown-agent.json" ] || [ "$file" = "ops-agent.json" ]; } \
                && { [ -z "$WF_REQUEST_WRITE_ID" ] || [ "$WF_REQUEST_WRITE_ID" = "null" ]; }; then
               jq '(.nodes |= map(select(.name != "request_write_action")))
                   | del(.connections."request_write_action")' \
