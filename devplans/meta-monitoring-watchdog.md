@@ -18,7 +18,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
-| 1 | יסוד: פנקס + שומר-יומי (workflows מתוזמנים) + שער-CI + dead-man's-switch | pending | `monitoring/watchdog-registry.json`, `monitoring/README.md`, `monitoring/registry-exempt.txt`, `scripts/run-watchdog.sh`, `.github/workflows/meta-monitoring-watchdog.yml`, `scripts/check-watchdog-registry-updated.sh`, `scripts/create-watchdog-heartbeat.sh`, `.github/workflows/changelog-check.yml` |
+| 1 | יסוד: פנקס + שומר-יומי (workflows מתוזמנים) + שער-CI + dead-man's-switch | in-progress | `monitoring/watchdog-registry.json`, `monitoring/README.md`, `monitoring/registry-exempt.txt`, `scripts/run-watchdog.sh`, `.github/workflows/meta-monitoring-watchdog.yml`, `scripts/check-watchdog-registry-updated.sh`, `scripts/create-watchdog-heartbeat.sh`, `.github/workflows/changelog-check.yml`, `scripts/tests/run-watchdog.bats`, `scripts/tests/check-watchdog-registry-updated.bats` |
 | 2 | כיסוי שערי ה-CI (push/PR) עם הוכחת branch-protection | pending | `monitoring/watchdog-registry.json`, `scripts/run-watchdog.sh` |
 | 3 | hooks (static-integrity) + workflows מונעי-אירוע (last-real-run) | pending | `monitoring/watchdog-registry.json`, `scripts/run-watchdog.sh` |
 | 4 | כיסוי n8n/מערכות (n8n-execution) + provenance לדוח | pending | `monitoring/watchdog-registry.json`, `scripts/run-watchdog.sh` |
@@ -30,20 +30,20 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 ### שלב 1 — יסוד: פנקס + שומר-יומי + שער-CI + dead-man's-switch
 
 **Acceptance:**
-- [ ] `monitoring/watchdog-registry.json` קיים עם 5 רשומות: 4 ה-workflows המתוזמנים
+- [x] `monitoring/watchdog-registry.json` קיים עם 5 רשומות: 4 ה-workflows המתוזמנים
       (`bs-incidents-to-telegram`, `audit-openrouter-orphan-keys`, `factory-health-audit`,
       `system-runtime-audit`) + הרשומה-העצמית של השומר, כולם `proof_method: gh-run-freshness`.
-- [ ] `monitoring/README.md` מתעד את הסכמה + חוזה הרישום + בדיקת dead-man's-switch רבעונית.
-- [ ] `scripts/run-watchdog.sh` קורא את הפנקס, מבצע הוכחת freshness לכל רשומה, מיישם את כלל
+- [x] `monitoring/README.md` מתעד את הסכמה + חוזה הרישום + בדיקת dead-man's-switch רבעונית.
+- [x] `scripts/run-watchdog.sh` קורא את הפנקס, מבצע הוכחת freshness לכל רשומה, מיישם את כלל
       "2 כשלים רצופים", ובונה דוח טלגרם בעברית עם קישור ישיר לכל רשומה.
-- [ ] `.github/workflows/meta-monitoring-watchdog.yml` רץ `cron 0 5 * * *` + `workflow_dispatch`,
+- [x] `.github/workflows/meta-monitoring-watchdog.yml` רץ `cron 0 5 * * *` + `workflow_dispatch`,
       עם WIF + broker App token, שולח טלגרם ישיר, קורא ל-`emit-event.sh`, וכותב טבלת `$GITHUB_STEP_SUMMARY`.
-- [ ] `scripts/check-watchdog-registry-updated.sh` (תאום `check-devplan-updated.sh`) חוסם הוספה/מחיקה
+- [x] `scripts/check-watchdog-registry-updated.sh` (תאום `check-devplan-updated.sh`) חוסם הוספה/מחיקה
       של workflow/n8n ללא עדכון הפנקס, עם allowlist `monitoring/registry-exempt.txt`; מחווט ל-job "Changelog gates".
-- [ ] `scripts/create-watchdog-heartbeat.sh` מקים heartbeat ב-Better Stack (אידמפוטנטי), והשומר פינג אליו בכל ריצה.
+- [x] `scripts/create-watchdog-heartbeat.sh` מקים heartbeat ב-Better Stack (אידמפוטנטי), והשומר פינג אליו בכל ריצה.
 - [ ] Playground + שאר שערי ה-CI ירוקים על ה-PR.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** מומש מלא ונבדק מקומית — shellcheck (severity=error), yamllint, actionlint, ו-12 בדיקות bats חדשות (לוגיקת freshness + שער הפנקס) ירוקות; כל חבילת ה-bats (44) עוברת; ריצת-עשן של `run-watchdog.sh` מול הפנקס האמיתי מסתיימת ב-exit 0. נותר: לאמת ירוק על ה-PR, ואז הקמת ה-heartbeat האמיתי (dispatch עם `setup_heartbeat=true`) באישור Or.
 
 **שינוי תוכנית:** —
 

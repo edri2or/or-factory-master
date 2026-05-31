@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "id": "factory-health-audit",
+      "name_he": "בדיקת בריאות Factory",
+      "type": "cron-workflow",
+      "layer": "factory",
+      "proof_method": "gh-run-freshness",
+      "cadence": { "cron": "0 */6 * * *", "tolerance_hours": 9 },
+      "evidence": { "repo": "edri2or/or-factory-master", "workflow_file": "factory-health-audit.yml" },
+      "stage": 1,
+      "enabled": true
+    },
+    {
+      "id": "system-runtime-audit",
+      "name_he": "בדיקת ריצת מערכות",
+      "type": "cron-workflow",
+      "layer": "factory",
+      "proof_method": "gh-run-freshness",
+      "cadence": { "cron": "15 */6 * * *", "tolerance_hours": 9 },
+      "evidence": { "repo": "edri2or/or-factory-master", "workflow_file": "system-runtime-audit.yml" },
+      "stage": 1,
+      "enabled": true
+    },
+    {
+      "id": "audit-openrouter-orphan-keys",
+      "name_he": "ביקורת מפתחות OpenRouter",
+      "type": "cron-workflow",
+      "layer": "factory",
+      "proof_method": "gh-run-freshness",
+      "cadence": { "cron": "0 6 * * *", "tolerance_hours": 30 },
+      "evidence": { "repo": "edri2or/or-factory-master", "workflow_file": "audit-openrouter-orphan-keys.yml" },
+      "stage": 1,
+      "enabled": true
+    },
+    {
+      "id": "bs-incidents-to-telegram",
+      "name_he": "תקריות Better Stack לטלגרם",
+      "type": "cron-workflow",
+      "layer": "factory",
+      "proof_method": "gh-run-freshness",
+      "cadence": { "cron": "*/5 * * * *", "tolerance_hours": 2 },
+      "evidence": { "repo": "edri2or/or-factory-master", "workflow_file": "bs-incidents-to-telegram.yml" },
+      "stage": 1,
+      "enabled": true
+    },
+    {
+      "id": "meta-monitoring-watchdog",
+      "name_he": "שומר-העל (עצמי)",
+      "type": "cron-workflow",
+      "layer": "factory",
+      "proof_method": "gh-run-freshness",
+      "cadence": { "cron": "0 5 * * *", "tolerance_hours": 30 },
+      "evidence": { "repo": "edri2or/or-factory-master", "workflow_file": "meta-monitoring-watchdog.yml" },
+      "stage": 1,
+      "enabled": true
+    }
+  ]
+}
