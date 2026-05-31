@@ -2,7 +2,7 @@
 dev_name: מערכת-ייחוס עומדת קבועה + אנטי-סטייה
 slug: reference-system
 opened: 2026-05-31
-status: active   # active בזמן פיתוח → completed בסיום (משחרר את שער ה-CI)
+status: completed   # active בזמן פיתוח → completed בסיום (משחרר את שער ה-CI)
 ---
 
 # תוכנית פיתוח — מערכת-ייחוס עומדת קבועה ("מכונית-ייחוס")
@@ -44,9 +44,9 @@ token מוגבל-פרויקט/workspace היכן שניתן. polling לפי פר
 - [x] `gcp_project_quota_status` נבדק (4 פעילים/22 מחוקים-רכים), עלות הוצגה, ואור אישר adopt על `factory-test-18`
 - [x] provision + register (2-קליקים אנושיים) + deploy הסתיימו ב-success (polling אישר terminal status)
 - [x] אומת חי דרך MCP: `/healthz`→200, `/`→200 (n8n 1.121.0 UI), `/webhook/` לא-חתום→401 (שער HMAC של Caddy). Railway: n8n deploy SUCCESS. (verify-tools: GCP 11/11; "postgres not found" ו-GitHub ruleset/marker = אי-התאמות-שם של כלי-האימות, לא תקלה — n8n בריא ⇒ DB מחובר)
-- [ ] **configure-agent-router** — חיווט מוח-הסוכנים ל-n8n (רץ עכשיו; אור הזכיר שזה שלב חסר בהקמה מלאה)
+- [x] **configure-agent-router** — חיווט מוח-הסוכנים ל-n8n הצליח ואומת: n8n מכיל 20 workflows (9 פעילים) כולל Agent Router (פעיל) + 5 הסוכנים (ops/code/research/infra/unknown) + טלגרם + כלים (אור הזכיר שזה שלב חסר — תוקן)
 
-**הערת התקדמות אחרונה:** המערכת העומדת **חיה ומאומתת** — adopt על `factory-test-18`, repo `or-factory-reference`, n8n+Postgres+Caddy עם SSL. `config.yml` עודכן ל-`provisioned: true` (+ railway id, built_from_commit `9bfc1b7`). נותר שלב אחרון בהקמה: `configure-agent-router` (רץ) — אחריו ייסגר הפיתוח.
+**הערת התקדמות אחרונה:** הושלם. המערכת העומדת **חיה, מלאה ומאומתת** — adopt על `factory-test-18`, repo `or-factory-reference`, n8n+Postgres+Caddy עם SSL, ומוח-הסוכנים מחווט (Agent Router + 5 סוכנים פעילים ב-n8n). `config.yml` ב-`provisioned: true`. כל 8 השלבים (0–7) הושלמו.
 
 **שינוי תוכנית:** 31.5 — לפי בחירת אור, שלב 0 (הקמה אמיתית בעלות) נדחה לסוף; קודם בונים את שערי-הקוד 1→7 בלי עלות, ואז מבצעים את 0 עם אישור-ביצוע מפורש נפרד.
 
@@ -172,3 +172,4 @@ probe ל-agent-router). אופ': `reference-system-validate.yml` שמחיל שי
 - שלב 5 הושלם — בנינו בדיקת-חיות (smoke) שנריץ ידנית כדי לוודא שהמערכת העומדת עובדת מקצה-לקצה: ש-n8n חי, שהשער (Caddy) עומד בחזית וחוסם בקשות לא-מורשות, ושהכל מחובר. בדקנו שזה אומר "תקין" כשהכל עובד ו"נכשל" כשמשהו מנותק.
 - שלב 6 הושלם — בנינו את ה"מוצר הסופי": הסקיל `/dev-stage-factory`. זה כלי ייעודי (רק לפקטורי) שמנהל פיתוח-תהליך-הקמה דרך שתי השכבות ברצף — קודם בודק על המערכת העומדת, ואז הקמה-נקייה-מאפס — עם עצירה-לאישור בכל גבול. ודאנו שהוא לא נשלח למערכות.
 - שלב 7 הושלם — תיעדנו הכל (CLAUDE.md, roadmap, README) כדי שכל סוכן עתידי יבין את המנגנון. בזה נסגרו כל שלבי-הקוד (1–7) בלי שום עלות. נשאר רק שלב 0 — ההקמה האמיתית של המערכת העומדת — שמחכה לאישור-הביצוע שלך.
+- שלב 0 הושלם — **הקמנו את המערכת העומדת בפועל!** מיחזרנו פרויקט מחוק (factory-test-18), והקמנו עליו את `or-factory-reference`: n8n+Postgres+Caddy חיים עם SSL, ומוח-הסוכנים (Agent Router + 5 סוכנים) מחווט. אומת מקצה-לקצה. **הפיתוח הושלם — יש לנו מכונית-ייחוס חיה.**

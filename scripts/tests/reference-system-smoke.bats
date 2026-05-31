@@ -34,7 +34,7 @@ PY
 
 teardown() {
   [ -n "${MOCK_PID:-}" ] && kill "$MOCK_PID" 2>/dev/null || true
-  unset REF_HEALTH_URL REF_PUBLIC_URL MOCK_PID
+  unset REF_HEALTH_URL REF_PUBLIC_URL MOCK_PID REF_CONFIG_FILE
   common_teardown
 }
 
@@ -52,6 +52,19 @@ start_mock() {
 }
 
 @test "SKIP: unprovisioned with no overrides is a clean skip" {
+  # Isolate from the real reference-system/config.yml (whose provisioned flag
+  # flips to true once the standing system is built) — this test only asserts
+  # the unprovisioned-no-overrides path.
+  cat > "$WORK/config.yml" <<'YML'
+system_name: smoke-test
+repo: edri2or/smoke-test
+gcp_project_id: smoke-test
+region: me-west1
+public_url: https://n8n-smoke-test.or-infra.com
+health_url: https://n8n-smoke-test.or-infra.com/healthz
+provisioned: false
+YML
+  export REF_CONFIG_FILE="$WORK/config.yml"
   run bash "$SMOKE"
   assert_success
   assert_output --partial "SKIP"
