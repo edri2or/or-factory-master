@@ -157,6 +157,12 @@ Reuse-mode consequences (state them to the user): all secrets live in `factory-t
 
 **Still confirm cost/scope with the user before dispatching — test or real** (per "The one rule"). Test provisions are 0-quota but still create a real GitHub repo + Railway project and mutate the shared project.
 
+### Answering project-quota questions
+
+When the user asks anything about the project quota — *"כמה פרויקטים פנויים יש לנו?"*, *"מתי יתפנו הפרויקטים שנמחקו?"*, *"תראה לי מצב מכסת הפרויקטים"*, or any paraphrase — call the **`gcp_project_quota_status`** MCP tool. It is the single source of truth: read-only, runs as the broker SA, returns `activeCount`, `softDeletedCount`, and per soft-deleted project its `deleteTime` + estimated `freeUpDate` (deleteTime + ~30d) + `daysRemaining` (sorted soonest-first). It supersedes manually dispatching `list-recoverable-projects.yml` for this question. Present the result in plain Hebrew (group projects by free-up date; lead with what frees up soonest).
+
+Two honest caveats to always state: (1) the org's **absolute** project-creation cap is **not exposed by any GCP API**, so the tool reports *usage* (active + soft-deleted, both count toward the cap for ~30d) and the *free-up schedule* — never an exact "X free slots remaining". (2) `freeUpDate` is an estimate (`deleteTime` + 30d retention). If a real system is needed before the soonest free-up, the answer is **adopt mode** (recycle a soft-deleted project — see the table above). The tool sources each `deleteTime` via a per-project v3 `projects.get` (v3 `projects:search` omits it; the v1 `list_gcp_projects` tool returns only ACTIVE projects, no delete metadata).
+
 ## Propagation patterns
 
 GCP IAM has *eventual consistency* between policy update and effective permissions. Any `gcloud` call against a resource that was just created (in the same workflow run) can fail with `PERMISSION_DENIED` or `does not exist` for up to ~60s, even though `get-iam-policy` or `describe` already shows the resource/binding.
