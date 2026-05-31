@@ -1,0 +1,28 @@
+# Reference system — declarative descriptor ("מכונית-ייחוס")
+#
+# The single source of truth for the standing reference test system: a live,
+# permanent, isolated system the factory builds developments against BEFORE
+# they land in template code. Flat `key: value` YAML on purpose — a grep/sed
+# parse (scripts/reference-config.sh) is enough, so the reconcile + smoke
+# flows need no `yq` on the CI runner.
+#
+# Runtime ids (railway_project_id, built_from_commit, template_version) are
+# empty until Stage 0 (the real provision) runs; `provisioned: false` until
+# then. The reconcile workflow (Stage 4) treats the not-yet-provisioned state
+# as a no-op, so this descriptor is safe to commit ahead of the provision.
+
+# --- identity (known ahead of the provision) ---
+system_name: or-factory-reference
+repo: edri2or/or-factory-reference
+gcp_project_id: or-factory-reference
+region: me-west1
+
+# --- public endpoints (deterministic from system_name) ---
+public_url: https://n8n-or-factory-reference.or-infra.com
+health_url: https://n8n-or-factory-reference.or-infra.com/healthz
+
+# --- runtime state (filled by Stage 0 provision/deploy) ---
+provisioned: false
+railway_project_id: ""
+built_from_commit: ""
+template_version: ""

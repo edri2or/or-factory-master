@@ -19,8 +19,8 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
-| 0 | הקמת המערכת העומדת (הקמה אמיתית — דורש אישור מפורש) | pending | `provision-system.yml` / `register-system-app.yml` / deploy (dispatch בלבד) |
-| 1 | רישום ותיעוד | pending | `reference-system/config.yml`, `docs/reference-system.md` |
+| 0 | הקמת המערכת העומדת (הקמה אמיתית — דורש אישור מפורש) | pending (נדחה לסוף) | `provision-system.yml` / `register-system-app.yml` / deploy (dispatch בלבד) |
+| 1 | רישום ותיעוד | completed | `reference-system/config.yml`, `scripts/reference-config.sh`, `docs/reference-system.md` |
 | 2 | שער golden סטטי (הרחבת Playground) | pending | `scripts/render-system-golden.sh`, `scripts/check-system-golden.sh`, `tests/golden/system/**`, `.github/workflows/playground-tests.yml` |
 | 3 | שער אנטי-סטייה תאום (CI) | pending | `scripts/check-reference-sync.sh`, `.github/workflows/changelog-check.yml` |
 | 4 | reconciliation מתוזמן | pending | `.github/workflows/reference-system-reconcile.yml` |
@@ -29,7 +29,8 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 | 7 | חיווט, תיעוד, roadmap | pending | `CLAUDE.md`, `docs/roadmap.md`, `README.md` |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
-> **סדר:** 0→1→2→3→4→5→6→7. הסקיל אחרון כי תלוי בשערים 2–5.
+> **סדר ביצוע (בחירת אור 31.5):** 1→2→3→4→5→6→7 ואז **0 אחרון** — קודם בונים את כל
+> שערי-הקוד בלי עלות, ואת ההקמה האמיתית (שלב 0) עושים בסוף עם אישור-ביצוע נפרד.
 
 ---
 
@@ -44,22 +45,22 @@ token מוגבל-פרויקט/workspace היכן שניתן. polling לפי פר
 - [ ] provision + register + deploy הסתיימו ב-success (polling אישר terminal status)
 - [ ] `verify_gcp/github/railway/cloudflare_system` ירוקים; n8n `/healthz` מחזיר 2xx
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** ממתין — נדחה לסוף הפיתוח לפי בחירת אור.
 
-**שינוי תוכנית:** —
+**שינוי תוכנית:** 31.5 — לפי בחירת אור, שלב 0 (הקמה אמיתית בעלות) נדחה לסוף; קודם בונים את שערי-הקוד 1→7 בלי עלות, ואז מבצעים את 0 עם אישור-ביצוע מפורש נפרד.
 
 ---
 
 ### שלב 1 — רישום ותיעוד
 
 **Acceptance:**
-- [ ] `reference-system/config.yml` קיים עם `repo`, `gcp_project_id`, `railway_project_id`, `built_from_commit`/`template_version`
-- [ ] `docs/reference-system.md` מסביר את מודל שתי-השכבות ואת מנגנון האנטי-סטייה
-- [ ] lint עובר; ה-config הוא YAML תקין שנקרא ע"י סקריפט פשוט
+- [x] `reference-system/config.yml` קיים עם `repo`, `gcp_project_id`, `railway_project_id`, `built_from_commit`/`template_version`
+- [x] `docs/reference-system.md` מסביר את מודל שתי-השכבות ואת מנגנון האנטי-סטייה
+- [x] lint עובר; ה-config הוא YAML תקין שנקרא ע"י סקריפט פשוט (`scripts/reference-config.sh`)
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם. `reference-system/config.yml` (descriptor שטוח, `provisioned: false` עד שלב 0) + `scripts/reference-config.sh` (קורא/מאמת בלי `yq`, shellcheck נקי, `validate`/`get` עובדים) + `docs/reference-system.md` (מודל שתי-השכבות + אנטי-סטייה). ממתין לאישור לפני שלב 2.
 
-**שינוי תוכנית:** —
+**שינוי תוכנית:** הוסף `scripts/reference-config.sh` (לא היה במפורש בתוכנית) — קורא שטוח שייֵשּׁוּב ב-reconcile (שלב 4) וב-smoke (שלב 5), ונותן את הוכחת ה"נקרא ע"י סקריפט פשוט".
 
 ---
 
@@ -167,4 +168,4 @@ probe ל-agent-router). אופ': `reference-system-validate.yml` שמחיל שי
 
 > שורה פשוטה אחת לכל שלב שהסתיים — בשפה ש-Or מבין, בלי ז'רגון.
 
-- (מתמלא תוך כדי.)
+- שלב 1 הושלם — רשמנו "מי" המערכת העומדת בקובץ קונפיג + כתבנו מסמך שמסביר את הרעיון (שתי שכבות + איך מונעים סטייה). עדיין בלי הקמה אמיתית.
