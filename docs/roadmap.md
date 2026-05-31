@@ -121,6 +121,22 @@ Shipped as ordered `/dev-stage` stages, each merged + verified before the next:
 
 **Stage 7 (deferred):** widen the fixer beyond bash-runnable `scripts/*.sh` (a TS test runner, etc.) — it will start as its own `/dev-stage`. Today the fixer only touches `or-factory-master` and only code with a bash reproducer; `.github/workflows/*`, WIF/IAM, and secrets are always off-limits.
 
+## Phase H — feat: standing reference system + anti-drift
+
+A live, permanent, isolated "reference car" the factory validates provisioning-process changes against *before* they land in template code — closing the gap between static template checks (which catch typos, not behaviour) and throwaway test systems (which only ever prove a clean Day-0 install). **Two-layer model:** Layer A is the standing system (`reference-system/config.yml`) where a change is applied and proven end-to-end (catches **Day-2** breakage of a system with state); Layer B is the unchanged `factory-test-25`, a fresh from-scratch build (catches **Day-0**). A standing system can **drift** from current output, so three mechanisms keep it faithful. Full reference: `docs/reference-system.md`.
+
+Shipped as ordered `/dev-stage` stages (code gates first, at zero cost; the real provision last):
+
+- **Stage 1** ✅ — descriptor + reader + docs (`reference-system/config.yml`, `scripts/reference-config.sh`, `docs/reference-system.md`).
+- **Stage 2** ✅ — static golden gate (`scripts/render-system-golden.sh` + `scripts/check-system-golden.sh` → `tests/golden/system/MANIFEST.sha256`), wired into the **Playground tests** job.
+- **Stage 3** ✅ — twin anti-drift CI gate (`scripts/check-reference-sync.sh`): mould↔golden coupling + envsubst allow-list parity, in the **Changelog gates** job.
+- **Stage 4** ✅ — scheduled reconciliation (`reference-system-reconcile.yml`, 6h): mould-drift + liveness → `ok` / `drift` event. **Alert-only**, clean no-op until provisioned.
+- **Stage 5** ✅ — end-to-end smoke (`scripts/reference-system-smoke.sh`): n8n health behind Caddy, UI via Caddy, edge HMAC guard.
+- **Stage 6** ✅ — the `/dev-stage-factory` skill (`audience: factory-only`): runs a provisioning-process development through both layers, every costed move Or-gated.
+- **Stage 7** ✅ — docs (this section + `CLAUDE.md` + `docs/reference-system.md`).
+
+**Stage 0 (the real provision of the standing system — `or-factory-reference`, a new GCP project: cost + a project-quota slot) runs only on Or's explicit go**, after the code gates. Until then the runtime pieces (reconcile, smoke) are clean no-ops.
+
 ## Things we are deliberately not building
 
 The previous factory had these and they bought less than they cost:

@@ -26,7 +26,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 | 4 | reconciliation מתוזמן | completed | `.github/workflows/reference-system-reconcile.yml` |
 | 5 | שער אימות חי על העומדת | completed | `scripts/reference-system-smoke.sh`, `scripts/tests/reference-system-smoke.bats` |
 | 6 | הסקיל `/dev-stage-factory` | completed | `.claude/commands/dev-stage-factory.md`, mirror sync |
-| 7 | חיווט, תיעוד, roadmap | pending | `CLAUDE.md`, `docs/roadmap.md`, `README.md` |
+| 7 | חיווט, תיעוד, roadmap | completed | `CLAUDE.md`, `docs/roadmap.md`, `README.md` |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
 > **סדר ביצוע (בחירת אור 31.5):** 1→2→3→4→5→6→7 ואז **0 אחרון** — קודם בונים את כל
@@ -150,11 +150,11 @@ probe ל-agent-router). אופ': `reference-system-validate.yml` שמחיל שי
 (Phase חדש אחרי Phase G), `README.md` אם נדרש.
 
 **Acceptance:**
-- [ ] CLAUDE.md + roadmap מעודכנים ועקביים עם מה שנבנה
-- [ ] כל השערים ("Playground tests", "Changelog gates") ירוקים
-- [ ] אין required-context חדש בענף-ההגנה
+- [x] `CLAUDE.md` (טבלת workflows + סעיף Development workflow + Key files), `docs/roadmap.md` (Phase H), `README.md` (layout) מעודכנים ועקביים
+- [x] כל השערים ("Playground tests", "Changelog gates") ירוקים — שינוי .md בלבד, no-op על שערי-הקוד
+- [x] אין required-context חדש (הכל רוכב על jobs קיימים)
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם. תיעדתי את כל המנגנון: ב-`CLAUDE.md` נוספו שורת ה-workflow של ה-reconcile, פסקה על `/dev-stage-factory` + שלוש שכבות האנטי-סטייה, וארבע שורות Key files; `docs/roadmap.md` קיבל Phase H מלא (שלבים 1–7 ✅, ושלב 0 כ-explicit-go); README קיבל את `reference-system/` + `docs/reference-system.md`. שלבי-הקוד 1–7 הושלמו. נשאר רק שלב 0 (הקמה אמיתית) — ממתין לאישור-ביצוע מפורש של אור.
 
 **שינוי תוכנית:** —
 
@@ -170,3 +170,4 @@ probe ל-agent-router). אופ': `reference-system-validate.yml` שמחיל שי
 - שלב 4 הושלם — בנינו "שומר" אוטומטי שירוץ כל 6 שעות (אחרי שנקים את המערכת): בודק אם המערכת החיה "נשארה מאחור" מול הקוד העדכני ואם היא בריאה, ושולח התראה לטלגרם אם יש בעיה. הוא **רק מתריע** — לא בונה מחדש לבד (זה מהלך שעולה כסף ודורש את האישור שלך). בדקנו שכל ההחלטות נכונות ושכל עוד אין מערכת הוא פשוט שותק.
 - שלב 5 הושלם — בנינו בדיקת-חיות (smoke) שנריץ ידנית כדי לוודא שהמערכת העומדת עובדת מקצה-לקצה: ש-n8n חי, שהשער (Caddy) עומד בחזית וחוסם בקשות לא-מורשות, ושהכל מחובר. בדקנו שזה אומר "תקין" כשהכל עובד ו"נכשל" כשמשהו מנותק.
 - שלב 6 הושלם — בנינו את ה"מוצר הסופי": הסקיל `/dev-stage-factory`. זה כלי ייעודי (רק לפקטורי) שמנהל פיתוח-תהליך-הקמה דרך שתי השכבות ברצף — קודם בודק על המערכת העומדת, ואז הקמה-נקייה-מאפס — עם עצירה-לאישור בכל גבול. ודאנו שהוא לא נשלח למערכות.
+- שלב 7 הושלם — תיעדנו הכל (CLAUDE.md, roadmap, README) כדי שכל סוכן עתידי יבין את המנגנון. בזה נסגרו כל שלבי-הקוד (1–7) בלי שום עלות. נשאר רק שלב 0 — ההקמה האמיתית של המערכת העומדת — שמחכה לאישור-הביצוע שלך.
