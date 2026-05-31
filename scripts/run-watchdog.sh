@@ -28,7 +28,7 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REGISTRY_FILE="${REGISTRY_FILE:-monitoring/watchdog-registry.json}"
-CURRENT_STAGE="${CURRENT_STAGE:-1}"
+CURRENT_STAGE="${CURRENT_STAGE:-2}"
 GH_API="${GH_API:-https://api.github.com}"
 GH_API_TOKEN="${GH_API_TOKEN:-}"
 TG_TOKEN="${TG_TOKEN:-}"
@@ -114,6 +114,90 @@ proof_gh_run_freshness() {
   fi
 }
 
+# --- proof: gh-branch-protection -------------------------------------------
+# Asserts a CI gate is STILL enforced: its check `context` must still be in the
+# branch's required-status-checks (the protect-main ruleset) AND the gate's
+# latest completed run on the branch must be green. A context dropped from
+# branch protection is 🚨 even when the workflow file still exists — the file
+# living on is not proof the gate is enforced.
+proof_gh_branch_protection() {
+  local entry="$1"
+  local repo branch context wf
+  repo=$(jq -r '.evidence.repo // empty' <<<"$entry")
+  branch=$(jq -r '.evidence.branch // "main"' <<<"$entry")
+  context=$(jq -r '.evidence.context // empty' <<<"$entry")
+  wf=$(jq -r '.evidence.workflow_file // empty' <<<"$entry")
+  R_URL="https://github.com/${repo}/settings/rules"
+
+  # 1) Rules in effect for the branch (rulesets + legacy protection, flattened).
+  local rules_json
+  if [ -n "${WATCHDOG_FIXTURE_DIR:-}" ]; then
+    local rfx="${WATCHDOG_FIXTURE_DIR}/_rules_${branch}.json"
+    [ -f "$rfx" ] || { R_STATUS="unknown"; R_DETAIL_HE="אין fixture לכללי הענף"; return; }
+    rules_json=$(cat "$rfx")
+  else
+    [ -n "$GH_API_TOKEN" ] || { R_STATUS="unknown"; R_DETAIL_HE="אין טוקן ל-GitHub API"; return; }
+    local body http
+    body=$(mktemp)
+    http=$(curl -sS -m 20 -o "$body" -w '%{http_code}' \
+      -H "Authorization: Bearer ${GH_API_TOKEN}" \
+      -H "Accept: application/vnd.github+json" \
+      -H "X-GitHub-Api-Version: 2022-11-28" \
+      "${GH_API}/repos/${repo}/rules/branches/${branch}" 2>/dev/null) || http="000"
+    case "$http" in
+      2*) rules_json=$(cat "$body") ;;
+      *)  R_STATUS="unknown"; R_DETAIL_HE="GitHub API HTTP ${http} (כללי ענף)"; rm -f "$body"; return ;;
+    esac
+    rm -f "$body"
+  fi
+
+  # Is the context present in any required_status_checks rule for the branch?
+  local present
+  present=$(jq -r --arg c "$context" \
+    '[ .[]? | select(.type=="required_status_checks")
+            | .parameters.required_status_checks[]? | .context ] | index($c) // empty' \
+    <<<"$rules_json" 2>/dev/null)
+  if [ -z "$present" ]; then
+    R_STATUS="red"; R_DETAIL_HE="השער הוסר מהגנת-הענף (context: ${context})"
+    return
+  fi
+
+  # 2) Context still required → the gate's latest completed run on the branch
+  #    must be green.
+  local runs_json
+  if [ -n "${WATCHDOG_FIXTURE_DIR:-}" ]; then
+    local sfx="${WATCHDOG_FIXTURE_DIR}/${wf}.json"
+    [ -f "$sfx" ] || { R_STATUS="unknown"; R_DETAIL_HE="נדרש בהגנת-הענף, אך אין fixture לריצות"; return; }
+    runs_json=$(cat "$sfx")
+  else
+    local body http
+    body=$(mktemp)
+    http=$(curl -sS -m 20 -o "$body" -w '%{http_code}' \
+      -H "Authorization: Bearer ${GH_API_TOKEN}" \
+      -H "Accept: application/vnd.github+json" \
+      -H "X-GitHub-Api-Version: 2022-11-28" \
+      "${GH_API}/repos/${repo}/actions/workflows/${wf}/runs?branch=${branch}&per_page=5" 2>/dev/null) || http="000"
+    case "$http" in
+      2*) runs_json=$(cat "$body") ;;
+      *)  R_STATUS="unknown"; R_DETAIL_HE="נדרש בהגנת-הענף, אך GitHub API HTTP ${http}"; rm -f "$body"; return ;;
+    esac
+    rm -f "$body"
+  fi
+
+  local c1 u1
+  c1=$(jq -r 'first(.workflow_runs[]? | select(.status=="completed") | .conclusion) // empty' <<<"$runs_json" 2>/dev/null)
+  u1=$(jq -r 'first(.workflow_runs[]? | select(.status=="completed") | .html_url)   // empty' <<<"$runs_json" 2>/dev/null)
+  [ -n "$u1" ] && R_URL="$u1"
+
+  if [ -z "$c1" ]; then
+    R_STATUS="unknown"; R_DETAIL_HE="נדרש בהגנת-הענף, אך אין ריצות שהושלמו"
+  elif [ "$c1" = "success" ]; then
+    R_STATUS="ok"; R_DETAIL_HE="נדרש בהגנת-הענף + הריצה האחרונה על ${branch} ירוקה"
+  else
+    R_STATUS="red"; R_DETAIL_HE="נדרש בהגנת-הענף, אך הריצה האחרונה נכשלה (${c1})"
+  fi
+}
+
 emoji_for() {
   case "$1" in
     ok) printf '✅' ;; warn) printf '⚠️' ;; red) printf '🚨' ;;
@@ -146,7 +230,8 @@ while [ "$i" -lt "$ENTRY_COUNT" ]; do
     R_URL="https://github.com/edri2or/or-factory-master/blob/main/monitoring/watchdog-registry.json"
   else
     case "$method" in
-      gh-run-freshness) proof_gh_run_freshness "$entry" ;;
+      gh-run-freshness)     proof_gh_run_freshness "$entry" ;;
+      gh-branch-protection) proof_gh_branch_protection "$entry" ;;
       *) R_STATUS="unknown"; R_DETAIL_HE="שיטת הוכחה לא נתמכת בשלב זה (${method})" ;;
     esac
   fi

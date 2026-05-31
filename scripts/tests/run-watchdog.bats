@@ -86,3 +86,58 @@ run_wd() {
   assert_success
   assert_output --partial "unknown=1"
 }
+
+# --- gh-branch-protection (stage 2) ----------------------------------------
+# Build a one-entry gh-branch-protection registry + a branch-rules fixture
+# (_rules_main.json) + a runs fixture for the gate's workflow.
+#   make_bp_case <context> <workflow_file> <rules_json> <runs_json>
+make_bp_case() {
+  local ctx="$1" wf="$2" rules="$3" runs="$4" dir
+  dir="$(make_tmpdir)"
+  mkdir -p "$dir/fx"
+  cat > "$dir/registry.json" <<EOF
+{ "version": 1, "entries": [
+  { "id": "g", "name_he": "שער", "type": "ci-gate", "layer": "factory",
+    "proof_method": "gh-branch-protection",
+    "evidence": { "repo": "edri2or/or-factory-master", "branch": "main",
+                  "context": "${ctx}", "workflow_file": "${wf}" },
+    "stage": 2, "enabled": true } ] }
+EOF
+  printf '%s' "$rules" > "$dir/fx/_rules_main.json"
+  printf '%s' "$runs"  > "$dir/fx/${wf}.json"
+  printf '%s\n' "$dir"
+}
+
+# A rules document where "Changelog gates" is a required status check.
+BP_RULES_OK='[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"Changelog gates"},{"context":"Playground tests"}]}}]'
+
+@test "bp ok: required context + latest run green is green" {
+  dir="$(make_bp_case "Changelog gates" cg.yml "$BP_RULES_OK" \
+    '{"workflow_runs":[{"status":"completed","conclusion":"success","html_url":"https://x/1"}]}')"
+  run run_wd "$dir"
+  assert_success
+  assert_output --partial "ok=1 warn=0 red=0 unknown=0"
+}
+
+@test "bp red: context dropped from branch protection is red even if file exists" {
+  dir="$(make_bp_case "Supply chain gates" sc.yml "$BP_RULES_OK" \
+    '{"workflow_runs":[{"status":"completed","conclusion":"success","html_url":"https://x/1"}]}')"
+  run run_wd "$dir"
+  assert_success
+  assert_output --partial "red=1"
+}
+
+@test "bp red: required context but latest run failed is red" {
+  dir="$(make_bp_case "Changelog gates" cg.yml "$BP_RULES_OK" \
+    '{"workflow_runs":[{"status":"completed","conclusion":"failure","html_url":"https://x/2"}]}')"
+  run run_wd "$dir"
+  assert_success
+  assert_output --partial "red=1"
+}
+
+@test "bp unknown: required context but no completed runs cannot be verified" {
+  dir="$(make_bp_case "Changelog gates" cg.yml "$BP_RULES_OK" '{"workflow_runs":[]}')"
+  run run_wd "$dir"
+  assert_success
+  assert_output --partial "unknown=1"
+}
