@@ -20,8 +20,8 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 |---|---|---|---|
 | 1 | יסוד: פנקס + שומר-יומי (workflows מתוזמנים) + שער-CI + dead-man's-switch | completed | `monitoring/watchdog-registry.json`, `monitoring/README.md`, `monitoring/registry-exempt.txt`, `scripts/run-watchdog.sh`, `.github/workflows/meta-monitoring-watchdog.yml`, `scripts/check-watchdog-registry-updated.sh`, `scripts/create-watchdog-heartbeat.sh`, `.github/workflows/changelog-check.yml`, `scripts/tests/run-watchdog.bats`, `scripts/tests/check-watchdog-registry-updated.bats` |
 | 2 | כיסוי שערי ה-CI (push/PR) עם הוכחת branch-protection | completed | `monitoring/watchdog-registry.json`, `scripts/run-watchdog.sh`, `scripts/tests/run-watchdog.bats` |
-| 3 | hooks (static-integrity) + workflows מונעי-אירוע (last-real-run) | in-progress | `monitoring/watchdog-registry.json`, `monitoring/registry-exempt.txt`, `monitoring/README.md`, `scripts/run-watchdog.sh`, `scripts/tests/run-watchdog.bats` |
-| 4 | כיסוי n8n/מערכות (n8n-execution) + provenance לדוח | pending | `monitoring/watchdog-registry.json`, `scripts/run-watchdog.sh` |
+| 3 | hooks (static-integrity) + workflows מונעי-אירוע (last-real-run) | completed | `monitoring/watchdog-registry.json`, `monitoring/registry-exempt.txt`, `monitoring/README.md`, `scripts/run-watchdog.sh`, `scripts/tests/run-watchdog.bats` |
+| 4 | כיסוי n8n/מערכות (n8n-execution) + provenance לדוח | in-progress | `monitoring/watchdog-registry.json`, `monitoring/README.md`, `scripts/run-watchdog.sh`, `scripts/tests/run-watchdog.bats` |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
 
@@ -85,13 +85,14 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 ### שלב 4 — כיסוי n8n/מערכות + provenance
 
 **Acceptance:**
-- [ ] `run-watchdog.sh` מאמת ביצועי n8n דרך ה-REST API per-system; רשומות ה-n8n עוברות ל-`enabled:true`.
-- [ ] מערכות שלא ניתן לפתור מסומנות "❓" ולא 🚨 (reuse-mode לא ב-folder).
-- [ ] הדוח היומי כולל את כתובת הריצה של השומר עצמו + SHA (green ניתן-למעקב).
+- [x] `run-watchdog.sh` מאמת ביצועי n8n דרך ה-REST API per-system (`gh` proof `n8n-execution`, fan-out דינמי): קורא `n8n-api-key` מ-SM של כל מערכת ושואל `GET /api/v1/executions?limit=1`. רשומת `system-n8n-executions` ב-`enabled:true`.
+- [x] מערכות שלא ניתן לפתור מסומנות "❓" ולא 🚨 (אין-מפתח/אין-ביצוע/לא-פרוס; 0 מערכות → ❓). `factory-test-25` המשותף מדולג.
+- [x] הדוח היומי (טלגרם + step-summary) כולל שורת provenance: כתובת ריצת השומר + SHA קצר.
+- [ ] CI ירוק על ה-PR + ריצה אמיתית של השומר (18 רשומות) באישור Or. (E2E של ✅/🚨 per-system יתאפשר רק כשתיפרס מערכת אמיתית — עד אז שורת n8n = ❓.)
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** מומש: שיטת `n8n-execution` (fan-out דינמי כמו `system-runtime-audit`) + helper `_n8n_latest_status` + רשומת `system-n8n-executions` בפנקס + שורת provenance בדוח + עדכון README. שדרגתי `CURRENT_STAGE` ל-4. אימות מקומי: shellcheck נקי, כל 27 בדיקות ה-bats עוברות (6 חדשות ל-n8n), וסמוק-ראן על הפנקס המלא (18 רשומות) מסתיים ב-exit 0 עם שורת n8n=❓ ("אין מערכות פרוסות") ושורת provenance תקינה. נותר: מיזוג + ריצה אמיתית.
 
-**שינוי תוכנית:** —
+**שינוי תוכנית:** במקום רשומה-לכל-מערכת (סטטית), נבחר **fan-out דינמי** — רשומה אחת שמונה את המערכות בזמן-ריצה (מערכות נוצרות/נמחקות דינמית; זהה לדפוס `system-runtime-audit.yml`). מאחר שאין כרגע מערכת אמיתית פרוסה, הוכחת ✅/🚨 per-system תאומת מול n8n חי רק בעתיד; v1 מאומת ביוניט-טסטים + ריצה אמיתית שמראה ❓.
 
 ---
 
@@ -99,4 +100,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 
 > שורה פשוטה אחת לכל שלב שהסתיים — בשפה ש-Or מבין, בלי ז'רגון.
 
-- <מתמלא תוך כדי>
+- **שלב 1** — הקמנו את "השומר-העל": כל בוקר הוא בודק שכל אוטומציה רצה, שולח לך דוח בטלגרם, ויש שומר חיצוני שתופס אם השומר עצמו מת.
+- **שלב 2** — השומר מוודא שכל 5 שערי הבטיחות של ה-CI עדיין נאכפים באמת (לא רק שהקובץ קיים).
+- **שלב 3** — נוספו ה-hooks וה-workflows מונעי-האירוע. כאן נתפס באג קטן שלי (התייחס ל"דילוג" תקין ככשל) — תוקן מיד.
+- **שלב 4** — השומר יודע לבדוק גם את ה-n8n של כל מערכת עתידית, וכל דוח חתום בקישור לריצה שהפיקה אותו (אי אפשר לזייף).
