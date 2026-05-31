@@ -19,7 +19,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
 | 1 | תבנית המערכת: hook + חיווט שער CI | completed | `templates/system/.claude/settings.json`, `templates/system/.github/workflows/changelog-check.yml` |
-| 2 | provision-system.yml: שליחת הסקריפטים + תבנית ה-devplan | pending | `.github/workflows/provision-system.yml` |
+| 2 | provision-system.yml: שליחת הסקריפטים + תבנית ה-devplan | completed | `.github/workflows/provision-system.yml` |
 | 3 | תיעוד: גילוי במערכת + עקביות בפקטורי | pending | `templates/system/AGENTS.md.template`, `CLAUDE.md` |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
@@ -42,12 +42,12 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 ### שלב 2 — provision-system.yml: שליחת הסקריפטים + תבנית ה-devplan
 
 **Acceptance:**
-- [ ] לולאת הסקריפטים מעתיקה גם `check-devplan-updated` ו-`devplan-session-start-hook`, עם `chmod +x` ל-hook.
-- [ ] צעד חדש מעתיק `templates/devplan/DEVPLAN.template.md` ל-`$CLONE_DIR/templates/devplan/`.
-- [ ] `git add` כולל `templates`; echo ה-PASS מעודכן.
-- [ ] `shellcheck`/`bash -n` על שינויי ה-run; `yamllint` על ה-workflow עובר.
+- [x] לולאת הסקריפטים מעתיקה גם `check-devplan-updated` ו-`devplan-session-start-hook`, עם `chmod +x` ל-hook.
+- [x] צעד חדש מעתיק `templates/devplan/DEVPLAN.template.md` ל-`$CLONE_DIR/templates/devplan/`.
+- [x] `git add` כולל `templates`; echo ה-PASS מעודכן.
+- [x] `shellcheck`/`bash -n` על שינויי ה-run; `yamllint` על ה-workflow עובר.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם — שני הסקריפטים נוספו ללולאת ההעתקה (+chmod ל-hook), נוסף צעד שמעתיק את תבנית ה-devplan, `git add` כולל `templates`, ו-yamllint עבר.
 
 **שינוי תוכנית:** —
 
@@ -70,3 +70,4 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 > שורה פשוטה אחת לכל שלב שהסתיים — בשפה ש-Or מבין, בלי ז'רגון.
 
 - שלב 1 הושלם — הוספתי לתבנית של כל מערכת חדשה את ה"מזכיר" (hook) ואת בלם הבטיחות (שער ה-CI) של dev-stage.
+- שלב 2 הושלם — דאגתי שה-provision באמת ישלח לכל מערכת חדשה את הסקריפטים ואת תבנית התוכנית, כך שהמנגנון מגיע בפועל.
