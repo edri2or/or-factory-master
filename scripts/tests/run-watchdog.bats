@@ -142,6 +142,14 @@ BP_RULES_OK='[{"type":"required_status_checks","parameters":{"required_status_ch
   assert_output --partial "unknown=1"
 }
 
+@test "bp ok: required context + a skipped latest run is healthy (not red)" {
+  dir="$(make_bp_case "Changelog gates" cg.yml "$BP_RULES_OK" \
+    '{"workflow_runs":[{"status":"completed","conclusion":"skipped","html_url":"https://x/1"}]}')"
+  run run_wd "$dir"
+  assert_success
+  assert_output --partial "ok=1 warn=0 red=0 unknown=0"
+}
+
 # --- gh-last-run (stage 3, event-driven workflows) -------------------------
 #   make_lastrun_case <workflow_file> <runs_json>
 make_lastrun_case() {
@@ -186,6 +194,26 @@ EOF
 @test "last-run red: two consecutive failures escalate" {
   dir="$(make_lastrun_case ev.yml \
     '{"workflow_runs":[{"status":"completed","conclusion":"failure","html_url":"https://x/3"},{"status":"completed","conclusion":"failure","html_url":"https://x/2"}]}')"
+  run run_wd "$dir"
+  assert_success
+  assert_output --partial "red=1"
+}
+
+@test "last-run ok: a skipped no-op run is healthy, not a failure" {
+  # Real case: oil-autofix-verify runs on every push to main but skips unless
+  # the commit is an OIL merge. Consecutive 'skipped' must NOT escalate to red.
+  dir="$(make_lastrun_case ev.yml \
+    '{"workflow_runs":[{"status":"completed","conclusion":"skipped","html_url":"https://x/3"},{"status":"completed","conclusion":"skipped","html_url":"https://x/2"}]}')"
+  run run_wd "$dir"
+  assert_success
+  assert_output --partial "ok=1 warn=0 red=0 unknown=0"
+}
+
+@test "last-run red: skipped most-recent does not mask an older real failure pair" {
+  # skipped (newest) then two real failures → the skipped is healthy, but the
+  # latest DECISIVE conclusion is a failure with a failing predecessor → red.
+  dir="$(make_lastrun_case ev.yml \
+    '{"workflow_runs":[{"status":"completed","conclusion":"failure","html_url":"https://x/4"},{"status":"completed","conclusion":"failure","html_url":"https://x/3"}]}')"
   run run_wd "$dir"
   assert_success
   assert_output --partial "red=1"
