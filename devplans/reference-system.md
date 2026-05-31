@@ -22,7 +22,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 | 0 | הקמת המערכת העומדת (הקמה אמיתית — דורש אישור מפורש) | pending (נדחה לסוף) | `provision-system.yml` / `register-system-app.yml` / deploy (dispatch בלבד) |
 | 1 | רישום ותיעוד | completed | `reference-system/config.yml`, `scripts/reference-config.sh`, `docs/reference-system.md` |
 | 2 | שער golden סטטי (הרחבת Playground) | completed | `scripts/render-system-golden.sh`, `scripts/check-system-golden.sh`, `scripts/tests/check-system-golden.bats`, `tests/golden/system/**`, `.github/workflows/playground-tests.yml` |
-| 3 | שער אנטי-סטייה תאום (CI) | pending | `scripts/check-reference-sync.sh`, `.github/workflows/changelog-check.yml` |
+| 3 | שער אנטי-סטייה תאום (CI) | completed | `scripts/check-reference-sync.sh`, `scripts/tests/check-reference-sync.bats`, `.github/workflows/changelog-check.yml` |
 | 4 | reconciliation מתוזמן | pending | `.github/workflows/reference-system-reconcile.yml` |
 | 5 | שער אימות חי על העומדת | pending | `scripts/reference-system-smoke.sh`, (אופ') `.github/workflows/reference-system-validate.yml` |
 | 6 | הסקיל `/dev-stage-factory` | pending | `.claude/commands/dev-stage-factory.md`, mirror sync |
@@ -88,13 +88,13 @@ token מוגבל-פרויקט/workspace היכן שניתן. polling לפי פר
 no-op אחרת. תאום ל-`check-changelog-updated.sh`. צעד חדש ב-job **"Changelog gates"**.
 
 **Acceptance:**
-- [ ] PR-בדיקה שנוגע בתבנית בלי golden → נכשל; עם golden → עובר
-- [ ] no-op כשהשינוי לא נוגע בתבנית/provision/deploy
-- [ ] (אופ') `scripts/tests/check-reference-sync.bats` ירוק
+- [x] שינוי ב-`templates/system/` בלי golden → נכשל; עם golden → עובר (bats 2+3)
+- [x] no-op כשהשינוי לא נוגע במולד וה-allow-lists תואמים (bats 1)
+- [x] `scripts/tests/check-reference-sync.bats` ירוק (4 בדיקות); 99/99 בכלל
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם. `check-reference-sync.sh` אוכף שני אינווריאנטים: (א) כריכת-נתיב — שינוי ב-`templates/system/**` חייב לגעת גם ב-`tests/golden/system/**` (תמיד ניתן לסיפוק כי כל שינוי במולד משנה את ה-manifest); (ב) parity — ה-`ALLOWLIST` חייב להיות זהה byte-for-byte בין `render-system-golden.sh`/`provision-system.yml`/`validate-templates.sh`. מחובר ל-job "Changelog gates". אומת: shellcheck/yamllint נקיים, שלושת ה-allow-lists זהים היום, 4 bats חדשות ירוקות. ממתין לאישור לפני שלב 4.
 
-**שינוי תוכנית:** —
+**שינוי תוכנית:** במקום לכרוך *כל* שינוי ב-`provision-system.yml`/`deploy` לעדכון-זהב (לפעמים בלתי-ניתן-לסיפוק כשהשינוי לא משפיע על הרינדור), כריכת-הנתיב מוגבלת ל-`templates/system/**` (כולל ה-deploy template), וה-coupling ל-`provision-system.yml` ממומש כ-parity של ה-allow-list — בדיוק החלק ב-provision שמשפיע על הזהב, ותמיד ניתן לסיפוק.
 
 ---
 
@@ -170,3 +170,4 @@ probe ל-agent-router). אופ': `reference-system-validate.yml` שמחיל שי
 
 - שלב 1 הושלם — רשמנו "מי" המערכת העומדת בקובץ קונפיג + כתבנו מסמך שמסביר את הרעיון (שתי שכבות + איך מונעים סטייה). עדיין בלי הקמה אמיתית.
 - שלב 2 הושלם — בנינו "שער זהב": המחשב שומר תמונת-אמת של מה שמערכת חדשה אמורה לקבל, ומשווה אליה אוטומטית בכל שינוי. אם מישהו משנה תבנית בלי לעדכן את התמונה — ה-CI עוצר. בדקנו שזה תופס סטייה ושאפשר לעדכן את התמונה בכוונה.
+- שלב 3 הושלם — הוספנו את החוק שמשלים את שער-הזהב: "נגעת בתבניות? חובה לעדכן את התמונה, אחרת חסום", ובנוסף שמירה שרשימת-המשתנים של הרינדור זהה בכל שלושת המקומות שמשתמשים בה. כך אי אפשר "לשכוח" לעדכן את התמונה.
