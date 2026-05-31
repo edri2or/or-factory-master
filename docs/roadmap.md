@@ -104,7 +104,7 @@ Shipped as atomic PRs, each merged + verified before the next:
 
 Verified end-to-end on a live test system: Telegram message → real, system-aware answer (live n8n workflow data) with the 🤖 prefix.
 
-**Deliberately deferred to a follow-up** (the system's Postgres is Railway-private and its password isn't in SM, so GitHub Actions can't create tables/credentials there — needs live DB discovery): persistent Postgres chat memory, style-profile learning + weekly refresh (`style-refresh`), daily proactive summary (`tg-proactive`), dedup/spend logging, and approval-gated (HITL) write actions. `tg-proactive`/`style-refresh` stay inert templates until then. Existing systems are **not** auto-migrated (re-run deploy + configure to migrate). Full design: `factory-research-context.md`; status + troubleshooting: `docs/telegram-chat-bot.md`.
+**Deliberately deferred to a follow-up** (the system's Postgres is Railway-private and its password isn't in SM, so GitHub Actions can't create tables/credentials there — needs live DB discovery): persistent Postgres chat memory, style-profile learning + weekly refresh (`style-refresh`), daily proactive summary (`tg-proactive`), dedup/spend logging, and approval-gated (HITL) write actions — the last of these shipped in the `hitl-write-actions` development: the bot can now REQUEST approved-only write actions (n8n activate/deactivate + GitHub `workflow_dispatch`), each gated on a Telegram ✅/❌ before it runs (async, state-free, Postgres-backed — not Send-and-Wait). See `docs/telegram-chat-bot.md` §6. Existing systems are **not** auto-migrated (re-run deploy + configure to migrate). Full design: `factory-research-context.md`; status + troubleshooting: `docs/telegram-chat-bot.md`.
 
 ## Phase G — feat: OIL auto-fix loop (done)
 

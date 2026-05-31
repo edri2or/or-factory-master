@@ -24,7 +24,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "UPDATE pending_actions SET status='processing', approver='telegram', approved_at=now() WHERE id={{ $json.action_id }} AND status='pending' RETURNING *;",
+        "query": "UPDATE pending_actions SET status='processing', approver='telegram', approved_at=now() WHERE id={{ $json.action_id }} AND status='pending' AND (expires_at IS NULL OR expires_at > now()) RETURNING *;",
         "options": {}
       },
       "id": "60000000-0000-0000-0000-000000000003",

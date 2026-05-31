@@ -42,3 +42,11 @@
 | feat | `templates/system/workflows/n8n/request-write-action.json`: validate `target_system=github` requests (require `target_id` = workflow file; default `action_type=dispatch`; `normalized_payload` carries the workflow_dispatch inputs). |
 | feat | `templates/system/workflows/n8n/unknown-agent.json`: extend the `request_write_action` tool description + system-prompt domain 3 to cover running GitHub Actions workflows (target_system `github`, target_id = workflow file, optional inputs). |
 | feat | `templates/system/.github/workflows/configure-agent-router.yml`: substitute the GitHub App placeholders (`@@CRED_GITHUB_JWT_ID@@`/`@@GITHUB_APP_ID@@`/`@@GITHUB_INSTALLATION_ID@@`/`@@SYSTEM_NAME@@`) into the executor; when the GitHub App JWT credential is absent, jq-strip the GitHub branch and route github requests to the failure path (n8n unaffected); update the SYSTEM-INFO card's `write_actions` to include GitHub workflow_dispatch. |
+
+## feat: hitl-write-actions — expiry enforcement + cleanup cron + docs (Stage F)
+
+| Type | Summary |
+|---|---|
+| feat | `templates/system/workflows/n8n/pending-actions-executor.json`: enforce expiry at click time — the atomic lock now also requires `(expires_at IS NULL OR expires_at > now())`, so tapping ✅ on an expired request never executes it. |
+| feat | New `templates/system/workflows/n8n/pending-actions-cleanup.json`: hourly cron that marks expired-but-still-pending rows as `expired` (housekeeping for the `pending_actions_open` view). Installed + activated by `configure-agent-router.yml` (section 5h, gated on Postgres, spend-track pattern); exempt from the watchdog registry (per-system cron, covered collectively by `system-n8n-executions`). |
+| docs | `docs/telegram-chat-bot.md` (§2 diagram, §3, §6 table: HITL row 🟡 deferred → ✅ shipped) and `docs/roadmap.md` (Phase F): document the approved-only write-action flow (request → Telegram ✅/❌ → execute) for n8n + GitHub. |

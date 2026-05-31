@@ -2,7 +2,7 @@
 dev_name: בוט פר-מערכתי — פעולות-כתיבה מאושרות (HITL)
 slug: hitl-write-actions
 opened: 2026-05-31
-status: active   # active בזמן פיתוח → completed בסיום (משחרר את שער ה-CI)
+status: completed   # active בזמן פיתוח → completed בסיום (משחרר את שער ה-CI)
 ---
 
 # תוכנית פיתוח — בוט פר-מערכתי: פעולות-כתיבה מאושרות (HITL)
@@ -25,7 +25,7 @@ templates תחת `templates/system/...` עם graceful degradation; provision-onl
 | C | קליטת אישור — Switch על callback ב-tg-inbound | completed | `tg-inbound.json` + `configure-agent-router.yml` |
 | D | בקשה — כלי `request_write_action` + prompt | completed | `request-write-action.json` (חדש) + `unknown-agent.json` + `configure-agent-router.yml` |
 | E | חוט GitHub — `workflow_dispatch` ב-executor | completed | `pending-actions-executor.json` + `request-write-action.json` + `unknown-agent.json` + `configure-agent-router.yml` |
-| F | תיעוד + הקשחה — docs, expiry cleanup, edge cases | pending | `docs/telegram-chat-bot.md` + `docs/roadmap.md` + cleanup cron |
+| F | תיעוד + הקשחה — docs, expiry cleanup, edge cases | completed | `docs/telegram-chat-bot.md` + `docs/roadmap.md` + `pending-actions-cleanup.json` + `pending-actions-executor.json` |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
 
@@ -115,11 +115,13 @@ templates תחת `templates/system/...` עם graceful degradation; provision-onl
 ### שלב F — תיעוד + הקשחה
 
 **Acceptance:**
-- [ ] `docs/telegram-chat-bot.md` §6 + `docs/roadmap.md` Phase F מעודכנים.
-- [ ] expiry cleanup — cron בדפוס spend-track לשורות pending שפג תוקפן.
-- [ ] edge cases: לחיצה כפולה (נעילה אטומית), callback פג-תוקף.
+- [x] `docs/telegram-chat-bot.md` (תרשים §2, §3, וטבלת §6: HITL מ-🟡 נדחה → ✅ נשלח) + `docs/roadmap.md` Phase F מעודכנים.
+- [x] expiry cleanup — `pending-actions-cleanup.json` (cron שעתי בדפוס spend-track) מסמן שורות pending שפג תוקפן כ-`expired`; הותקן+הופעל ב-configure-agent-router (5h), gated על Postgres, exempt מ-watchdog.
+- [x] edge cases: לחיצה כפולה (נעילה אטומית ב-executor); **אכיפת תוקף בלחיצה** — ה-Lock עודכן ל-`AND (expires_at IS NULL OR expires_at > now())` כך שלחיצה על בקשה שפג תוקפה לא תרוץ; callback שאינו `app:`/`rej:` תקין מנותב לצ'אט.
+- [x] JSON תקין (`jq`), yamllint ירוק; actionlint ב-CI.
+- [ ] CI ירוק: Playground tests + pipeline-tests.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** השלב מומש והפיתוח נסגר. עודכנו שני מסמכי התיעוד; נוסף `pending-actions-cleanup.json` (cron שעתי) להעברת בקשות שפג-תוקפן ל-`expired`; ה-Lock של ה-executor מאכף תוקף בזמן הלחיצה. כל הקבצים אומתו (jq/yamllint/node). `status: completed`.
 
 **שינוי תוכנית:** —
 
@@ -134,3 +136,4 @@ templates תחת `templates/system/...` עם graceful degradation; provision-onl
 - שלב C הושלם — חיברתי את לחיצת הכפתור שלך בטלגרם אל ה"זרוע": כשתלחץ ✅ הבקשה תרוץ באמת, וכשתלחץ ❌ היא תסומן כנדחתה; בשני המקרים הכפתורים נסגרים מיד כדי שלא תלחץ פעמיים. שיחה רגילה עם הבוט ממשיכה לעבוד בדיוק כמו קודם. (הכפתורים עצמם נוצרים בשלב הבא — שם נראה את הכול עובד מקצה לקצה.)
 - שלב D הושלם — סגרתי את המעגל: עכשיו אם תבקש מהבוט בשפה חופשית "תפעיל/תכבה לי את האוטומציה X", הוא יבין, ירשום בקשה, וישלח לך הודעה עם כפתורי ✅/❌ — והפעולה תתבצע רק אם תלחץ ✅. הבוט כבר לא "קריאה בלבד" — אבל הוא לעולם לא מבצע כלום בלי האישור שלך. נשאר לבדוק חי שהכפתורים מופיעים יפה על מערכת אמיתית (זה דבר שה-CI לא יכול לבדוק לבד). השלב הבא: לחבר גם הרצת workflows ב-GitHub.
 - שלב E הושלם — הוספתי את היכולת השנייה: עכשיו אפשר לבקש מהבוט (באותו אישור ✅/❌) גם **להריץ workflow ב-GitHub**, לא רק אוטומציות n8n. זה משתמש במפתח גישה זמני וצר (רק "להריץ workflows", כלום מעבר) שנוצר לכל פעולה ומתבטל מיד. אם מערכת מסוימת לא מוגדרת ל-GitHub — הבקשה פשוט תיכשל בעדינות עם הודעה ברורה, וה-n8n ממשיך לעבוד כרגיל. נשאר רק שלב אחרון: תיעוד + ניקוי בקשות שפג תוקפן + ליטוש.
+- שלב F הושלם — **הפיתוח סגור.** עדכנתי את המסמכים, והוספתי שתי הקשחות: (1) בקשה שלא אישרת תוך שעתיים פגה אוטומטית ולא תוכל לרוץ אפילו אם תלחץ עליה אחר כך; (2) ניקוי שעתי שמסדר בקשות ישנות. סיכום כולל: הבוט הפר-מערכתי יכול עכשיו לבצע פעולות (n8n + GitHub) — אבל תמיד, בלי יוצא מן הכלל, רק אחרי ✅ שלך בטלגרם. הכול מגיע למערכות חדשות שייבנו מכאן והלאה.

@@ -783,6 +783,28 @@ jobs:
             fi
           fi
 
+          # 5h. HITL write actions (Stage F): install + activate pending-actions-cleanup
+          #     — hourly housekeeping that marks expired-but-still-pending approval
+          #     requests as 'expired'. The executor already refuses to run an expired
+          #     row at click time (its lock checks expires_at); this just keeps the
+          #     bot's pending_actions_open view tidy. spend-track pattern: gated on
+          #     Postgres, soft-fail, idempotent upsert; never blocks the router.
+          CLEANUP_WF_ID=""
+          if [ -n "$CRED_POSTGRES_ID" ] && [ "$CRED_POSTGRES_ID" != "null" ]; then
+            CLEANUP_SRC="${WF_DIR}/pending-actions-cleanup.json"
+            if [ -f "$CLEANUP_SRC" ]; then
+              sed -e "s#@@CRED_POSTGRES_ID@@#${CRED_POSTGRES_ID}#g" \
+                  "$CLEANUP_SRC" > /tmp/ar-prep-pending-actions-cleanup.json
+              CLEANUP_WF_ID=$(_upsert_wf "factory-master: pending-actions-cleanup" /tmp/ar-prep-pending-actions-cleanup.json yes) \
+                || CLEANUP_WF_ID=""
+              { [ -n "$CLEANUP_WF_ID" ] && [ "$CLEANUP_WF_ID" != "null" ]; } \
+                && echo "PASS: factory-master: pending-actions-cleanup → id=${CLEANUP_WF_ID} (פעיל, cron 0 * * * * — שעתי, מסמן בקשות שפג תוקפן)" \
+                || { echo "WARN: pending-actions-cleanup install failed" >&2; CLEANUP_WF_ID=""; }
+            else
+              echo "WARN: pending-actions-cleanup.json not found in repo — skipping" >&2
+            fi
+          fi
+
           # 5f. Free-form file resolver: install + activate file-catalog-refresh —
           #     hourly Git Trees (recursive) snapshot of the system repo's file paths
           #     into Postgres `file_catalog`, which the router's Resolve Entity step
