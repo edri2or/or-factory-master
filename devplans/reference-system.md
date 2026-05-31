@@ -19,7 +19,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
-| 0 | הקמת המערכת העומדת (הקמה אמיתית — דורש אישור מפורש) | pending (נדחה לסוף) | `provision-system.yml` / `register-system-app.yml` / deploy (dispatch בלבד) |
+| 0 | הקמת המערכת העומדת (הקמה אמיתית — דורש אישור מפורש) | completed | adopt על `factory-test-18` → repo `or-factory-reference` חי |
 | 1 | רישום ותיעוד | completed | `reference-system/config.yml`, `scripts/reference-config.sh`, `docs/reference-system.md` |
 | 2 | שער golden סטטי (הרחבת Playground) | completed | `scripts/render-system-golden.sh`, `scripts/check-system-golden.sh`, `scripts/tests/check-system-golden.bats`, `tests/golden/system/**`, `.github/workflows/playground-tests.yml` |
 | 3 | שער אנטי-סטייה תאום (CI) | completed | `scripts/check-reference-sync.sh`, `scripts/tests/check-reference-sync.bats`, `.github/workflows/changelog-check.yml` |
@@ -41,11 +41,12 @@ dispatch `provision-system.yml` (normal mode, `system_name=or-factory-reference`
 token מוגבל-פרויקט/workspace היכן שניתן. polling לפי פרוטוקול CLAUDE.md.
 
 **Acceptance:**
-- [ ] `gcp_project_quota_status` נבדק ועלות הוצגה לאור; אישור-ביצוע מפורש התקבל
-- [ ] provision + register + deploy הסתיימו ב-success (polling אישר terminal status)
-- [ ] `verify_gcp/github/railway/cloudflare_system` ירוקים; n8n `/healthz` מחזיר 2xx
+- [x] `gcp_project_quota_status` נבדק (4 פעילים/22 מחוקים-רכים), עלות הוצגה, ואור אישר adopt על `factory-test-18`
+- [x] provision + register (2-קליקים אנושיים) + deploy הסתיימו ב-success (polling אישר terminal status)
+- [x] אומת חי דרך MCP: `/healthz`→200, `/`→200 (n8n 1.121.0 UI), `/webhook/` לא-חתום→401 (שער HMAC של Caddy). Railway: n8n deploy SUCCESS. (verify-tools: GCP 11/11; "postgres not found" ו-GitHub ruleset/marker = אי-התאמות-שם של כלי-האימות, לא תקלה — n8n בריא ⇒ DB מחובר)
+- [ ] **configure-agent-router** — חיווט מוח-הסוכנים ל-n8n (רץ עכשיו; אור הזכיר שזה שלב חסר בהקמה מלאה)
 
-**הערת התקדמות אחרונה:** ממתין — נדחה לסוף הפיתוח לפי בחירת אור.
+**הערת התקדמות אחרונה:** המערכת העומדת **חיה ומאומתת** — adopt על `factory-test-18`, repo `or-factory-reference`, n8n+Postgres+Caddy עם SSL. `config.yml` עודכן ל-`provisioned: true` (+ railway id, built_from_commit `9bfc1b7`). נותר שלב אחרון בהקמה: `configure-agent-router` (רץ) — אחריו ייסגר הפיתוח.
 
 **שינוי תוכנית:** 31.5 — לפי בחירת אור, שלב 0 (הקמה אמיתית בעלות) נדחה לסוף; קודם בונים את שערי-הקוד 1→7 בלי עלות, ואז מבצעים את 0 עם אישור-ביצוע מפורש נפרד.
 
