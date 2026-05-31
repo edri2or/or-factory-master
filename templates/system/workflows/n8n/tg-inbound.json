@@ -19,13 +19,13 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "// The Webhook node delivers the raw Telegram update under .body. Normalize\n// message | edited_message | callback_query into one shape, and DROP anything\n// not from the single authorized operator chat (replaces the Telegram Trigger's\n// restrictToChatIds; Caddy already validated the secret token at the edge).\n// @@CHAT_ID@@ is substituted at install time.\nconst u = ($input.first().json && $input.first().json.body) || $input.first().json || {};\nconst cb = u.callback_query || null;\nconst msg = u.message || u.edited_message || (cb && cb.message) || {};\nconst isCallback = !!cb;\nlet text = isCallback ? (cb.data || '') : (msg.text || msg.caption || '');\ntext = String(text).trim();\nconst chatId = (msg.chat && msg.chat.id) || (cb && cb.from && cb.from.id) || '';\nif (String(chatId) !== '@@CHAT_ID@@') { return []; }\nif (!text) { return []; }\nconst updateId = Number(u.update_id || 0);\nreturn [{ json: { text: text, chat_id: chatId, kind: isCallback ? 'callback_query' : (u.edited_message ? 'edited_message' : 'message'), update_id: updateId } }];"
+        "jsCode": "// The Webhook node delivers the raw Telegram update under .body. Normalize\n// message | edited_message | callback_query into one shape, and DROP anything\n// not from the single authorized operator chat (replaces the Telegram Trigger's\n// restrictToChatIds; Caddy already validated the secret token at the edge). This\n// chat-id check IS the from.id allowlist for callback presses (chatId = cb.from.id).\n// @@CHAT_ID@@ is substituted at install time.\n// HITL (Stage C): a callback whose data is `app:<id>` / `rej:<id>` is an approval\n// press — flag route='approval' + is_approve + action_id so the Switch downstream\n// runs the executor instead of the chat router. Any other update routes to chat.\nconst u = ($input.first().json && $input.first().json.body) || $input.first().json || {};\nconst cb = u.callback_query || null;\nconst msg = u.message || u.edited_message || (cb && cb.message) || {};\nconst isCallback = !!cb;\nlet text = isCallback ? (cb.data || '') : (msg.text || msg.caption || '');\ntext = String(text).trim();\nconst chatId = (msg.chat && msg.chat.id) || (cb && cb.from && cb.from.id) || '';\nif (String(chatId) !== '@@CHAT_ID@@') { return []; }\nif (!text) { return []; }\nconst updateId = Number(u.update_id || 0);\nconst isApproval = isCallback && /^(app|rej):/.test(text);\nconst isApprove = text.slice(0, 4) === 'app:';\nconst actionId = isApproval ? Number(text.split(':')[1]) : null;\nreturn [{ json: { text: text, chat_id: chatId, kind: isCallback ? 'callback_query' : (u.edited_message ? 'edited_message' : 'message'), update_id: updateId, callback_id: (cb && cb.id) || '', message_id: (cb && cb.message && cb.message.message_id) || '', route: (isApproval && Number.isInteger(actionId) && actionId > 0) ? 'approval' : 'chat', is_approve: isApprove, action_id: actionId } }];"
       },
       "id": "10000000-0000-0000-0000-000000000002",
       "name": "Extract & Normalize",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [440, 320]
+      "position": [420, 320]
     },
     {
       "parameters": {
@@ -37,7 +37,159 @@
       "name": "Dedup Guard",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
-      "position": [580, 320],
+      "position": [600, 320],
+      "credentials": { "postgres": { "id": "@@CRED_POSTGRES_ID@@", "name": "Postgres (n8n)" } },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose", "version": 2 },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "11000000-0000-0000-0000-000000000001",
+                    "leftValue": "={{ $('Extract & Normalize').first().json.route }}",
+                    "rightValue": "approval",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "approval"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "chat"
+        }
+      },
+      "id": "10000000-0000-0000-0000-000000000006",
+      "name": "Route Update",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [780, 320]
+    },
+    {
+      "parameters": {
+        "resource": "callback",
+        "operation": "answerQuery",
+        "queryId": "={{ $('Extract & Normalize').first().json.callback_id }}",
+        "additionalFields": { "text": "מעבד…" }
+      },
+      "id": "10000000-0000-0000-0000-000000000007",
+      "name": "Answer Callback",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [980, 180],
+      "credentials": { "telegramApi": { "id": "@@CRED_TELEGRAM_ID@@", "name": "Telegram (factory-master)" } },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "typeValidation": "loose", "version": 2 },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "11000000-0000-0000-0000-000000000002",
+              "leftValue": "={{ $('Extract & Normalize').first().json.is_approve }}",
+              "rightValue": "",
+              "operator": { "type": "boolean", "operation": "true", "singleValue": true }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "10000000-0000-0000-0000-000000000008",
+      "name": "Approve or Reject",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1180, 180]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "editMessageText",
+        "chatId": "@@CHAT_ID@@",
+        "messageId": "={{ $('Extract & Normalize').first().json.message_id }}",
+        "text": "✅ אישרת — מבצע…",
+        "replyMarkup": "none"
+      },
+      "id": "10000000-0000-0000-0000-000000000009",
+      "name": "Ack Approve",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1380, 80],
+      "credentials": { "telegramApi": { "id": "@@CRED_TELEGRAM_ID@@", "name": "Telegram (factory-master)" } },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "12000000-0000-0000-0000-000000000001",
+              "name": "action_id",
+              "type": "number",
+              "value": "={{ $('Extract & Normalize').first().json.action_id }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "10000000-0000-0000-0000-00000000000a",
+      "name": "Prep Executor Input",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1580, 80]
+    },
+    {
+      "parameters": {
+        "workflowId": { "__rl": true, "value": "@@WF_PENDING_EXECUTOR_ID@@", "mode": "id" },
+        "mode": "once",
+        "options": {}
+      },
+      "id": "10000000-0000-0000-0000-00000000000b",
+      "name": "Run Executor",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [1780, 80]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "editMessageText",
+        "chatId": "@@CHAT_ID@@",
+        "messageId": "={{ $('Extract & Normalize').first().json.message_id }}",
+        "text": "❌ דחית — הפעולה לא בוצעה.",
+        "replyMarkup": "none"
+      },
+      "id": "10000000-0000-0000-0000-00000000000c",
+      "name": "Ack Reject",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1380, 300],
+      "credentials": { "telegramApi": { "id": "@@CRED_TELEGRAM_ID@@", "name": "Telegram (factory-master)" } },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE pending_actions SET status='rejected', resolved_at=now() WHERE id={{ $('Extract & Normalize').first().json.action_id }} AND status='pending';",
+        "options": {}
+      },
+      "id": "10000000-0000-0000-0000-00000000000d",
+      "name": "Mark Rejected",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1580, 300],
       "credentials": { "postgres": { "id": "@@CRED_POSTGRES_ID@@", "name": "Postgres (n8n)" } },
       "onError": "continueRegularOutput"
     },
@@ -54,7 +206,7 @@
       "name": "Call Agent Router",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [660, 320],
+      "position": [980, 440],
       "onError": "continueRegularOutput"
     },
     {
@@ -69,14 +221,30 @@
       "name": "Send Reply",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
-      "position": [880, 320],
+      "position": [1180, 440],
       "credentials": { "telegramApi": { "id": "@@CRED_TELEGRAM_ID@@", "name": "Telegram (factory-master)" } }
     }
   ],
   "connections": {
     "Telegram Webhook": { "main": [[{ "node": "Extract & Normalize", "type": "main", "index": 0 }]] },
     "Extract & Normalize": { "main": [[{ "node": "Dedup Guard", "type": "main", "index": 0 }]] },
-    "Dedup Guard": { "main": [[{ "node": "Call Agent Router", "type": "main", "index": 0 }]] },
+    "Dedup Guard": { "main": [[{ "node": "Route Update", "type": "main", "index": 0 }]] },
+    "Route Update": {
+      "main": [
+        [{ "node": "Answer Callback", "type": "main", "index": 0 }],
+        [{ "node": "Call Agent Router", "type": "main", "index": 0 }]
+      ]
+    },
+    "Answer Callback": { "main": [[{ "node": "Approve or Reject", "type": "main", "index": 0 }]] },
+    "Approve or Reject": {
+      "main": [
+        [{ "node": "Ack Approve", "type": "main", "index": 0 }],
+        [{ "node": "Ack Reject", "type": "main", "index": 0 }]
+      ]
+    },
+    "Ack Approve": { "main": [[{ "node": "Prep Executor Input", "type": "main", "index": 0 }]] },
+    "Prep Executor Input": { "main": [[{ "node": "Run Executor", "type": "main", "index": 0 }]] },
+    "Ack Reject": { "main": [[{ "node": "Mark Rejected", "type": "main", "index": 0 }]] },
     "Call Agent Router": { "main": [[{ "node": "Send Reply", "type": "main", "index": 0 }]] }
   },
   "settings": { "executionOrder": "v1" }

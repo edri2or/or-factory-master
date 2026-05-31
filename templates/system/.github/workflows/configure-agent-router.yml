@@ -830,7 +830,31 @@ jobs:
                   -e "s#@@CRED_POSTGRES_ID@@#${CRED_POSTGRES_ID}#g" \
                   -e "s#@@CHAT_ID@@#${CHAT_ID}#g" \
                   -e "s#@@N8N_DOMAIN@@#${N8N_DOMAIN}#g" \
+                  -e "s#@@WF_PENDING_EXECUTOR_ID@@#${PENDING_EXECUTOR_ID}#g" \
                   "$TG_SRC" > /tmp/ar-prep-tg-inbound.json
+              # HITL (Stage C): the approval-callback path (Route Update → Answer
+              # Callback → approve/reject → Run Executor) references the
+              # pending-actions-executor sub-workflow. If that executor wasn't
+              # installed (no Postgres/n8n-API/Telegram — section 5g above), strip
+              # the whole approval path and restore the plain chat flow
+              # (Dedup Guard → Call Agent Router) so tg-inbound never points at a
+              # missing sub-workflow id. Same graceful-degradation jq pattern as the
+              # tool strips above. Runs BEFORE the no-Postgres dedup strip below (a
+              # missing executor is implied whenever Postgres is missing).
+              if [ -z "$PENDING_EXECUTOR_ID" ] || [ "$PENDING_EXECUTOR_ID" = "null" ]; then
+                jq '(.nodes |= map(select(.name as $n | (["Route Update","Answer Callback","Approve or Reject","Ack Approve","Prep Executor Input","Run Executor","Ack Reject","Mark Rejected"] | index($n)) | not)))
+                    | .connections."Dedup Guard" = {"main":[[{"node":"Call Agent Router","type":"main","index":0}]]}
+                    | del(.connections."Route Update")
+                    | del(.connections."Answer Callback")
+                    | del(.connections."Approve or Reject")
+                    | del(.connections."Ack Approve")
+                    | del(.connections."Prep Executor Input")
+                    | del(.connections."Ack Reject")' \
+                  /tmp/ar-prep-tg-inbound.json > /tmp/ar-prep-tg-inbound.json.tmp \
+                  && mv /tmp/ar-prep-tg-inbound.json.tmp /tmp/ar-prep-tg-inbound.json \
+                  || echo "WARN: tg-inbound approval-path strip failed — using template as-is" >&2
+                echo "INFO: tg-inbound approval path → stripped (no pending-actions-executor)"
+              fi
               # Phase F follow-up (PR 5/5): if no Postgres credential, drop the
               # Dedup Guard node and rewire Normalize→Call Agent Router directly,
               # so the chat bot keeps working even without persistence.

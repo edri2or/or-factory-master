@@ -22,7 +22,7 @@ templates תחת `templates/system/...` עם graceful degradation; provision-onl
 |---|---|---|---|
 | A | סכמה — הרחבת `pending_actions` | completed | `templates/system/workflows/n8n/db-setup.json` |
 | B | מבצע (executor) — n8n activate/deactivate | completed | `pending-actions-executor.json` (חדש) + `configure-agent-router.yml` |
-| C | קליטת אישור — Switch על callback ב-tg-inbound | pending | `tg-inbound.json` |
+| C | קליטת אישור — Switch על callback ב-tg-inbound | completed | `tg-inbound.json` + `configure-agent-router.yml` |
 | D | בקשה — כלי `request_write_action` + prompt | pending | `request-write-action.json` (חדש) + `unknown-agent.json` + `configure-agent-router.yml` |
 | E | חוט GitHub — `workflow_dispatch` ב-executor | pending | `pending-actions-executor.json` + `configure-agent-router.yml` |
 | F | תיעוד + הקשחה — docs, expiry cleanup, edge cases | pending | `docs/telegram-chat-bot.md` + `docs/roadmap.md` + cleanup cron |
@@ -63,11 +63,15 @@ templates תחת `templates/system/...` עם graceful degradation; provision-onl
 ### שלב C — קליטת אישור
 
 **Acceptance:**
-- [ ] ב-`tg-inbound.json` אחרי "Extract & Normalize" — Switch: `kind=='callback_query'` ו-`text` מתחיל ב-`app:`/`rej:` → אימות `from.id` מול allowlist (`@@CHAT_ID@@`) → `answerCallbackQuery` מיד + סגירת כפתורים → קריאה ל-executor (app) או עדכון ל-rejected (rej).
-- [ ] הזרימה הקיימת (router) שלמה כשזו לא callback פעולה; agent-router ללא שינוי.
-- [ ] JSON תקין + CI ירוק.
+- [x] ב-`tg-inbound.json` אחרי Dedup Guard — Switch "Route Update": `route=='approval'` (נקבע ב-Extract & Normalize כש-callback ו-`text` תואם `^(app|rej):` עם action_id תקין) → Answer Callback (מיד) → IF approve/reject → Ack (editMessageText, מסיר כפתורים) → Run Executor (app) / Mark Rejected (rej). אימות from.id = בדיקת `chat_id==@@CHAT_ID@@` הקיימת ב-Extract & Normalize (ל-callback, chat_id=cb.from.id).
+- [x] הזרימה הקיימת (router) שלמה כשזו לא לחיצת-אישור (fallback 'chat' → Call Agent Router → Send Reply); `agent-router` ללא שינוי.
+- [x] התקנה: `@@WF_PENDING_EXECUTOR_ID@@` נוסף ל-sed של 5b; graceful-degradation — אם ה-executor לא הותקן, נתיב האישור נחתך (jq) וחוזרים ל-Dedup Guard → Call Agent Router. אומת בסימולציה (executor חסר; + גם PG חסר) שמשחזר נכון את נתיב הצ'אט.
+- [x] JSON תקין (`jq`), yamllint ירוק מקומית; actionlint ב-CI.
+- [ ] CI ירוק: Playground tests + pipeline-tests.
 
-**הערת התקדמות אחרונה:** —
+> הערה: לחיצת ✅/❌ אמיתית מקצה-לקצה תיבדק חי בסוף Stage D (שם נוצרים הכפתורים ע"י `request_write_action`). ב-Stage C אומתו המבנה, החיווט, ה-degradation וה-CI.
+
+**הערת התקדמות אחרונה:** השלב מומש. הורחב Extract & Normalize לזהות לחיצת-אישור (`app:`/`rej:`) ולחלץ callback_id/message_id/action_id. נוסף Switch "Route Update" אחרי Dedup Guard: ענף approval → Answer Callback (ack מיידי) → IF → Ack (editMessageText מסיר כפתורים) → Run Executor (executeWorkflow ל-`@@WF_PENDING_EXECUTOR_ID@@`) / Mark Rejected; fallback → הזרימה הקיימת. נעילה כפולה מוגנת ע"י הנעילה האטומית ב-executor + `AND status='pending'` ב-rej. נוסף strip ל-graceful-degradation. ממתין לירוק CI ולאישור Or לפני Stage D.
 
 **שינוי תוכנית:** —
 
@@ -118,3 +122,4 @@ templates תחת `templates/system/...` עם graceful degradation; provision-onl
 
 - שלב A הושלם — הכנּתי את ה"טבלה" שבה כל בקשת-פעולה תירשם לפני שתבוצע: הוספתי לה את כל השדות שצריך (איזו פעולה, על מה, סיכום קצר בעברית, מתי פגה, מי אישר, ומפתח שמונע ביצוע כפול). שינוי בטוח שלא נגע בשום דבר קיים.
 - שלב B הושלם — בניתי את ה"זרוע המבצעת": תהליך קטן שמקבל בקשה שאישרת, נועל אותה כך שלא תוכל לרוץ פעמיים בטעות, מפעיל/מכבה את האוטומציה ב-n8n בפועל, ואז שולח לך הודעה אם הצליח (✅) או נכשל (❌). חיבור GitHub יגיע בשלב מאוחר יותר. עדיין לא מחובר לכפתורי טלגרם — זה השלב הבא.
+- שלב C הושלם — חיברתי את לחיצת הכפתור שלך בטלגרם אל ה"זרוע": כשתלחץ ✅ הבקשה תרוץ באמת, וכשתלחץ ❌ היא תסומן כנדחתה; בשני המקרים הכפתורים נסגרים מיד כדי שלא תלחץ פעמיים. שיחה רגילה עם הבוט ממשיכה לעבוד בדיוק כמו קודם. (הכפתורים עצמם נוצרים בשלב הבא — שם נראה את הכול עובד מקצה לקצה.)
