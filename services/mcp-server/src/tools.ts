@@ -342,6 +342,14 @@ export function registerTools(server: McpServer): void {
   // without an operator click. Security still rests on branch protection (only
   // reviewed code on main is deployed) + the main-pinned WIF CEL, not on the
   // dispatch surface — and the MCP has no write tools beyond this one.
+  // meta-monitoring-watchdog.yml IS allowed — the read-mostly meta-monitor that
+  // proves every other automation ran (reads workflow-run history, sends a
+  // Telegram report, emits one observability event, pings the external
+  // dead-man's-switch). Normal operation is cron-driven; allowlisting lets the
+  // agent run the one-time setup_heartbeat=true dispatch (create the Better
+  // Stack heartbeat + store its URL in SM) and trigger an ad-hoc watchdog run on
+  // demand instead of an operator click. Its only write is that one-time SM
+  // secret write, guarded inside the workflow.
   const DISPATCHABLE_WORKFLOWS = new Set([
     'provision-system.yml',
     'register-system-app.yml',
@@ -350,11 +358,12 @@ export function registerTools(server: McpServer): void {
     'decommission-test-system.yml',
     'oil-autofix-investigate.yml',
     'deploy-mcp-server.yml',
+    'meta-monitoring-watchdog.yml',
   ]);
 
   server.tool(
     'dispatch_workflow',
-    'Trigger a workflow_dispatch event for an ALLOWLISTED factory workflow (provision-system.yml, register-system-app.yml, deploy-railway-cloudflare.yml, configure-agent-router.yml, decommission-test-system.yml, oil-autofix-investigate.yml, deploy-mcp-server.yml). Dispatches as the org-wide broker App, so it works on or-factory-master AND any system repo (pass repo, e.g. "factory-test-24"). Polls briefly and returns the created run_id + run_url. This is the only WRITE tool on the server. configure-agent-router.yml wires the multi-agent router into a system\'s n8n (idempotent, soft-fail); decommission-test-system.yml is test-only (Railway+DNS+repo-archive, no GCP/SM); deploy-mcp-server.yml idempotently redeploys this MCP service from main (to pick up new SM secret versions); the real-system decommission-system.yml is intentionally NOT dispatchable here.',
+    'Trigger a workflow_dispatch event for an ALLOWLISTED factory workflow (provision-system.yml, register-system-app.yml, deploy-railway-cloudflare.yml, configure-agent-router.yml, decommission-test-system.yml, oil-autofix-investigate.yml, deploy-mcp-server.yml, meta-monitoring-watchdog.yml). Dispatches as the org-wide broker App, so it works on or-factory-master AND any system repo (pass repo, e.g. "factory-test-24"). Polls briefly and returns the created run_id + run_url. This is the only WRITE tool on the server. configure-agent-router.yml wires the multi-agent router into a system\'s n8n (idempotent, soft-fail); decommission-test-system.yml is test-only (Railway+DNS+repo-archive, no GCP/SM); deploy-mcp-server.yml idempotently redeploys this MCP service from main (to pick up new SM secret versions); meta-monitoring-watchdog.yml is the meta-monitor (cron-driven normally; dispatch it with setup_heartbeat=true for the one-time Better Stack heartbeat setup, or with no inputs for an ad-hoc run); the real-system decommission-system.yml is intentionally NOT dispatchable here.',
     {
       ...repoParams,
       workflow_id: z.string().describe('Workflow file name to dispatch, e.g. provision-system.yml. Must be on the allowlist.'),
