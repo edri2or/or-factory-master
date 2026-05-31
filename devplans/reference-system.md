@@ -21,7 +21,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 |---|---|---|---|
 | 0 | הקמת המערכת העומדת (הקמה אמיתית — דורש אישור מפורש) | pending (נדחה לסוף) | `provision-system.yml` / `register-system-app.yml` / deploy (dispatch בלבד) |
 | 1 | רישום ותיעוד | completed | `reference-system/config.yml`, `scripts/reference-config.sh`, `docs/reference-system.md` |
-| 2 | שער golden סטטי (הרחבת Playground) | pending | `scripts/render-system-golden.sh`, `scripts/check-system-golden.sh`, `tests/golden/system/**`, `.github/workflows/playground-tests.yml` |
+| 2 | שער golden סטטי (הרחבת Playground) | completed | `scripts/render-system-golden.sh`, `scripts/check-system-golden.sh`, `scripts/tests/check-system-golden.bats`, `tests/golden/system/**`, `.github/workflows/playground-tests.yml` |
 | 3 | שער אנטי-סטייה תאום (CI) | pending | `scripts/check-reference-sync.sh`, `.github/workflows/changelog-check.yml` |
 | 4 | reconciliation מתוזמן | pending | `.github/workflows/reference-system-reconcile.yml` |
 | 5 | שער אימות חי על העומדת | pending | `scripts/reference-system-smoke.sh`, (אופ') `.github/workflows/reference-system-validate.yml` |
@@ -71,13 +71,13 @@ token מוגבל-פרויקט/workspace היכן שניתן. polling לפי פר
 `check-system-golden.sh` משווה (תומך `--update`); צעד חדש ב-job **"Playground tests"**.
 
 **Acceptance:**
-- [ ] הצעד החדש ירוק ב-"Playground tests" (אותו job — בלי required-context חדש)
-- [ ] שינוי-תבנית מכוון בלי `--update` → נכשל; עם `--update`+diff → עובר
-- [ ] (אופ') `scripts/tests/check-system-golden.bats` ירוק
+- [x] הצעד החדש ("System golden gate") ירוק ב-job "Playground tests" — בלי required-context חדש
+- [x] שינוי-תבנית מכוון בלי `--update` → נכשל; עם `--update`+diff → עובר (הוכח: קובץ רגיל + `.template` מרונדר)
+- [x] `scripts/tests/check-system-golden.bats` ירוק (5 בדיקות)
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם. `render-system-golden.sh` מרנדר את כל המולד (109 קבצים) עם 14-משתנה allow-list קבוע, ומחליף `.template` בשמות המרונדרים בדיוק כמו מערכת אמיתית; הזהב = `tests/golden/system/MANIFEST.sha256` (טביעת sha256 byte-exact) + `rendered/{AGENTS,CLAUDE}.md` ל-diff קריא. `check-system-golden.sh` משווה ותומך `--update`. אומת מקומית: PASS על התאמה, FAIL על שתי סטיות מכוונות, 95/95 BATS, validate-templates, yamllint נקיים. ממתין לאישור לפני שלב 3.
 
-**שינוי תוכנית:** —
+**שינוי תוכנית:** הזהב מיושם כ-sha256 manifest (byte-exact) + שני קבצי-render מלאים, במקום עותק-עץ מלא — קל לאחסון ותופס 100% מהסטייה; "byte-for-byte" נשמר דרך ה-hash.
 
 ---
 
@@ -169,3 +169,4 @@ probe ל-agent-router). אופ': `reference-system-validate.yml` שמחיל שי
 > שורה פשוטה אחת לכל שלב שהסתיים — בשפה ש-Or מבין, בלי ז'רגון.
 
 - שלב 1 הושלם — רשמנו "מי" המערכת העומדת בקובץ קונפיג + כתבנו מסמך שמסביר את הרעיון (שתי שכבות + איך מונעים סטייה). עדיין בלי הקמה אמיתית.
+- שלב 2 הושלם — בנינו "שער זהב": המחשב שומר תמונת-אמת של מה שמערכת חדשה אמורה לקבל, ומשווה אליה אוטומטית בכל שינוי. אם מישהו משנה תבנית בלי לעדכן את התמונה — ה-CI עוצר. בדקנו שזה תופס סטייה ושאפשר לעדכן את התמונה בכוונה.
