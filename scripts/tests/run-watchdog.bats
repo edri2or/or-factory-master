@@ -1,0 +1,275 @@
+#!/usr/bin/env bats
+# run-watchdog.bats — unit tests for scripts/run-watchdog.sh's gh-run-freshness
+# proof logic. Deterministic: GitHub run history is injected via
+# WATCHDOG_FIXTURE_DIR, "now" is pinned via WATCHDOG_NOW, and Telegram/emit/
+# heartbeat are disabled — so no network or secrets are touched. Assertions are
+# on the final "[watchdog] done ok=.. warn=.. red=.. unknown=.." summary line.
+
+load test_helper/common
+
+WATCHDOG="$REPO_ROOT/scripts/run-watchdog.sh"
+NOW=1735732800   # 2025-01-01T12:00:00Z
+
+setup() { _COMMON_TMP_PATHS=(); }
+teardown() { common_teardown; }
+
+# Build a one-entry registry + a fixture file for it. Echoes the case dir.
+#   make_case <workflow_file> <tolerance_hours> <runs_json>
+make_case() {
+  local wf="$1" tol="$2" runs="$3" dir
+  dir="$(make_tmpdir)"
+  mkdir -p "$dir/fx"
+  cat > "$dir/registry.json" <<EOF
+{ "version": 1, "entries": [
+  { "id": "t", "name_he": "בדיקה", "type": "cron-workflow", "layer": "factory",
+    "proof_method": "gh-run-freshness",
+    "cadence": { "cron": "0 * * * *", "tolerance_hours": ${tol} },
+    "evidence": { "repo": "edri2or/or-factory-master", "workflow_file": "${wf}" },
+    "stage": 1, "enabled": true } ] }
+EOF
+  printf '%s' "$runs" > "$dir/fx/${wf}.json"
+  printf '%s\n' "$dir"
+}
+
+run_wd() {
+  local dir="$1"
+  REGISTRY_FILE="$dir/registry.json" \
+  WATCHDOG_FIXTURE_DIR="$dir/fx" \
+  WATCHDOG_NOW="$NOW" \
+  WATCHDOG_EMIT=0 TG_TOKEN="" TG_CHAT="" HEARTBEAT_URL="" \
+    bash "$WATCHDOG"
+}
+
+@test "ok: a fresh successful run is green" {
+  dir="$(make_case wf.yml 9 \
+    '{"workflow_runs":[{"status":"completed","conclusion":"success","updated_at":"2025-01-01T11:00:00Z","html_url":"https://x/1"}]}')"
+  run run_wd "$dir"
+  assert_success
+  assert_output --partial "ok=1 warn=0 red=0 unknown=0"
+}
+
+@test "red: a success older than the tolerance window is stale" {
+  dir="$(make_case wf.yml 9 \
+    '{"workflow_runs":[{"status":"completed","conclusion":"success","updated_at":"2024-12-30T00:00:00Z","html_url":"https://x/1"}]}')"
+  run run_wd "$dir"
+  assert_success
+  assert_output --partial "ok=0 warn=0 red=1"
+}
+
+@test "warn: a single most-recent failure is watching (not yet red)" {
+  dir="$(make_case wf.yml 9 \
+    '{"workflow_runs":[{"status":"completed","conclusion":"failure","updated_at":"2025-01-01T11:00:00Z","html_url":"https://x/2"}]}')"
+  run run_wd "$dir"
+  assert_success
+  assert_output --partial "ok=0 warn=1 red=0"
+}
+
+@test "red: two consecutive failures escalate" {
+  dir="$(make_case wf.yml 9 \
+    '{"workflow_runs":[{"status":"completed","conclusion":"failure","updated_at":"2025-01-01T11:00:00Z","html_url":"https://x/3"},{"status":"completed","conclusion":"failure","updated_at":"2025-01-01T10:00:00Z","html_url":"https://x/2"}]}')"
+  run run_wd "$dir"
+  assert_success
+  assert_output --partial "red=1"
+}
+
+@test "warn: a recent failure after a fresh success is watching" {
+  dir="$(make_case wf.yml 9 \
+    '{"workflow_runs":[{"status":"completed","conclusion":"failure","updated_at":"2025-01-01T11:30:00Z","html_url":"https://x/3"},{"status":"completed","conclusion":"success","updated_at":"2025-01-01T11:00:00Z","html_url":"https://x/2"}]}')"
+  run run_wd "$dir"
+  assert_success
+  assert_output --partial "warn=1"
+}
+
+@test "unknown: no completed runs cannot be verified" {
+  dir="$(make_case wf.yml 9 '{"workflow_runs":[]}')"
+  run run_wd "$dir"
+  assert_success
+  assert_output --partial "unknown=1"
+}
+
+# --- gh-branch-protection (stage 2) ----------------------------------------
+# Build a one-entry gh-branch-protection registry + a branch-rules fixture
+# (_rules_main.json) + a runs fixture for the gate's workflow.
+#   make_bp_case <context> <workflow_file> <rules_json> <runs_json>
+make_bp_case() {
+  local ctx="$1" wf="$2" rules="$3" runs="$4" dir
+  dir="$(make_tmpdir)"
+  mkdir -p "$dir/fx"
+  cat > "$dir/registry.json" <<EOF
+{ "version": 1, "entries": [
+  { "id": "g", "name_he": "שער", "type": "ci-gate", "layer": "factory",
+    "proof_method": "gh-branch-protection",
+    "evidence": { "repo": "edri2or/or-factory-master", "branch": "main",
+                  "context": "${ctx}", "workflow_file": "${wf}" },
+    "stage": 2, "enabled": true } ] }
+EOF
+  printf '%s' "$rules" > "$dir/fx/_rules_main.json"
+  printf '%s' "$runs"  > "$dir/fx/${wf}.json"
+  printf '%s\n' "$dir"
+}
+
+# A rules document where "Changelog gates" is a required status check.
+BP_RULES_OK='[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"Changelog gates"},{"context":"Playground tests"}]}}]'
+
+@test "bp ok: required context + latest run green is green" {
+  dir="$(make_bp_case "Changelog gates" cg.yml "$BP_RULES_OK" \
+    '{"workflow_runs":[{"status":"completed","conclusion":"success","html_url":"https://x/1"}]}')"
+  run run_wd "$dir"
+  assert_success
+  assert_output --partial "ok=1 warn=0 red=0 unknown=0"
+}
+
+@test "bp red: context dropped from branch protection is red even if file exists" {
+  dir="$(make_bp_case "Supply chain gates" sc.yml "$BP_RULES_OK" \
+    '{"workflow_runs":[{"status":"completed","conclusion":"success","html_url":"https://x/1"}]}')"
+  run run_wd "$dir"
+  assert_success
+  assert_output --partial "red=1"
+}
+
+@test "bp red: required context but latest run failed is red" {
+  dir="$(make_bp_case "Changelog gates" cg.yml "$BP_RULES_OK" \
+    '{"workflow_runs":[{"status":"completed","conclusion":"failure","html_url":"https://x/2"}]}')"
+  run run_wd "$dir"
+  assert_success
+  assert_output --partial "red=1"
+}
+
+@test "bp unknown: required context but no completed runs cannot be verified" {
+  dir="$(make_bp_case "Changelog gates" cg.yml "$BP_RULES_OK" '{"workflow_runs":[]}')"
+  run run_wd "$dir"
+  assert_success
+  assert_output --partial "unknown=1"
+}
+
+@test "bp ok: required context + a skipped latest run is healthy (not red)" {
+  dir="$(make_bp_case "Changelog gates" cg.yml "$BP_RULES_OK" \
+    '{"workflow_runs":[{"status":"completed","conclusion":"skipped","html_url":"https://x/1"}]}')"
+  run run_wd "$dir"
+  assert_success
+  assert_output --partial "ok=1 warn=0 red=0 unknown=0"
+}
+
+# --- gh-last-run (stage 3, event-driven workflows) -------------------------
+#   make_lastrun_case <workflow_file> <runs_json>
+make_lastrun_case() {
+  local wf="$1" runs="$2" dir
+  dir="$(make_tmpdir)"
+  mkdir -p "$dir/fx"
+  cat > "$dir/registry.json" <<EOF
+{ "version": 1, "entries": [
+  { "id": "e", "name_he": "אירוע", "type": "event-workflow", "layer": "factory",
+    "proof_method": "gh-last-run",
+    "evidence": { "repo": "edri2or/or-factory-master", "branch": "main", "workflow_file": "${wf}" },
+    "stage": 3, "enabled": true } ] }
+EOF
+  printf '%s' "$runs" > "$dir/fx/${wf}.json"
+  printf '%s\n' "$dir"
+}
+
+@test "last-run ok: latest completed run is success (no staleness window)" {
+  dir="$(make_lastrun_case ev.yml \
+    '{"workflow_runs":[{"status":"completed","conclusion":"success","html_url":"https://x/1"}]}')"
+  run run_wd "$dir"
+  assert_success
+  assert_output --partial "ok=1 warn=0 red=0 unknown=0"
+}
+
+@test "last-run unknown: a never-run event workflow is ❓ not 🚨" {
+  dir="$(make_lastrun_case ev.yml '{"workflow_runs":[]}')"
+  run run_wd "$dir"
+  assert_success
+  assert_output --partial "unknown=1"
+  refute_output --partial "red=1"
+}
+
+@test "last-run warn: a single most-recent failure is watching" {
+  dir="$(make_lastrun_case ev.yml \
+    '{"workflow_runs":[{"status":"completed","conclusion":"failure","html_url":"https://x/2"}]}')"
+  run run_wd "$dir"
+  assert_success
+  assert_output --partial "warn=1"
+}
+
+@test "last-run red: two consecutive failures escalate" {
+  dir="$(make_lastrun_case ev.yml \
+    '{"workflow_runs":[{"status":"completed","conclusion":"failure","html_url":"https://x/3"},{"status":"completed","conclusion":"failure","html_url":"https://x/2"}]}')"
+  run run_wd "$dir"
+  assert_success
+  assert_output --partial "red=1"
+}
+
+@test "last-run ok: a skipped no-op run is healthy, not a failure" {
+  # Real case: oil-autofix-verify runs on every push to main but skips unless
+  # the commit is an OIL merge. Consecutive 'skipped' must NOT escalate to red.
+  dir="$(make_lastrun_case ev.yml \
+    '{"workflow_runs":[{"status":"completed","conclusion":"skipped","html_url":"https://x/3"},{"status":"completed","conclusion":"skipped","html_url":"https://x/2"}]}')"
+  run run_wd "$dir"
+  assert_success
+  assert_output --partial "ok=1 warn=0 red=0 unknown=0"
+}
+
+@test "last-run red: skipped most-recent does not mask an older real failure pair" {
+  # skipped (newest) then two real failures → the skipped is healthy, but the
+  # latest DECISIVE conclusion is a failure with a failing predecessor → red.
+  dir="$(make_lastrun_case ev.yml \
+    '{"workflow_runs":[{"status":"completed","conclusion":"failure","html_url":"https://x/4"},{"status":"completed","conclusion":"failure","html_url":"https://x/3"}]}')"
+  run run_wd "$dir"
+  assert_success
+  assert_output --partial "red=1"
+}
+
+# --- static-integrity (stage 3, hooks) -------------------------------------
+# Build a one-entry static-integrity registry pointing at real temp files
+# (absolute paths, so the proof's filesystem checks are hermetic).
+#   make_hook_case <make_executable:0|1> <wire_it:0|1>
+make_hook_case() {
+  local exec_bit="$1" wire="$2" dir hook wired
+  dir="$(make_tmpdir)"
+  hook="$dir/the-hook.sh"
+  wired="$dir/settings.json"
+  printf '#!/usr/bin/env bash\necho hi\n' > "$hook"
+  [ "$exec_bit" = "1" ] && chmod +x "$hook"
+  if [ "$wire" = "1" ]; then
+    printf '{ "hooks": { "command": "%s" } }\n' "$hook" > "$wired"
+  else
+    printf '{ "hooks": {} }\n' > "$wired"
+  fi
+  cat > "$dir/registry.json" <<EOF
+{ "version": 1, "entries": [
+  { "id": "h", "name_he": "הוק", "type": "hook", "layer": "factory",
+    "proof_method": "static-integrity",
+    "evidence": { "repo": "edri2or/or-factory-master", "path": "${hook}", "wired_in": "${wired}" },
+    "stage": 3, "enabled": true } ] }
+EOF
+  printf '%s\n' "$dir"
+}
+
+@test "static-integrity ok: hook exists, executable, and wired" {
+  dir="$(make_hook_case 1 1)"
+  run run_wd "$dir"
+  assert_success
+  assert_output --partial "ok=1 warn=0 red=0 unknown=0"
+}
+
+@test "static-integrity red: hook exists but is not wired" {
+  dir="$(make_hook_case 1 0)"
+  run run_wd "$dir"
+  assert_success
+  assert_output --partial "red=1"
+}
+
+@test "static-integrity red: hook exists but is not executable" {
+  dir="$(make_hook_case 0 1)"
+  run run_wd "$dir"
+  assert_success
+  assert_output --partial "red=1"
+}
+
+@test "static-integrity red: a missing hook is flagged" {
+  dir="$(make_hook_case 1 1)"
+  rm -f "$dir/the-hook.sh"
+  run run_wd "$dir"
+  assert_success
+  assert_output --partial "red=1"
+}

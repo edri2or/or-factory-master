@@ -38,3 +38,6 @@ jobs:
 
       - name: Check devplan updated
         run: bash scripts/check-devplan-updated.sh
+
+      - name: Check watchdog registry updated
+        run: bash scripts/check-watchdog-registry-updated.sh
