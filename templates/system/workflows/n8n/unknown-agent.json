@@ -41,7 +41,7 @@
     },
     {
       "parameters": {
-        "model": "anthropic/claude-sonnet-4.5",
+        "model": "openrouter/auto",
         "options": { "temperature": 0.3 }
       },
       "id": "c0000000-0000-0000-0000-000000000003",
