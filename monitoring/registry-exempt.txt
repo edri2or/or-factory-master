@@ -22,6 +22,12 @@
 .github/workflows/tail-mcp-logs.yml
 .github/workflows/probe-project-deletetime.yml
 
+# n8n on-demand sub-workflows (Execute Workflow Trigger only — no schedule/
+# webhook of their own; invoked by another workflow, so no per-workflow daily
+# run to prove. Their executions are covered collectively by the system-wide
+# "system-n8n-executions" registry entry):
+templates/system/workflows/n8n/pending-actions-executor.json
+
 # Manual operator tools (workflow_dispatch only, no schedule to prove):
 .github/workflows/compile-changelog.yml
 .github/workflows/list-recoverable-projects.yml

@@ -54,7 +54,7 @@ templates תחת `templates/system/...` עם graceful degradation; provision-onl
 - [x] JSON תקין (`jq`), yamllint+shellcheck ירוקים מקומית; actionlint ב-CI.
 - [ ] CI ירוק: Playground tests + pipeline-tests.
 
-**הערת התקדמות אחרונה:** השלב מומש. נבנה ה-subworkflow `pending-actions-executor.json` (11 צמתים): Validate→Lock(אטומי)→Switch→ענף n8n(HTTP activate/deactivate)→Build Success/Failure→Mark Done/Failed→Notify. נעילה אטומית בשאילתה אחת מונעת ביצוע כפול; כשל מנותב לרישום error_record + הודעת ❌. נוסף בלוק התקנה (5g) ב-configure-agent-router.yml לפני tg-inbound. ממתין לירוק CI ולאישור Or לפני Stage C.
+**הערת התקדמות אחרונה:** השלב מומש. נבנה ה-subworkflow `pending-actions-executor.json` (11 צמתים): Validate→Lock(אטומי)→Switch→ענף n8n(HTTP activate/deactivate)→Build Success/Failure→Mark Done/Failed→Notify. נעילה אטומית בשאילתה אחת מונעת ביצוע כפול; כשל מנותב לרישום error_record + הודעת ❌. נוסף בלוק התקנה (5g) ב-configure-agent-router.yml לפני tg-inbound. שער ה-watchdog-registry דרש החלטה: ה-executor הוא subworkflow על-פי-בקשה בלי תזמון עצמאי, לכן נוסף ל-`monitoring/registry-exempt.txt` (אין הוכחת ריצה יומית; ביצועיו מכוסים קולקטיבית ע"י `system-n8n-executions`). ממתין לירוק CI ולאישור Or לפני Stage C.
 
 **שינוי תוכנית:** —
 
