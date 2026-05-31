@@ -1,4 +1,5 @@
 ---
+audience: shared
 description: Bootstraps a scoped GitHub App via the Manifest Flow and writes its credentials to GCP Secret Manager. One human click in Cloud Shell; no classic PAT. Use when a new system needs an installation-token identity for GitHub Actions.
 synthesis-required: false
 adapted-by: skill-adapter

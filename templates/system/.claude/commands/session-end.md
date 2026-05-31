@@ -1,4 +1,5 @@
 ---
+audience: shared
 description: Captures the current session's decisions, actions, and open items. Appends a new entry to JOURNEY.md and updates CLAUDE.md Last Updated section. Use at the end of any development session to prevent inter-session context rot.
 ---
 

@@ -1,4 +1,5 @@
 ---
+audience: shared
 description: Audits all exported skills against their sources. Detects stale exports (source modified after export), orphaned exports (no local source), and portability scores. Use before /push-skills to confirm the export layer is clean.
 ---
 

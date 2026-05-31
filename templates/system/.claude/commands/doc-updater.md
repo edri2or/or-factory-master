@@ -1,4 +1,5 @@
 ---
+audience: shared
 description: Detects drift between a source code file and its Markdown documentation, then proposes targeted edits to bring the docs in sync. Use when the user asks to update docs, sync documentation, or fix outdated documentation for a module or function.
 ---
 

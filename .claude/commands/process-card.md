@@ -1,4 +1,5 @@
 ---
+audience: shared
 description: Analyzes a conversation and extracts a reusable process card: title, goal, steps, insights, actions, and recommendation. Use when you want to document a successful workflow, after-action review, or replicate a process from a past session.
 ---
 

@@ -1,4 +1,5 @@
 ---
+audience: shared
 description: Appends an entry to docs/secret-manager-journal.md recording every autonomous GCP Secret Manager action: repo, project, date, session ID, mechanism, and result. Use when an agent completes or fails a Secret Manager operation and needs to document it.
 ---
 

@@ -1,4 +1,5 @@
 ---
+audience: shared
 description: Stage 7 closeout — Full System E2E + Autonomy Proof. Runs the 48h autonomy window, verifies dual proof (Level-1 rebuild, Level-2 hands-off), then marks the stage completed. Use after Stage 6.
 synthesis-required: false
 adapted-by: skill-adapter

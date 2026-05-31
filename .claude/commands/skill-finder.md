@@ -1,4 +1,5 @@
 ---
+audience: shared
 description: Finds the right skill for your request. Scans all installed skills, ranks top 3 by relevance with confidence and explanation, then activates your choice. Use when you don't know which skill to invoke.
 ---
 

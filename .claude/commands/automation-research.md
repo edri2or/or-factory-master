@@ -1,4 +1,5 @@
 ---
+audience: shared
 description: Researches automation feasibility using live tool inventory and web evidence. Ranks options with 5-dimension scoring and precise 'how it works here' description. Use when automating a workflow and needing evidence-based feasibility check.
 synthesis-required: false
 adapted-by: skill-adapter

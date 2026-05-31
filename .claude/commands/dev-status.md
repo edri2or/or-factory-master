@@ -1,4 +1,5 @@
 ---
+audience: shared
 description: Summarize the active /dev-stage development plan(s) for the user in plain Hebrew, on demand. Use when the user asks "מה קורה?" / "איפה אנחנו?" / "סטטוס" / "dev-status" — reads the live plan file(s) and gives a short status, never the raw file.
 ---
 

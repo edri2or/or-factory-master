@@ -1,4 +1,5 @@
 ---
+audience: shared
 description: Investigates a process or flow, detects the repo's test framework, plans an E2E test covering happy path, failure paths, and edge cases, then writes the test after user approval. Use when asked to write or create an E2E test for any flow.
 ---
 

@@ -1,4 +1,5 @@
 ---
+audience: shared
 description: Security-audits a named skill: reads SKILL.md + linked code, scans for Unicode obfuscation, hooks, and MCP overrides, then outputs an OWASP-mapped severity report to chat. Use when asked to audit, scan, or check a skill for security risks.
 ---
 

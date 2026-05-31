@@ -1,4 +1,5 @@
 ---
+audience: shared
 description: Checks optimization feasibility from session conclusions. Runs 4-criteria PRR checklist, scores go/no-go with confidence, triggers HITL on high risk. Use when deciding to proceed with optimization after a session.
 ---
 

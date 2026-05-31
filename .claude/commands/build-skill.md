@@ -1,4 +1,5 @@
 ---
+audience: shared
 description: Creates a new Claude Code SKILL.md from scratch. Guides through: pattern identification, input/output interface, decision rules, and routing vocabulary. Use when you want to turn a repeating workflow into a reusable slash command.
 ---
 

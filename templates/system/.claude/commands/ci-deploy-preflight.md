@@ -1,4 +1,5 @@
 ---
+audience: shared
 description: Adds a CI step BEFORE deploy that proves the deployed system's runtime contracts (credential scopes, external resources). On contract violation: exit 1 with ::error:: that names exact remediation (which scope, which env-var). Use to convert silent runtime degrade into loud CI fail.
 synthesis-required: false
 adapted-by: skill-adapter

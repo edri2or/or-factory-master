@@ -1,4 +1,5 @@
 ---
+audience: shared
 description: Publishes a derived JSON file (state, manifest, metrics) from a private GitHub repo via anonymous GitHub Pages, with auto-deploy on file changes. Use when runtime systems (N8N, lambdas, webhooks) need credentialless read access to a no-secret derived file.
 ---
 

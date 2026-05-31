@@ -1,4 +1,5 @@
 ---
+audience: shared
 description: Analyzes a technical pain point: decomposes root causes, researches problem and solutions externally, reads current system context, and produces an adapted action plan. Use when diagnosing performance, reliability, scaling, or maintainability pain.
 ---
 

@@ -1,4 +1,5 @@
 ---
+audience: shared
 description: Replace a workflow's PyNaCl + classic PAT runtime secret-writing with Terraform `github_actions_secret` resources fed by an App-token-via-WIF chain. Use when retiring `PUSH_TARGET_TOKEN`, PyNaCl, or REST PUT loops that manage repo Actions secrets.
 ---
 

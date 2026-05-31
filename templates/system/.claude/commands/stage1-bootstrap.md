@@ -1,4 +1,5 @@
 ---
+audience: shared
 description: Bootstraps [your-railway] + [your-cloudflare] DNS for a new autonomous system. Writes bootstrap.yml, triggers via workflow_dispatch, verifies E2E, and documents in [your-journey-file]. Use after /gcp-wif-bootstrap completes.
 synthesis-required: false
 adapted-by: skill-adapter

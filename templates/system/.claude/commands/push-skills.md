@@ -1,4 +1,5 @@
 ---
+audience: shared
 description: Pushes all portable skills from exported-skills/ to a target GitHub repository as .claude/commands/<name>.md files. GitHub API creates the directory automatically. Use when you want to install or deploy global skills to another repo.
 synthesis-required: false
 adapted-by: skill-adapter

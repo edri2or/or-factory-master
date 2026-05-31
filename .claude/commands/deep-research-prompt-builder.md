@@ -1,4 +1,5 @@
 ---
+audience: shared
 description: Expand any topic, word, or question into a full structured Deep Research prompt (8 sections, truth protocol). Use when you need a copy-ready prompt to hand to any AI research agent.
 ---
 

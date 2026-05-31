@@ -1,4 +1,5 @@
 ---
+audience: shared
 description: Builds a 3-workflow GitHub Actions pipeline: skills auto-sync from any repo to a central repo, then fan out to all enrolled org repos. Use when setting up org-wide automatic skill distribution from scratch.
 ---
 

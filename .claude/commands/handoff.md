@@ -1,4 +1,5 @@
 ---
+audience: shared
 description: Save session handoff: write HANDOFF.md and update CLAUDE.md. Use when handoff, snapshot session, save context, or preserve session state between sessions.
 ---
 

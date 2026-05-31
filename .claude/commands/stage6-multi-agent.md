@@ -1,4 +1,5 @@
 ---
+audience: shared
 description: Deploys Stage 6 multi-agent layer — Agent Router + ops/code/research sub-agents + infra stub — on N8N with Macro-F1 ≥ 0.85 gate, wires [your-telegram] free-form Hebrew routing. Use after Stages 1–5 complete or to re-deploy the router.
 synthesis-required: false
 adapted-by: skill-adapter

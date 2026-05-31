@@ -1,4 +1,5 @@
 ---
+audience: shared
 description: Converts an existing project-specific SKILL.md into a portable, system-agnostic version. Strips project references, product terms, and experiment IDs. Use when you want to reuse an existing skill in any independent codebase.
 synthesis-required: false
 adapted-by: skill-adapter
