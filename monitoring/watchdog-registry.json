@@ -185,6 +185,20 @@
       "evidence": { "systems_folder": "123180924297" },
       "stage": 4,
       "enabled": true
+    },
+    {
+      "id": "system-branch-protection",
+      "name_he": "הגנת-ענף במערכות",
+      "type": "system-github",
+      "layer": "system",
+      "proof_method": "system-branch-protection",
+      "evidence": {
+        "systems_folder": "123180924297",
+        "branch": "main",
+        "required_contexts": ["Changelog gates", "shellcheck + yamllint", "Scan for committed secrets", "Supply chain gates"]
+      },
+      "stage": 4,
+      "enabled": true
     }
   ]
 }
