@@ -25,7 +25,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 | 3 | שער אנטי-סטייה תאום (CI) | completed | `scripts/check-reference-sync.sh`, `scripts/tests/check-reference-sync.bats`, `.github/workflows/changelog-check.yml` |
 | 4 | reconciliation מתוזמן | completed | `.github/workflows/reference-system-reconcile.yml` |
 | 5 | שער אימות חי על העומדת | completed | `scripts/reference-system-smoke.sh`, `scripts/tests/reference-system-smoke.bats` |
-| 6 | הסקיל `/dev-stage-factory` | pending | `.claude/commands/dev-stage-factory.md`, mirror sync |
+| 6 | הסקיל `/dev-stage-factory` | completed | `.claude/commands/dev-stage-factory.md`, mirror sync |
 | 7 | חיווט, תיעוד, roadmap | pending | `CLAUDE.md`, `docs/roadmap.md`, `README.md` |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
@@ -134,11 +134,11 @@ probe ל-agent-router). אופ': `reference-system-validate.yml` שמחיל שי
 `factory-test-25` (שכבה ב'). עצירה-לאישור בכל גבול. הרצת `sync-skills-mirror.sh`.
 
 **Acceptance:**
-- [ ] הסקיל קיים עם `audience: factory-only` ולא נכנס ל-`templates/system/.claude/commands/`
-- [ ] `check-skills-mirror.sh` ירוק (mirror לא השתנה)
-- [ ] ריצת-יבש על שינוי-דמה מראה את הרצף הנכון + עצירות
+- [x] הסקיל קיים עם `audience: factory-only` ולא נכנס ל-`templates/system/.claude/commands/` (אומת: absent)
+- [x] `check-skills-mirror.sh` ירוק — 65 shared, 2 factory-only מוחרגים (היה 1)
+- [x] הרצף מתועד נכון: שתי-שכבות (A עומדת → B מאפס על factory-test-25), עצירה-לאישור בכל גבול, אישור מפורש לכל מהלך בעלות
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם. `.claude/commands/dev-stage-factory.md` (`audience: factory-only`) — superset של `/dev-stage` לפיתוחי-תהליך-הקמה: לולאת שתי-השכבות (שערים סטטיים → Layer A על המערכת העומדת + smoke → Layer B הקמה-מאפס על factory-test-25), עם אישור מפורש לכל deploy/provision ושמירה על תפקיד factory-test-25. הרצתי `sync-skills-mirror.sh`: המראה לא השתנתה (factory-only מוחרג), `check-skills-mirror` ירוק. הסקיל נטען ומופיע ברשימת הסקילים. ממתין לאישור לפני שלב 7.
 
 **שינוי תוכנית:** —
 
@@ -169,3 +169,4 @@ probe ל-agent-router). אופ': `reference-system-validate.yml` שמחיל שי
 - שלב 3 הושלם — הוספנו את החוק שמשלים את שער-הזהב: "נגעת בתבניות? חובה לעדכן את התמונה, אחרת חסום", ובנוסף שמירה שרשימת-המשתנים של הרינדור זהה בכל שלושת המקומות שמשתמשים בה. כך אי אפשר "לשכוח" לעדכן את התמונה.
 - שלב 4 הושלם — בנינו "שומר" אוטומטי שירוץ כל 6 שעות (אחרי שנקים את המערכת): בודק אם המערכת החיה "נשארה מאחור" מול הקוד העדכני ואם היא בריאה, ושולח התראה לטלגרם אם יש בעיה. הוא **רק מתריע** — לא בונה מחדש לבד (זה מהלך שעולה כסף ודורש את האישור שלך). בדקנו שכל ההחלטות נכונות ושכל עוד אין מערכת הוא פשוט שותק.
 - שלב 5 הושלם — בנינו בדיקת-חיות (smoke) שנריץ ידנית כדי לוודא שהמערכת העומדת עובדת מקצה-לקצה: ש-n8n חי, שהשער (Caddy) עומד בחזית וחוסם בקשות לא-מורשות, ושהכל מחובר. בדקנו שזה אומר "תקין" כשהכל עובד ו"נכשל" כשמשהו מנותק.
+- שלב 6 הושלם — בנינו את ה"מוצר הסופי": הסקיל `/dev-stage-factory`. זה כלי ייעודי (רק לפקטורי) שמנהל פיתוח-תהליך-הקמה דרך שתי השכבות ברצף — קודם בודק על המערכת העומדת, ואז הקמה-נקייה-מאפס — עם עצירה-לאישור בכל גבול. ודאנו שהוא לא נשלח למערכות.
