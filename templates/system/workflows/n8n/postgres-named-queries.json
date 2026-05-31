@@ -13,7 +13,7 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "// Normalize the LLM's tool args into a uniform { query_name } shape.\n// Stage 113 (verified end-to-end on tgbot15 with the operator's real Telegram\n// message): the toolWorkflow node has `specifyInputSchema:false`, so the LLM\n// passes a single RAW STRING as the tool's arg (no JSON wrapping). With the\n// trigger in passthrough mode, that string arrives at $json.query. Stage 110's\n// workflowInputs path + Stage 112's schemaType:\"fromJson\" both failed (the LLM\n// kept sending query_name:null in those modes — confirmed via DEBUG1+DEBUG2\n// Telegram messages on tgbot14/15). This normalizer tries every observed shape\n// in order so the Switch downstream can read `$json.query_name` uniformly.\nconst items = $input.all();\nconst raw = (items[0] && items[0].json) || {};\nconst valid = ['style_profile_get', 'recent_audit_log', 'pending_actions_open', 'executions_summary_24h'];\nconst tryString = (s) => {\n  if (typeof s !== 'string') return '';\n  const t = s.trim();\n  if (!t) return '';\n  if (valid.indexOf(t) >= 0) return t;\n  try { const p = JSON.parse(t); if (p && typeof p.query_name === 'string') return p.query_name; } catch (e) { /* ignore */ }\n  return '';\n};\nlet qn = '';\nif (typeof raw.query_name === 'string' && raw.query_name) {\n  qn = raw.query_name;\n} else if (typeof raw.query === 'string') {\n  qn = tryString(raw.query);\n} else if (raw.query && typeof raw.query === 'object' && typeof raw.query.query_name === 'string') {\n  qn = raw.query.query_name;\n} else if (raw.input && typeof raw.input.query_name === 'string') {\n  qn = raw.input.query_name;\n} else if (typeof raw.arguments === 'string') {\n  qn = tryString(raw.arguments);\n}\nreturn [{ json: { query_name: qn, _raw_input: raw } }];"
+        "jsCode": "// Normalize the LLM's tool args into a uniform { query_name } shape.\n// Stage 113 (verified end-to-end on tgbot15 with the operator's real Telegram\n// message): the toolWorkflow node has `specifyInputSchema:false`, so the LLM\n// passes a single RAW STRING as the tool's arg (no JSON wrapping). With the\n// trigger in passthrough mode, that string arrives at $json.query. Stage 110's\n// workflowInputs path + Stage 112's schemaType:\"fromJson\" both failed (the LLM\n// kept sending query_name:null in those modes — confirmed via DEBUG1+DEBUG2\n// Telegram messages on tgbot14/15). This normalizer tries every observed shape\n// in order so the Switch downstream can read `$json.query_name` uniformly.\nconst items = $input.all();\nconst raw = (items[0] && items[0].json) || {};\nconst valid = ['style_profile_get', 'recent_audit_log', 'pending_actions_open', 'executions_summary_24h', 'spend_total'];\nconst tryString = (s) => {\n  if (typeof s !== 'string') return '';\n  const t = s.trim();\n  if (!t) return '';\n  if (valid.indexOf(t) >= 0) return t;\n  try { const p = JSON.parse(t); if (p && typeof p.query_name === 'string') return p.query_name; } catch (e) { /* ignore */ }\n  return '';\n};\nlet qn = '';\nif (typeof raw.query_name === 'string' && raw.query_name) {\n  qn = raw.query_name;\n} else if (typeof raw.query === 'string') {\n  qn = tryString(raw.query);\n} else if (raw.query && typeof raw.query === 'object' && typeof raw.query.query_name === 'string') {\n  qn = raw.query.query_name;\n} else if (raw.input && typeof raw.input.query_name === 'string') {\n  qn = raw.input.query_name;\n} else if (typeof raw.arguments === 'string') {\n  qn = tryString(raw.arguments);\n}\nreturn [{ json: { query_name: qn, _raw_input: raw } }];"
       },
       "id": "50000000-0000-0000-0000-00000000000a",
       "name": "Normalize Input",
@@ -89,6 +89,22 @@
               },
               "renameOutput": true,
               "outputKey": "executions_summary_24h"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose", "version": 2 },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "51000000-0000-0000-0000-000000000005",
+                    "leftValue": "={{ $json.query_name }}",
+                    "rightValue": "spend_total",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "spend_total"
             }
           ]
         },
@@ -165,8 +181,23 @@
     },
     {
       "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT ROUND(COALESCE((SELECT last_cum_usd FROM spend_track_state LIMIT 1),0),4) AS total_usd,\n       (SELECT updated_at FROM spend_track_state LIMIT 1) AS as_of,\n       ROUND(COALESCE((SELECT SUM(cost_usd) FROM spend_log),0),4) AS logged_usd,\n       (SELECT COUNT(*)::int FROM spend_log) AS log_rows;",
+        "options": {}
+      },
+      "id": "50000000-0000-0000-0000-00000000000b",
+      "name": "Q: spend_total",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [680, 620],
+      "credentials": { "postgres": { "id": "@@CRED_POSTGRES_ID@@", "name": "Postgres (n8n)" } },
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "// Format any of the 4 Postgres branch outputs into a uniform tool response.\n// Postgres nodes with alwaysOutputData:true emit one empty {} when SELECT returns\n// zero rows; filter that out so the LLM sees rows:[] rather than rows:[{}].\n// query_name comes from the Normalize Input node (Stage 111) which extracts it\n// defensively from any of the possible toolWorkflow payload shapes.\nconst normalized = $('Normalize Input').first().json || {};\nconst rows = $input.all()\n  .map(i => i.json)\n  .filter(o => o && typeof o === 'object' && Object.keys(o).length > 0);\nreturn [{ json: { ok: true, query_name: String(normalized.query_name || ''), rows: rows } }];"
+        "jsCode": "// Format any of the 5 Postgres branch outputs into a uniform tool response.\n// Postgres nodes with alwaysOutputData:true emit one empty {} when SELECT returns\n// zero rows; filter that out so the LLM sees rows:[] rather than rows:[{}].\n// query_name comes from the Normalize Input node (Stage 111) which extracts it\n// defensively from any of the possible toolWorkflow payload shapes.\nconst normalized = $('Normalize Input').first().json || {};\nconst rows = $input.all()\n  .map(i => i.json)\n  .filter(o => o && typeof o === 'object' && Object.keys(o).length > 0);\nreturn [{ json: { ok: true, query_name: String(normalized.query_name || ''), rows: rows } }];"
       },
       "id": "50000000-0000-0000-0000-000000000007",
       "name": "Format Output",
@@ -195,7 +226,7 @@
               "id": "52000000-0000-0000-0000-000000000003",
               "name": "error",
               "type": "string",
-              "value": "unknown query_name — valid: style_profile_get, recent_audit_log, pending_actions_open, executions_summary_24h"
+              "value": "unknown query_name — valid: style_profile_get, recent_audit_log, pending_actions_open, executions_summary_24h, spend_total"
             },
             {
               "id": "52000000-0000-0000-0000-000000000004",
@@ -223,13 +254,15 @@
         [{ "node": "Q: recent_audit_log", "type": "main", "index": 0 }],
         [{ "node": "Q: pending_actions_open", "type": "main", "index": 0 }],
         [{ "node": "Q: executions_summary_24h", "type": "main", "index": 0 }],
+        [{ "node": "Q: spend_total", "type": "main", "index": 0 }],
         [{ "node": "Unknown Query", "type": "main", "index": 0 }]
       ]
     },
     "Q: style_profile_get": { "main": [[{ "node": "Format Output", "type": "main", "index": 0 }]] },
     "Q: recent_audit_log": { "main": [[{ "node": "Format Output", "type": "main", "index": 0 }]] },
     "Q: pending_actions_open": { "main": [[{ "node": "Format Output", "type": "main", "index": 0 }]] },
-    "Q: executions_summary_24h": { "main": [[{ "node": "Format Output", "type": "main", "index": 0 }]] }
+    "Q: executions_summary_24h": { "main": [[{ "node": "Format Output", "type": "main", "index": 0 }]] },
+    "Q: spend_total": { "main": [[{ "node": "Format Output", "type": "main", "index": 0 }]] }
   },
   "settings": { "executionOrder": "v1" }
 }

@@ -104,7 +104,7 @@
     {
       "parameters": {
         "name": "postgres_named_query",
-        "description": "Call this tool with ONE input — a single string that is EXACTLY one of these 4 query names (do not wrap it in JSON or any object, just send the raw string): style_profile_get | recent_audit_log | pending_actions_open | executions_summary_24h. The tool returns {ok:true, query_name, rows:[...]} for a valid name, or {ok:false, query_name, error} otherwise. style_profile_get = the operator's learned style profile. recent_audit_log = last 10 bot actions + decisions. pending_actions_open = open HITL-pending actions. executions_summary_24h = n8n executions in last 24h grouped by status.",
+        "description": "Call this tool with ONE input — a single string that is EXACTLY one of these 5 query names (do not wrap it in JSON or any object, just send the raw string): style_profile_get | recent_audit_log | pending_actions_open | executions_summary_24h | spend_total. The tool returns {ok:true, query_name, rows:[...]} for a valid name, or {ok:false, query_name, error} otherwise. style_profile_get = the operator's learned style profile. recent_audit_log = last 10 bot actions + decisions. pending_actions_open = open HITL-pending actions. executions_summary_24h = n8n executions in last 24h grouped by status. spend_total = the system's cumulative AI/LLM spend in USD (rows[0]: total_usd = authoritative cumulative cost, as_of = last update, logged_usd + log_rows = cross-check from the spend log); use it for 'how much have I spent' / 'how much did the bot/AI cost'.",
         "workflowId": { "__rl": true, "value": "@@WF_PG_NAMED_QUERIES_ID@@", "mode": "id" }
       },
       "id": "c0000000-0000-0000-0000-000000000009",
