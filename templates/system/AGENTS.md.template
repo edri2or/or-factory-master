@@ -221,6 +221,27 @@ To act on GitHub **as this App**:
 - **Never give the chat bot free-SQL or write tools.** Its DB access is the fixed read-only `postgres_named_query` whitelist; state-changing actions must route through the (deferred) HITL `pending_actions` flow.
 - **Never print, log, or write to disk the `github-app-private-key` or any minted installation token.** Never fetch the private key outside a GitHub Actions workflow.
 
+## Development workflow (`/dev-stage`)
+
+This system inherits the factory's staged-development workflow. Run any non-trivial
+change through it so every step is documented, gated, and stop-for-approval:
+
+- **`/dev-stage`** (`.claude/commands/dev-stage.md`) manages a development as ordered,
+  documented stages tracked in a living plan file at `devplans/<slug>.md` (instantiated
+  from `templates/devplan/DEVPLAN.template.md`). Every development gets its own
+  `devplans/<slug>.md`, so parallel developments never collide on the plan file.
+- **`/dev-status`** (`.claude/commands/dev-status.md`) gives a plain-Hebrew, on-demand
+  summary of the active plan(s) — the user never opens a file.
+- A committed `SessionStart` hook (`.claude/settings.json` →
+  `scripts/devplan-session-start-hook.sh`) re-injects every active plan's state at the
+  start of each session and after compaction, so you re-orient automatically. It is
+  read-only and silent when no plan is active.
+- **CI gate:** `scripts/check-devplan-updated.sh` runs inside the "Changelog gates" job
+  and blocks merging code while any `devplans/*.md` is `status: active` unless an active
+  plan is updated in the same diff. Each stage writes its changelog entry to a fragment
+  `changelog.d/<YYYY-MM-DD>-<slug>.md` (never the head of `CHANGELOG.md`). Set a plan's
+  front-matter `status: completed` at closure to release the gate.
+
 ## Further reading (load only when relevant to the task at hand)
 
 *This directory is empty by design — add files here as the system grows.
