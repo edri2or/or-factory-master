@@ -17,6 +17,7 @@
 .github/workflows/_verify-sentry.yml
 .github/workflows/observability-pilot.yml
 .github/workflows/tail-mcp-logs.yml
+.github/workflows/probe-project-deletetime.yml
 
 # Manual operator tools (workflow_dispatch only, no schedule to prove):
 .github/workflows/compile-changelog.yml
