@@ -141,3 +141,107 @@ BP_RULES_OK='[{"type":"required_status_checks","parameters":{"required_status_ch
   assert_success
   assert_output --partial "unknown=1"
 }
+
+# --- gh-last-run (stage 3, event-driven workflows) -------------------------
+#   make_lastrun_case <workflow_file> <runs_json>
+make_lastrun_case() {
+  local wf="$1" runs="$2" dir
+  dir="$(make_tmpdir)"
+  mkdir -p "$dir/fx"
+  cat > "$dir/registry.json" <<EOF
+{ "version": 1, "entries": [
+  { "id": "e", "name_he": "אירוע", "type": "event-workflow", "layer": "factory",
+    "proof_method": "gh-last-run",
+    "evidence": { "repo": "edri2or/or-factory-master", "branch": "main", "workflow_file": "${wf}" },
+    "stage": 3, "enabled": true } ] }
+EOF
+  printf '%s' "$runs" > "$dir/fx/${wf}.json"
+  printf '%s\n' "$dir"
+}
+
+@test "last-run ok: latest completed run is success (no staleness window)" {
+  dir="$(make_lastrun_case ev.yml \
+    '{"workflow_runs":[{"status":"completed","conclusion":"success","html_url":"https://x/1"}]}')"
+  run run_wd "$dir"
+  assert_success
+  assert_output --partial "ok=1 warn=0 red=0 unknown=0"
+}
+
+@test "last-run unknown: a never-run event workflow is ❓ not 🚨" {
+  dir="$(make_lastrun_case ev.yml '{"workflow_runs":[]}')"
+  run run_wd "$dir"
+  assert_success
+  assert_output --partial "unknown=1"
+  refute_output --partial "red=1"
+}
+
+@test "last-run warn: a single most-recent failure is watching" {
+  dir="$(make_lastrun_case ev.yml \
+    '{"workflow_runs":[{"status":"completed","conclusion":"failure","html_url":"https://x/2"}]}')"
+  run run_wd "$dir"
+  assert_success
+  assert_output --partial "warn=1"
+}
+
+@test "last-run red: two consecutive failures escalate" {
+  dir="$(make_lastrun_case ev.yml \
+    '{"workflow_runs":[{"status":"completed","conclusion":"failure","html_url":"https://x/3"},{"status":"completed","conclusion":"failure","html_url":"https://x/2"}]}')"
+  run run_wd "$dir"
+  assert_success
+  assert_output --partial "red=1"
+}
+
+# --- static-integrity (stage 3, hooks) -------------------------------------
+# Build a one-entry static-integrity registry pointing at real temp files
+# (absolute paths, so the proof's filesystem checks are hermetic).
+#   make_hook_case <make_executable:0|1> <wire_it:0|1>
+make_hook_case() {
+  local exec_bit="$1" wire="$2" dir hook wired
+  dir="$(make_tmpdir)"
+  hook="$dir/the-hook.sh"
+  wired="$dir/settings.json"
+  printf '#!/usr/bin/env bash\necho hi\n' > "$hook"
+  [ "$exec_bit" = "1" ] && chmod +x "$hook"
+  if [ "$wire" = "1" ]; then
+    printf '{ "hooks": { "command": "%s" } }\n' "$hook" > "$wired"
+  else
+    printf '{ "hooks": {} }\n' > "$wired"
+  fi
+  cat > "$dir/registry.json" <<EOF
+{ "version": 1, "entries": [
+  { "id": "h", "name_he": "הוק", "type": "hook", "layer": "factory",
+    "proof_method": "static-integrity",
+    "evidence": { "repo": "edri2or/or-factory-master", "path": "${hook}", "wired_in": "${wired}" },
+    "stage": 3, "enabled": true } ] }
+EOF
+  printf '%s\n' "$dir"
+}
+
+@test "static-integrity ok: hook exists, executable, and wired" {
+  dir="$(make_hook_case 1 1)"
+  run run_wd "$dir"
+  assert_success
+  assert_output --partial "ok=1 warn=0 red=0 unknown=0"
+}
+
+@test "static-integrity red: hook exists but is not wired" {
+  dir="$(make_hook_case 1 0)"
+  run run_wd "$dir"
+  assert_success
+  assert_output --partial "red=1"
+}
+
+@test "static-integrity red: hook exists but is not executable" {
+  dir="$(make_hook_case 0 1)"
+  run run_wd "$dir"
+  assert_success
+  assert_output --partial "red=1"
+}
+
+@test "static-integrity red: a missing hook is flagged" {
+  dir="$(make_hook_case 1 1)"
+  rm -f "$dir/the-hook.sh"
+  run run_wd "$dir"
+  assert_success
+  assert_output --partial "red=1"
+}

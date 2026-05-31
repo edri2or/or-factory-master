@@ -19,8 +19,8 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
 | 1 | יסוד: פנקס + שומר-יומי (workflows מתוזמנים) + שער-CI + dead-man's-switch | completed | `monitoring/watchdog-registry.json`, `monitoring/README.md`, `monitoring/registry-exempt.txt`, `scripts/run-watchdog.sh`, `.github/workflows/meta-monitoring-watchdog.yml`, `scripts/check-watchdog-registry-updated.sh`, `scripts/create-watchdog-heartbeat.sh`, `.github/workflows/changelog-check.yml`, `scripts/tests/run-watchdog.bats`, `scripts/tests/check-watchdog-registry-updated.bats` |
-| 2 | כיסוי שערי ה-CI (push/PR) עם הוכחת branch-protection | in-progress | `monitoring/watchdog-registry.json`, `scripts/run-watchdog.sh`, `scripts/tests/run-watchdog.bats` |
-| 3 | hooks (static-integrity) + workflows מונעי-אירוע (last-real-run) | pending | `monitoring/watchdog-registry.json`, `scripts/run-watchdog.sh` |
+| 2 | כיסוי שערי ה-CI (push/PR) עם הוכחת branch-protection | completed | `monitoring/watchdog-registry.json`, `scripts/run-watchdog.sh`, `scripts/tests/run-watchdog.bats` |
+| 3 | hooks (static-integrity) + workflows מונעי-אירוע (last-real-run) | in-progress | `monitoring/watchdog-registry.json`, `monitoring/registry-exempt.txt`, `monitoring/README.md`, `scripts/run-watchdog.sh`, `scripts/tests/run-watchdog.bats` |
 | 4 | כיסוי n8n/מערכות (n8n-execution) + provenance לדוח | pending | `monitoring/watchdog-registry.json`, `scripts/run-watchdog.sh` |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
@@ -59,9 +59,9 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
       `supply-chain-check`, `playground-tests`) עם `proof_method: gh-branch-protection` — ה-contexts נלקחו מ-ground-truth ב-`scripts/ensure-protect-main-ruleset.sh` (Changelog gates / shellcheck + yamllint / Scan for committed secrets / Supply chain gates / Playground tests).
 - [x] `run-watchdog.sh` מאמת שכל context עדיין נדרש ב-branch-protection (דרך `GET /repos/.../rules/branches/main`) + הריצה האחרונה על main ירוקה.
 - [x] שער שהוסר מ-branch-protection מסומן 🚨 גם אם הקובץ קיים (נבדק ב-bats: `bp red: context dropped...`).
-- [ ] CI ירוק על ה-PR + אימות ריצה אמיתית של השומר (10 רשומות) באישור Or.
+- [x] CI ירוק על ה-PR (#243) + ריצה אמיתית של השומר אומתה: `done ok=10 warn=0 red=0 unknown=0`, 5 השערים ✅, `telegram='ok'`.
 
-**הערת התקדמות אחרונה:** מומש: שיטת ההוכחה `gh-branch-protection` ב-`run-watchdog.sh` + 5 רשומות `ci-gate-*` בפנקס + 4 בדיקות bats חדשות (ok / context-dropped→🚨 / run-failed→🚨 / no-runs→❓). שדרגתי את `CURRENT_STAGE` לברירת-מחדל 2. אימות מקומי: shellcheck נקי, כל 10 בדיקות ה-bats עוברות, וריצת-עשן על הפנקס האמיתי (10 רשומות) מסתיימת ב-exit 0. נותר: לאמת ירוק על ה-PR ואז ריצה אמיתית של השומר.
+**הערת התקדמות אחרונה:** **שלב 2 הושלם ואומת** — PR #243 מוזג, וריצת השומר על main החזירה `ok=10` (כל 5 שערי ה-CI ירוקים: נדרשים בהגנת-הענף + ריצה אחרונה ירוקה). הדוח נשלח לטלגרם.
 
 **שינוי תוכנית:** —
 
@@ -70,14 +70,15 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 ### שלב 3 — hooks + workflows מונעי-אירוע
 
 **Acceptance:**
-- [ ] רשומות `static-integrity` לשני ה-hooks (`scripts/devplan-session-start-hook.sh`, `.claude/hooks/session-start.sh`).
-- [ ] רשומות last-real-run ל-`protect-main`, `oil-autofix-verify`, `oil-autofix-investigate`,
-      `deploy-mcp-server`, `eval-agent-router(-precheck)`.
-- [ ] hook קיים-אך-לא-מחווט מסומן 🚨; כל שורה עם קישור blob/run.
+- [x] רשומות `static-integrity` לשני ה-hooks (`scripts/devplan-session-start-hook.sh`, `.claude/hooks/session-start.sh`) — בודקות קיום + הרשאת-הרצה + חיווט ב-`.claude/settings.json`.
+- [x] רשומות `gh-last-run` ל-`protect-main`, `oil-autofix-verify`, `oil-autofix-investigate`,
+      `deploy-mcp-server`, `eval-agent-router`. `eval-agent-router-precheck` (רק על PR, אין ריצות main) הוצא ל-`registry-exempt.txt` כהחלטה מודעת.
+- [x] hook קיים-אך-לא-מחווט מסומן 🚨 (נבדק ב-bats); כל שורה עם קישור blob (hook) / workflow (event).
+- [ ] CI ירוק על ה-PR + אימות ריצה אמיתית של השומר (17 רשומות) באישור Or.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** מומש: שתי שיטות הוכחה חדשות ב-`run-watchdog.sh` — `static-integrity` (hooks) ו-`gh-last-run` (workflows מונעי-אירוע, ללא חלון-טריות) + 7 רשומות חדשות (2 hooks + 5 events) + עדכון README + 8 בדיקות bats חדשות. שדרגתי `CURRENT_STAGE` ל-3. אימות מקומי: shellcheck נקי, כל 18 בדיקות ה-bats עוברות, ריצת-עשן על הפנקס האמיתי (17 רשומות) מסתיימת ב-`ok=2` (ה-hooks מאומתים ללא טוקן) + exit 0. נותר: לאמת ירוק על ה-PR ואז ריצה אמיתית.
 
-**שינוי תוכנית:** —
+**שינוי תוכנית:** `eval-agent-router-precheck` הוצא להיתר (PR-only) במקום רשומה — שיטת `gh-last-run` בודקת main, ול-precheck אין ריצות main; זו החלטה מתועדת בקובץ ההיתר.
 
 ---
 

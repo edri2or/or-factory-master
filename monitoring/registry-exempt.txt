@@ -12,6 +12,9 @@
 .github/workflows/register-system-app.yml
 .github/workflows/seed-test-bot-token.yml
 
+# PR-only gates (run on pull_request; no main runs to prove via gh-last-run):
+.github/workflows/eval-agent-router-precheck.yml
+
 # Internal verification helpers (manual, ad-hoc):
 .github/workflows/_verify-bs-webhook.yml
 .github/workflows/_verify-sentry.yml

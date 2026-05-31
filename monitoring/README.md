@@ -37,12 +37,17 @@ policy-as-code catalog. משכפל תבניות קיימות בפקטורי (`sc
 
 ### שיטות הוכחה (`proof_method`)
 
-- **`gh-run-freshness`** (cron + event workflows): שואל את GitHub על הריצות האחרונות ב-main.
+- **`gh-run-freshness`** (cron workflows): שואל את GitHub על הריצות האחרונות ב-main.
   ריצה מוצלחת אחרונה חייבת להיות בתוך `tolerance_hours` (≈ מרווח × 1.5). הסלמה לפי כלל
   **"2 כשלים רצופים"**: כשל אחרון בודד = ⚠️ "עוקב"; שניים רצופים = 🚨. הראיה = `html_url` של הריצה.
-- **`gh-branch-protection`** (שערי CI; שלב 2): ה-context עדיין נדרש ב-branch-protection + הריצה
-  האחרונה על main ירוקה.
-- **`static-integrity`** (hooks; שלב 3): הקובץ קיים, ניתן-להרצה, ועדיין מחווט בנקודת הרישום שלו.
+- **`gh-branch-protection`** (שערי CI; שלב 2): ה-context עדיין נדרש ב-branch-protection
+  (`GET /repos/.../rules/branches/main`) + הריצה האחרונה על main ירוקה. context שהוסר מההגנה = 🚨
+  גם אם הקובץ קיים.
+- **`gh-last-run`** (workflows מונעי-אירוע — push/repository_dispatch/PR; שלב 3): אין cron ולכן אין
+  חלון-טריות — הריצה האחרונה שהושלמה על main חייבת להיות ירוקה. workflow שעדיין לא רץ = ❓ (לא 🚨);
+  כשל אחרון בודד = ⚠️; שניים רצופים = 🚨.
+- **`static-integrity`** (hooks; שלב 3): הקובץ קיים, ניתן-להרצה, ועדיין מחווט בנקודת הרישום שלו
+  (למשל מופיע ב-`.claude/settings.json`). hook קיים-אך-לא-מחווט = 🚨.
 - **`n8n-execution`** (מערכות; שלב 4): ביצוע n8n אחרון מוצלח per-system דרך ה-REST API.
 
 ## החוזה: כל אוטומציה חדשה — נרשמת, אחרת ה-CI חוסם
