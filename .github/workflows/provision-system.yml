@@ -346,11 +346,16 @@ jobs:
           # add-iam-policy-binding hits an eventual-consistency window right
           # after service-accounts create — the SA is visible to describe but
           # not yet to the IAM policy API. Retry up to ~30s.
+          # --condition=None is REQUIRED: if the project's IAM policy already
+          # contains ANY conditional binding (e.g. the sandbox toy-key's
+          # github-app-only secretAccessor on factory-test-25), gcloud refuses to
+          # add an unconditional binding in non-interactive mode unless we say so
+          # explicitly. It is a harmless no-op on a condition-free policy.
           _bind() {
             local member="$1" role="$2" i
             for i in 1 2 3 4 5 6; do
               if gcloud projects add-iam-policy-binding "$GCP_PROJECT" \
-                   --member="$member" --role="$role" --quiet 2>&1; then
+                   --member="$member" --role="$role" --condition=None --quiet 2>&1; then
                 return 0
               fi
               echo "Retry ${i}/6 for ${member} ${role} (sleeping 5s)..." >&2
