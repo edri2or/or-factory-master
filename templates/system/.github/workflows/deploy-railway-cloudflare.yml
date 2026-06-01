@@ -526,6 +526,108 @@ jobs:
             }')"
           echo "PASS: n8n env vars set (15 vars in one upsert → single redeploy)."
 
+          # ===== (queue mode) Redis service: SM-first, find, then create =====
+          # Optional per-system broker for n8n queue mode — created ONLY when
+          # QM=true. Mirrors the Postgres pattern (SM-first id → find-by-name →
+          # serviceCreate → persist id to SM). When QM=false this whole block is
+          # skipped, so a non-queue system gets no Redis (byte-identical deploy).
+          REDIS_ID=""
+          if [ "$QM" = "true" ]; then
+            echo "=== Railway: Redis service (queue mode; SM-first lookup) ==="
+            # redis-password: idempotent (never rotate once set, or live workers
+            # lose their broker auth). The SM shell is pre-created by
+            # provision-system.yml; deploy-sa can add a version but not the shell.
+            if REDIS_PASSWORD=$(gcloud secrets versions access latest \
+                                 --secret="redis-password" --project="$PROJECT_ID" 2>/dev/null) \
+               && [ -n "$REDIS_PASSWORD" ]; then
+              echo "INFO: redis-password already has a version — reusing existing."
+            else
+              REDIS_PASSWORD=$(openssl rand -hex 32)
+              printf '%s' "$REDIS_PASSWORD" | gcloud secrets versions add "redis-password" \
+                --project="$PROJECT_ID" --data-file=- --quiet
+              echo "PASS: generated redis-password and stored new version."
+            fi
+            echo "::add-mask::${REDIS_PASSWORD}"
+
+            REDIS_FIRST_TIME=false
+            REDIS_ID=$(gcloud secrets versions access latest \
+              --secret=railway-redis-service-id --project="$PROJECT_ID" 2>/dev/null || echo "")
+            if [ -n "$REDIS_ID" ] && [ "$REDIS_ID" != "null" ]; then
+              echo "INFO: reusing Redis service_id from SM: $REDIS_ID"
+            else
+              resp=$(_gql 'query($id: String!) { project(id: $id) { services { edges { node { id name } } } } }' \
+                "$(jq -cn --arg id "$PROJECT_ID_RW" '{id: $id}')" 2>/dev/null || echo '{}')
+              REDIS_ID=$(printf '%s' "$resp" | jq -r \
+                '(.data.project.services.edges // []) | map(select(.node.name=="redis")) | .[0].node.id // ""' 2>/dev/null || echo "")
+
+              if [ -z "$REDIS_ID" ] || [ "$REDIS_ID" = "null" ]; then
+                resp=$(_gql 'mutation($input: ServiceCreateInput!) { serviceCreate(input: $input) { id } }' \
+                  "$(jq -cn --arg pid "$PROJECT_ID_RW" \
+                    '{input: {projectId: $pid, name: "redis", source: {image: "redis:7-alpine"}}}')")
+                REDIS_ID=$(printf '%s' "$resp" | jq -r '.data.serviceCreate.id' 2>/dev/null || echo "")
+                [ -n "$REDIS_ID" ] && [ "$REDIS_ID" != "null" ] \
+                  || { echo "FAIL: Redis serviceCreate returned no id; resp=$resp" >&2; exit 1; }
+                echo "PASS: Redis service created: $REDIS_ID"
+                REDIS_FIRST_TIME=true
+              else
+                echo "INFO: Redis service found in project: $REDIS_ID"
+              fi
+
+              printf '%s' "$REDIS_ID" | gcloud secrets versions add railway-redis-service-id \
+                --project="$PROJECT_ID" --data-file=- --quiet
+              echo "PASS: railway-redis-service-id persisted to SM."
+            fi
+
+            # AOF persistence volume (SM-first, mounted at the redis image's
+            # default /data) — without it the in-flight execution queue is lost
+            # on a Redis restart/redeploy. environmentId binds it to the
+            # production service-instance (same requirement as the PG volume).
+            REDIS_VOLUME_ID=$(gcloud secrets versions access latest \
+              --secret=railway-redis-volume-id --project="$PROJECT_ID" 2>/dev/null || echo "")
+            if [ -n "$REDIS_VOLUME_ID" ] && [ "$REDIS_VOLUME_ID" != "null" ]; then
+              echo "INFO: reusing redis-data volume_id from SM: $REDIS_VOLUME_ID"
+            else
+              resp=$(_gql 'query($id: String!) { project(id: $id) { volumes { edges { node { id name } } } } }' \
+                "$(jq -cn --arg id "$PROJECT_ID_RW" '{id: $id}')" 2>/dev/null || echo '{}')
+              REDIS_VOLUME_ID=$(printf '%s' "$resp" | jq -r \
+                '(.data.project.volumes.edges // []) | map(select(.node.name=="redis-data")) | .[0].node.id // ""' 2>/dev/null || echo "")
+
+              if [ -z "$REDIS_VOLUME_ID" ] || [ "$REDIS_VOLUME_ID" = "null" ]; then
+                resp=$(_gql 'mutation($input: VolumeCreateInput!) { volumeCreate(input: $input) { id } }' \
+                  "$(jq -cn --arg pid "$PROJECT_ID_RW" --arg sid "$REDIS_ID" --arg eid "$ENV_ID" \
+                    '{input: {projectId: $pid, serviceId: $sid, environmentId: $eid, mountPath: "/data"}}')")
+                REDIS_VOLUME_ID=$(printf '%s' "$resp" | jq -r '.data.volumeCreate.id' 2>/dev/null || echo "")
+                [ -n "$REDIS_VOLUME_ID" ] && [ "$REDIS_VOLUME_ID" != "null" ] \
+                  || { echo "FAIL: Redis volumeCreate returned no id; resp=$resp" >&2; exit 1; }
+                echo "PASS: redis-data volume created and attached: $REDIS_VOLUME_ID"
+              else
+                echo "INFO: redis-data volume found in project: $REDIS_VOLUME_ID"
+              fi
+
+              printf '%s' "$REDIS_VOLUME_ID" | gcloud secrets versions add railway-redis-volume-id \
+                --project="$PROJECT_ID" --data-file=- --quiet
+              echo "PASS: railway-redis-volume-id persisted to SM."
+            fi
+
+            # Env var + start command (first create only — re-running skips this
+            # to avoid a needless Redis redeploy, same Railway-throttle caution as
+            # Caddy). The official redis image takes no password env var, so we
+            # enforce auth + AOF via the start command, referencing REDIS_PASSWORD
+            # from the service env (Railway runs the start command in a shell).
+            if [ "$REDIS_FIRST_TIME" = "true" ]; then
+              echo "=== Railway: Redis env + start command (first create) ==="
+              _upsert_collection "$REDIS_ID" "$(jq -cn --arg pw "$REDIS_PASSWORD" '{REDIS_PASSWORD: $pw}')"
+              _gql 'mutation($eid: String!, $sid: String!, $input: ServiceInstanceUpdateInput!) { serviceInstanceUpdate(environmentId: $eid, serviceId: $sid, input: $input) }' \
+                "$(jq -cn --arg eid "$ENV_ID" --arg sid "$REDIS_ID" \
+                  '{eid: $eid, sid: $sid, input: {startCommand: "redis-server --requirepass \"$REDIS_PASSWORD\" --appendonly yes"}}')" >/dev/null
+              echo "PASS: Redis password + AOF start command set."
+            else
+              echo "INFO: Redis env/start command already set — skipping to avoid a needless redeploy."
+            fi
+          else
+            echo "INFO: QUEUE_MODE off — skipping Redis service (byte-identical to non-queue deploy)."
+          fi
+
           # ===== Custom domain on n8n service =====
           # Railway's status.dnsRecords only contains the routing CNAME;
           # the ownership-verification TXT lives on separate fields
