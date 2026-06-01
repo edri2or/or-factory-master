@@ -21,7 +21,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 |---|---|---|---|
 | 1 | מתג `QUEUE_MODE` + מעטפות SM (תשתית רדומה) | completed | `provision-system.yml`, deploy template, golden |
 | 2 | שירות Redis מותנה | completed | deploy template, golden |
-| 3 | env ראשי מותנה + שירות worker מותנה | pending | deploy template, golden |
+| 3 | env ראשי מותנה + שירות worker מותנה | completed | deploy template, golden |
 | 4 | תיעוד | pending | `docs/roadmap.md`, `AGENTS.md.template`, golden |
 | 5 | אימות חי (Or-gated) + סגירה | pending | מערכת-טסט reuse |
 
@@ -81,18 +81,21 @@ bash -n על כל הסקריפט המוטמע עבר, yamllint נקי, golden ר
 ### שלב 3 — env ראשי מותנה + שירות worker מותנה
 
 **Acceptance:**
-- [ ] env של n8n הראשי: אובייקט 15-המפתחות נשמר verbatim; מיזוג מותנה של `QUEUE_EXTRA`
+- [x] env של n8n הראשי: אובייקט הבסיס נשמר verbatim; מיזוג מותנה של `QUEUE_EXTRA`
       (`{}` כשכבוי) עם, כשדלוק: `EXECUTIONS_MODE=queue`, `QUEUE_BULL_REDIS_HOST`
       (`redis.railway.internal`), `QUEUE_BULL_REDIS_PORT=6379`, `QUEUE_BULL_REDIS_PASSWORD`,
       `N8N_DEFAULT_BINARY_DATA_MODE=database`, `N8N_GRACEFUL_SHUTDOWN_TIMEOUT`, ובמיין בלבד
       `N8N_DISABLE_PRODUCTION_MAIN_PROCESS=true` + `OFFLOAD_MANUAL_EXECUTIONS_TO_WORKERS=true`.
-- [ ] שירות worker מותנה (כדפוס השירות-השני של Caddy): `serviceCreate` בשם `worker`,
-      אותו `$N8N_IMAGE`, startCommand `worker`, env משותף זהה (DB refs + `N8N_ENCRYPTION_KEY` +
+- [x] שירות worker מותנה (כדפוס השירות-השני של Caddy): `serviceCreate` בשם `worker`,
+      אותו `$N8N_IMAGE`, startCommand `n8n worker`, env משותף (DB refs + `N8N_ENCRYPTION_KEY` +
       queue vars + `N8N_DEFAULT_BINARY_DATA_MODE=database` + `N8N_RUNNERS_ENABLED=true` +
       `N8N_GRACEFUL_SHUTDOWN_TIMEOUT`), בלי דומיין/Caddy, `WORKER_FIRST_TIME` guard, id ל-SM.
-- [ ] golden רוענן; שערים ירוקים; off-path זהה-בייט (`QUEUE_EXTRA={}`, worker מדולג).
+- [x] golden רוענן; שערים ירוקים; off-path זהה-בייט (`QUEUE_EXTRA={}`, worker מדולג).
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם. זהות-בייט במצב כבוי הוכחה דטרמיניסטית (OLD `{...16...}` == NEW
+`{...16...}+{}`); במצב דלוק נוספים 8 מפתחות ללא התנגשות (16+8=24). bash -n עבר, yamllint נקי,
+golden רוענן. נקודות לאימות חי (שלב 5): שפקודת `n8n worker` עולה תקין ב-Railway, ושהפניית
+`$REDIS_PASSWORD` בפקודת-ההפעלה של Redis נתפסת (אחרת ערך מילולי ממוסך). ממתין ל-CI ירוק.
 
 **שינוי תוכנית:** —
 
@@ -138,3 +141,4 @@ bash -n על כל הסקריפט המוטמע עבר, yamllint נקי, golden ר
 
 - שלב 1 הושלם — הוספנו כפתור `QUEUE_MODE` (כבוי כברירת-מחדל) ו-4 "מגירות" ריקות ב-Secret Manager. שינוי רדום לגמרי; מערכת כבויה נשארת בדיוק כמו היום.
 - שלב 2 הושלם — הוספנו את שירות ה-Redis (התור), אבל הוא קם **רק** כשהכפתור דלוק. עדיין קוד בלבד, אפס עלות. מערכת כבויה לא רואה שום שינוי.
+- שלב 3 הושלם — חיברנו את n8n לתור והוספנו את העובד (worker), שניהם רק כשהכפתור דלוק. הוכחנו במתמטיקה שמערכת כבויה מקבלת בדיוק אותם משתנים כמו היום, אות-באות. עדיין קוד בלבד, אפס עלות.

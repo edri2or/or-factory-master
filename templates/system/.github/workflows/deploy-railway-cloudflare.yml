@@ -501,12 +501,46 @@ jobs:
           # bind interface is N8N_LISTEN_ADDRESS (default '::', covers
           # IPv4+IPv6) — not set here. All 15 vars go in one collection
           # upsert so the change lands as a single Railway redeploy.
+          #
+          # (queue mode) QUEUE_EXTRA is merged into the MAIN n8n service env.
+          # When QM=false it stays '{}', so `{...15...} + {}` is byte-identical
+          # to the pre-queue-mode upsert (jq '+' keeps the left object's key
+          # order and adds nothing) — a non-queue system is unchanged. When
+          # QM=true it adds the queue/Redis vars + main-only worker-offload
+          # flags. redis-password is ensured here (idempotent) BEFORE the upsert
+          # so both the main env and the worker below can reference it.
+          QUEUE_EXTRA='{}'
+          if [ "$QM" = "true" ]; then
+            if REDIS_PASSWORD=$(gcloud secrets versions access latest \
+                                 --secret="redis-password" --project="$PROJECT_ID" 2>/dev/null) \
+               && [ -n "$REDIS_PASSWORD" ]; then
+              echo "INFO: redis-password already has a version — reusing existing."
+            else
+              REDIS_PASSWORD=$(openssl rand -hex 32)
+              printf '%s' "$REDIS_PASSWORD" | gcloud secrets versions add "redis-password" \
+                --project="$PROJECT_ID" --data-file=- --quiet
+              echo "PASS: generated redis-password and stored new version."
+            fi
+            echo "::add-mask::${REDIS_PASSWORD}"
+            QUEUE_EXTRA=$(jq -cn --arg rpw "$REDIS_PASSWORD" '{
+              EXECUTIONS_MODE: "queue",
+              QUEUE_BULL_REDIS_HOST: "redis.railway.internal",
+              QUEUE_BULL_REDIS_PORT: "6379",
+              QUEUE_BULL_REDIS_PASSWORD: $rpw,
+              N8N_DEFAULT_BINARY_DATA_MODE: "database",
+              N8N_GRACEFUL_SHUTDOWN_TIMEOUT: "30",
+              N8N_DISABLE_PRODUCTION_MAIN_PROCESS: "true",
+              OFFLOAD_MANUAL_EXECUTIONS_TO_WORKERS: "true"
+            }')
+            echo "INFO: queue mode ON — main n8n gets queue vars (binary mode=database)."
+          fi
           _upsert_collection "$N8N_ID" "$(jq -cn \
             --arg host "${DLR}{{Postgres.RAILWAY_PRIVATE_DOMAIN}}" \
             --arg user "${DLR}{{Postgres.POSTGRES_USER}}" \
             --arg pass "${DLR}{{Postgres.POSTGRES_PASSWORD}}" \
             --arg domain "$DOMAIN" --arg weburl "https://${DOMAIN}" \
-            --arg tz "$TIMEZONE" --arg key "$N8N_KEY" '{
+            --arg tz "$TIMEZONE" --arg key "$N8N_KEY" \
+            --argjson extra "$QUEUE_EXTRA" '{
               DB_TYPE: "postgresdb",
               DB_POSTGRESDB_HOST: $host,
               DB_POSTGRESDB_PORT: "5432",
@@ -523,8 +557,8 @@ jobs:
               N8N_ENCRYPTION_KEY: $key,
               N8N_RUNNERS_ENABLED: "true",
               N8N_PROXY_HOPS: "1"
-            }')"
-          echo "PASS: n8n env vars set (15 vars in one upsert → single redeploy)."
+            } + $extra')"
+          echo "PASS: n8n env vars set (15 base vars + queue extras when QM=true; one upsert → single redeploy)."
 
           # ===== (queue mode) Redis service: SM-first, find, then create =====
           # Optional per-system broker for n8n queue mode — created ONLY when
@@ -534,21 +568,9 @@ jobs:
           REDIS_ID=""
           if [ "$QM" = "true" ]; then
             echo "=== Railway: Redis service (queue mode; SM-first lookup) ==="
-            # redis-password: idempotent (never rotate once set, or live workers
-            # lose their broker auth). The SM shell is pre-created by
-            # provision-system.yml; deploy-sa can add a version but not the shell.
-            if REDIS_PASSWORD=$(gcloud secrets versions access latest \
-                                 --secret="redis-password" --project="$PROJECT_ID" 2>/dev/null) \
-               && [ -n "$REDIS_PASSWORD" ]; then
-              echo "INFO: redis-password already has a version — reusing existing."
-            else
-              REDIS_PASSWORD=$(openssl rand -hex 32)
-              printf '%s' "$REDIS_PASSWORD" | gcloud secrets versions add "redis-password" \
-                --project="$PROJECT_ID" --data-file=- --quiet
-              echo "PASS: generated redis-password and stored new version."
-            fi
-            echo "::add-mask::${REDIS_PASSWORD}"
-
+            # REDIS_PASSWORD was already ensured (idempotent) + masked just above
+            # in the queue-env block, so both the main env and this service share
+            # one value. The SM shell is pre-created by provision-system.yml.
             REDIS_FIRST_TIME=false
             REDIS_ID=$(gcloud secrets versions access latest \
               --secret=railway-redis-service-id --project="$PROJECT_ID" 2>/dev/null || echo "")
@@ -626,6 +648,82 @@ jobs:
             fi
           else
             echo "INFO: QUEUE_MODE off — skipping Redis service (byte-identical to non-queue deploy)."
+          fi
+
+          # ===== (queue mode) n8n worker service: SM-first, find, then create =====
+          # Second n8n process that pulls jobs from Redis and runs them — created
+          # ONLY when QM=true. Same image as the main n8n; start command
+          # `n8n worker` (the n8n binary is on PATH, so Railway's shell start
+          # command runs the worker). No public/custom domain, no Caddy — the
+          # worker is HTTP-less. Shares the main n8n's DB, encryption key, and
+          # queue/Redis config, but NOT the main-only N8N_DISABLE_PRODUCTION_MAIN_PROCESS
+          # / OFFLOAD_* flags. WORKER_FIRST_TIME guards env/start-command to a
+          # single write (Railway-throttle caution, same as Caddy/Redis). When
+          # QM=false the whole block is skipped (byte-identical deploy).
+          if [ "$QM" = "true" ]; then
+            echo "=== Railway: n8n worker service (queue mode; SM-first lookup) ==="
+            WORKER_FIRST_TIME=false
+            WORKER_ID=$(gcloud secrets versions access latest \
+              --secret=railway-worker-service-id --project="$PROJECT_ID" 2>/dev/null || echo "")
+            if [ -n "$WORKER_ID" ] && [ "$WORKER_ID" != "null" ]; then
+              echo "INFO: reusing worker service_id from SM: $WORKER_ID"
+            else
+              resp=$(_gql 'query($id: String!) { project(id: $id) { services { edges { node { id name } } } } }' \
+                "$(jq -cn --arg id "$PROJECT_ID_RW" '{id: $id}')" 2>/dev/null || echo '{}')
+              WORKER_ID=$(printf '%s' "$resp" | jq -r \
+                '(.data.project.services.edges // []) | map(select(.node.name=="worker")) | .[0].node.id // ""' 2>/dev/null || echo "")
+
+              if [ -z "$WORKER_ID" ] || [ "$WORKER_ID" = "null" ]; then
+                resp=$(_gql 'mutation($input: ServiceCreateInput!) { serviceCreate(input: $input) { id } }' \
+                  "$(jq -cn --arg pid "$PROJECT_ID_RW" --arg img "$N8N_IMAGE" \
+                    '{input: {projectId: $pid, name: "worker", source: {image: $img}}}')")
+                WORKER_ID=$(printf '%s' "$resp" | jq -r '.data.serviceCreate.id' 2>/dev/null || echo "")
+                [ -n "$WORKER_ID" ] && [ "$WORKER_ID" != "null" ] \
+                  || { echo "FAIL: worker serviceCreate returned no id; resp=$resp" >&2; exit 1; }
+                echo "PASS: n8n worker service created: $WORKER_ID"
+                WORKER_FIRST_TIME=true
+              else
+                echo "INFO: worker service found in project: $WORKER_ID"
+              fi
+
+              printf '%s' "$WORKER_ID" | gcloud secrets versions add railway-worker-service-id \
+                --project="$PROJECT_ID" --data-file=- --quiet
+              echo "PASS: railway-worker-service-id persisted to SM."
+            fi
+
+            # env + start command (first create only — same throttle caution).
+            if [ "$WORKER_FIRST_TIME" = "true" ]; then
+              echo "=== Railway: worker env + start command (first create) ==="
+              _upsert_collection "$WORKER_ID" "$(jq -cn \
+                --arg host "${DLR}{{Postgres.RAILWAY_PRIVATE_DOMAIN}}" \
+                --arg user "${DLR}{{Postgres.POSTGRES_USER}}" \
+                --arg pass "${DLR}{{Postgres.POSTGRES_PASSWORD}}" \
+                --arg key "$N8N_KEY" --arg rpw "$REDIS_PASSWORD" '{
+                  DB_TYPE: "postgresdb",
+                  DB_POSTGRESDB_HOST: $host,
+                  DB_POSTGRESDB_PORT: "5432",
+                  DB_POSTGRESDB_DATABASE: "postgres",
+                  DB_POSTGRESDB_USER: $user,
+                  DB_POSTGRESDB_PASSWORD: $pass,
+                  DB_POSTGRESDB_SCHEMA: "public",
+                  N8N_ENCRYPTION_KEY: $key,
+                  N8N_RUNNERS_ENABLED: "true",
+                  EXECUTIONS_MODE: "queue",
+                  QUEUE_BULL_REDIS_HOST: "redis.railway.internal",
+                  QUEUE_BULL_REDIS_PORT: "6379",
+                  QUEUE_BULL_REDIS_PASSWORD: $rpw,
+                  N8N_DEFAULT_BINARY_DATA_MODE: "database",
+                  N8N_GRACEFUL_SHUTDOWN_TIMEOUT: "30"
+                }')"
+              _gql 'mutation($eid: String!, $sid: String!, $input: ServiceInstanceUpdateInput!) { serviceInstanceUpdate(environmentId: $eid, serviceId: $sid, input: $input) }' \
+                "$(jq -cn --arg eid "$ENV_ID" --arg sid "$WORKER_ID" \
+                  '{eid: $eid, sid: $sid, input: {startCommand: "n8n worker"}}')" >/dev/null
+              echo "PASS: worker env + 'n8n worker' start command set."
+            else
+              echo "INFO: worker env/start command already set — skipping to avoid a needless redeploy."
+            fi
+          else
+            echo "INFO: QUEUE_MODE off — skipping n8n worker service."
           fi
 
           # ===== Custom domain on n8n service =====
