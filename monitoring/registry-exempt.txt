@@ -30,10 +30,12 @@
 templates/system/workflows/n8n/pending-actions-executor.json
 templates/system/workflows/n8n/request-write-action.json
 templates/system/workflows/n8n/tg-vision.json
-# pending-actions-cleanup runs hourly inside each system's own n8n (no
-# factory-level per-template run to prove) — covered collectively by the
-# "system-n8n-executions" registry entry, like the other per-system crons:
+templates/system/workflows/n8n/tg-voice-stt.json
+# pending-actions-cleanup and db-vacuum run on a cadence inside each system's
+# own n8n (no factory-level per-template run to prove) — covered collectively
+# by the "system-n8n-executions" registry entry, like the other per-system crons:
 templates/system/workflows/n8n/pending-actions-cleanup.json
+templates/system/workflows/n8n/db-vacuum.json
 
 # Manual operator tools (workflow_dispatch only, no schedule to prove):
 .github/workflows/compile-changelog.yml

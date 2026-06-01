@@ -692,9 +692,12 @@ jobs:
               GENERIC_TIMEZONE: $tz,
               N8N_ENCRYPTION_KEY: $key,
               N8N_RUNNERS_ENABLED: "true",
-              N8N_PROXY_HOPS: "1"
+              N8N_PROXY_HOPS: "1",
+              EXECUTIONS_DATA_PRUNE: "true",
+              EXECUTIONS_DATA_MAX_AGE: "48",
+              EXECUTIONS_DATA_PRUNE_MAX_COUNT: "1000"
             } + $extra')"
-          echo "PASS: n8n env vars set (15 base vars + queue extras when QM=true; one upsert → single redeploy)."
+          echo "PASS: n8n env vars set (18 base vars + queue extras when QM=true; one upsert → single redeploy)."
 
           # ===== (queue mode) n8n worker service: SM-first, find, then create =====
           # Second n8n process that pulls jobs from Redis and runs them — created
