@@ -206,15 +206,17 @@ The change lives entirely in what the factory provisions:
   `railway-redis-volume-id`, `railway-worker-service-id`).
 - `templates/system/.github/workflows/deploy-railway-cloudflare.yml` — reads the switch;
   when `true`, provisions a `redis:7-alpine` service (AOF volume, password enforced via the
-  start command), merges the queue/Redis env vars into the main n8n service
-  (`EXECUTIONS_MODE=queue`, `QUEUE_BULL_REDIS_*`, `N8N_DEFAULT_BINARY_DATA_MODE=database`,
+  start command — set with the literal password, idempotently/self-healing, since Railway
+  doesn't shell-expand the start command), merges the queue/Redis env vars into the main n8n
+  service (`EXECUTIONS_MODE=queue`, `QUEUE_BULL_REDIS_*`, `N8N_DEFAULT_BINARY_DATA_MODE=default`,
   `N8N_DISABLE_PRODUCTION_MAIN_PROCESS`, `OFFLOAD_MANUAL_EXECUTIONS_TO_WORKERS`,
   `N8N_GRACEFUL_SHUTDOWN_TIMEOUT`), and creates a second `worker` service (same image,
-  started as `n8n worker`, no public domain/Caddy — HTTP-less). All gated, all with
-  `*_FIRST_TIME` guards (idempotent re-runs).
+  started as `n8n worker`, no public domain/Caddy — HTTP-less). All gated by `QM`; service
+  creation is SM-id idempotent.
 
-**Binary data:** queue mode forces `N8N_DEFAULT_BINARY_DATA_MODE=database` — filesystem
-binary storage isn't shared across separate worker containers — so Postgres grows faster.
+**Binary data:** queue mode sets `N8N_DEFAULT_BINARY_DATA_MODE=default` (the DB-backed mode —
+filesystem binary storage isn't shared across separate worker containers) — so Postgres grows
+faster.
 S3 mode is deliberately out of scope (no S3 infra in the factory today).
 
 **Enabling on an existing system:** flip `QUEUE_MODE=true` on the system's repo and re-run

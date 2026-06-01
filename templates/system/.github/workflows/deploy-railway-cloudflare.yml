@@ -541,7 +541,7 @@ jobs:
               QUEUE_BULL_REDIS_HOST: "redis.railway.internal",
               QUEUE_BULL_REDIS_PORT: "6379",
               QUEUE_BULL_REDIS_PASSWORD: $rpw,
-              N8N_DEFAULT_BINARY_DATA_MODE: "database",
+              N8N_DEFAULT_BINARY_DATA_MODE: "default",
               N8N_GRACEFUL_SHUTDOWN_TIMEOUT: "30",
               N8N_DISABLE_PRODUCTION_MAIN_PROCESS: "true",
               OFFLOAD_MANUAL_EXECUTIONS_TO_WORKERS: "true"
@@ -585,7 +585,6 @@ jobs:
             # REDIS_PASSWORD was already ensured (idempotent) + masked just above
             # in the queue-env block, so both the main env and this service share
             # one value. The SM shell is pre-created by provision-system.yml.
-            REDIS_FIRST_TIME=false
             REDIS_ID=$(gcloud secrets versions access latest \
               --secret=railway-redis-service-id --project="$PROJECT_ID" 2>/dev/null || echo "")
             if [ -n "$REDIS_ID" ] && [ "$REDIS_ID" != "null" ]; then
@@ -604,7 +603,6 @@ jobs:
                 [ -n "$REDIS_ID" ] && [ "$REDIS_ID" != "null" ] \
                   || { echo "FAIL: Redis serviceCreate returned no id; resp=$resp" >&2; exit 1; }
                 echo "PASS: Redis service created: $REDIS_ID"
-                REDIS_FIRST_TIME=true
               else
                 echo "INFO: Redis service found in project: $REDIS_ID"
               fi
@@ -645,20 +643,30 @@ jobs:
               echo "PASS: railway-redis-volume-id persisted to SM."
             fi
 
-            # Env var + start command (first create only — re-running skips this
-            # to avoid a needless Redis redeploy, same Railway-throttle caution as
-            # Caddy). The official redis image takes no password env var, so we
-            # enforce auth + AOF via the start command, referencing REDIS_PASSWORD
-            # from the service env (Railway runs the start command in a shell).
-            if [ "$REDIS_FIRST_TIME" = "true" ]; then
-              echo "=== Railway: Redis env + start command (first create) ==="
-              _upsert_collection "$REDIS_ID" "$(jq -cn --arg pw "$REDIS_PASSWORD" '{REDIS_PASSWORD: $pw}')"
+            # Start command: enforce auth (requirepass) + AOF persistence. The
+            # official redis image takes no password env var, so config rides on
+            # the start command. CRITICAL: pass the password as a LITERAL value
+            # interpolated here via `jq --arg` — NOT as a shell "$REDIS_PASSWORD".
+            # Railway does not shell-expand the start command, and an embedded
+            # quoted "$VAR" gets mangled and silently dropped, so redis falls back
+            # to its default config with NO password and NO AOF (caught live on
+            # factory-test-qmode: the worker's clean `n8n worker` command applied
+            # but redis's quoted one did not). The password is hex (openssl rand
+            # -hex), so it needs no quoting and parses cleanly. Idempotent +
+            # self-healing: read the current start command and update only when it
+            # differs, so a re-deploy repairs a mis-configured redis without a
+            # needless redeploy when it is already correct.
+            DESIRED_REDIS_CMD="redis-server --requirepass ${REDIS_PASSWORD} --appendonly yes"
+            CUR_REDIS_CMD=$(_gql 'query($id: String!) { service(id: $id) { serviceInstances { edges { node { startCommand } } } } }' \
+              "$(jq -cn --arg id "$REDIS_ID" '{id: $id}')" 2>/dev/null \
+              | jq -r '(.data.service.serviceInstances.edges // []) | .[0].node.startCommand // ""' 2>/dev/null || echo "")
+            if [ "$CUR_REDIS_CMD" != "$DESIRED_REDIS_CMD" ]; then
               _gql 'mutation($eid: String!, $sid: String!, $input: ServiceInstanceUpdateInput!) { serviceInstanceUpdate(environmentId: $eid, serviceId: $sid, input: $input) }' \
-                "$(jq -cn --arg eid "$ENV_ID" --arg sid "$REDIS_ID" \
-                  '{eid: $eid, sid: $sid, input: {startCommand: "redis-server --requirepass \"$REDIS_PASSWORD\" --appendonly yes"}}')" >/dev/null
-              echo "PASS: Redis password + AOF start command set."
+                "$(jq -cn --arg eid "$ENV_ID" --arg sid "$REDIS_ID" --arg cmd "$DESIRED_REDIS_CMD" \
+                  '{eid: $eid, sid: $sid, input: {startCommand: $cmd}}')" >/dev/null
+              echo "PASS: Redis start command set (requirepass + appendonly AOF)."
             else
-              echo "INFO: Redis env/start command already set — skipping to avoid a needless redeploy."
+              echo "INFO: Redis start command already correct — no redeploy needed."
             fi
           else
             echo "INFO: QUEUE_MODE off — skipping Redis service (byte-identical to non-queue deploy)."
@@ -726,7 +734,7 @@ jobs:
                   QUEUE_BULL_REDIS_HOST: "redis.railway.internal",
                   QUEUE_BULL_REDIS_PORT: "6379",
                   QUEUE_BULL_REDIS_PASSWORD: $rpw,
-                  N8N_DEFAULT_BINARY_DATA_MODE: "database",
+                  N8N_DEFAULT_BINARY_DATA_MODE: "default",
                   N8N_GRACEFUL_SHUTDOWN_TIMEOUT: "30"
                 }')"
               _gql 'mutation($eid: String!, $sid: String!, $input: ServiceInstanceUpdateInput!) { serviceInstanceUpdate(environmentId: $eid, serviceId: $sid, input: $input) }' \
