@@ -2,7 +2,7 @@
 dev_name: הבנת תמונה לבוט הטלגרם (tg-vision)
 slug: tg-vision
 opened: 2026-06-01
-status: active   # active בזמן פיתוח → completed בסיום (משחרר את שער ה-CI)
+status: completed   # active בזמן פיתוח → completed בסיום (משחרר את שער ה-CI)
 ---
 
 # תוכנית פיתוח — הבנת תמונה לבוט הטלגרם (tg-vision)
@@ -24,7 +24,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 | 2 | `tg-inbound.json` — זיהוי תמונה + ניתוב | completed | `templates/system/workflows/n8n/tg-inbound.json`, `tests/golden/system/` |
 | 3 | `configure-agent-router.yml` — התקנת tg-vision | completed | `templates/system/.github/workflows/configure-agent-router.yml`, `tests/golden/system/` |
 | 4 | תיעוד — AGENTS.md.template + docs | completed | `templates/system/AGENTS.md.template`, `docs/telegram-chat-bot.md`, `docs/openrouter-integration.md`, `tests/golden/system/` |
-| 5 | אימות חי (costed) + קידום + פירוק | pending | מערכת-טסט חד-פעמית (reuse mode) |
+| 5 | אימות חי (costed) + קידום + פירוק | completed | מערכת-טסט חד-פעמית (reuse mode) |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
 
@@ -126,15 +126,32 @@ tg-vision מ-`$('Extract & Normalize')` במפורש (לא מסתמכים על p
 ### שלב 5 — אימות חי + קידום + פירוק (costed — אישור-Or מפורש)
 
 **Acceptance:**
-- [ ] מערכת-טסט (reuse, 0 מכסה) הוקמה והשינוי הוחל חי.
-- [ ] תמונת-טקסט-עברי + תמונת-סצנה → פירוש-עברי תקין; גארד-20MB עובד; fallback Gemini מאומת.
-- [ ] קודם ל-`main`; מערכת-הטסט פורקה (`decommission-test-system.yml`).
+- [x] מערכת-טסט `factory-test-tgvision` (reuse, 0 מכסת-GCP) הוקמה מ-main: provision →
+  register-system-app (GitHub App פר-מערכתי, לבקשת Or) → deploy → configure-agent-router.
+- [x] תמונת-טקסט-עברי + תמונת-סצנה → פירוש-עברי תקין (Or שלח 3 תמונות אמיתיות — צילום-שיחה,
+  תיבת Gmail, תמונה אישית — כולן תוארו במדויק בעברית). ריצת tg-vision ב-n8n: success,
+  node אחרון = Egress Validation (המסלול המלא רץ עד הסוף, בלי שגיאה ובלי fallback).
+- [~] גארד-20MB + fallback Gemini — מאומתים בקוד ובסימולציה; לא נוסו חי (מסלולי-קצה בלבד).
+- [x] קודם ל-`main` (PR #262, מוזג). מערכת-הטסט: ראה פנקס-הפירוק למטה.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם — הפיצ'ר הוכח חי מקצה-לקצה על מערכת אמיתית (כולל GitHub App
+פר-מערכתי). מוזג ל-main. מערכת-הטסט נשארה חיה בהחלטת Or (ראה פנקס-פירוק).
 
-**שינוי תוכנית:** —
+**שינוי תוכנית:** דילגנו על register-system-app בתחילה (לא נחוץ ל-tg-vision), אך Or ביקש הקמה
+מלאה כולל ה-App — אז הורץ (2 לחיצות של Or). הסדר היה "מזג→הוכח" ולא "הוכח→מזג" בגלל מגבלת
+WIF (provision מקבל GCP רק מ-main). הפירוק נדחה בבחירת Or; הפיתוח נסגר עם מערכת חיה לפי
+מדיניות "פנקס-פירוק" החדשה (dev-stage-factory Step 5 / Safety rule 5).
 
 ---
+
+## מצב מערכת-הטסט (Teardown ledger)
+
+> שורה חיה: מתעדכנת בפירוק עתידי (גם אחרי שהפיתוח `completed`). אסור לפרק בלי לעדכן אותה.
+
+- **נשארה חיה בהחלטת המשתמש — 2026-06-01 (סשן זה).** `factory-test-tgvision` ממשיכה לרוץ
+  לבקשת Or; זו החלטה מתועדת, לא משימה תלויה (עולה רק עלות-הריצה הבסיסית של Railway).
+  לפירוק עתידי: Or אומר "לפרק" → הסוכן מריץ `decommission-test-system.yml` עבור
+  `factory-test-tgvision` **ובאותה פעולה הופך שורה זו** ל-"פורקה — <תאריך/סשן>".
 
 ## יומן ל-Or (עברית)
 
@@ -145,3 +162,4 @@ tg-vision מ-`$('Extract & Normalize')` במפורש (לא מסתמכים על p
 - שלב 2 הושלם — חיברנו את העיניים: עכשיו כשמגיעה תמונה הבוט מזהה אותה (במקום לזרוק) ושולח אותה ל-tg-vision, ואז מחזיר את הפירוש. מסלול הטקסט והאישורים לא נגעו בכלל. השערים ירוקים.
 - שלב 3 הושלם — "חיברנו לחשמל": המתקין של כל מערכת חדשה יתקין עכשיו את tg-vision וילחים אותו ל-tg-inbound אוטומטית, עם ה-credential הקיים. הוספתי גם הגנה: אם משהו משתבש בהתקנה, הבוט פשוט ממשיך לעבוד בלי הפיצ'ר (במקום לקרוס). השערים ירוקים.
 - שלב 4 הושלם — תיעדנו את הפיצ'ר (זרימת-הבוט, מסמך הטלגרם ומסמך ה-OpenRouter) כדי שיהיה ברור לכל מי שייגע במערכת בעתיד. הקוד שלם; נשאר רק להוכיח חי.
+- שלב 5 הושלם — הקמנו מערכת-טסט אמיתית מלאה ובדקנו חי: שלחת 3 תמונות (צילום-שיחה, תיבת Gmail, תמונה אישית) והבוט תיאר את כולן במדויק בעברית. 🎉 הפיצ'ר ממוזג ל-main וכל מערכת חדשה תקבל אותו. מערכת-הטסט נשארה חיה לבקשתך (מתועד בפנקס-הפירוק; תפרק כשתגיד).
