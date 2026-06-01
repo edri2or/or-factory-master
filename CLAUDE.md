@@ -216,6 +216,8 @@ drift. Full reference: `docs/skills-audience.md`.
 
 The MCP server `5b6e937f-c064-4cfd-88c4-ef93df38fa87` provides read-only inspection tools (`verify_*_system`, `list_all_systems_inventory`, `inspect_*`, `tail_*_logs`, etc.) plus one WRITE tool — `dispatch_workflow`, which triggers the allowlisted workflows (`provision-system.yml`, `register-system-app.yml`, `deploy-railway-cloudflare.yml`, `configure-agent-router.yml`, `decommission-test-system.yml`, `oil-autofix-investigate.yml`, `deploy-mcp-server.yml`, `meta-monitoring-watchdog.yml`) on `or-factory-master` or any system repo via the org-wide broker App. The real-system `decommission-system.yml` is excluded by design; `decommission-test-system.yml` is test-only and dispatched only on an explicit user teardown request. The GitHub MCP (`mcp__github__*`) is scoped to `edri2or/or-factory-master` only. Use the read tools to verify; `dispatch_workflow` is the only sanctioned cross-repo write (workflow_dispatch events only).
 
+The same Express service also hosts the factory's inbound webhooks: `/telegram-webhook` (the OIL approval bridge, alerts bot, callback-only) and `/telegram-chat-webhook` (the **bidirectional chat bot** — Or asks about an alert and gets a factory-aware Hebrew answer; a separate bot from the alerts bot). The chat bot is read-only by construction and gates any write action behind a Telegram ✅ (the same AI-proposes/human-approves invariant as OIL). Full reference: `docs/telegram-chat-bot-factory.md`.
+
 The MCP server's source lives in `services/mcp-server/` and is deployed to Cloud Run in `or-factory-master-control` via `deploy-mcp-server.yml`. Railway visibility tools (extended beyond the old factory's set):
 
 | Tool | Returns |

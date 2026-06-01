@@ -78,3 +78,17 @@ jobs:
         # gate in changelog-check.yml forces a `--update` whenever the mould
         # changes. Stays in THIS job so no new required status context is added.
         run: bash scripts/check-system-golden.sh
+
+      - name: MCP server build + unit tests
+        # Compile-check the mcp-server TypeScript and run its pure unit tests
+        # (tsc + node --test). Until now NO PR-time gate compiled this code —
+        # tsc ran only inside the deploy Docker build, so a type error or a
+        # broken bot guard would surface only at deploy. The factory chat bot
+        # (telegram-chat*.ts) adds real logic that must be gated here. Uses the
+        # runner's preinstalled Node (20+, matching the node:20 runtime image);
+        # kept in THIS job so no new required status context is added.
+        run: |
+          set -euo pipefail
+          cd services/mcp-server
+          npm ci
+          npm test

@@ -145,11 +145,49 @@ system itself, its descriptor, smoke/reader scripts, reconciliation workflow, an
 entry were removed, and the live `or-factory-reference` system was decommissioned. Full
 reference: `docs/live-test-loop.md`.
 
+## Phase I — feat: factory bidirectional Telegram chat bot (dogfooding Phase F)
+
+The systems the factory builds got a bidirectional Telegram chat bot in Phase F (inbound
+message → LLM chat agent + read-only tools + HITL write actions). The **factory itself** only
+*sent* alerts (watchdog, bs-incidents, health-audit) — one-way. Phase I closes that gap by
+giving the factory the same capability, **adapted to the factory's own runtime**: the core runs
+on **Cloud Run + GitHub Actions** (the `services/mcp-server` Express service), **not** n8n/Railway,
+so the bot rides the existing MCP server rather than an n8n workflow.
+
+**Anchor decision (evidence-based, recorded here):** the factory core **stays on Cloud Run +
+Actions**. n8n/Railway are deliberately kept for the **child systems only** — putting the factory's
+own control plane on n8n would create a circular dependency / fate-sharing (the thing that detects
+and heals failures would share the failure domain of what it manages). The bot is therefore an
+*extension of the existing Express/MCP service*, and self-healing extends the existing OIL pipeline —
+neither moves the core off Cloud Run.
+
+A **separate** Telegram bot from the alerts bot (a bot holds one webhook; the alerts bot's
+`/telegram-webhook` is callback-only for OIL approvals). The chat bot drives
+`/telegram-chat-webhook` on the MCP server. Shipped as ordered `/dev-stage-factory` stages:
+
+- **Stage A** ✅ — chat-bot identity + secrets (`deploy-mcp-server.yml` mints
+  `factory-telegram-chat-{bot-token,webhook-secret,allowlist}` + `factory-telegram-chat-openrouter-key`,
+  mounts them, registers a separate `setWebhook`). Dormant until real token + LLM key land.
+- **Stage B+C** ✅ — inbound route + guardrails: secret-token (constant-time) + sender allowlist +
+  ~120s freshness (anti-replay) + an LLM (OpenRouter, Haiku 4.5) with a **read-only-by-construction**
+  tool set (no write fn importable) + a hardened prompt (tool/alert text is untrusted). Plus the
+  first PR-time CI gate that compiles + unit-tests the mcp-server TypeScript (`tsc` + `node --test`).
+- **Stage D** ✅ — HITL write actions: the bot may *request* one of a small fixed allowlist of safe,
+  parameterless, idempotent workflows; it never runs one autonomously — `dispatchWorkflow` happens
+  only after Or's Telegram ✅ (the OIL "AI proposes / human approves" invariant). State-free callback
+  data survives a Cloud Run instance swap.
+- **Stage E** ✅ — docs (this section + `docs/telegram-chat-bot-factory.md`).
+- **Stage F** — live proof: deploy the MCP + a real Telegram round-trip (Or-gated).
+
+The **self-healing block** (covering automation/workflow failures, not just `scripts/*.sh` — see
+Phase G Stage 7) is a separate follow-up development. Full design + status:
+`docs/telegram-chat-bot-factory.md`.
+
 ## Things we are deliberately not building
 
 The previous factory had these and they bought less than they cost:
 
-- **factory-actions MCP server.** The read-only inspection MCP (`5b6e937f-*`) already covers every verify/inspect/list we need. Building a write-tools MCP would mean more code paths to secure with no real upside.
+- **A broad write-tools MCP.** The MCP server (`services/mcp-server`, the `5b6e937f-*` toolbox) exists and runs — it covers every verify/inspect/list we need read-only, plus the one sanctioned write (`dispatch_workflow`), and now also hosts the OIL approval bridge and the factory chat bot (Phase I). What we still deliberately avoid is a *broad* write-tools MCP that lets an agent mutate infra freely: writes stay human-gated (a Telegram ✅) and narrowly allow-listed, so there's no large new surface to secure. *(Earlier roadmaps listed "factory-actions MCP" flatly under "not building"; that predated this server and is corrected here — the read/inspection MCP is real and useful; only the unbounded write surface is declined.)*
 - **Manifests** (`factory/manifests/<system>.yml`). The state lives in GCP IAM and GitHub settings; reconstructing it from a manifest would duplicate the source of truth.
 - **Evidence records** (`factory/evidence/*.json`). The workflow runs *are* the audit log; GitHub keeps them.
 - **Issue-based reporting** (`factory-success` / `factory-failure` labels). The agent watches workflow runs in real time; Issues are async clutter. *(The OIL auto-fix loop (Phase G) is the deliberate, bounded exception — but it is **Linear**-issue-driven, consuming the failure tickets the observability pipeline already opens, not GitHub `factory-*` Issues. See `docs/oil-autofix.md`.)*
