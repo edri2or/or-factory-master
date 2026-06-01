@@ -128,7 +128,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 - [ ] CI ירוק על ה-PR.
 - [ ] **gated:** redeploy של ה-MCP (`deploy-mcp-server.yml`) כדי שה-allowlist ייכנס לתוקף — אישור Or לפני.
 
-**הערת התקדמות אחרונה:** הקוד מוכן ואומת מקומית. נשאר: מיזוג → redeploy MCP (gated) → ואז הכלי זמין.
+**הערת התקדמות אחרונה:** הכלי מוזג (#258) + MCP עודכן + ה-allowlist פעיל. הריצה הראשונה נכשלה: דחיפה ישירה ל-main של מערכת קיימת נחסמת ע"י הגנת-הענף (App אינו admin-bypass). תוקן לדפוס PR (ענף→PR→המתנה ל-CI→מיזוג→configure). נשאר: מיזוג התיקון → הרצה חוזרת על factory-test-tavily2.
 
 **שינוי תוכנית:** התגלה שאי-אפשר re-provision מערכת קיימת + git נעול ל-or-factory-master → נדרש כלי ייעודי (refresh-system-agents) במקום rebuild. Or אישר "בנה את הלולאה כיכולת קבועה".
 

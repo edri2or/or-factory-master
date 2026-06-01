@@ -44,3 +44,8 @@
   `dispatch_workflow` ב-`services/mcp-server/src/tools.ts` כדי שהסוכן יוכל להפעילו (דורש
   redeploy של ה-MCP כדי שייכנס לתוקף). זהו "דפוס טסט-030": סבב תיקון ≈ 2 דקות, 0 קליקים,
   0 עלות חדשה, והדרך היחידה לתפוס באגים שה-CI מפספס (תקלות שמתגלות רק חי).
+- **תיקון `refresh-system-agents.yml`:** דחיפה ישירה ל-`main` של מערכת קיימת נדחית ע"י הגנת-הענף
+  (`GH006: Protected branch update failed` — App אינו admin-bypass). הכלי שונה לדפוס PR: יוצר ענף,
+  מוסיף פתק `changelog.d` (כדי לעבור את "Changelog gates" של המערכת), פותח PR, ממתין ל-CI של
+  המערכת (`gh pr checks --watch --fail-fast`), ממזג (`gh pr merge --squash`), ואז מפעיל
+  `configure-agent-router`. הטוקן הורחב ל-`pull_requests:write`.

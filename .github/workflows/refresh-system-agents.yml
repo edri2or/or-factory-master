@@ -81,24 +81,27 @@ jobs:
       - name: Set up gcloud
         uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db  # v3.0.1
 
-      - name: Push current agent workflows to the system repo
+      - name: Open PR with refreshed agent workflows, wait for CI, merge, reimport
         id: push
         env:
           SYSTEM_NAME: ${{ inputs.system_name }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_CONFIGURE: ${{ inputs.run_configure }}
         run: |
           set -uo pipefail
-          # --- Mint a broker App token scoped to JUST this repo (contents+actions write) ---
+          # --- Mint a broker App token scoped to JUST this repo (contents + PRs + actions) ---
           APP_ID=$(gcloud secrets versions access latest --secret=factory-master-broker-app-id --project="$CONTROL_PROJECT" 2>/dev/null || true)
           INSTALL_ID=$(gcloud secrets versions access latest --secret=factory-master-broker-app-installation-id --project="$CONTROL_PROJECT" 2>/dev/null || true)
           echo "::add-mask::$APP_ID"; echo "::add-mask::$INSTALL_ID"
           gcloud secrets versions access latest --secret=factory-master-broker-app-private-key --project="$CONTROL_PROJECT" > /tmp/rsa-key.pem 2>/dev/null || true
           TOKEN=""
           if [ -s /tmp/rsa-key.pem ] && [ -n "$APP_ID" ] && [ -n "$INSTALL_ID" ]; then
-            TOKEN=$(bash scripts/generate-app-token.sh /tmp/rsa-key.pem "$APP_ID" "$INSTALL_ID" "" '{"contents":"write","actions":"write"}' "[\"$SYSTEM_NAME\"]" 2>/dev/null || true)
+            TOKEN=$(bash scripts/generate-app-token.sh /tmp/rsa-key.pem "$APP_ID" "$INSTALL_ID" "" '{"contents":"write","pull_requests":"write","actions":"write"}' "[\"$SYSTEM_NAME\"]" 2>/dev/null || true)
           fi
           rm -f /tmp/rsa-key.pem
           [ -n "$TOKEN" ] || { echo "FAIL: could not mint a broker token for edri2or/${SYSTEM_NAME}" >&2; exit 1; }
           echo "::add-mask::$TOKEN"
+          export GH_TOKEN="$TOKEN"
 
           # --- Clone the system repo (shallow), one-shot auth in the URL only ---
           rm -rf sys-target
@@ -116,22 +119,47 @@ jobs:
           git -C sys-target config user.email "factory-master-broker@or-factory-master-control.iam.gserviceaccount.com"
           git -C sys-target add workflows/n8n
           if git -C sys-target diff --cached --quiet; then
-            echo "INFO: edri2or/${SYSTEM_NAME} agent workflows already current — nothing to push."
+            echo "INFO: edri2or/${SYSTEM_NAME} agent workflows already current — no PR needed."
             echo "changed=false" >> "$GITHUB_OUTPUT"
           else
+            # System repos protect main (PR + 4 green CI checks required) — a GitHub
+            # App is NOT an admin bypass, so go through a PR: branch -> push -> open
+            # PR -> wait for the system's own CI -> merge. Add a changelog.d fragment
+            # so the system's "Changelog gates" check passes on the .json change.
+            BRANCH="refresh-agents-${RUN_ID}"
+            DATE_UTC=$(date -u +%Y-%m-%d)
+            mkdir -p sys-target/changelog.d
+            {
+              echo "### Refresh agent workflows from or-factory-master templates"
+              echo
+              echo "- Synced \`workflows/n8n/*.json\` to the factory's current templates via refresh-system-agents.yml (run ${RUN_ID})."
+            } > "sys-target/changelog.d/${DATE_UTC}-refresh-agents-${RUN_ID}.md"
+            git -C sys-target add changelog.d
+            git -C sys-target checkout -q -b "$BRANCH"
             git -C sys-target commit -q -m "ci: refresh agent workflows from or-factory-master templates"
-            # Direct push to main: mirrors provision's scaffold push (enforce_admins:false,
-            # broker is admin). Scrub the token from any error surfaced.
-            if ! perr=$(git -C sys-target push "https://x-access-token:${TOKEN}@github.com/edri2or/${SYSTEM_NAME}.git" HEAD:main 2>&1); then
-              echo "FAIL: push to edri2or/${SYSTEM_NAME}:main failed: $(printf '%s' "$perr" | sed "s/${TOKEN}/***/g")" >&2; exit 1
+            if ! perr=$(git -C sys-target push "https://x-access-token:${TOKEN}@github.com/edri2or/${SYSTEM_NAME}.git" "$BRANCH:$BRANCH" 2>&1); then
+              echo "FAIL: push branch failed: $(printf '%s' "$perr" | sed "s/${TOKEN}/***/g")" >&2; exit 1
             fi
-            echo "PASS: pushed refreshed workflows/n8n/*.json to edri2or/${SYSTEM_NAME}:main"
+            PR_URL=$(gh pr create --repo "edri2or/${SYSTEM_NAME}" --base main --head "$BRANCH" \
+              --title "ci: refresh agent workflows from templates" \
+              --body "Automated refresh of workflows/n8n/*.json from or-factory-master templates (refresh-system-agents.yml run ${RUN_ID}).") \
+              || { echo "FAIL: gh pr create failed for edri2or/${SYSTEM_NAME}" >&2; exit 1; }
+            echo "INFO: opened ${PR_URL}"
+            # Give the system's CI a moment to register, then wait for it to finish.
+            sleep 20
+            if ! gh pr checks "$PR_URL" --repo "edri2or/${SYSTEM_NAME}" --watch --fail-fast; then
+              echo "FAIL: system CI did not pass on ${PR_URL} — not merging." >&2; exit 1
+            fi
+            if ! merr=$(gh pr merge "$PR_URL" --repo "edri2or/${SYSTEM_NAME}" --squash --delete-branch 2>&1); then
+              echo "FAIL: merge failed: $(printf '%s' "$merr" | sed "s/${TOKEN}/***/g")" >&2; exit 1
+            fi
+            echo "PASS: merged refreshed workflows/n8n/*.json into edri2or/${SYSTEM_NAME}:main"
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
 
-          # --- Optionally reimport into the live n8n via the system's own configure ---
-          if [ "${{ inputs.run_configure }}" = "true" ]; then
-            if GH_TOKEN="$TOKEN" gh workflow run configure-agent-router.yml --repo "edri2or/${SYSTEM_NAME}" --ref main 2>/dev/null; then
+          # --- Reimport into the live n8n via the system's own configure (after merge) ---
+          if [ "$RUN_CONFIGURE" = "true" ]; then
+            if gh workflow run configure-agent-router.yml --repo "edri2or/${SYSTEM_NAME}" --ref main 2>/dev/null; then
               echo "PASS: dispatched configure-agent-router.yml on edri2or/${SYSTEM_NAME} (watch it to confirm the n8n reimport)."
             else
               echo "WARN: could not dispatch configure-agent-router.yml — dispatch it manually to reimport." >&2
