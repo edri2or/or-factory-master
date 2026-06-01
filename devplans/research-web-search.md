@@ -24,7 +24,10 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 |---|---|---|---|
 | 1 | כלי חיפוש Tavily בסוכן + ההתקנה | completed | `templates/system/workflows/n8n/research-agent.json`, `templates/system/.github/workflows/configure-agent-router.yml`, `tests/golden/system/**` |
 | 2 | תיקון Egress — בלוק "מקורות" לא נחסם | completed | `templates/system/workflows/n8n/agent-router.json`, `tests/golden/system/**` |
-| 3 | אימות חי (Layer B — build על factory-test-25) | pending | — (dispatch בלבד) |
+| 3 | אימות חי (Layer B — build על factory-test-25) | completed | — (dispatch בלבד) |
+| 6 | סבב 2: חיפוש לסוכן-השיחה הכללי (unknown-agent) + הידוק prompt + הרחבת strip | in-progress | `unknown-agent.json`, `configure-agent-router.yml`, golden |
+| 7 | סבב 2: מודל חזק (sonnet-4.5) + הידוק prompt לסוכן-המחקר | in-progress | `research-agent.json`, golden |
+| 8 | סבב 2: אימות חי (build טרי מ-main) | pending | — (dispatch בלבד) |
 | 4 | תיעוד | pending | `docs/telegram-chat-bot.md`, `docs/roadmap.md` |
 | 5 | מחקר-עמוק אסינכרוני — **נדחה (תלוי n8n 2.0)** | pending | `templates/system/workflows/n8n/deep-research.json` (עתידי) |
 
@@ -83,6 +86,47 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 
 ---
 
+### סבב 2 — תיקון חוויה (שלבים 6–8)
+
+**רקע:** אימות חי על `factory-test-tavily2` (build טרי מ-main) הראה שהצנרת עובדת אבל החוויה גרועה.
+אבחון מבוסס-לוג: (1) **"פיצול אישיות"** — החיפוש נוסף רק ל-research-agent; ה-classifier מנתב חלק
+מההודעות ל-unknown-agent שאין לו חיפוש (execution 27=unknown-agent ענה "אין לי גלישה", 30=research
+ענה "כן"); (2) **תשובות שגויות** — research-agent על haiku-4.5 סיכם שגוי (מכבי ת"א במקום הפועל ב"ש);
+(3) **חשיפת שמות-כלים** ("websearchquick/extended").
+
+#### שלב 6 — חיפוש ל-unknown-agent + הידוק prompt + הרחבת strip
+**Acceptance:**
+- [x] `unknown-agent.json`: `web_search_quick`+`web_search_extended` (`@@CRED_TAVILY_ID@@`) + connections `ai_tool` ל-"Chat Agent".
+- [x] prompt: סעיף WEB SEARCH + בלוק `[[SOURCES]]` + "לעולם לא 'אין לי גלישה'" + לא לחשוף שמות-כלים.
+- [x] `configure-agent-router.yml`: ה-strip מכסה גם `unknown-agent.json`.
+- [x] golden מרוענן; JSON/YAML תקינים; golden+reference-sync PASS.
+- [ ] CI ירוק על ה-PR.
+
+**הערת התקדמות אחרונה:** הקוד נכתב ואומת מקומית. ממתין ל-CI ולאישור Or לאימות חי (שלב 8).
+
+**שינוי תוכנית:** —
+
+#### שלב 7 — מודל חזק + הידוק prompt לסוכן-המחקר
+**Acceptance:**
+- [x] `research-agent.json`: מודל → `anthropic/claude-sonnet-4.5`.
+- [x] prompt: היצמד לתוצאות החיפוש, אל תחשוף שמות-כלים, לעולם לא "אין לי גלישה".
+- [x] golden מרוענן; PASS.
+- [ ] CI ירוק על ה-PR.
+
+**הערת התקדמות אחרונה:** הקוד נכתב ואומת מקומית (סונט-4.5, prompt מהודק).
+
+**שינוי תוכנית:** —
+
+#### שלב 8 — אימות חי סבב 2 (costed, Or-gated)
+**Acceptance:**
+- [ ] מיזוג → build טרי מ-main → אימות בטלגרם: גם שיחה רגילה וגם מחקר מחפשים, בלי "אין לי גלישה", בלי שמות-כלים חשופים, תשובות מדויקות יותר; הצלבה ב-`inspect_n8n_execution`.
+
+**הערת התקדמות אחרונה:** —
+
+**שינוי תוכנית:** —
+
+---
+
 ### שלב 5 — מחקר-עמוק אסינכרוני (נדחה)
 
 **Acceptance:**
@@ -102,3 +146,5 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 - שלב 1 הושלם — הוספנו לבוט שני כלי חיפוש-אינטרנט (מהיר ומעמיק) דרך Tavily, לימדנו אותו מתי להשתמש בכל אחד ולצרף מקורות, וההתקנה האוטומטית מטפלת גם במקרה שאין מפתח (הבוט פשוט ימשיך לענות מהידע שלו).
 - שלב 2 הושלם — תיקנּו את "שומר הסף" כך שקישורי-המקורות שהבוט מצרף בסוף התשובה יגיעו אליך במלואם בטלגרם, בלי כפילויות; שאר התשובה ממשיכה להיות מוגנת בדיוק כמו קודם.
 - שלב 3 (אימות חי): התברר שאי אפשר לבדוק חי לפני מיזוג — כל מערכת נבנית מהקוד ה"רשמי" (main), והתוסף עדיין בטיוטה. סוכם: ממזגים קודם, ואז בונים מערכת-בדיקה אחת טרייה ובודקים את החיפוש חי בטלגרם.
+- שלב 3 הושלם — בנינו מערכת-בדיקה טרייה מ-main, והחיפוש אכן הותקן ופעל (חיבור Tavily נוצר, הבוט חיפש והחזיר מקורות). אבל באמת-מבחן עם Or התגלו 3 בעיות איכות → פתחנו סבב 2.
+- סבב 2 (שלבים 6–7) — הקוד מוכן: נתנו חיפוש גם לסוכן-השיחה הרגיל (סוף ל"פיצול האישיות"), העלינו את סוכן-המחקר למודל חזק יותר, והידקנו את ההוראות (לא לחשוף שמות-כלים, לעולם לא "אני לא יכול לחפש"). נשאר: מיזוג + אימות חי (שלב 8).

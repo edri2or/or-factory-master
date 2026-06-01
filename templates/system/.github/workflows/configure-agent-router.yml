@@ -675,7 +675,7 @@ jobs:
             # two web-search tool nodes + their ai_tool connections from research-agent so
             # the agent never references an empty credential (it still answers from model
             # knowledge). Same jq pattern as the read-only tool strips above.
-            if [ "$file" = "research-agent.json" ] \
+            if { [ "$file" = "research-agent.json" ] || [ "$file" = "unknown-agent.json" ]; } \
                && { [ -z "$CRED_TAVILY_ID" ] || [ "$CRED_TAVILY_ID" = "null" ]; }; then
               jq '(.nodes |= map(select(.name != "web_search_quick" and .name != "web_search_extended")))
                   | del(.connections."web_search_quick")
