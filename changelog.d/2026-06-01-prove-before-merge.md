@@ -28,6 +28,18 @@
 |---|---|
 | fix | The idempotent re-run then failed at the `service-accounts create` step: the `_create_ok` helper only treated the literal token `ALREADY_EXISTS` as success, but gcloud phrases an existing service account differently (`... is the subject of a conflict: Service account ... already exists within project`), so a second run errored instead of continuing. `_create_ok` now matches `ALREADY_EXISTS`/`already exists`/`subject of a conflict` case-insensitively, so re-runs are truly idempotent across all three resource kinds (pool/provider/SA). `shellcheck --severity=error` clean. |
 
+## fix: prove-before-merge — wait-for-CI via retry-merge (no checks:read), proven live (Stage 4)
+
+| Type | Summary |
+|---|---|
+| fix | Live Stage-4 proof on a throwaway `factory-test-pbm1` surfaced the last bug: `prove-on-test-system.yml` opened the PR on the test repo as the sandbox SA fine, but `gh pr checks --watch` failed with *"Resource not accessible by integration"* — the narrow per-system App has no `checks:read`. Replaced the check-status read with a **retry loop around a raw REST squash-merge**: branch protection refuses the merge until the required checks are green, so a successful merge *is* the CI gate — no extra App permission, and it sidesteps gh's GraphQL `mergeStateStatus` query for the same reason. Re-run then proved the full loop end-to-end: from branch `claude/great-ride-WsQKF`, authed as `sandbox-tester-sa` (asserted not-broker) → opened `factory-test-pbm1#2` → waited for the test repo's CI → merged → dispatched the live reimport; `/healthz` returned `200 {"status":"ok"}`. The live loop caught three real bugs static gates were green on (IAM propagation, gcloud already-exists phrasing, and this checks:read gap). |
+
+## docs: prove-before-merge — document the prove→merge branch path + close out (Stage 5)
+
+| Type | Summary |
+|---|---|
+| docs | Stage 5 (final). `docs/live-test-loop.md` gains a **prove → merge** section (the branch-runnable `prove-on-test-system.yml`, its sandbox-identity safety model, and the full stand-up-once → iterate-on-branch → promote → tear-down flow). `CLAUDE.md` gains the two new workflows in the Workflows table, the sandbox toy-key identity in Fixed values, and both on the `dispatch_workflow` allowlist enumerations. The throwaway `factory-test-pbm1` was decommissioned (Railway + DNS + repo archive) after the proof. Development closed. |
+
 ## fix: prove-before-merge — provision _bind must pass --condition=None on conditional-policy projects (Stage 4 fix)
 
 | Type | Summary |

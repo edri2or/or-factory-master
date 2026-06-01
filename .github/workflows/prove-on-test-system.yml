@@ -155,9 +155,13 @@ jobs:
           done
 
           # --- 4) If something changed, go through the SAME PR + CI gate as production ---
-          # The test repo protects main (PR + green CI). The per-test App token now holds
-          # pull_requests:write, so the sandbox path can open + merge its own PR (0 approvals),
-          # never bypassing CI.
+          # The test repo protects main (PR + green CI). The per-test App token holds
+          # pull_requests:write + contents:write, so the sandbox path can open + merge its
+          # own PR (0 approvals) without ever bypassing CI. NOTE: the App has no checks:read,
+          # so we DON'T read check status (`gh pr checks` / GraphQL statusCheckRollup fails
+          # with "Resource not accessible by integration"). Instead we retry the protected
+          # merge: the merge endpoint refuses until the required checks are green, so a
+          # successful merge IS the CI gate — no extra permission needed.
           if git -C sys-target diff --cached --quiet; then
             echo "INFO: edri2or/${SYSTEM_NAME} already matches this branch — nothing to apply."
             echo "changed=false" >> "$GITHUB_OUTPUT"
@@ -181,14 +185,27 @@ jobs:
               --body "Automated by prove-on-test-system.yml (run ${RUN_ID}) — applying a work-branch change to this live test system through the normal PR+CI gate.") \
               || { echo "FAIL: gh pr create failed for edri2or/${SYSTEM_NAME}" >&2; exit 1; }
             echo "INFO: opened ${PR_URL}"
-            sleep 20
-            if ! gh pr checks "$PR_URL" --repo "edri2or/${SYSTEM_NAME}" --watch --fail-fast; then
-              echo "FAIL: test-system CI did not pass on ${PR_URL} — not merging." >&2; exit 1
-            fi
-            if ! merr=$(gh pr merge "$PR_URL" --repo "edri2or/${SYSTEM_NAME}" --squash --delete-branch 2>&1); then
-              echo "FAIL: merge failed: $(printf '%s' "$merr" | sed "s/${TOKEN}/***/g")" >&2; exit 1
-            fi
-            echo "PASS: merged the branch change into edri2or/${SYSTEM_NAME}:main"
+            PR_NUM="${PR_URL##*/}"
+            # Retry the protected merge until the test repo's required CI is green (branch
+            # protection refuses the merge otherwise). Raw REST PUT — avoids gh's GraphQL
+            # mergeStateStatus query, which needs checks:read the App doesn't have.
+            merged=""
+            for i in $(seq 1 40); do
+              if out=$(gh api --method PUT \
+                   "/repos/edri2or/${SYSTEM_NAME}/pulls/${PR_NUM}/merge" \
+                   -f merge_method=squash 2>&1); then
+                merged=1; break
+              fi
+              if printf '%s' "$out" | grep -qiE "required status check|not mergeable|Base branch was modified|expected|405|409|pending"; then
+                echo "INFO: waiting for test-system CI before merge (attempt ${i}/40)..."
+                sleep 15; continue
+              fi
+              echo "FAIL: merge failed: $(printf '%s' "$out" | sed "s/${TOKEN}/***/g")" >&2; exit 1
+            done
+            [ -n "$merged" ] || { echo "FAIL: test-system CI not green within timeout — PR ${PR_URL} left open." >&2; exit 1; }
+            # Best-effort branch cleanup (contents:write); ignore failure.
+            gh api --method DELETE "/repos/edri2or/${SYSTEM_NAME}/git/refs/heads/${BRANCH}" >/dev/null 2>&1 || true
+            echo "PASS: merged the branch change into edri2or/${SYSTEM_NAME}:main (CI gate satisfied)"
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
 

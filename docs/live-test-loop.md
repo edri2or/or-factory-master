@@ -57,6 +57,36 @@ faithful, and self-cleaning.
    auto-chained): deletes its Railway project, removes its Cloudflare DNS, archives its
    repo. Don't leave live systems costing money.
 
+## prove → merge (apply a change from a work branch, before promoting)
+
+The loop above is **merge → prove**: step 3 applies what is already on `main` (via
+`refresh-system-agents.yml`, which copies from trusted `main` as the broker). That is right
+for most iterations, but it forces a merge to *try* a change. To **prove a change on a live
+test system BEFORE merging it**, use `prove-on-test-system.yml` — the branch-runnable,
+sandbox-scoped sibling:
+
+- It is the **one** factory workflow with no `if: refs/heads/main` guard, so it runs off a
+  work branch (dispatch it with `ref=<branch>` — on the MCP `dispatch_workflow` allowlist).
+- Its safety is the **sandbox toy-key identity**, never the broker: it authenticates as
+  `sandbox-tester-sa@factory-test-25` via the dedicated `sandbox-pool`/`github-sandbox-provider`
+  (CEL = the factory repo on ANY ref) and hard-asserts it is not the broker. That identity's
+  only power is a **conditioned** `secretAccessor` on `factory-test-25`'s `github-app-*`
+  secrets — so it can mint a token for the one throwaway test repo and nothing else (no
+  control project, no real system, no broker, no project creation). Even leaked from a
+  hostile branch, the blast radius is one throwaway test system.
+- It copies the **branch's** `templates/system/<paths>` into the standing test system and
+  lands them through that repo's **own PR + green-CI + squash-merge gate** (it retries the
+  protected merge rather than reading check status, since the narrow per-system App has no
+  `checks:read`), then optionally dispatches `post_apply_workflow` to apply live. The
+  per-system App carries `pull_requests:write` (provision-only, from `register-system-app.yml`)
+  so the sandbox path can open+merge its own PR without bypassing CI.
+
+So the full prove → merge flow: stand up a throwaway test system once (broker, from `main`,
+Or-gated) → iterate on a work branch, dispatching `prove-on-test-system.yml` (`ref=<branch>`)
+to apply+prove each change live before merge → promote (merge to `main`) → tear down. The
+one-time identity setup is `bootstrap-sandbox-tester.yml` (`scripts/bootstrap-sandbox-tester.sh`,
+idempotent, refuses any project but `factory-test-25`).
+
 ## What stayed, what went
 
 - **Kept — the golden gate** (`scripts/render-system-golden.sh`,
