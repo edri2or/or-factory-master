@@ -1,14 +1,16 @@
-// The factory's bidirectional Telegram CHAT bot (dogfooding the systems' Phase F,
-// adapted to the factory's Cloud Run + Express core — NOT n8n). Or sends a free-
-// form question about an alert he received; this feeds it to an LLM (OpenRouter,
-// Haiku 4.5) with a curated set of READ-ONLY factory tools (recent workflow runs,
-// failed-job logs, inventory, project quota, endpoint probe) and replies in plain
-// Hebrew.
+// The factory's bidirectional Telegram chat handler (dogfooding the systems'
+// Phase F, adapted to the factory's Cloud Run + Express core — NOT n8n). Or sends
+// a free-form question about an alert he received; this feeds it to an LLM
+// (OpenRouter, Haiku 4.5) with a curated set of READ-ONLY factory tools (recent
+// workflow runs, failed-job logs, inventory, project quota, endpoint probe) and
+// replies in plain Hebrew.
 //
-// Separate bot from the alerts bot (telegram-bot-token): a Telegram bot holds one
-// webhook, and the alerts bot's /telegram-webhook is callback_query-only (OIL
-// approvals). This bot drives /telegram-chat-webhook (registered in
-// deploy-mcp-server.yml).
+// SINGLE-BOT design: this runs on the factory's ONE bot — the existing alerts bot
+// (telegram-bot-token). index.ts's unified /telegram-webhook routes Or's messages
+// (and chat HITL cdo:/cno: callbacks) here, and OIL approval callbacks to
+// oil-approval.ts. Replies/keyboards therefore reuse the alerts-bot senders in
+// observability-client.ts (sendTelegramMessage / sendTelegramKeyboard /
+// answerCallbackQuery / editTelegramMessage) — no separate chat bot token.
 //
 // Guardrails (handoff §3 decision 5):
 //   * layer 1 — X-Telegram-Bot-Api-Secret-Token, verified in index.ts before this
@@ -16,8 +18,8 @@
 //   * layer 2 — sender allowlist (FACTORY_TG_CHAT_ALLOWLIST), checked here.
 //   * freshness — reject messages older than ~120s (anti-replay).
 //   * READ-ONLY by construction — the LLM is handed ONLY read tools; no
-//     dispatch/write function is importable from here. Write actions arrive in
-//     Stage D behind an explicit Telegram ✅ (HITL), never autonomously.
+//     dispatch/write function is importable from here. Write actions arrive
+//     behind an explicit Telegram ✅ (HITL), never autonomously.
 //   * untrusted input — tool output + the user's text may contain injection
 //     attempts; the system prompt forbids obeying instructions embedded in data,
 //     and the bot never holds a standing admin token.
@@ -27,6 +29,13 @@ import { apiGet, fetchJobLogs, dispatchWorkflow } from './github-client.js';
 import { buildInventory } from './inventory-aggregator.js';
 import { getProjectQuotaStatus } from './gcp-client.js';
 import { probe, AllowlistError } from './probe.js';
+import {
+  sendTelegramMessage,
+  sendTelegramKeyboard,
+  answerCallbackQuery,
+  editTelegramMessage,
+  type InlineButton,
+} from './observability-client.js';
 import {
   PLACEHOLDER,
   parseAllowlist,
@@ -51,9 +60,6 @@ export interface ChatResult {
 
 // ── Config (read at call-time; never throws at import) ──────────────────────────
 
-function chatBotToken(): string {
-  return (process.env.FACTORY_TG_CHAT_BOT_TOKEN ?? '').trim();
-}
 function openrouterKey(): string {
   return (process.env.FACTORY_TG_CHAT_OPENROUTER_KEY ?? '').trim();
 }
@@ -65,11 +71,6 @@ function allowedChatIds(): Set<string> {
   return parseAllowlist(process.env.FACTORY_TG_CHAT_ALLOWLIST);
 }
 
-// The bot is dormant until a real @BotFather token is set (placeholder → off).
-export function botConfigured(): boolean {
-  const t = chatBotToken();
-  return t.length > 0 && t !== PLACEHOLDER;
-}
 // The LLM is dormant until a real OpenRouter key is set.
 export function llmConfigured(): boolean {
   const k = openrouterKey();
@@ -83,87 +84,6 @@ async function fetchWithTimeout(url: string, init: RequestInit, ms: number): Pro
     return await fetch(url, { ...init, signal: ctrl.signal });
   } finally {
     clearTimeout(timer);
-  }
-}
-
-// Reply on the CHAT bot, to the chat the message came from (single chat in
-// practice). Best-effort; a send failure is logged, never thrown.
-async function sendChat(chatId: string | number, text: string): Promise<void> {
-  const token = chatBotToken();
-  if (!token || token === PLACEHOLDER) return;
-  try {
-    await fetchWithTimeout(
-      `https://api.telegram.org/bot${token}/sendMessage`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({ chat_id: String(chatId), text }).toString(),
-      },
-      10_000,
-    );
-  } catch (e) {
-    process.stdout.write(`[telegram-chat] sendChat failed: ${String(e).slice(0, 200)}\n`);
-  }
-}
-
-interface ChatButton {
-  text: string;
-  callback_data: string;
-}
-
-// Send a message with one row of inline buttons on the CHAT bot. Best-effort.
-async function sendChatKeyboard(chatId: string | number, text: string, buttons: ChatButton[]): Promise<void> {
-  const token = chatBotToken();
-  if (!token || token === PLACEHOLDER) return;
-  try {
-    await fetchWithTimeout(
-      `https://api.telegram.org/bot${token}/sendMessage`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chat_id: chatId, text, reply_markup: { inline_keyboard: [buttons] } }),
-      },
-      10_000,
-    );
-  } catch (e) {
-    process.stdout.write(`[telegram-chat] sendChatKeyboard failed: ${String(e).slice(0, 200)}\n`);
-  }
-}
-
-// Acknowledge a button press on the CHAT bot (clears the spinner; optional toast).
-async function answerChatCallback(callbackId: string, text?: string): Promise<void> {
-  const token = chatBotToken();
-  if (!token || token === PLACEHOLDER) return;
-  try {
-    const body: Record<string, unknown> = { callback_query_id: callbackId };
-    if (text) body['text'] = text;
-    await fetchWithTimeout(
-      `https://api.telegram.org/bot${token}/answerCallbackQuery`,
-      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
-      10_000,
-    );
-  } catch {
-    /* best-effort */
-  }
-}
-
-// Replace a message's text and drop its keyboard on the CHAT bot (so a button
-// can't be pressed twice). Best-effort.
-async function editChatMessage(chatId: string | number, messageId: number, text: string): Promise<void> {
-  const token = chatBotToken();
-  if (!token || token === PLACEHOLDER) return;
-  try {
-    await fetchWithTimeout(
-      `https://api.telegram.org/bot${token}/editMessageText`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chat_id: chatId, message_id: messageId, text, reply_markup: { inline_keyboard: [] } }),
-      },
-      10_000,
-    );
-  } catch {
-    /* best-effort */
   }
 }
 
@@ -289,8 +209,7 @@ const ALL_TOOLS: ToolSpec[] = [...READ_TOOLS, ...ACTION_TOOLS];
 
 // Execute one tool call. Always returns a string (JSON or text), truncated for
 // token economy. Errors are returned as data, never thrown (the loop continues).
-// `chatId` is the conversation to send a request_action approval to.
-async function execTool(name: string, args: Record<string, unknown>, chatId: string | number): Promise<string> {
+async function execTool(name: string, args: Record<string, unknown>): Promise<string> {
   try {
     switch (name) {
       case 'request_action': {
@@ -299,10 +218,11 @@ async function execTool(name: string, args: Record<string, unknown>, chatId: str
           return JSON.stringify({ error: 'unknown action_index' });
         }
         const wf = HITL_WORKFLOWS[idx];
-        await sendChatKeyboard(chatId, `🔧 בקשת אישור: ${wf.label}\n\nלהריץ?`, [
+        const buttons: InlineButton[] = [
           { text: '✅ אישור והרצה', callback_data: `cdo:${idx}` },
           { text: '❌ ביטול', callback_data: `cno:${idx}` },
-        ]);
+        ];
+        await sendTelegramKeyboard(`🔧 בקשת אישור: ${wf.label}\n\nלהריץ?`, buttons);
         // Tell the LLM the request was sent — it should NOT claim the action ran.
         return JSON.stringify({ approval_request_sent: true, action: wf.label });
       }
@@ -405,9 +325,8 @@ async function callOpenRouter(key: string, messages: LlmMessage[], withTools: bo
   return data.choices?.[0]?.message ?? null;
 }
 
-// Run the LLM tool-calling loop and return a final Hebrew answer. `chatId` is
-// threaded so request_action can send its approval to the right conversation.
-async function runAgent(userText: string, chatId: string | number): Promise<string> {
+// Run the LLM tool-calling loop and return a final Hebrew answer.
+async function runAgent(userText: string): Promise<string> {
   const key = openrouterKey();
   const messages: LlmMessage[] = [
     { role: 'system', content: SYSTEM_PROMPT },
@@ -430,7 +349,7 @@ async function runAgent(userText: string, chatId: string | number): Promise<stri
       } catch {
         parsed = {};
       }
-      const result = await execTool(tc.function?.name ?? '', parsed, chatId);
+      const result = await execTool(tc.function?.name ?? '', parsed);
       messages.push({ role: 'tool', tool_call_id: tc.id, content: result.slice(0, MAX_TOOL_RESULT_CHARS) });
     }
   }
@@ -464,33 +383,33 @@ async function handleChatCallback(cq: Record<string, unknown>): Promise<ChatResu
 
   // Authorise the presser (the secret_token already proved it's from Telegram).
   if (!isChatAllowed(fromId, allowedChatIds())) {
-    await answerChatCallback(callbackId, 'אינך מורשה.');
+    await answerCallbackQuery(callbackId, 'אינך מורשה.');
     return { status: 200, body: { ignored: 'unauthorized' } };
   }
 
   const decoded = parseActionCallback(data);
   if (!decoded || decoded.idx >= HITL_WORKFLOWS.length) {
-    await answerChatCallback(callbackId);
+    await answerCallbackQuery(callbackId);
     return { status: 200, body: { ignored: 'unknown_callback' } };
   }
   const wf = HITL_WORKFLOWS[decoded.idx];
 
   if (decoded.action === 'no') {
-    await answerChatCallback(callbackId, '❌ בוטל');
-    if (messageId && chatId != null) await editChatMessage(chatId, messageId, `❌ בוטל: ${wf.label}`);
+    await answerCallbackQuery(callbackId, '❌ בוטל');
+    if (messageId && chatId != null) await editTelegramMessage(chatId, messageId, `❌ בוטל: ${wf.label}`);
     return { status: 200, body: { action: 'cancelled', workflow: wf.file } };
   }
 
   // approve → dispatch the (parameterless, allow-listed) workflow on the factory.
-  await answerChatCallback(callbackId, '⏳ מריץ…');
+  await answerCallbackQuery(callbackId, '⏳ מריץ…');
   try {
     await dispatchWorkflow(wf.file, 'main', {}, OWNER, FACTORY_REPO);
-    if (messageId && chatId != null) await editChatMessage(chatId, messageId, `✅ הופעל: ${wf.label}`);
+    if (messageId && chatId != null) await editTelegramMessage(chatId, messageId, `✅ הופעל: ${wf.label}`);
     return { status: 200, body: { action: 'dispatched', workflow: wf.file } };
   } catch (e) {
     const reason = String(e).slice(0, 200);
     process.stdout.write(`[telegram-chat] dispatch failed: ${reason}\n`);
-    if (messageId && chatId != null) await editChatMessage(chatId, messageId, `⚠️ נכשל: ${wf.label}`);
+    if (messageId && chatId != null) await editTelegramMessage(chatId, messageId, `⚠️ נכשל: ${wf.label}`);
     return { status: 200, body: { action: 'dispatch_failed', detail: reason } };
   }
 }
@@ -506,10 +425,9 @@ async function handleChatCallback(cq: Record<string, unknown>): Promise<ChatResu
 export async function handleChatUpdate(req: Request): Promise<ChatResult> {
   const update = (req.body ?? {}) as Record<string, unknown>;
 
-  // A ✅/❌ button press (HITL approval). Gated by the allowlist inside.
+  // A ✅/❌ button press (chat HITL approval). Gated by the allowlist inside.
   const cq = update['callback_query'] as Record<string, unknown> | undefined;
   if (cq) {
-    if (!botConfigured()) return { status: 200, body: { ignored: 'bot_not_configured' } };
     return handleChatCallback(cq);
   }
 
@@ -525,20 +443,19 @@ export async function handleChatUpdate(req: Request): Promise<ChatResult> {
     return { status: 200, body: { ignored: 'unauthorized' } };
   }
 
-  // Dormant guards.
-  if (!botConfigured()) return { status: 200, body: { ignored: 'bot_not_configured' } };
+  // The LLM is dormant until its OpenRouter key is set.
   if (!llmConfigured()) {
-    await sendChat(msg.chatId, 'אני מחובר, אבל ה-AI עדיין לא הוגדר (חסר מפתח). ברגע שיוגדר — אענה לשאלות.');
+    await sendTelegramMessage('אני מחובר, אבל ה-AI עדיין לא הוגדר (חסר מפתח). ברגע שיוגדר — אענה לשאלות.');
     return { status: 200, body: { ignored: 'llm_not_configured' } };
   }
 
   try {
-    const answer = await runAgent(msg.text, msg.chatId);
-    await sendChat(msg.chatId, answer);
+    const answer = await runAgent(msg.text);
+    await sendTelegramMessage(answer);
     return { status: 200, body: { ok: true } };
   } catch (e) {
     process.stdout.write(`[telegram-chat] error: ${String(e).slice(0, 300)}\n`);
-    await sendChat(msg.chatId, 'אופס, משהו השתבש אצלי בעיבוד. נסה שוב בעוד רגע.');
+    await sendTelegramMessage('אופס, משהו השתבש אצלי בעיבוד. נסה שוב בעוד רגע.');
     return { status: 200, body: { error: 'internal' } };
   }
 }

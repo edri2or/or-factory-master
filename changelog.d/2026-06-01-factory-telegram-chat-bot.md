@@ -48,3 +48,12 @@
   כ-dispatch-input מאומת (CSV מספרי, ממראה את `set-oil-allowlist.yml`) ונכתב ל-`factory-telegram-chat-allowlist`
   — שניהם רצים *לפני* הפריסה כך ש-`:latest` נטען ו-`setWebhook` מפעיל את הבוט. no-op בטוח כששניהם ריקים.
   הקוד כבר קודם ונפרס; אומת חי (route מוגן `401`, מפתח-LLM נטבע). נותר רק ש-Or ייצור בוט ב-@BotFather.
+- **שלב G — איחוד לבוט אחד.** לבקשת Or (שני בוטים = מסרבל) הצ'אט אוחד על **בוט-ההתראות הקיים**
+  (`telegram-bot-token`) דרך **`/telegram-webhook` מאוחד**: `index.ts` מנתב לפי סוג-עדכון — callback
+  `oilapprove:`/`oilreject:` → גשר ה-OIL (ללא שינוי), ו-message או `cdo:`/`cno:` → הצ'אט. ה-route
+  הנפרד `/telegram-chat-webhook` + סודו (`FACTORY_TG_CHAT_WEBHOOK_SECRET`/`chatTokenMatches`) הוסרו.
+  `telegram-chat.ts` עבר להשתמש ב-senders של `observability-client` (טוקן בוט-ההתראות) במקום ארבעת
+  ה-senders הייעודיים; `FACTORY_TG_CHAT_BOT_TOKEN`/`botConfigured()` הוסרו; allowlist+freshness+LLM
+  וכל לוגיקת הכלים/HITL נשמרו. ב-`deploy-mcp-server.yml`: ה-setWebhook המאוחד עבר ל-
+  `allowed_updates:["message","callback_query"]`, צעד ה-CHAT-setWebhook הנפרד הוסר, וה-mounts/mints/seed
+  של טוקן-הבוט+סוד-ה-webhook קוצצו (נשארו רק allowlist + מפתח-OpenRouter). 40 בדיקות עוברות; OIL נשמר.

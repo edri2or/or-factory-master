@@ -46,22 +46,6 @@ function telegramTokenMatches(provided: string | undefined): boolean {
   return timingSafeEqual(hash, TELEGRAM_APPROVAL_WEBHOOK_SECRET_HASH);
 }
 
-// The factory CHAT bot's own setWebhook secret_token (separate bot from the
-// alerts bot above). Telegram echoes it in X-Telegram-Bot-Api-Secret-Token on
-// every /telegram-chat-webhook call (layer 1; the sender allowlist in
-// telegram-chat.ts is layer 2). Absent → /telegram-chat-webhook returns 503
-// (the chat bot is dormant until deployed with the secret mounted).
-const FACTORY_TG_CHAT_WEBHOOK_SECRET = process.env.FACTORY_TG_CHAT_WEBHOOK_SECRET;
-const FACTORY_TG_CHAT_WEBHOOK_SECRET_HASH =
-  FACTORY_TG_CHAT_WEBHOOK_SECRET && FACTORY_TG_CHAT_WEBHOOK_SECRET !== '__NOT_CONFIGURED__'
-    ? createHash('sha256').update(FACTORY_TG_CHAT_WEBHOOK_SECRET).digest()
-    : null;
-function chatTokenMatches(provided: string | undefined): boolean {
-  if (!FACTORY_TG_CHAT_WEBHOOK_SECRET_HASH) return false;
-  const hash = createHash('sha256').update(provided ?? '').digest();
-  return timingSafeEqual(hash, FACTORY_TG_CHAT_WEBHOOK_SECRET_HASH);
-}
-
 // PUBLIC_BASE_URL: Cloud Run (injected by deploy workflow from status.url).
 // RAILWAY_PUBLIC_DOMAIN: Railway parallel deploy (ADR 139 blue-green; retired
 // post-flip). localhost: local dev only — not reachable by claude.ai.
@@ -257,10 +241,14 @@ app.post('/oil-approval-register', async (req: Request, res: Response) => {
   res.status(r.status).json(r.body);
 });
 
-// OIL approval bridge — INBOUND callback. Telegram POSTs here when Or taps ✅/❌.
-// Gated by the secret_token Telegram echoes in X-Telegram-Bot-Api-Secret-Token
-// (constant-time); the from.id allowlist is the second layer (in oil-approval.ts).
-// Always answers 200 (Telegram retries non-2xx) — the real outcome is in the body.
+// Unified Telegram bridge — INBOUND. The single factory bot's webhook posts here
+// for BOTH Or's free-form chat messages AND the OIL approval ✅/❌ button presses
+// (one bot, one webhook). Gated by the secret_token Telegram echoes in
+// X-Telegram-Bot-Api-Secret-Token (constant-time). Routes by update kind: an OIL
+// approval callback (oilapprove:/oilreject:) → handleTelegramCallback; everything
+// else (a text message, or a chat HITL cdo:/cno: callback) → handleChatUpdate.
+// Always answers 200 (Telegram retries non-2xx) — the real outcome is in the
+// body; any reply is delivered out-of-band via a separate sendMessage.
 app.post('/telegram-webhook', async (req: Request, res: Response) => {
   if (!TELEGRAM_APPROVAL_WEBHOOK_SECRET_HASH) {
     res.status(503).json({ error: 'telegram_webhook_disabled' });
@@ -272,35 +260,14 @@ app.post('/telegram-webhook', async (req: Request, res: Response) => {
     return;
   }
   try {
-    const r = await handleTelegramCallback(req);
+    const update = (req.body ?? {}) as Record<string, unknown>;
+    const cq = update['callback_query'] as Record<string, unknown> | undefined;
+    const data = cq && typeof cq['data'] === 'string' ? (cq['data'] as string) : '';
+    const isOilCallback = data.startsWith('oilapprove:') || data.startsWith('oilreject:');
+    const r = isOilCallback ? await handleTelegramCallback(req) : await handleChatUpdate(req);
     res.status(r.status).json(r.body);
   } catch (e) {
     process.stdout.write(`[telegram-webhook] error: ${String(e).slice(0, 300)}\n`);
-    res.status(200).json({ error: 'internal' });
-  }
-});
-
-// Factory CHAT bot — INBOUND messages. Telegram POSTs here when Or sends the
-// chat bot a free-form question. Gated by the secret_token Telegram echoes in
-// X-Telegram-Bot-Api-Secret-Token (constant-time); the sender allowlist +
-// freshness window are the second layer (in telegram-chat.ts). Always answers
-// 200 (Telegram retries non-2xx) — the reply is delivered via a separate
-// sendMessage on the chat bot.
-app.post('/telegram-chat-webhook', async (req: Request, res: Response) => {
-  if (!FACTORY_TG_CHAT_WEBHOOK_SECRET_HASH) {
-    res.status(503).json({ error: 'telegram_chat_webhook_disabled' });
-    return;
-  }
-  const token = (req.headers['x-telegram-bot-api-secret-token'] as string | undefined) ?? '';
-  if (!chatTokenMatches(token)) {
-    res.status(401).json({ error: 'unauthorized' });
-    return;
-  }
-  try {
-    const r = await handleChatUpdate(req);
-    res.status(r.status).json(r.body);
-  } catch (e) {
-    process.stdout.write(`[telegram-chat-webhook] error: ${String(e).slice(0, 300)}\n`);
     res.status(200).json({ error: 'internal' });
   }
 });
