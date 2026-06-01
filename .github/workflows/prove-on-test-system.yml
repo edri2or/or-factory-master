@@ -86,20 +86,119 @@ jobs:
       - name: Set up gcloud
         uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db  # v3.0.1
 
-      - name: Confirm identity (must be the sandbox SA, never the broker)
+      - name: Confirm identity, apply the branch's change to the live test system, prove it
+        id: apply
+        env:
+          SYSTEM_NAME: ${{ inputs.system_name }}
+          PATHS: ${{ inputs.paths }}
+          POST_APPLY_WORKFLOW: ${{ inputs.post_apply_workflow }}
+          SANDBOX_PROJECT: "factory-test-25"
+          RUN_ID: ${{ github.run_id }}
+          SOURCE_REF: ${{ github.ref_name }}
         run: |
-          set -euo pipefail
+          set -uo pipefail
+          # --- 0) Hard identity guard: this MUST be the sandbox SA, never the broker ---
           ACTIVE=$(gcloud auth list --filter=status:ACTIVE --format="value(account)" 2>/dev/null || true)
           echo "Active credential: ${ACTIVE:-<none>}"
           case "$ACTIVE" in
             *factory-master-broker*)
-              echo "FAIL: authenticated as the BROKER — this workflow must use the sandbox SA only." >&2
-              exit 1 ;;
+              echo "FAIL: authenticated as the BROKER — this workflow must use the sandbox SA only." >&2; exit 1 ;;
             sandbox-tester-sa@factory-test-25.iam.gserviceaccount.com)
               echo "PASS: running as the sandbox toy-key identity (${ACTIVE})." ;;
             *)
-              echo "WARN: unexpected active identity '${ACTIVE}' — review before trusting the run." >&2 ;;
+              echo "FAIL: unexpected active identity '${ACTIVE}' — refusing to continue." >&2; exit 1 ;;
           esac
-          echo "Skeleton OK. The apply/prove body (mint test-repo token from factory-test-25 SM," \
-               "push templates/system/<paths> from this branch into edri2or/${SYSTEM_NAME}, and" \
-               "dispatch the post_apply_workflow) lands in Stage 3."
+
+          # --- 1) Mint a token for the TEST repo from its OWN App creds in the shared SM ---
+          # The sandbox SA can read ONLY github-app-* in factory-test-25 (conditioned grant).
+          # The per-system App is installed on just edri2or/$SYSTEM_NAME, so the minted token is
+          # inherently repo-scoped — it cannot touch any other repo.
+          APP_ID=$(gcloud secrets versions access latest --secret=github-app-id --project="$SANDBOX_PROJECT" 2>/dev/null || true)
+          INSTALL_ID=$(gcloud secrets versions access latest --secret=github-app-installation-id --project="$SANDBOX_PROJECT" 2>/dev/null || true)
+          echo "::add-mask::$APP_ID"; echo "::add-mask::$INSTALL_ID"
+          gcloud secrets versions access latest --secret=github-app-private-key --project="$SANDBOX_PROJECT" > /tmp/test-app-key.pem 2>/dev/null || true
+          TOKEN=""
+          if [ -s /tmp/test-app-key.pem ] && [ -n "$APP_ID" ] && [ -n "$INSTALL_ID" ]; then
+            TOKEN=$(bash scripts/generate-app-token.sh /tmp/test-app-key.pem "$APP_ID" "$INSTALL_ID" "" \
+              '{"contents":"write","pull_requests":"write","actions":"write"}' "[\"$SYSTEM_NAME\"]" 2>/dev/null || true)
+          fi
+          shred -u /tmp/test-app-key.pem 2>/dev/null || rm -f /tmp/test-app-key.pem
+          [ -n "$TOKEN" ] || { echo "FAIL: could not mint a test-repo token — are github-app-* present in ${SANDBOX_PROJECT} and is the App installed on edri2or/${SYSTEM_NAME}?" >&2; exit 1; }
+          echo "::add-mask::$TOKEN"
+          export GH_TOKEN="$TOKEN"
+
+          # --- 2) Clone the test repo (shallow), one-shot auth in the URL only ---
+          rm -rf sys-target
+          if ! git clone --depth 1 \
+               "https://x-access-token:${TOKEN}@github.com/edri2or/${SYSTEM_NAME}.git" sys-target 2>/dev/null; then
+            echo "FAIL: could not clone edri2or/${SYSTEM_NAME} (provisioned? App scoped to it?)" >&2; exit 1
+          fi
+
+          # --- 3) Copy THIS BRANCH's templates/system/<paths> into the test repo ---
+          # The workflow runs on the work branch, so templates/system here is the BRANCH version —
+          # exactly the unmerged change we want to prove live.
+          git -C sys-target config user.name "or-factory-master[bot]"
+          git -C sys-target config user.email "sandbox-tester-sa@factory-test-25.iam.gserviceaccount.com"
+          IFS=',' read -ra SYNC_PATHS <<< "${PATHS:-workflows/n8n}"
+          for raw in "${SYNC_PATHS[@]}"; do
+            p="${raw// /}"; [ -n "$p" ] || continue
+            case "$p" in
+              /*|*..*) echo "FAIL: path '$p' must be relative under templates/system/ (no leading / and no '..')" >&2; exit 1 ;;
+            esac
+            src="templates/system/${p}"
+            [ -e "$src" ] || { echo "FAIL: ${src} not found on this branch" >&2; exit 1; }
+            dest_parent="sys-target/$(dirname "$p")"
+            mkdir -p "$dest_parent"
+            cp -r "$src" "$dest_parent/"
+            git -C sys-target add "$p"
+            echo "INFO: staged templates/system/${p} -> ${p} (from ${SOURCE_REF})"
+          done
+
+          # --- 4) If something changed, go through the SAME PR + CI gate as production ---
+          # The test repo protects main (PR + green CI). The per-test App token now holds
+          # pull_requests:write, so the sandbox path can open + merge its own PR (0 approvals),
+          # never bypassing CI.
+          if git -C sys-target diff --cached --quiet; then
+            echo "INFO: edri2or/${SYSTEM_NAME} already matches this branch — nothing to apply."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            BRANCH="prove-${RUN_ID}"
+            DATE_UTC=$(date -u +%Y-%m-%d)
+            mkdir -p sys-target/changelog.d
+            {
+              echo "### Prove a branch change on this live test system"
+              echo
+              echo "- Applied \`${PATHS}\` from or-factory-master@${SOURCE_REF} via prove-on-test-system.yml (run ${RUN_ID})."
+            } > "sys-target/changelog.d/${DATE_UTC}-prove-${RUN_ID}.md"
+            git -C sys-target add changelog.d
+            git -C sys-target checkout -q -b "$BRANCH"
+            git -C sys-target commit -q -m "ci: prove branch change (${PATHS}) from or-factory-master@${SOURCE_REF}"
+            if ! perr=$(git -C sys-target push "https://x-access-token:${TOKEN}@github.com/edri2or/${SYSTEM_NAME}.git" "$BRANCH:$BRANCH" 2>&1); then
+              echo "FAIL: push branch failed: $(printf '%s' "$perr" | sed "s/${TOKEN}/***/g")" >&2; exit 1
+            fi
+            PR_URL=$(gh pr create --repo "edri2or/${SYSTEM_NAME}" --base main --head "$BRANCH" \
+              --title "ci: prove branch change (${PATHS}) from or-factory-master@${SOURCE_REF}" \
+              --body "Automated by prove-on-test-system.yml (run ${RUN_ID}) — applying a work-branch change to this live test system through the normal PR+CI gate.") \
+              || { echo "FAIL: gh pr create failed for edri2or/${SYSTEM_NAME}" >&2; exit 1; }
+            echo "INFO: opened ${PR_URL}"
+            sleep 20
+            if ! gh pr checks "$PR_URL" --repo "edri2or/${SYSTEM_NAME}" --watch --fail-fast; then
+              echo "FAIL: test-system CI did not pass on ${PR_URL} — not merging." >&2; exit 1
+            fi
+            if ! merr=$(gh pr merge "$PR_URL" --repo "edri2or/${SYSTEM_NAME}" --squash --delete-branch 2>&1); then
+              echo "FAIL: merge failed: $(printf '%s' "$merr" | sed "s/${TOKEN}/***/g")" >&2; exit 1
+            fi
+            echo "PASS: merged the branch change into edri2or/${SYSTEM_NAME}:main"
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+          # --- 5) Apply live via the test system's own workflow (after merge) ---
+          if [ -n "${POST_APPLY_WORKFLOW:-}" ]; then
+            if gh workflow run "$POST_APPLY_WORKFLOW" --repo "edri2or/${SYSTEM_NAME}" --ref main 2>/dev/null; then
+              echo "PASS: dispatched ${POST_APPLY_WORKFLOW} on edri2or/${SYSTEM_NAME} — watch it + probe the live system to confirm."
+            else
+              echo "WARN: could not dispatch ${POST_APPLY_WORKFLOW} — dispatch it manually to apply live." >&2
+            fi
+          else
+            echo "INFO: no post_apply_workflow — change is merged to the test repo's main; apply/verify live as needed."
+          fi

@@ -28,6 +28,12 @@
 |---|---|
 | fix | The idempotent re-run then failed at the `service-accounts create` step: the `_create_ok` helper only treated the literal token `ALREADY_EXISTS` as success, but gcloud phrases an existing service account differently (`... is the subject of a conflict: Service account ... already exists within project`), so a second run errored instead of continuing. `_create_ok` now matches `ALREADY_EXISTS`/`already exists`/`subject of a conflict` case-insensitively, so re-runs are truly idempotent across all three resource kinds (pool/provider/SA). `shellcheck --severity=error` clean. |
 
+## feat: prove-before-merge — prove-on-test-system apply body + per-system App pull_requests:write (Stage 3)
+
+| Type | Summary |
+|---|---|
+| feat | Stage 3 — the apply/prove body of `prove-on-test-system.yml`. After authenticating as the sandbox SA (and hard-asserting it is NOT the broker), it reads the test system's own `github-app-*` creds from `factory-test-25` SM (the only secrets the conditioned sandbox grant allows), mints a token scoped to just `edri2or/<system_name>`, clones it, copies **this branch's** `templates/system/<paths>` in, and lands the change through the **same PR + green-CI + squash-merge gate** the test repo enforces — then dispatches the system's `post_apply_workflow` to take it live. Idempotent (no diff → no PR). To make the PR path possible from the sandbox identity, `register-system-app.yml` bumps the per-system App's `pull_requests` scope `read`→`write` (a minimal bump — the App already holds `contents`/`workflows`/`secrets:write` on that one repo; scoped to the system's own repo; provision-only propagation). Also fixes the Stage-2 skeleton's trailing `echo` (`SYSTEM_NAME: unbound variable` under `set -u`). `yamllint` green. The earlier Stage-2 live run already proved a non-main branch authenticates as the sandbox SA (never the broker). |
+
 ## feat: prove-before-merge — branch-runnable prove-on-test-system skeleton (Stage 2)
 
 | Type | Summary |
