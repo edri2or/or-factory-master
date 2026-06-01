@@ -16,3 +16,11 @@
   graceful-degradation שמסיר את שני כלי החיפוש (ו-connections) כש-`tavily-api-key` חסר ב-SM,
   כך שהסוכן עדיין עונה מהידע הפנימי. הסוד מופץ אוטומטית לכל מערכת חדשה דרך
   `copy-generic-secrets.sh` (דינמי; אינו ב-EXCLUDE). golden רוענן.
+- **שלב 2 — תיקון Egress (בלוק "מקורות" לא נחסם).** ה-node "Egress Validation" ב-
+  `templates/system/workflows/n8n/agent-router.json` שודרג: בלוק `[[SOURCES]]` בסוף תשובת-מחקר
+  פטור מ-redaction של ה-allowlist — הקישורים המלאים שורדים, מנוקים מפיסוק נגרר, מנוכי-כפילויות,
+  מוגבלים ל-10, ומוצגים תחת כותרת "מקורות:". **גוף** התשובה ממשיך להיחסם במלואו לפי ה-allowlist
+  הקיים (`or-infra.com|openrouter.ai|n8n.io|github.com|railway.app|railway.com`); חסימת
+  `exec/eval`, ה-strip של `<script>` ותקרת 4000 התווים נשמרו (התקרה מקצצת את הגוף תוך שמירת
+  בלוק המקורות). תשובות ללא marker מתנהגות בדיוק כמקודם (אפס רגרסיה). אומת ב-Node על 3 מקרים
+  (מקורות, ללא-marker, exec). golden רוענן.

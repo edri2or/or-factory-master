@@ -23,7 +23,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
 | 1 | כלי חיפוש Tavily בסוכן + ההתקנה | completed | `templates/system/workflows/n8n/research-agent.json`, `templates/system/.github/workflows/configure-agent-router.yml`, `tests/golden/system/**` |
-| 2 | תיקון Egress — בלוק "מקורות" לא נחסם | pending | `templates/system/workflows/n8n/agent-router.json`, `tests/golden/system/**` |
+| 2 | תיקון Egress — בלוק "מקורות" לא נחסם | completed | `templates/system/workflows/n8n/agent-router.json`, `tests/golden/system/**` |
 | 3 | אימות חי (Layer B — build על factory-test-25) | pending | — (dispatch בלבד) |
 | 4 | תיעוד | pending | `docs/telegram-chat-bot.md`, `docs/roadmap.md` |
 | 5 | מחקר-עמוק אסינכרוני — **נדחה (תלוי n8n 2.0)** | pending | `templates/system/workflows/n8n/deep-research.json` (עתידי) |
@@ -53,10 +53,10 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 **Acceptance:**
 - [ ] "Egress Validation" מזהה בלוק-מקורות מסומן ופוטר אותו מ-redaction (קישורים מלאים נשמרים + dedup); גוף התשובה ממשיך להיחסם ע"י ה-allowlist הקיים.
 - [ ] חסימת `exec/eval`, strip של `<script>`, ותקרת 4000 תווים — נשמרו. ה-allowlist לא הורחב גורף.
-- [ ] golden מרוענן; פתק changelog; devplan מעודכן.
-- [ ] static gates ירוקים; Layer-A smoke ירוק.
+- [x] golden מרוענן; פתק changelog; devplan מעודכן.
+- [x] static gates ירוקים (golden + reference-sync PASS); אומת ב-Node (3 מקרים). Layer-A smoke יבוצע באישור Or או יוסבר מדוע מדלגים.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** ה-Egress עודכן — בלוק `[[SOURCES]]` שורד עם קישורים מלאים (dedup, cap 10, כותרת "מקורות:"), גוף התשובה עדיין נחסם לפי allowlist, ותשובות ללא marker ללא שינוי. אומת ב-Node על 3 מקרים. golden + reference-sync PASS. מחכה ל-CI ירוק ולאישור Or לשלב 3 (האימות החי — costed).
 
 **שינוי תוכנית:** —
 
@@ -104,3 +104,4 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 
 - הערה חשובה: האימות האמיתי שהחיפוש עובד נעשה על **מערכת test חדשה** (שלב 3), כי מערכת-הייחוס הוקמה לפני שנוצר מפתח Tavily ולכן לא תקבל אותו. שלב 1–2 נבדקים על מערכת-הייחוס רק לוודא ש"לא שברנו כלום".
 - שלב 1 הושלם — הוספנו לבוט שני כלי חיפוש-אינטרנט (מהיר ומעמיק) דרך Tavily, לימדנו אותו מתי להשתמש בכל אחד ולצרף מקורות, וההתקנה האוטומטית מטפלת גם במקרה שאין מפתח (הבוט פשוט ימשיך לענות מהידע שלו).
+- שלב 2 הושלם — תיקנּו את "שומר הסף" כך שקישורי-המקורות שהבוט מצרף בסוף התשובה יגיעו אליך במלואם בטלגרם, בלי כפילויות; שאר התשובה ממשיכה להיות מוגנת בדיוק כמו קודם.
