@@ -21,7 +21,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 |---|---|---|---|
 | 0 | תשתית התוכנית (devplan + פתק changelog) | completed | `devplans/tg-vision.md`, `changelog.d/2026-06-01-tg-vision.md` |
 | 1 | `tg-vision.json` — סאב-workflow קריאת-תמונה | completed | `templates/system/workflows/n8n/tg-vision.json`, `tests/golden/system/` |
-| 2 | `tg-inbound.json` — זיהוי תמונה + ניתוב | pending | `templates/system/workflows/n8n/tg-inbound.json`, `tests/golden/system/` |
+| 2 | `tg-inbound.json` — זיהוי תמונה + ניתוב | completed | `templates/system/workflows/n8n/tg-inbound.json`, `tests/golden/system/` |
 | 3 | `configure-agent-router.yml` — התקנת tg-vision | pending | `templates/system/.github/workflows/configure-agent-router.yml`, `tests/golden/system/` |
 | 4 | תיעוד — AGENTS.md.template + docs | pending | `templates/system/AGENTS.md.template`, `docs/telegram-chat-bot.md`, `docs/openrouter-integration.md`, `tests/golden/system/` |
 | 5 | אימות חי (costed) + קידום + פירוק | pending | מערכת-טסט חד-פעמית (reuse mode) |
@@ -70,12 +70,20 @@ predefinedCredentialType ב-httpRequest (במקום סוד גולמי) כדי ל
 
 **Acceptance:**
 - [ ] `Extract & Normalize` מזהה `msg.photo[הגדול]` ו-`msg.document` image/*; לא זורק; מסמן `route='image'`.
-- [ ] ענף `image` ב-`Route Update` → executeWorkflow `@@WF_TG_VISION_ID@@` → `Send Reply` הקיים.
-- [ ] מסלולי טקסט/אישור והקריאה ל-router לא נגעו; golden מרוענן; CI ירוק.
+- [x] ענף `image` ב-`Route Update` → executeWorkflow `@@WF_TG_VISION_ID@@` → `Send Reply` הקיים.
+- [x] מסלולי טקסט/אישור והקריאה ל-router לא נגעו; golden מרוענן; שערים מקומיים ירוקים.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם — `Extract & Normalize` מזהה עכשיו `msg.photo[הגדול]` ו-`msg.document`
+image/* (תופס `file_id`/`file_size`/`mime_type`); תמונה ללא כיתוב כבר לא נזרקת (`if (!text && !fileId)`).
+ה-Switch `Route Update` קיבל כלל `image` שלישי (פלט 1; `chat` עבר לפלט 2) → `Prep Vision Input` (Set,
+בונה {file_id,chat_id,file_size,mime}) → `Call tg-vision` (executeWorkflow `@@WF_TG_VISION_ID@@`) →
+`Send Reply` הקיים. ה-`Call Agent Router` וה-`Send Reply` לא נגעו בלוגיקה (אומת ב-jq). JS עבר `node --check`,
+golden רוענן (MANIFEST), שערים ירוקים מקומית. ממתין ל-CI.
 
-**שינוי תוכנית:** —
+**שינוי תוכנית:** הוספתי `Prep Vision Input` (Set) לפני ה-executeWorkflow — בדיוק כדפוס `Prep Executor Input`
+של מסלול-האישור — כי `Dedup Guard` (Postgres) מחליף את ה-json בשורת-ה-RETURNING, אז חייבים לבנות את קלט
+tg-vision מ-`$('Extract & Normalize')` במפורש (לא מסתמכים על passthrough של הפריט הזורם). הקובץ עוצב מחדש
+ל-indent=2 (כמו `tg-vision.json`) כתוצאה מעריכה תכנותית בטוחה — שינוי קוסמטי בלבד, הלוגיקה זהה.
 
 ---
 
@@ -124,3 +132,4 @@ predefinedCredentialType ב-httpRequest (במקום סוד גולמי) כדי ל
 
 - שלב 0 הושלם — הקמנו את קובץ-התוכנית ואת פתק-השינויים. עוד לא נגענו בקוד.
 - שלב 1 הושלם — בנינו את ה"עיניים" של הבוט (`tg-vision`): מוריד תמונה מטלגרם, שולח ל-OpenRouter עם הוראת-אבטחה, מחזיר פירוש בעברית, עם גיבוי אוטומטי ובלם לתמונות-ענק. השערים האוטומטיים ירוקים.
+- שלב 2 הושלם — חיברנו את העיניים: עכשיו כשמגיעה תמונה הבוט מזהה אותה (במקום לזרוק) ושולח אותה ל-tg-vision, ואז מחזיר את הפירוש. מסלול הטקסט והאישורים לא נגעו בכלל. השערים ירוקים.
