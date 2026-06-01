@@ -71,11 +71,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 
 **הערת התקדמות אחרונה:** —
 
-**שינוי תוכנית:** —
-
----
-
-### שלב 4 — תיעוד
+**שינוי תוכנית:** האימות החי הופנה ל-Layer B (build טרי על factory-test-25) במקום מכונית-הייחוס — מכונית-הייחוס תקולה כרגע (403 "Host not in allowlist") וגם לא ניתן לדחוף לה קוד מהסשן הזה (scope מוגבל ל-or-factory-master). **לקח:** מערכת test בריביוז על factory-test-25 חייבת שם שמתחיל ב-`factory-test-` — ה-test_pool WIF חוסם שמות אחרים (`tavily-test-01` נדחה ב-deploy עם `unauthorized_client / attribute condition`). נבנה מחדש כ-`factory-test-tavily`.
 
 **Acceptance:**
 - [ ] `docs/telegram-chat-bot.md` (שורת יכולות) + `docs/roadmap.md` (שורת web-search) עודכנו.
