@@ -122,10 +122,13 @@ jobs:
           export GH_TOKEN="$TOKEN"
 
           # --- Clone the system repo (shallow), one-shot auth in the URL only ---
+          # Capture git's stderr so we can surface the real error (auth / network /
+          # missing branch), but sed-strip the token from the URL git echoes back
+          # on failure. Same pattern as the push step below.
           rm -rf sys-target
-          if ! git clone --depth 1 \
-               "https://x-access-token:${TOKEN}@github.com/edri2or/${SYSTEM_NAME}.git" sys-target 2>/dev/null; then
-            echo "FAIL: could not clone edri2or/${SYSTEM_NAME} (does it exist / is it provisioned?)" >&2; exit 1
+          if ! cerr=$(git clone --depth 1 \
+               "https://x-access-token:${TOKEN}@github.com/edri2or/${SYSTEM_NAME}.git" sys-target 2>&1); then
+            echo "FAIL: could not clone edri2or/${SYSTEM_NAME}: $(printf '%s' "$cerr" | sed "s/${TOKEN}/***/g")" >&2; exit 1
           fi
 
           # --- Copy the requested template subpaths from the factory's trusted main ---
