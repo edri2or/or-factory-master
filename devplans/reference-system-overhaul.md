@@ -2,7 +2,7 @@
 dev_name: זניחת מערכת-הייחוס ומעבר ללולאת-תיקון-על-מערכת-חיה
 slug: reference-system-overhaul
 opened: 2026-06-01
-status: active   # active בזמן פיתוח → completed בסיום (משחרר את שער ה-CI)
+status: completed   # active בזמן פיתוח → completed בסיום (משחרר את שער ה-CI)
 ---
 
 # תוכנית פיתוח — זניחת מערכת-הייחוס ומעבר ללולאת-תיקון-על-מערכת-חיה
@@ -22,7 +22,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 | 3 | ניתוק שער ה-golden מהשם "reference" (שומר עצמאי) | completed | check-reference-sync.sh→check-golden-sync.sh (+bats), changelog-check.yml |
 | 4 | הכללת כלי התיקון-החי לכל סוג תיקון | completed | refresh-system-agents.yml, services/mcp-server/src/tools.ts |
 | 5 | שכתוב /dev-stage-factory + שיטה-קבועה ב-CLAUDE.md + תיעוד | completed | dev-stage-factory.md, CLAUDE.md, README.md, docs/roadmap.md, docs/live-test-loop.md |
-| 6 | סגירה — אימות "בלי זכר" + status: completed | pending | devplan |
+| 6 | סגירה — אימות "בלי זכר" + status: completed | completed | devplan |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
 
@@ -104,11 +104,11 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 ### שלב 6 — סגירה
 
 **Acceptance:**
-- [ ] grep ל-reference-system / מערכת-ייחוס / מכונית-ייחוס מחזיר רק היסטוריה מכוונת
-- [ ] PR ירוק לגמרי, מוכן-לסקירה, על ענף claude/reference-system-overhaul-LyD0J
-- [ ] status: completed
+- [x] grep ל-reference-system / מערכת-ייחוס / מכונית-ייחוס מחזיר רק היסטוריה מכוונת + פיקסטיב golden ("golden-reference-system", שם-דמה לא-קשור)
+- [x] PR ירוק לגמרי, מוכן-לסקירה, על ענף claude/reference-system-overhaul-LyD0J
+- [x] status: completed
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הסריקה הסופית נקייה — כל היתר היסטוריה מכוונת או פיקסטיב golden לא-קשור (golden-reference-system). 7 הקבצים שנמחקו אומתו כְּלא-קיימים. הפיתוח נסגר.
 
 **שינוי תוכנית:** —
 
@@ -123,3 +123,4 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 - שלב 3 הושלם — שער-בטיחות אחד (golden) נולד עם הייחוס אבל שימושי בפני עצמו; ניתקנו אותו מהשם המטעה והשארנו אותו עובד כשומר עצמאי על שלמות-התבנית.
 - שלב 4 הושלם — הכלי שמתקן מערכת חיה יודע עכשיו להחיל כל סוג תיקון-תבנית (לא רק סוכני-n8n), עם ברירות-מחדל ששומרות בדיוק על מה שהיה — אפס שבירה.
 - שלב 5 הושלם — השיטה החדשה הפכה לרשמית: שכתבנו את הפקודה /dev-stage-factory סביב "תיקון על מערכת-טסט חיה", תיעדנו אותה (גם ב-CLAUDE.md כך שאני תמיד אדע עליה), ועדכנו את כל המפות (README, roadmap).
+- שלב 6 הושלם — סריקה סופית: לא נשאר זכר של הייחוס (חוץ מההיסטוריה שביקשת להשאיר). הפיתוח נסגר.
