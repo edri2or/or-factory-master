@@ -21,6 +21,11 @@ on:
       - 'services/mcp-server/**'
       - '.github/workflows/deploy-mcp-server.yml'
   workflow_dispatch:
+    inputs:
+      chat_allowlist:
+        description: "Optional: CSV of Telegram numeric user id(s) allowed to use the factory chat bot (e.g. 5786217215). Seeded into factory-telegram-chat-allowlist. Leave blank to keep the current value."
+        required: false
+        type: string
 
 concurrency:
   group: deploy-mcp-server
@@ -357,6 +362,44 @@ jobs:
             printf '__NOT_CONFIGURED__' | gcloud secrets versions add "factory-telegram-chat-openrouter-key" \
               --project="${GCP_PROJECT}" --data-file=-
             echo "WARN: management key unavailable or mint failed; stored placeholder (bot LLM dormant)."
+          fi
+
+      - name: Seed factory chat bot token + allowlist from operator inputs (if provided)
+        env:
+          # The bot token is a SECRET → it arrives via a GitHub Actions secret
+          # (masked, never echoed), NOT a workflow input. Empty when the operator
+          # hasn't set it yet, so this step is a no-op and the bot stays dormant.
+          # add-mask guards against any accidental echo. Runs BEFORE the deploy so
+          # the new :latest versions are what Cloud Run mounts and what the chat
+          # setWebhook step reads. Never overwrites a real value with empty.
+          CHAT_BOT_TOKEN: ${{ secrets.FACTORY_TG_CHAT_BOT_TOKEN }}
+          # The allowlist is a NON-secret numeric id list, passed as a dispatch
+          # input (mirrors set-oil-allowlist.yml). Empty on push deploys → no-op.
+          CHAT_ALLOWLIST: ${{ inputs.chat_allowlist }}
+        run: |
+          set -euo pipefail
+          if [ -n "${CHAT_BOT_TOKEN:-}" ] && [ "${CHAT_BOT_TOKEN}" != "__NOT_CONFIGURED__" ]; then
+            echo "::add-mask::${CHAT_BOT_TOKEN}"
+            printf '%s' "${CHAT_BOT_TOKEN}" | gcloud secrets versions add "factory-telegram-chat-bot-token" \
+              --project="${GCP_PROJECT}" --data-file=-
+            echo "PASS: seeded factory-telegram-chat-bot-token from the operator's GitHub secret."
+          else
+            echo "INFO: no FACTORY_TG_CHAT_BOT_TOKEN secret supplied; leaving the chat bot token as-is."
+          fi
+          CLEAN=$(printf '%s' "${CHAT_ALLOWLIST:-}" | tr -d '[:space:]')
+          if [ -n "${CLEAN}" ]; then
+            IFS=',' read -ra PARTS <<< "${CLEAN}"
+            for p in "${PARTS[@]}"; do
+              [ -n "$p" ] || continue
+              if ! printf '%s' "$p" | grep -Eq '^[0-9]+$'; then
+                echo "::error::chat_allowlist entry '$p' is not a numeric Telegram user id"; exit 1
+              fi
+            done
+            printf '%s' "${CLEAN}" | gcloud secrets versions add "factory-telegram-chat-allowlist" \
+              --project="${GCP_PROJECT}" --data-file=-
+            echo "PASS: seeded factory-telegram-chat-allowlist (${CLEAN})."
+          else
+            echo "INFO: no chat_allowlist input; leaving the chat allowlist as-is."
           fi
 
       - name: Ensure oil-approver-telegram-allowlist exists (placeholder if missing)

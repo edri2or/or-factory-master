@@ -23,7 +23,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 | B+C | route נכנס + guardrails + CI | completed | `services/mcp-server/src/{telegram-chat.ts,telegram-chat-guards.ts,index.ts}`, `test/`, `playground-tests.yml` |
 | D | פעולות-כתיבה מאושרות (HITL) | completed | `services/mcp-server/src/{telegram-chat.ts,telegram-chat-guards.ts}`, `test/` |
 | E | תיעוד + עיגון ב-roadmap | completed | `docs/roadmap.md`, `docs/telegram-chat-bot-factory.md`, `CLAUDE.md` |
-| F | הוכחה חיה (פריסה + סבב טלגרם אמיתי) | pending | פריסת `deploy-mcp-server.yml` (Or-gated) |
+| F | הוכחה חיה (פריסה + סבב טלגרם אמיתי) | in-progress | `deploy-mcp-server.yml` (seed-step), פריסה (Or-gated) |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
 
@@ -107,15 +107,19 @@ allowlist כ-placeholders, webhook-secret אקראי, מפתח-OpenRouter מ-man
 ### שלב F — הוכחה חיה (פריסה + סבב טלגרם אמיתי, Or-gated)
 
 **Acceptance:**
-- [ ] באישור Or: dispatch `deploy-mcp-server.yml` (מינטינג + mount + setWebhook לבוט-הצ'אט).
-- [ ] הזנת טוקן בוט-צ'אט אמיתי (מ-@BotFather) + ה-id של Or ל-`factory-telegram-chat-allowlist`, פריסה מחדש.
-- [ ] poll לריצה (פרוטוקול ה-MCP), `/health`=200, ואז **סבב טלגרם אמיתי**: Or שואל → תשובה מודעת-פקטורי
-      בעברית; פעולת HITL ✅ אחת מקצה-לקצה. iterate fix→redeploy→verify עד ירוק.
-- [ ] קידום = merge ל-main; הצבת `status: completed`.
+- [x] קידום = merge ל-main (PR #263) → פריסה אוטומטית של `deploy-mcp-server.yml` הצליחה.
+- [x] אימות חי בפרודקשן: `/health`=200; POST ל-`/telegram-chat-webhook` בלי secret-token → `401` (ה-route חי
+      ומוגן); מפתח ה-LLM (OpenRouter) נטבע אמיתי (`http=201`); ה-chat setWebhook דילג כצפוי (בוט רדום).
+- [x] מנגנון הפעלה מאובטח: נוסף seed-step ל-`deploy-mcp-server.yml` (קורא GH-secret `FACTORY_TG_CHAT_BOT_TOKEN`
+      ממוסך + input `chat_allowlist`), כך ש-Or לא נוגע בטרמינל ושום סוד לא נרשם בלוג.
+- [ ] **נותר:** Or יוצר בוט ב-@BotFather, מזין את הטוקן ל-GH-secret + נותן id; dispatch deploy עם `chat_allowlist`;
+      **סבב טלגרם אמיתי** (Or שואל → תשובה מודעת-פקטורי) + פעולת HITL ✅ אחת. ואז `status: completed`.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הקוד קודם ל-main ונפרס; אומת חי בפרודקשן (route מוגן 401, LLM מחובר). הוספתי
+מנגנון הפעלה מאובטח (seed-step ב-deploy). נותרה רק יצירת הבוט ע"י Or + ההזנה, ואז סבב חי.
 
-**שינוי תוכנית:** —
+**שינוי תוכנית:** הפעלת הבוט נעשית דרך seed-step ב-`deploy-mcp-server.yml` (GH-secret לטוקן + dispatch-input
+ל-allowlist) במקום כתיבה ידנית ל-SM — כדי שיהיה MCP-dispatchable ובלי פעולת-טרמינל של Or ובלי סוד בלוגים.
 
 ---
 
