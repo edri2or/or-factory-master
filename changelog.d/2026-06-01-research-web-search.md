@@ -24,3 +24,13 @@
   `exec/eval`, ה-strip של `<script>` ותקרת 4000 התווים נשמרו (התקרה מקצצת את הגוף תוך שמירת
   בלוק המקורות). תשובות ללא marker מתנהגות בדיוק כמקודם (אפס רגרסיה). אומת ב-Node על 3 מקרים
   (מקורות, ללא-marker, exec). golden רוענן.
+- **סבב 2 — תיקון חוויה (אחרי אימות חי).** אימות חי על מערכת טרייה הראה 3 כשלים: (1) רק
+  `research-agent` קיבל חיפוש, אז הודעות שנותבו ל-`unknown-agent` (סוכן-השיחה הכללי) ענו "אין לי
+  גלישה" — "פיצול אישיות"; (2) `research-agent` על `claude-haiku-4.5` סיכם תוצאות שגוי; (3) הבוט
+  חשף שמות-כלים פנימיים. תיקון: ל-`templates/system/workflows/n8n/unknown-agent.json` נוספו אותם
+  שני כלי Tavily (`web_search_quick`/`web_search_extended`, credential `@@CRED_TAVILY_ID@@`) +
+  connections `ai_tool`, וה-system-prompt עודכן (סעיף WEB SEARCH, בלוק `[[SOURCES]]`, איסור
+  לטעון "אין לי גלישה", ואיסור לחשוף שמות-כלים). `templates/system/workflows/n8n/research-agent.json`
+  עלה ל-`anthropic/claude-sonnet-4.5` וה-prompt הודק (היצמד לתוצאות, אל תחשוף שמות-כלים). ב-
+  `configure-agent-router.yml` ה-strip של ה-web-search הורחב לכסות גם `unknown-agent.json`
+  (ה-sed של `@@CRED_TAVILY_ID@@` כבר חל על כל הסוכנים). golden רוענן.
