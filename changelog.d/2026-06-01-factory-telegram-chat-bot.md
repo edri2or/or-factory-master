@@ -42,3 +42,9 @@
   והשורה הישנה "factory-actions MCP — לא לבנות" תוקנה: ה-MCP קיים ורץ ומארח את הגשר-OIL ואת הבוט;
   מה שנמנע הוא רק *משטח-כתיבה רחב* (כתיבה נשארת human-gated ו-allow-listed). נוסף מסמך ייעודי
   `docs/telegram-chat-bot-factory.md` (ארכיטקטורה, סודות, guardrails, HITL, הפעלה), ושורת-הסבר ב-`CLAUDE.md`.
+- **שלב F — הפעלה חיה (מנגנון).** `deploy-mcp-server.yml` קיבל **seed-step** + input `chat_allowlist`
+  שמאפשרים הפעלת הבוט בלי פעולת-טרמינל של Or ובלי סוד בלוגים: טוקן-הבוט מגיע כ-GitHub Actions secret
+  ממוסך (`FACTORY_TG_CHAT_BOT_TOKEN`) ונכתב ל-`factory-telegram-chat-bot-token`; ה-allowlist מגיע
+  כ-dispatch-input מאומת (CSV מספרי, ממראה את `set-oil-allowlist.yml`) ונכתב ל-`factory-telegram-chat-allowlist`
+  — שניהם רצים *לפני* הפריסה כך ש-`:latest` נטען ו-`setWebhook` מפעיל את הבוט. no-op בטוח כששניהם ריקים.
+  הקוד כבר קודם ונפרס; אומת חי (route מוגן `401`, מפתח-LLM נטבע). נותר רק ש-Or ייצור בוט ב-@BotFather.
