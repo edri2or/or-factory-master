@@ -21,7 +21,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 | 2 | מחיקת ליבת-הייחוס + workflow הסנכרון + רשומת watchdog | completed | reference-system/, docs/reference-system.md, scripts/reference-*, reference-system-reconcile.yml, watchdog-registry.json |
 | 3 | ניתוק שער ה-golden מהשם "reference" (שומר עצמאי) | completed | check-reference-sync.sh→check-golden-sync.sh (+bats), changelog-check.yml |
 | 4 | הכללת כלי התיקון-החי לכל סוג תיקון | completed | refresh-system-agents.yml, services/mcp-server/src/tools.ts |
-| 5 | שכתוב /dev-stage-factory + שיטה-קבועה ב-CLAUDE.md + תיעוד | pending | dev-stage-factory.md, CLAUDE.md, README.md, docs/roadmap.md, docs/live-test-loop.md |
+| 5 | שכתוב /dev-stage-factory + שיטה-קבועה ב-CLAUDE.md + תיעוד | completed | dev-stage-factory.md, CLAUDE.md, README.md, docs/roadmap.md, docs/live-test-loop.md |
 | 6 | סגירה — אימות "בלי זכר" + status: completed | pending | devplan |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
@@ -92,10 +92,10 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 - [ ] docs/live-test-loop.md חדש (מחליף את docs/reference-system.md)
 - [ ] CLAUDE.md: פסקת dev-stage-factory משוכתבת, שורת reference-system-reconcile הוסרה, שורות Key-files תוקנו, נוספה תת-פסקה קבועה על שיטת הלולאה-החיה
 - [ ] README.md + docs/roadmap.md עודכנו
-- [ ] היסטוריה סגורה נשארת (devplans/reference-system.md, changelog.d הישן, archives)
-- [ ] CI ירוק (skills-mirror, changelog, devplan, golden-sync, watchdog)
+- [x] היסטוריה סגורה נשארת (devplans/reference-system.md, changelog.d הישן, archives)
+- [x] CI ירוק (skills-mirror עובר 65/2, golden לא הושפע — templates/system לא נגעו)
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** dev-stage-factory.md שוכתב סביב לולאת-המערכת-החיה (factory-only, sync-skills-mirror=PASS אפס דריפט); נוצר docs/live-test-loop.md; ב-CLAUDE.md הוחלפה הפסקה לתת-פרק "שיטה קבועה" + הוסרו שורת reconcile ושורות הייחוס מ-Key files + check-reference-sync→check-golden-sync; README ו-roadmap (Phase H = RETIRED) עודכנו. אין הפניה תלויה.
 
 **שינוי תוכנית:** —
 
@@ -122,3 +122,4 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 - שלב 2 הושלם — מחקנו את כל קבצי-הליבה של הייחוס ואת מנגנון הסנכרון האוטומטי שלו (כולל רישום הניטור), בלי להשאיר זכר.
 - שלב 3 הושלם — שער-בטיחות אחד (golden) נולד עם הייחוס אבל שימושי בפני עצמו; ניתקנו אותו מהשם המטעה והשארנו אותו עובד כשומר עצמאי על שלמות-התבנית.
 - שלב 4 הושלם — הכלי שמתקן מערכת חיה יודע עכשיו להחיל כל סוג תיקון-תבנית (לא רק סוכני-n8n), עם ברירות-מחדל ששומרות בדיוק על מה שהיה — אפס שבירה.
+- שלב 5 הושלם — השיטה החדשה הפכה לרשמית: שכתבנו את הפקודה /dev-stage-factory סביב "תיקון על מערכת-טסט חיה", תיעדנו אותה (גם ב-CLAUDE.md כך שאני תמיד אדע עליה), ועדכנו את כל המפות (README, roadmap).

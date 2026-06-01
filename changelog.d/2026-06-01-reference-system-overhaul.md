@@ -29,3 +29,13 @@ standing, generic, documented method for validating provisioning changes.
   no `..`); the defaults reproduce the original behaviour exactly (fully backward-compatible).
   Updated the `dispatch_workflow` description in `services/mcp-server/src/tools.ts` (text only —
   reaches the live MCP on the next operator-gated redeploy).
+- **Stage 5 — made the live-test loop the standing, documented method.** Rewrote
+  `.claude/commands/dev-stage-factory.md` around the live-test-system loop (provision a
+  throwaway reuse-mode system → apply via `refresh-system-agents.yml`/redeploy → verify live →
+  promote → tear down) instead of the two-layer reference validation; added
+  `docs/live-test-loop.md`; in `CLAUDE.md` replaced the `/dev-stage-factory` paragraph with a
+  standing "live-test-system loop" section, removed the `reference-system-reconcile.yml`
+  workflow-table row and the reference-system Key-files rows, and renamed the golden twin gate
+  to `check-golden-sync.sh`; updated `README.md` and marked roadmap Phase H **RETIRED**. The
+  golden gate stays as an independent template-integrity guard. History (closed devplan,
+  archived changelogs) is left intact.
