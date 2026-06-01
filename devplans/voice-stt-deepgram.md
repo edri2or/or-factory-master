@@ -101,9 +101,9 @@ status: completed
 - [x] מערכת-טסט חיה מוקמת ב-reuse mode (`shared_gcp_project=factory-test-25`, 0-quota) — `factory-test-voice`
 - [x] `configure-agent-router.yml` רץ בהצלחה עם Deepgram credential — run 26775314038 על `factory-test-voice`
 - [x] tg-voice-stt + db-vacuum workflows מיובאים ופעילים
-- [ ] voice note בעברית לבוט → תמלול תקין → תגובה מ-agent (אימות ידני על-ידי Or)
+- [x] voice note בעברית לבוט → תמלול תקין → תגובה מ-agent — אומת על-ידי Or (2 voice notes, אגנט הגיב בהתאם)
 
-**הערת התקדמות אחרונה:** ריצה ראשונה על `factory-test-qmode7` תפסה באג אמיתי (`N8N_BASE: unbound variable`) — תוקן (ראה שלב 3). ריצה שנייה על `factory-test-voice` (run 26775314038) עברה בהצלחה: Deepgram credential `jqbRJZuh2fPT7LoN`, tg-voice-stt `QTqGfZMe4CokJhXv`, db-vacuum `ppVTP8buYy5LtN8e`, tg-inbound `GZOBU8SGe7Em5z78` — כולם PASS. healthz 200 OK.
+**הערת התקדמות אחרונה:** ריצה ראשונה על `factory-test-qmode7` תפסה באג אמיתי (`N8N_BASE: unbound variable`) — תוקן (ראה שלב 3). ריצה שנייה על `factory-test-voice` (run 26775314038) עברה בהצלחה: Deepgram credential `jqbRJZuh2fPT7LoN`, tg-voice-stt `QTqGfZMe4CokJhXv`, db-vacuum `ppVTP8buYy5LtN8e`, tg-inbound `GZOBU8SGe7Em5z78` — כולם PASS. healthz 200 OK. אימות round-trip קולי: Or שלח 2 voice notes בעברית, האגנט הגיב בהתאם — STT עברית עובד end-to-end.
 
 **שינוי תוכנית:** —
 
@@ -116,7 +116,8 @@ status: completed
 - שלב 3 הושלם — `configure-agent-router.yml` עודכן: Deepgram credential, imports של שני ה-workflows, graceful degradation.
 - שלב 4 הושלם — `tg-inbound.json` עודכן: זיהוי voice, route חדש, 2 nodes, connection לאגנט.
 - שלב 5 הושלם — pruning vars נוספו, golden עודכן, PR נפתח.
-- שלב 6 הושלם — מערכת-טסט `factory-test-voice` הוקמה (reuse mode, factory-test-25). `configure-agent-router.yml` עבר בהצלחה: Deepgram credential נוצר, tg-voice-stt + db-vacuum מיובאים ופעילים, tg-inbound עם voice route מוכן. healthz 200 OK. ממתין לאימות round-trip קולי מ-Or.
+- שלב 6 הושלם — מערכת-טסט `factory-test-voice` הוקמה (reuse mode, factory-test-25). `configure-agent-router.yml` עבר בהצלחה: Deepgram credential נוצר, tg-voice-stt + db-vacuum מיובאים ופעילים, tg-inbound עם voice route מוכן. healthz 200 OK.
+- ✅ אימות סופי הושלם — Or שלח 2 הודעות קוליות בעברית, האגנט הגיב כראוי. Voice-to-Text עברית עובד end-to-end על כל מערכת חדשה שהפקטורי יוצר.
 
 ---
 
