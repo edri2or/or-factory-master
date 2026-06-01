@@ -49,12 +49,15 @@ ATTR_MAP="google.subject=assertion.sub,attribute.repository=assertion.repository
 # ANY ref of the factory repo -- branches included. That is the unlock.
 ATTR_COND="assertion.repository_owner_id=='${OWNER_ID}' && assertion.repository_id=='${REPO_ID}'"
 
-# Treat ALREADY_EXISTS as success for create-style commands.
+# Treat "already exists" as success for create-style commands. gcloud phrases this
+# differently per resource: WIF pools/providers return the token ALREADY_EXISTS, while
+# service-accounts create returns "... is the subject of a conflict: Service account
+# ... already exists within project". Match both (case-insensitive) so re-runs are idempotent.
 _create_ok() {
   local desc="$1"; shift
   local out
   if out=$("$@" 2>&1); then echo "OK: ${desc} created."; return 0; fi
-  if printf '%s' "$out" | grep -q "ALREADY_EXISTS"; then
+  if printf '%s' "$out" | grep -qiE "ALREADY_EXISTS|already exists|subject of a conflict"; then
     echo "OK: ${desc} already exists."; return 0
   fi
   printf '%s\n' "$out" >&2
