@@ -1524,20 +1524,52 @@ jobs:
             echo "PASS: caddy-railway-service-id persisted to SM."
           fi
 
-          # ===== Caddy env vars (first-create only) =====
+          # ===== Caddy env vars (self-heal: first-create OR drift detected) =====
           # Names MUST match what the Caddyfile reads. RAILWAY_DOCKERFILE_PATH
           # points Railway at our non-default Dockerfile (the repo has no root
           # Dockerfile) so it builds the custom Caddy image instead of nixpacks.
-          # Guard: only upsert on first create. Re-runs skip this to avoid a
-          # needless Caddy redeploy that can trigger the Railway scheduler throttle
-          # ("Starting Container" + zero logs) and take down the live gateway.
+          #
+          # Why self-heal: if any required var is missing/empty on the Caddy
+          # service, the Caddyfile's `{$HMAC_SECRET}` / `{$N8N_TELEGRAM_WEBHOOK_SECRET}`
+          # expansions go empty and Caddy rejects every request (incl. /healthz
+          # and the Telegram webhook). This was observed live on or-adhd-agent
+          # after a Railway-side auto-restart wiped the variable collection.
+          #
+          # Idempotent in the happy path: if all required vars are present we
+          # skip the upsert entirely → no Caddy redeploy → no Railway scheduler
+          # throttle ("Starting Container" + zero logs). Only when drift is
+          # actually detected do we re-upsert and accept the single redeploy.
+          # Phase F: include the per-system Telegram webhook secret (minted at
+          # provision) so Caddy authenticates /webhook/telegram-in/* without HMAC.
+          # Soft: if absent the path stays fail-closed (401), never fail-open.
+          TG_SECRET=$(gcloud secrets versions access latest --secret=n8n-telegram-webhook-secret --project="$PROJECT_ID" 2>/dev/null || true)
+          TG_ON=n; [ -z "$TG_SECRET" ] || { echo "::add-mask::$TG_SECRET"; TG_ON=y; }
+
+          NEED_UPSERT=n
+          REASON=""
           if [ "$CADDY_FIRST_TIME" = "true" ]; then
-            echo "=== Railway: Caddy env vars (single collection upsert — first create) ==="
-            # Phase F: include the per-system Telegram webhook secret (minted at
-            # provision) so Caddy authenticates /webhook/telegram-in/* without HMAC.
-            # Soft: if absent the path stays fail-closed (401), never fail-open.
-            TG_SECRET=$(gcloud secrets versions access latest --secret=n8n-telegram-webhook-secret --project="$PROJECT_ID" 2>/dev/null || true)
-            TG_ON=n; [ -z "$TG_SECRET" ] || { echo "::add-mask::$TG_SECRET"; TG_ON=y; }
+            NEED_UPSERT=y
+            REASON="first create"
+          else
+            # Read current Caddy variables and detect drift (missing or empty
+            # value for any required key). Railway's `variables` query returns
+            # a JSON object of name→value for the service in the given env.
+            vresp=$(_gql 'query($pid: String!, $eid: String!, $sid: String!) { variables(projectId: $pid, environmentId: $eid, serviceId: $sid) }' \
+              "$(jq -cn --arg pid "$PROJECT_ID_RW" --arg eid "$ENV_ID" --arg sid "$CADDY_ID" \
+                '{pid: $pid, eid: $eid, sid: $sid}')" 2>/dev/null || echo '{}')
+            CURVARS=$(printf '%s' "$vresp" | jq -c '.data.variables // {}' 2>/dev/null || echo '{}')
+            REQUIRED='["HMAC_SECRET","RATE_LIMIT_BURST","RATE_LIMIT_WINDOW","PORT","RAILWAY_DOCKERFILE_PATH"]'
+            [ -z "$TG_SECRET" ] || REQUIRED='["HMAC_SECRET","RATE_LIMIT_BURST","RATE_LIMIT_WINDOW","PORT","RAILWAY_DOCKERFILE_PATH","N8N_TELEGRAM_WEBHOOK_SECRET"]'
+            MISSING=$(jq -r --argjson req "$REQUIRED" --argjson cur "$CURVARS" \
+              -n '$req | map(select((($cur[.] // "") | tostring) == "")) | join(",")')
+            if [ -n "$MISSING" ]; then
+              NEED_UPSERT=y
+              REASON="drift detected — missing/empty: $MISSING"
+            fi
+          fi
+
+          if [ "$NEED_UPSERT" = "y" ]; then
+            echo "=== Railway: Caddy env vars (single collection upsert — ${REASON}) ==="
             _upsert_collection "$CADDY_ID" "$(jq -cn --arg hmac "$HMAC_SECRET" --arg tg "${TG_SECRET:-}" '{
               HMAC_SECRET: $hmac,
               RATE_LIMIT_BURST: "50",
@@ -1547,7 +1579,7 @@ jobs:
             } + (if $tg=="" then {} else {N8N_TELEGRAM_WEBHOOK_SECRET:$tg} end)')"
             echo "PASS: Caddy env vars set (telegram=${TG_ON}; single upsert → single redeploy)."
           else
-            echo "INFO: Caddy env vars already set (service pre-existing) — skipping upsert to avoid a needless redeploy."
+            echo "INFO: Caddy env vars present and non-empty — skipping upsert to avoid a needless redeploy."
           fi
 
           # ===== Caddy public subdomain (Railway-provided *.up.railway.app) =====
