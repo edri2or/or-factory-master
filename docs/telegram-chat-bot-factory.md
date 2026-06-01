@@ -10,42 +10,48 @@ Actions**; the bot is an extension of the existing Express/MCP service at `servi
 n8n/Railway stay for child systems only (putting the control plane on n8n would create a
 circular dependency — see the anchor decision in `docs/roadmap.md`, Phase I).
 
-## Architecture
+## Architecture — one bot
+
+The factory has **one** Telegram bot (`telegram-bot-token`, the long-standing "alerts" bot). It
+both **sends** alerts (watchdog / incidents / OIL approval prompts) **and answers** Or's
+questions. Its single webhook posts to the unified `/telegram-webhook`, which routes by update
+kind:
 
 ```
-Telegram (chat bot)  ──POST /telegram-chat-webhook──▶  services/mcp-server (Cloud Run)
-                                                          │
-   X-Telegram-Bot-Api-Secret-Token  ── layer 1 (index.ts, constant-time)
-   sender allowlist + ~120s freshness ── layer 2 (telegram-chat.ts)
-                                                          │
-                                                          ▼
-                              OpenRouter (Haiku 4.5) + read-only tools
-                                                          │
-                          final Hebrew answer ──▶ sendMessage (chat bot)
+Telegram (the one factory bot) ──POST /telegram-webhook──▶ services/mcp-server (Cloud Run)
+                                                             │  X-Telegram-Bot-Api-Secret-Token (index.ts, constant-time)
+                                                             ▼
+                              ┌─ callback oilapprove:/oilreject:  → oil-approval.ts (OIL ✅/❌ merge/close)
+                              └─ message  OR  callback cdo:/cno:   → telegram-chat.ts
+                                                             │  sender allowlist + ~120s freshness (layer 2)
+                                                             ▼
+                                        OpenRouter (Haiku 4.5) + read-only tools
+                                                             │
+                              final Hebrew answer ──▶ sendMessage (same bot, observability-client)
 ```
 
-Two **physically separate** Telegram bots share one chat: the **alerts bot**
-(`telegram-bot-token`, send-only + OIL approval callbacks on `/telegram-webhook`) and the
-**chat bot** (`factory-telegram-chat-bot-token`, this feature, on `/telegram-chat-webhook`). A
-Telegram bot can register only one webhook, hence the split.
+A Telegram bot can register only one webhook, so the **single** webhook carries *both* kinds of
+update and `index.ts` dispatches them. (An earlier iteration used a second, separate chat bot;
+it was consolidated onto the one bot at Or's request — fewer moving parts.)
 
 ## Files
 
 | File | Role |
 |---|---|
 | `services/mcp-server/src/telegram-chat-guards.ts` | Pure, side-effect-free guards + parsers (allowlist, freshness, message/callback parsing). No heavy imports → unit-tested hermetically. |
-| `services/mcp-server/src/telegram-chat.ts` | The handler: inbound message → LLM tool-calling loop → Hebrew reply; HITL approval send + callback dispatch. |
-| `services/mcp-server/src/index.ts` | Registers `POST /telegram-chat-webhook` (503 dormant, constant-time secret-token check, always 200). |
+| `services/mcp-server/src/telegram-chat.ts` | The handler: inbound message → LLM tool-calling loop → Hebrew reply; HITL approval send + callback dispatch. Replies reuse the alerts-bot senders in `observability-client.ts`. |
+| `services/mcp-server/src/oil-approval.ts` | The OIL ✅/❌ approval bridge — unchanged; the unified webhook routes `oilapprove:`/`oilreject:` here. |
+| `services/mcp-server/src/index.ts` | The **unified** `POST /telegram-webhook` (constant-time secret-token check, routes by update kind, always 200). |
 | `services/mcp-server/test/telegram-chat-guards.test.mjs` | Unit tests for the pure guards (run by `node --test`, the repo convention). |
-| `.github/workflows/deploy-mcp-server.yml` | Mints + mounts the 4 chat secrets; registers the chat bot's `setWebhook`. |
+| `.github/workflows/deploy-mcp-server.yml` | Mints + mounts the chat allowlist + OpenRouter key; sets the one bot's webhook (`allowed_updates:["message","callback_query"]`). |
 | `.github/workflows/playground-tests.yml` | "MCP server build + unit tests" step (`tsc` + `node --test`) — the first PR-time gate over the mcp-server TS. |
 
 ## Secrets (GCP Secret Manager, `or-factory-master-control`)
 
 | Secret | Env var | Purpose |
 |---|---|---|
-| `factory-telegram-chat-bot-token` | `FACTORY_TG_CHAT_BOT_TOKEN` | @BotFather token of the chat bot. Operator-supplied; placeholder until set → bot dormant. |
-| `factory-telegram-chat-webhook-secret` | `FACTORY_TG_CHAT_WEBHOOK_SECRET` | `setWebhook` secret_token (layer 1). Minted random. |
+| `telegram-bot-token` | (read at runtime) | The one factory bot's token — used to **send** alerts and now the chat replies (via `observability-client`). |
+| `telegram-approval-webhook-secret` | `TELEGRAM_APPROVAL_WEBHOOK_SECRET` | The unified webhook's `setWebhook` secret_token (layer 1), shared by chat + OIL approvals. |
 | `factory-telegram-chat-allowlist` | `FACTORY_TG_CHAT_ALLOWLIST` | CSV of Telegram user ids allowed to chat (Or's id). Placeholder → closed by default. |
 | `factory-telegram-chat-openrouter-key` | `FACTORY_TG_CHAT_OPENROUTER_KEY` | OpenRouter inference key (LLM credential). Minted from `openrouter-management-key`; placeholder if unavailable → LLM dormant. |
 | — | `FACTORY_TG_CHAT_MODEL` | LLM model id (default `anthropic/claude-haiku-4.5`). |
@@ -87,26 +93,19 @@ The allowlist is a small, fixed set of **safe, parameterless, idempotent** workf
 - **Synchronous processing.** Cloud Run only guarantees CPU during a request, so the handler
   processes the LLM loop synchronously (bounded: ≤4 tool rounds, 45s/call) and then `sendMessage`s
   the reply, rather than fire-and-forget. This mirrors the OIL approval webhook.
-- **Dormant by default.** Until the real bot token + an OpenRouter key are set, the bot stays off
-  (the deploy creates placeholders; `setWebhook` skips a placeholder token). The OpenRouter LLM key
-  is minted automatically from `openrouter-management-key` at deploy.
+- **No separate bot.** The bot already exists (the alerts bot) and its token + webhook secret are
+  long-standing, so there's nothing to create. The chat answers go dark only if the **LLM** key is
+  unset (`llmConfigured()` → a one-line "AI not configured yet" reply). The OpenRouter LLM key is
+  minted automatically from `openrouter-management-key` at deploy.
 
-### Activating the bot (one-time)
+### Activating the chat (one-time)
 
-Two operator-supplied values are needed; `deploy-mcp-server.yml` seeds both into Secret Manager
-and then `setWebhook` activates the bot — no terminal, no printed secrets:
-
-1. **Create the bot** — in Telegram, message **@BotFather** → `/newbot`, follow the prompts, copy
-   the bot token it gives you.
-2. **Store the token** — add it as a GitHub Actions **secret** named `FACTORY_TG_CHAT_BOT_TOKEN`
-   on `edri2or/or-factory-master` (Settings → Secrets and variables → Actions → New secret). It's
-   masked and never logged; the deploy's seed step writes it to `factory-telegram-chat-bot-token`.
-3. **Allow your account** — re-run `deploy-mcp-server.yml` with the `chat_allowlist` input set to
-   your numeric Telegram user id (from @userinfobot). The seed step validates it (numeric CSV) and
-   writes `factory-telegram-chat-allowlist`. (Mirrors `set-oil-allowlist.yml`; the id is non-secret.)
-
-The same deploy run mounts the new `:latest` versions and registers the chat bot's `setWebhook`.
-Re-running with both blank is a safe no-op (never overwrites a real value with empty).
+The only thing needed is to **allow Or's account** to chat (and have the LLM key, which the deploy
+mints). Re-run `deploy-mcp-server.yml` with the `chat_allowlist` input set to Or's numeric Telegram
+user id (from @userinfobot). The seed step validates it (numeric CSV, mirroring `set-oil-allowlist.yml`;
+the id is non-secret) and writes `factory-telegram-chat-allowlist`; the same run sets the one bot's
+webhook to `allowed_updates:["message","callback_query"]`. Then Or messages the **existing** bot and
+gets an answer. Re-running with a blank input is a safe no-op.
 
 ## Not in scope here
 

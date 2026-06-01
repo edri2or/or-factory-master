@@ -272,52 +272,27 @@ jobs:
             echo "PASS: telegram-approval-webhook-secret minted (no trailing newline)."
           fi
 
-      - name: Ensure factory chat-bot Telegram secrets exist (mint/placeholder if missing)
+      - name: Ensure factory chat allowlist secret exists (placeholder if missing)
         run: |
           set -euo pipefail
-          # Bidirectional Telegram CHAT bot for the factory itself (dogfooding of
-          # the systems' Phase F). A SEPARATE bot from the alerts bot
-          # (telegram-bot-token) — a Telegram bot can hold only one webhook, and
-          # the alerts bot's /telegram-webhook is callback_query-only (OIL
-          # approvals). The chat bot drives /telegram-chat-webhook.
-          #
-          #  * factory-telegram-chat-bot-token   — the @BotFather token. Operator-
-          #    supplied out-of-band (like other real tokens); a placeholder shell
-          #    is created so the Cloud Run mount resolves and the bot stays DORMANT
-          #    until the real token is set. Never overwrites a real value.
-          #  * factory-telegram-chat-webhook-secret — random secret_token Telegram
-          #    echoes in X-Telegram-Bot-Api-Secret-Token (layer 1 of 2; the sender
-          #    allowlist is layer 2). Minted random; reused across re-deploys.
-          #  * factory-telegram-chat-allowlist   — CSV of Telegram user ids allowed
-          #    to chat (Or's id). Placeholder → closed-by-default until set.
-          # Broker SA holds project-level secretAccessor — no per-secret IAM grant.
-          ensure_placeholder() {
-            local NAME="$1" PURPOSE="$2"
-            if gcloud secrets describe "${NAME}" --project="${GCP_PROJECT}" >/dev/null 2>&1; then
-              echo "INFO: ${NAME} exists; leaving as-is."
-            else
-              gcloud secrets create "${NAME}" \
-                --project="${GCP_PROJECT}" \
-                --replication-policy=automatic \
-                --labels="owner=factory-master,purpose=${PURPOSE}"
-              printf '__NOT_CONFIGURED__' | gcloud secrets versions add "${NAME}" \
-                --project="${GCP_PROJECT}" --data-file=-
-              echo "PASS: ${NAME} created with placeholder (operator sets the real value)."
-            fi
-          }
-          ensure_placeholder "factory-telegram-chat-bot-token" "factory-telegram-chat-bot"
-          ensure_placeholder "factory-telegram-chat-allowlist" "factory-telegram-chat-allowlist"
-
-          if gcloud secrets describe "factory-telegram-chat-webhook-secret" \
+          # SINGLE-BOT design: the factory chat runs on the EXISTING alerts bot
+          # (telegram-bot-token) via the unified /telegram-webhook — there is NO
+          # separate chat bot token or chat webhook secret. The only chat-specific
+          # secret here is the sender allowlist: CSV of Telegram user ids allowed
+          # to chat (Or's id). Placeholder → closed-by-default until the seed step
+          # writes the real id (via the chat_allowlist input). The LLM credential
+          # is the next step. Broker SA holds project-level secretAccessor.
+          if gcloud secrets describe "factory-telegram-chat-allowlist" \
                --project="${GCP_PROJECT}" >/dev/null 2>&1; then
-            echo "INFO: factory-telegram-chat-webhook-secret exists; reusing."
+            echo "INFO: factory-telegram-chat-allowlist exists; leaving as-is."
           else
-            printf '%s' "$(openssl rand -hex 32)" | gcloud secrets create "factory-telegram-chat-webhook-secret" \
+            gcloud secrets create "factory-telegram-chat-allowlist" \
               --project="${GCP_PROJECT}" \
               --replication-policy=automatic \
-              --labels="owner=factory-master,purpose=factory-telegram-chat-webhook" \
-              --data-file=-
-            echo "PASS: factory-telegram-chat-webhook-secret minted (no trailing newline)."
+              --labels="owner=factory-master,purpose=factory-telegram-chat-allowlist"
+            printf '__NOT_CONFIGURED__' | gcloud secrets versions add "factory-telegram-chat-allowlist" \
+              --project="${GCP_PROJECT}" --data-file=-
+            echo "PASS: factory-telegram-chat-allowlist created with placeholder."
           fi
 
       - name: Ensure factory-telegram-chat-openrouter-key exists (mint from management key if missing)
@@ -364,28 +339,16 @@ jobs:
             echo "WARN: management key unavailable or mint failed; stored placeholder (bot LLM dormant)."
           fi
 
-      - name: Seed factory chat bot token + allowlist from operator inputs (if provided)
+      - name: Seed factory chat allowlist from operator input (if provided)
         env:
-          # The bot token is a SECRET → it arrives via a GitHub Actions secret
-          # (masked, never echoed), NOT a workflow input. Empty when the operator
-          # hasn't set it yet, so this step is a no-op and the bot stays dormant.
-          # add-mask guards against any accidental echo. Runs BEFORE the deploy so
-          # the new :latest versions are what Cloud Run mounts and what the chat
-          # setWebhook step reads. Never overwrites a real value with empty.
-          CHAT_BOT_TOKEN: ${{ secrets.FACTORY_TG_CHAT_BOT_TOKEN }}
-          # The allowlist is a NON-secret numeric id list, passed as a dispatch
-          # input (mirrors set-oil-allowlist.yml). Empty on push deploys → no-op.
+          # SINGLE-BOT design: the chat runs on the alerts bot — no chat bot token
+          # to seed. The only operator value is the sender allowlist: a NON-secret
+          # numeric id list passed as a dispatch input (mirrors set-oil-allowlist.yml).
+          # Empty on push deploys → no-op (leaves the current allowlist). Runs BEFORE
+          # the deploy so Cloud Run mounts the new :latest version.
           CHAT_ALLOWLIST: ${{ inputs.chat_allowlist }}
         run: |
           set -euo pipefail
-          if [ -n "${CHAT_BOT_TOKEN:-}" ] && [ "${CHAT_BOT_TOKEN}" != "__NOT_CONFIGURED__" ]; then
-            echo "::add-mask::${CHAT_BOT_TOKEN}"
-            printf '%s' "${CHAT_BOT_TOKEN}" | gcloud secrets versions add "factory-telegram-chat-bot-token" \
-              --project="${GCP_PROJECT}" --data-file=-
-            echo "PASS: seeded factory-telegram-chat-bot-token from the operator's GitHub secret."
-          else
-            echo "INFO: no FACTORY_TG_CHAT_BOT_TOKEN secret supplied; leaving the chat bot token as-is."
-          fi
           CLEAN=$(printf '%s' "${CHAT_ALLOWLIST:-}" | tr -d '[:space:]')
           if [ -n "${CLEAN}" ]; then
             IFS=',' read -ra PARTS <<< "${CLEAN}"
@@ -534,7 +497,7 @@ jobs:
               --port=3000 \
               --timeout=300 \
               --set-env-vars="PUBLIC_BASE_URL=${PUBLIC_BASE_URL},FACTORY_TG_CHAT_MODEL=anthropic/claude-haiku-4.5" \
-              --set-secrets="MCP_ADMIN_SECRET=mcp-server-admin-secret:latest,BEARER_SIGNING_KEY=mcp-server-bearer-signing-key:latest,GITHUB_APP_ID=factory-master-broker-app-id:latest,GITHUB_APP_PRIVATE_KEY=factory-master-broker-app-private-key:latest,GITHUB_APP_INSTALLATION_ID=factory-master-broker-app-installation-id:latest,RAILWAY_API_TOKEN=railway-api-token:latest,CLOUDFLARE_API_TOKEN=cloudflare-token-creator:latest,CLOUDFLARE_ZONE_ID=cloudflare-zone-id-or-infra:latest,CLOUDFLARE_ZONES_READ_TOKEN=cloudflare-zones-read-token:latest,SENTRY_DSN=sentry-api-key:latest,BS_WEBHOOK_SECRET=bs-webhook-secret:latest,LINEAR_WEBHOOK_SECRET=linear-webhook-secret:latest,TELEGRAM_APPROVAL_WEBHOOK_SECRET=telegram-approval-webhook-secret:latest,OIL_APPROVER_TELEGRAM_ALLOWLIST=oil-approver-telegram-allowlist:latest,OIL_APPROVER_APP_ID=oil-autofix-approver-app-id:latest,OIL_APPROVER_INSTALLATION_ID=oil-autofix-approver-app-installation-id:latest,OIL_APPROVER_PRIVATE_KEY=oil-autofix-approver-app-private-key:latest,FACTORY_TG_CHAT_BOT_TOKEN=factory-telegram-chat-bot-token:latest,FACTORY_TG_CHAT_WEBHOOK_SECRET=factory-telegram-chat-webhook-secret:latest,FACTORY_TG_CHAT_ALLOWLIST=factory-telegram-chat-allowlist:latest,FACTORY_TG_CHAT_OPENROUTER_KEY=factory-telegram-chat-openrouter-key:latest" \
+              --set-secrets="MCP_ADMIN_SECRET=mcp-server-admin-secret:latest,BEARER_SIGNING_KEY=mcp-server-bearer-signing-key:latest,GITHUB_APP_ID=factory-master-broker-app-id:latest,GITHUB_APP_PRIVATE_KEY=factory-master-broker-app-private-key:latest,GITHUB_APP_INSTALLATION_ID=factory-master-broker-app-installation-id:latest,RAILWAY_API_TOKEN=railway-api-token:latest,CLOUDFLARE_API_TOKEN=cloudflare-token-creator:latest,CLOUDFLARE_ZONE_ID=cloudflare-zone-id-or-infra:latest,CLOUDFLARE_ZONES_READ_TOKEN=cloudflare-zones-read-token:latest,SENTRY_DSN=sentry-api-key:latest,BS_WEBHOOK_SECRET=bs-webhook-secret:latest,LINEAR_WEBHOOK_SECRET=linear-webhook-secret:latest,TELEGRAM_APPROVAL_WEBHOOK_SECRET=telegram-approval-webhook-secret:latest,OIL_APPROVER_TELEGRAM_ALLOWLIST=oil-approver-telegram-allowlist:latest,OIL_APPROVER_APP_ID=oil-autofix-approver-app-id:latest,OIL_APPROVER_INSTALLATION_ID=oil-autofix-approver-app-installation-id:latest,OIL_APPROVER_PRIVATE_KEY=oil-autofix-approver-app-private-key:latest,FACTORY_TG_CHAT_ALLOWLIST=factory-telegram-chat-allowlist:latest,FACTORY_TG_CHAT_OPENROUTER_KEY=factory-telegram-chat-openrouter-key:latest" \
               --labels="owner=factory-master,purpose=mcp-server" \
               --quiet 2>&1
           }
@@ -616,19 +579,18 @@ jobs:
             rm -f /tmp/oil-reg.body
           fi
 
-      - name: Register Telegram approval webhook (idempotent, soft-fail)
+      - name: Register Telegram webhook (unified chat + OIL approvals, idempotent, soft-fail)
         if: success()
         continue-on-error: true
         run: |
           set -uo pipefail
-          # OIL approval bridge: point the CONTROL alerts bot's webhook at this
-          # server's /telegram-webhook, carrying the secret_token Telegram will
-          # echo in X-Telegram-Bot-Api-Secret-Token. The alerts bot is send-only
-          # today (nothing receives on it), so claiming its webhook is safe and
-          # does not affect the per-system chat bots (different tokens). setWebhook
-          # is idempotent (re-setting the same url+secret is a no-op-ish 200).
-          # Soft-fail: a hiccup must never fail a deploy. allowed_updates is
-          # restricted to callback_query (we only care about button taps).
+          # SINGLE BOT: point the factory's ONE bot (telegram-bot-token) webhook at
+          # this server's unified /telegram-webhook, carrying the secret_token
+          # Telegram echoes in X-Telegram-Bot-Api-Secret-Token. The endpoint routes
+          # both Or's free-form chat MESSAGES (→ chat LLM) and the OIL approval
+          # CALLBACKS (→ approval bridge), so allowed_updates covers BOTH message
+          # and callback_query. setWebhook is idempotent (re-setting the same
+          # url+secret is a no-op-ish 200). Soft-fail: a hiccup must never fail a deploy.
           REGION_URL="https://${SERVICE}-${GCP_PROJECT_NUMBER}.${GCP_REGION}.run.app"
           TG_TOKEN=$(gcloud secrets versions access latest --secret="telegram-bot-token" --project="${GCP_PROJECT}" 2>/dev/null | tr -d '\r\n' || true)
           TG_SECRET=$(gcloud secrets versions access latest --secret="telegram-approval-webhook-secret" --project="${GCP_PROJECT}" 2>/dev/null | tr -d '\r\n' || true)
@@ -638,7 +600,7 @@ jobs:
             echo "::add-mask::${TG_TOKEN}"
             echo "::add-mask::${TG_SECRET}"
             PAYLOAD=$(jq -cn --arg url "${REGION_URL}/telegram-webhook" --arg secret "${TG_SECRET}" \
-              '{url:$url, secret_token:$secret, allowed_updates:["callback_query"]}')
+              '{url:$url, secret_token:$secret, allowed_updates:["message","callback_query"]}')
             CODE=$(curl -s -o /tmp/tg-setwh.body -w '%{http_code}' --max-time 30 \
               -X POST "https://api.telegram.org/bot${TG_TOKEN}/setWebhook" \
               -H "Content-Type: application/json" --data "${PAYLOAD}" || echo "000")
@@ -649,40 +611,6 @@ jobs:
               echo "WARN: setWebhook returned HTTP ${CODE} (soft-fail): $(jq -r '.description // empty' /tmp/tg-setwh.body 2>/dev/null || true)"
             fi
             rm -f /tmp/tg-setwh.body
-          fi
-
-      - name: Register Telegram CHAT webhook (idempotent, soft-fail)
-        if: success()
-        continue-on-error: true
-        run: |
-          set -uo pipefail
-          # Point the factory CHAT bot's webhook at /telegram-chat-webhook,
-          # carrying the secret_token Telegram echoes in
-          # X-Telegram-Bot-Api-Secret-Token. Separate bot + separate route from
-          # the alerts bot's OIL-approval webhook. allowed_updates covers both
-          # free-form messages (chat) and callback_query (HITL ✅/❌ buttons).
-          # Dormant until the real chat bot token is set: a placeholder token
-          # makes setWebhook fail → soft-skip. Soft-fail: never breaks a deploy.
-          REGION_URL="https://${SERVICE}-${GCP_PROJECT_NUMBER}.${GCP_REGION}.run.app"
-          TG_TOKEN=$(gcloud secrets versions access latest --secret="factory-telegram-chat-bot-token" --project="${GCP_PROJECT}" 2>/dev/null | tr -d '\r\n' || true)
-          TG_SECRET=$(gcloud secrets versions access latest --secret="factory-telegram-chat-webhook-secret" --project="${GCP_PROJECT}" 2>/dev/null | tr -d '\r\n' || true)
-          if [ -z "${TG_TOKEN}" ] || [ "${TG_TOKEN}" = "__NOT_CONFIGURED__" ] || [ -z "${TG_SECRET}" ]; then
-            echo "INFO: chat bot token not configured yet; skipping chat setWebhook (bot dormant)."
-          else
-            echo "::add-mask::${TG_TOKEN}"
-            echo "::add-mask::${TG_SECRET}"
-            PAYLOAD=$(jq -cn --arg url "${REGION_URL}/telegram-chat-webhook" --arg secret "${TG_SECRET}" \
-              '{url:$url, secret_token:$secret, allowed_updates:["message","callback_query"]}')
-            CODE=$(curl -s -o /tmp/tg-chat-setwh.body -w '%{http_code}' --max-time 30 \
-              -X POST "https://api.telegram.org/bot${TG_TOKEN}/setWebhook" \
-              -H "Content-Type: application/json" --data "${PAYLOAD}" || echo "000")
-            echo "POST setWebhook -> HTTP ${CODE}"
-            if [ "${CODE}" = "200" ] && [ "$(jq -r '.ok // false' /tmp/tg-chat-setwh.body 2>/dev/null)" = "true" ]; then
-              echo "PASS: Telegram chat webhook registered → ${REGION_URL}/telegram-chat-webhook"
-            else
-              echo "WARN: chat setWebhook returned HTTP ${CODE} (soft-fail): $(jq -r '.description // empty' /tmp/tg-chat-setwh.body 2>/dev/null || true)"
-            fi
-            rm -f /tmp/tg-chat-setwh.body
           fi
 
       - name: Summary
@@ -709,11 +637,9 @@ jobs:
             echo "\`list_railway_service_variables\`, \`list_railway_service_volumes\`, \`list_railway_deployments\`,"
             echo "\`railway_graphql_read\`) become available and the old \`domains: []\` bug is fixed."
             echo ""
-            echo "### Factory chat bot (bidirectional) — one-time setup"
+            echo "### Factory chat (bidirectional, single bot) — one-time setup"
             echo ""
-            echo "The chat bot stays **dormant** until two secrets hold real values:"
-            echo "1. \`factory-telegram-chat-bot-token\` — a fresh bot token from @BotFather (separate from the alerts bot)."
-            echo "2. \`factory-telegram-chat-allowlist\` — CSV of allowed Telegram user id(s) (Or's id)."
-            echo ""
-            echo "Set both, then re-run this deploy: \`setWebhook\` then points the chat bot at \`/telegram-chat-webhook\`."
+            echo "The chat runs on the **existing alerts bot** (\`telegram-bot-token\`) via the unified"
+            echo "\`/telegram-webhook\` — no separate bot. To allow Or to chat, re-run this deploy with the"
+            echo "\`chat_allowlist\` input set to his numeric Telegram id; the LLM key is minted automatically."
           } >> "$GITHUB_STEP_SUMMARY"
