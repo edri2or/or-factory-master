@@ -117,10 +117,20 @@ calm Hebrew summary (which stage, what's done, what remains, last live-proof res
 Never show him a raw file.
 
 ### Step 5: Closure
-When every stage is `completed` and the change is proven live, set the plan's front-matter
-`status: completed`, give Or a short closing summary in Hebrew, offer to tear down the
-throwaway test system (`decommission-test-system.yml`, user-triggered), and stop.
-Promotion is the `main` merge.
+When every stage is `completed` and the change is **proven live**, the development may be
+closed (`status: completed`) — **independently of whether the throwaway test system is torn
+down**. Closing with the test system still alive is a complete, legitimate outcome, not a
+dangling task. Before closing:
+- Record a **Teardown ledger** line in the plan (a section `## מצב מערכת-הטסט (Teardown
+  ledger)`) with exactly one state: `torn-down — <date/session>` **or** `left-alive by user
+  decision — <date/session>`. Never leave the teardown state undocumented.
+- The ledger is a **living line**: even after the plan is `completed`, when teardown later
+  happens it is flipped (see Safety rule 5) — so the record never permanently says
+  "not torn down" once it has been.
+
+Then set `status: completed`, give Or a short closing summary in Hebrew, state the recorded
+teardown state, offer to tear down now if still alive (`decommission-test-system.yml`,
+user-triggered), and stop. Promotion is the `main` merge.
 
 ## Safety Rules
 
@@ -132,9 +142,15 @@ Promotion is the `main` merge.
 4. **A mould change is not done until the golden is refreshed** (`--update`, committed in
    the same PR), the static gates are green, **and** the change is proven on a live test
    system.
-5. **Tear down what you stand up.** A throwaway test system is decommissioned
-   (`decommission-test-system.yml`, user-triggered) once the change is promoted — don't
-   leave live systems costing money.
+5. **Account for what you stand up — and never tear down silently.** Either decommission the
+   throwaway (`decommission-test-system.yml`, user-triggered), **or** record an explicit
+   user decision to keep it alive in the plan's Teardown ledger (Step 5). Never leave the
+   teardown state undocumented or as a dangling task — leaving a system alive by a recorded
+   user decision is fine (it costs only the base run). **Whenever teardown happens — even in
+   a later session, after the plan is already `completed` — run it as part of an action that,
+   in the same step, flips the Teardown ledger line to `torn-down — <date/session>`.** You
+   may not decommission a test system without updating its ledger line, so the record always
+   reflects reality.
 6. **The plan file is the source of truth** — keep it current before reporting or moving on.
 7. **Plain Hebrew, always; never flood Or; never show him a raw file.**
 8. **Honor every guardrail in `CLAUDE.md`** — WIF only, no SA keys, never print secrets,
