@@ -101,6 +101,8 @@ operator → Telegram → ${PUBLIC_URL}/webhook/telegram-in/inbound
       • text / approval-press → Agent Router (unchanged): classify → sub-agent → reply
       • photo / image-document → tg-vision: getFile → OpenRouter VLM → OCR + Hebrew
         description (image text is untrusted; defensive prompt; Gemini fallback)
+      • voice → tg-voice-stt: getFile → Deepgram Nova-3 (he) → transcript →
+        feed back into the router as text
   → tg-inbound → Telegram sendMessage (🤖) → operator
 ```
 
@@ -109,8 +111,9 @@ operator → Telegram → ${PUBLIC_URL}/webhook/telegram-in/inbound
 
 ### n8n workflows (Phase F)
 
-- **`tg-inbound`** — inbound handler (active): webhook → normalize + chat_id filter → Dedup Guard (`tg_updates_seen`) → route text/approval to the router, or a photo/image-document to `tg-vision` → 🤖 reply.
+- **`tg-inbound`** — inbound handler (active): webhook → normalize + chat_id filter → Dedup Guard (`tg_updates_seen`) → route text/approval to the router, a photo/image-document to `tg-vision`, or a voice message to `tg-voice-stt` → 🤖 reply.
 - **`tg-vision`** — image-understanding subworkflow (inactive; Execute-Workflow-Trigger): the image branch of `tg-inbound` calls it with `{file_id, chat_id, file_size, mime}` → Telegram getFile → robust base64 data-URI → OpenRouter VLM (`qwen/qwen3-vl-30b-a3b-instruct`, defensive system prompt; `google/gemini-2.5-flash` fallback) → OCR + visual description in Hebrew → L5-style egress validation → reply. 20 MB guard; reuses the existing OpenRouter credential (no new secret); image text is treated as untrusted (OWASP LLM01). Independent of the Agent Router.
+- **`tg-voice-stt`** — voice-to-text subworkflow (inactive; Execute-Workflow-Trigger): the voice branch of `tg-inbound` calls it with `{voice_file_id, chat_id}` → Telegram getFile → download audio → Deepgram Nova-3 (Hebrew, `language=he`) → extract transcript → feed back into the Agent Router as if the user had typed it. Gated on `deepgram-api-key`: if the secret is missing in SM, `configure-agent-router.yml` strips the voice branch + `tg-voice-stt` upsert is skipped (graceful degradation — voice messages get no reply, text/image keep working).
 - **`tg-proactive`** — daily 08:00 UTC (active): aggregates the last 24 h (audit + spend) + recent failed executions → Haiku summary → 🟢 message.
 - **`style-refresh`** — daily 03:00 UTC (active): reads the last 50 messages → Haiku extracts a style-profile JSON → upserts `style_profile`.
 - **`postgres-named-queries`** — subworkflow (Stage 108): the read-only query whitelist behind the `postgres_named_query` tool (below).
