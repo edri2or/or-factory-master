@@ -501,30 +501,20 @@ jobs:
           # local user folder is ephemeral and fine to reset on redeploy.
           VOLUME_ID=""
 
-          # ===== n8n env vars: upsert =====
-          # DB_* values use Railway reference syntax — resolved at container
-          # start from the Postgres service's env we just set. Restart-safe.
-          echo "=== Railway: upsert n8n env vars ==="
-          # GitHub Actions parses the dollar-double-brace expression syntax at
-          # YAML load time and will reject the workflow if it sees Railway's
-          # reference syntax verbatim. Assemble the prefix at bash runtime so
-          # that sequence never appears literally in this YAML source.
-          DLR='$'
-          # N8N_HOST carries the public hostname (used by n8n for the
-          # "Editor accessible via" startup log + URL generation). The
-          # bind interface is N8N_LISTEN_ADDRESS (default '::', covers
-          # IPv4+IPv6) — not set here. All 15 vars go in one collection
-          # upsert so the change lands as a single Railway redeploy.
-          #
-          # (queue mode) QUEUE_EXTRA is merged into the MAIN n8n service env.
-          # When QM=false it stays '{}', so `{...15...} + {}` is byte-identical
-          # to the pre-queue-mode upsert (jq '+' keeps the left object's key
-          # order and adds nothing) — a non-queue system is unchanged. When
-          # QM=true it adds the queue/Redis vars + main-only worker-offload
-          # flags. redis-password is ensured here (idempotent) BEFORE the upsert
-          # so both the main env and the worker below can reference it.
-          QUEUE_EXTRA='{}'
+          # ===== (queue mode) Redis service — created + made HEALTHY here, BEFORE
+          # the n8n main gets its queue env, so the main connects exactly once to a
+          # ready, password-protected redis. (Applying redis's password/AOF start
+          # command AFTER the main was already connected restarted redis under it
+          # and crashed the main on a redis-connection timeout — caught live on
+          # factory-test-qmode2.) Created ONLY when QM=true; skipped otherwise, so a
+          # non-queue system gets no Redis (byte-identical deploy). =====
+          REDIS_ID=""
           if [ "$QM" = "true" ]; then
+            echo "=== Railway: Redis service (queue mode; SM-first lookup) ==="
+            # redis-password: idempotent (never rotate once set, or live workers
+            # lose their broker auth). Ensured HERE so the redis start command, the
+            # main env, and the worker all share one value; SM shell pre-created by
+            # provision-system.yml.
             if REDIS_PASSWORD=$(gcloud secrets versions access latest \
                                  --secret="redis-password" --project="$PROJECT_ID" 2>/dev/null) \
                && [ -n "$REDIS_PASSWORD" ]; then
@@ -536,55 +526,6 @@ jobs:
               echo "PASS: generated redis-password and stored new version."
             fi
             echo "::add-mask::${REDIS_PASSWORD}"
-            QUEUE_EXTRA=$(jq -cn --arg rpw "$REDIS_PASSWORD" '{
-              EXECUTIONS_MODE: "queue",
-              QUEUE_BULL_REDIS_HOST: "redis.railway.internal",
-              QUEUE_BULL_REDIS_PORT: "6379",
-              QUEUE_BULL_REDIS_PASSWORD: $rpw,
-              N8N_DEFAULT_BINARY_DATA_MODE: "default",
-              N8N_GRACEFUL_SHUTDOWN_TIMEOUT: "30",
-              N8N_DISABLE_PRODUCTION_MAIN_PROCESS: "true",
-              OFFLOAD_MANUAL_EXECUTIONS_TO_WORKERS: "true"
-            }')
-            echo "INFO: queue mode ON — main n8n gets queue vars (binary mode=database)."
-          fi
-          _upsert_collection "$N8N_ID" "$(jq -cn \
-            --arg host "${DLR}{{Postgres.RAILWAY_PRIVATE_DOMAIN}}" \
-            --arg user "${DLR}{{Postgres.POSTGRES_USER}}" \
-            --arg pass "${DLR}{{Postgres.POSTGRES_PASSWORD}}" \
-            --arg domain "$DOMAIN" --arg weburl "https://${DOMAIN}" \
-            --arg tz "$TIMEZONE" --arg key "$N8N_KEY" \
-            --argjson extra "$QUEUE_EXTRA" '{
-              DB_TYPE: "postgresdb",
-              DB_POSTGRESDB_HOST: $host,
-              DB_POSTGRESDB_PORT: "5432",
-              DB_POSTGRESDB_DATABASE: "postgres",
-              DB_POSTGRESDB_USER: $user,
-              DB_POSTGRESDB_PASSWORD: $pass,
-              DB_POSTGRESDB_SCHEMA: "public",
-              N8N_HOST: $domain,
-              N8N_PROTOCOL: "https",
-              N8N_PORT: "5678",
-              PORT: "5678",
-              WEBHOOK_URL: $weburl,
-              GENERIC_TIMEZONE: $tz,
-              N8N_ENCRYPTION_KEY: $key,
-              N8N_RUNNERS_ENABLED: "true",
-              N8N_PROXY_HOPS: "1"
-            } + $extra')"
-          echo "PASS: n8n env vars set (15 base vars + queue extras when QM=true; one upsert → single redeploy)."
-
-          # ===== (queue mode) Redis service: SM-first, find, then create =====
-          # Optional per-system broker for n8n queue mode — created ONLY when
-          # QM=true. Mirrors the Postgres pattern (SM-first id → find-by-name →
-          # serviceCreate → persist id to SM). When QM=false this whole block is
-          # skipped, so a non-queue system gets no Redis (byte-identical deploy).
-          REDIS_ID=""
-          if [ "$QM" = "true" ]; then
-            echo "=== Railway: Redis service (queue mode; SM-first lookup) ==="
-            # REDIS_PASSWORD was already ensured (idempotent) + masked just above
-            # in the queue-env block, so both the main env and this service share
-            # one value. The SM shell is pre-created by provision-system.yml.
             REDIS_ID=$(gcloud secrets versions access latest \
               --secret=railway-redis-service-id --project="$PROJECT_ID" 2>/dev/null || echo "")
             if [ -n "$REDIS_ID" ] && [ "$REDIS_ID" != "null" ]; then
@@ -660,17 +601,101 @@ jobs:
             CUR_REDIS_CMD=$(_gql 'query($id: String!) { service(id: $id) { serviceInstances { edges { node { startCommand } } } } }' \
               "$(jq -cn --arg id "$REDIS_ID" '{id: $id}')" 2>/dev/null \
               | jq -r '(.data.service.serviceInstances.edges // []) | .[0].node.startCommand // ""' 2>/dev/null || echo "")
+            REDIS_REDEPLOYED=false
             if [ "$CUR_REDIS_CMD" != "$DESIRED_REDIS_CMD" ]; then
               _gql 'mutation($eid: String!, $sid: String!, $input: ServiceInstanceUpdateInput!) { serviceInstanceUpdate(environmentId: $eid, serviceId: $sid, input: $input) }' \
                 "$(jq -cn --arg eid "$ENV_ID" --arg sid "$REDIS_ID" --arg cmd "$DESIRED_REDIS_CMD" \
                   '{eid: $eid, sid: $sid, input: {startCommand: $cmd}}')" >/dev/null
+              REDIS_REDEPLOYED=true
               echo "PASS: Redis start command set (requirepass + appendonly AOF)."
             else
               echo "INFO: Redis start command already correct — no redeploy needed."
             fi
+
+            # Wait for redis to be HEALTHY before the n8n main gets its queue env.
+            # The start-command change redeploys redis; if the main connected during
+            # that window it would time out and exit (the crash we are fixing). Poll
+            # the redis service's latest deployment until SUCCESS (~3 min cap).
+            echo "=== Railway: waiting for redis to be ready (queue mode) ==="
+            rstat=""
+            for i in $(seq 1 18); do
+              rstat=$(_gql 'query($id: String!) { service(id: $id) { deployments(first: 1) { edges { node { status } } } } }' \
+                "$(jq -cn --arg id "$REDIS_ID" '{id: $id}')" 2>/dev/null \
+                | jq -r '(.data.service.deployments.edges // []) | .[0].node.status // ""' 2>/dev/null || echo "")
+              echo "[redis ready ${i}/18] status=${rstat:-<none>}"
+              [ "$rstat" = "SUCCESS" ] && break
+              sleep 10
+            done
+            [ "$rstat" = "SUCCESS" ] || echo "WARN: redis not SUCCESS after ~3min (status=${rstat:-<none>}); continuing — n8n will retry the queue connection." >&2
+            # SUCCESS slightly precedes the process accepting connections; small settle.
+            [ "$REDIS_REDEPLOYED" = "true" ] && sleep 5
           else
             echo "INFO: QUEUE_MODE off — skipping Redis service (byte-identical to non-queue deploy)."
           fi
+
+          # ===== n8n env vars: upsert =====
+          # DB_* values use Railway reference syntax — resolved at container
+          # start from the Postgres service's env we just set. Restart-safe.
+          echo "=== Railway: upsert n8n env vars ==="
+          # GitHub Actions parses the dollar-double-brace expression syntax at
+          # YAML load time and will reject the workflow if it sees Railway's
+          # reference syntax verbatim. Assemble the prefix at bash runtime so
+          # that sequence never appears literally in this YAML source.
+          DLR='$'
+          # N8N_HOST carries the public hostname (used by n8n for the
+          # "Editor accessible via" startup log + URL generation). The
+          # bind interface is N8N_LISTEN_ADDRESS (default '::', covers
+          # IPv4+IPv6) — not set here. All 15 vars go in one collection
+          # upsert so the change lands as a single Railway redeploy.
+          #
+          # (queue mode) QUEUE_EXTRA is merged into the MAIN n8n service env.
+          # When QM=false it stays '{}', so `{...base...} + {}` is byte-identical
+          # to the pre-queue-mode upsert (jq '+' keeps the left object's key order
+          # and adds nothing) — a non-queue system is unchanged. When QM=true it
+          # adds the queue/Redis vars. REDIS_PASSWORD and a HEALTHY redis service
+          # were already ensured by the Redis block ABOVE, so this upsert makes the
+          # main connect exactly once to a ready, password-protected redis (doing
+          # it the other way round crashed the main mid-deploy on a redis timeout).
+          # N8N_DISABLE_PRODUCTION_MAIN_PROCESS is intentionally NOT set — the main
+          # stays a resilient fallback executor; workers still take load via the queue.
+          QUEUE_EXTRA='{}'
+          if [ "$QM" = "true" ]; then
+            QUEUE_EXTRA=$(jq -cn --arg rpw "$REDIS_PASSWORD" '{
+              EXECUTIONS_MODE: "queue",
+              QUEUE_BULL_REDIS_HOST: "redis.railway.internal",
+              QUEUE_BULL_REDIS_PORT: "6379",
+              QUEUE_BULL_REDIS_PASSWORD: $rpw,
+              N8N_DEFAULT_BINARY_DATA_MODE: "default",
+              N8N_GRACEFUL_SHUTDOWN_TIMEOUT: "30",
+              OFFLOAD_MANUAL_EXECUTIONS_TO_WORKERS: "true"
+            }')
+            echo "INFO: queue mode ON — main n8n gets queue vars (binary mode=default)."
+          fi
+          _upsert_collection "$N8N_ID" "$(jq -cn \
+            --arg host "${DLR}{{Postgres.RAILWAY_PRIVATE_DOMAIN}}" \
+            --arg user "${DLR}{{Postgres.POSTGRES_USER}}" \
+            --arg pass "${DLR}{{Postgres.POSTGRES_PASSWORD}}" \
+            --arg domain "$DOMAIN" --arg weburl "https://${DOMAIN}" \
+            --arg tz "$TIMEZONE" --arg key "$N8N_KEY" \
+            --argjson extra "$QUEUE_EXTRA" '{
+              DB_TYPE: "postgresdb",
+              DB_POSTGRESDB_HOST: $host,
+              DB_POSTGRESDB_PORT: "5432",
+              DB_POSTGRESDB_DATABASE: "postgres",
+              DB_POSTGRESDB_USER: $user,
+              DB_POSTGRESDB_PASSWORD: $pass,
+              DB_POSTGRESDB_SCHEMA: "public",
+              N8N_HOST: $domain,
+              N8N_PROTOCOL: "https",
+              N8N_PORT: "5678",
+              PORT: "5678",
+              WEBHOOK_URL: $weburl,
+              GENERIC_TIMEZONE: $tz,
+              N8N_ENCRYPTION_KEY: $key,
+              N8N_RUNNERS_ENABLED: "true",
+              N8N_PROXY_HOPS: "1"
+            } + $extra')"
+          echo "PASS: n8n env vars set (15 base vars + queue extras when QM=true; one upsert → single redeploy)."
 
           # ===== (queue mode) n8n worker service: SM-first, find, then create =====
           # Second n8n process that pulls jobs from Redis and runs them — created
@@ -678,8 +703,8 @@ jobs:
           # `n8n worker` (the n8n binary is on PATH, so Railway's shell start
           # command runs the worker). No public/custom domain, no Caddy — the
           # worker is HTTP-less. Shares the main n8n's DB, encryption key, and
-          # queue/Redis config, but NOT the main-only N8N_DISABLE_PRODUCTION_MAIN_PROCESS
-          # / OFFLOAD_* flags. WORKER_FIRST_TIME guards env/start-command to a
+          # queue/Redis config, but NOT the main-only `OFFLOAD_MANUAL_EXECUTIONS_TO_WORKERS`
+          # flag. WORKER_FIRST_TIME guards env/start-command to a
           # single write (Railway-throttle caution, same as Caddy/Redis). When
           # QM=false the whole block is skipped (byte-identical deploy).
           if [ "$QM" = "true" ]; then
