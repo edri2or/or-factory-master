@@ -23,7 +23,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 | 1 | `tg-vision.json` — סאב-workflow קריאת-תמונה | completed | `templates/system/workflows/n8n/tg-vision.json`, `tests/golden/system/` |
 | 2 | `tg-inbound.json` — זיהוי תמונה + ניתוב | completed | `templates/system/workflows/n8n/tg-inbound.json`, `tests/golden/system/` |
 | 3 | `configure-agent-router.yml` — התקנת tg-vision | completed | `templates/system/.github/workflows/configure-agent-router.yml`, `tests/golden/system/` |
-| 4 | תיעוד — AGENTS.md.template + docs | pending | `templates/system/AGENTS.md.template`, `docs/telegram-chat-bot.md`, `docs/openrouter-integration.md`, `tests/golden/system/` |
+| 4 | תיעוד — AGENTS.md.template + docs | completed | `templates/system/AGENTS.md.template`, `docs/telegram-chat-bot.md`, `docs/openrouter-integration.md`, `tests/golden/system/` |
 | 5 | אימות חי (costed) + קידום + פירוק | pending | מערכת-טסט חד-פעמית (reuse mode) |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
@@ -111,10 +111,13 @@ tg-vision מ-`$('Extract & Normalize')` במפורש (לא מסתמכים על p
 
 **Acceptance:**
 - [ ] `AGENTS.md.template` מתאר את ענף-התמונה בזרימת-הבוט.
-- [ ] `docs/telegram-chat-bot.md` + `docs/openrouter-integration.md` מעודכנים.
-- [ ] golden מרוענן; CI ירוק.
+- [x] `docs/telegram-chat-bot.md` (§3 זרימה + §5 + סעיף §10 חדש) + `docs/openrouter-integration.md` (§9 חדש) מעודכנים.
+- [x] golden מרוענן; שערים מקומיים ירוקים.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם — `AGENTS.md.template`: דיאגרמת-הזרימה קיבלה ניתוב טקסט/תמונה, ורשימת
+ה-workflows קיבלה ערך `tg-vision`. `docs/telegram-chat-bot.md`: §3 (זרימה) מתאר את שני המסלולים, §5 מציין
+את הקובץ + פס-הבטיחות, וסעיף §10 חדש מפרט את הבנת-התמונה. `docs/openrouter-integration.md`: סעיף §9 חדש
+(מודל ראשי/fallback, אבטחה, בלם-20MB, cap). golden רוענן (AGENTS render). שערים ירוקים מקומית.
 
 **שינוי תוכנית:** —
 
@@ -141,3 +144,4 @@ tg-vision מ-`$('Extract & Normalize')` במפורש (לא מסתמכים על p
 - שלב 1 הושלם — בנינו את ה"עיניים" של הבוט (`tg-vision`): מוריד תמונה מטלגרם, שולח ל-OpenRouter עם הוראת-אבטחה, מחזיר פירוש בעברית, עם גיבוי אוטומטי ובלם לתמונות-ענק. השערים האוטומטיים ירוקים.
 - שלב 2 הושלם — חיברנו את העיניים: עכשיו כשמגיעה תמונה הבוט מזהה אותה (במקום לזרוק) ושולח אותה ל-tg-vision, ואז מחזיר את הפירוש. מסלול הטקסט והאישורים לא נגעו בכלל. השערים ירוקים.
 - שלב 3 הושלם — "חיברנו לחשמל": המתקין של כל מערכת חדשה יתקין עכשיו את tg-vision וילחים אותו ל-tg-inbound אוטומטית, עם ה-credential הקיים. הוספתי גם הגנה: אם משהו משתבש בהתקנה, הבוט פשוט ממשיך לעבוד בלי הפיצ'ר (במקום לקרוס). השערים ירוקים.
+- שלב 4 הושלם — תיעדנו את הפיצ'ר (זרימת-הבוט, מסמך הטלגרם ומסמך ה-OpenRouter) כדי שיהיה ברור לכל מי שייגע במערכת בעתיד. הקוד שלם; נשאר רק להוכיח חי.
