@@ -2,7 +2,7 @@
 dev_name: בוט טלגרם דו-כיווני לפקטורי
 slug: factory-telegram-chat-bot
 opened: 2026-06-01
-status: active   # active בזמן פיתוח → completed בסיום (משחרר את שער ה-CI)
+status: completed   # active בזמן פיתוח → completed בסיום (משחרר את שער ה-CI)
 ---
 
 # תוכנית פיתוח — בוט טלגרם דו-כיווני לפקטורי
@@ -23,7 +23,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 | B+C | route נכנס + guardrails + CI | completed | `services/mcp-server/src/{telegram-chat.ts,telegram-chat-guards.ts,index.ts}`, `test/`, `playground-tests.yml` |
 | D | פעולות-כתיבה מאושרות (HITL) | completed | `services/mcp-server/src/{telegram-chat.ts,telegram-chat-guards.ts}`, `test/` |
 | E | תיעוד + עיגון ב-roadmap | completed | `docs/roadmap.md`, `docs/telegram-chat-bot-factory.md`, `CLAUDE.md` |
-| F | הוכחה חיה (פריסה + סבב טלגרם אמיתי) | in-progress | `deploy-mcp-server.yml` (seed-step), פריסה (Or-gated) |
+| F | הוכחה חיה (פריסה + סבב טלגרם אמיתי) | completed | `deploy-mcp-server.yml` (seed-step), פריסה (Or-gated) |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
 
@@ -112,11 +112,15 @@ allowlist כ-placeholders, webhook-secret אקראי, מפתח-OpenRouter מ-man
       ומוגן); מפתח ה-LLM (OpenRouter) נטבע אמיתי (`http=201`); ה-chat setWebhook דילג כצפוי (בוט רדום).
 - [x] מנגנון הפעלה מאובטח: נוסף seed-step ל-`deploy-mcp-server.yml` (קורא GH-secret `FACTORY_TG_CHAT_BOT_TOKEN`
       ממוסך + input `chat_allowlist`), כך ש-Or לא נוגע בטרמינל ושום סוד לא נרשם בלוג.
-- [ ] **נותר:** Or יוצר בוט ב-@BotFather, מזין את הטוקן ל-GH-secret + נותן id; dispatch deploy עם `chat_allowlist`;
-      **סבב טלגרם אמיתי** (Or שואל → תשובה מודעת-פקטורי) + פעולת HITL ✅ אחת. ואז `status: completed`.
+- [x] Or יצר בוט ב-@BotFather + הזין טוקן ל-GH-secret `FACTORY_TG_CHAT_BOT_TOKEN` + נתן id `5786217215`.
+- [x] dispatch `deploy-mcp-server.yml` עם `chat_allowlist=5786217215`: seed כתב טוקן + allowlist
+      (`PASS: seeded ...`), הפריסה הצליחה, ה-chat setWebhook נרשם (`HTTP 200`, registered).
+- [x] **סבב טלגרם אמיתי הצליח:** Or שאל "מה מצב הפקטורי?" וקיבל תשובה מודעת-פקטורי בעברית, מבוססת-כלים
+      (ריצות אחרונות, מלאי מערכות, מכסת GCP, סטטוס Cloudflare). הבוט חי ועובד מקצה-לקצה.
 
-**הערת התקדמות אחרונה:** הקוד קודם ל-main ונפרס; אומת חי בפרודקשן (route מוגן 401, LLM מחובר). הוספתי
-מנגנון הפעלה מאובטח (seed-step ב-deploy). נותרה רק יצירת הבוט ע"י Or + ההזנה, ואז סבב חי.
+**הערת התקדמות אחרונה:** הושלם ואומת חי. הבוט הדו-כיווני פעיל בפרודקשן — סבב טלגרם אמיתי החזיר תשובה
+מבוססת-נתונים. מסלול ה-HITL (פעולות-כתיבה ב-✅) מאומת בבדיקות-יחידה ובדפוס oil-approval המוכח; אפשר
+לבדוק אותו חי בכל עת ("תריץ ניטור עכשיו" → ✅).
 
 **שינוי תוכנית:** הפעלת הבוט נעשית דרך seed-step ב-`deploy-mcp-server.yml` (GH-secret לטוקן + dispatch-input
 ל-allowlist) במקום כתיבה ידנית ל-SM — כדי שיהיה MCP-dispatchable ובלי פעולת-טרמינל של Or ובלי סוד בלוגים.
@@ -131,3 +135,4 @@ allowlist כ-placeholders, webhook-secret אקראי, מפתח-OpenRouter מ-man
 - שלב B+C הושלם — כתבנו את "המוח" של הבוט: הוא מקבל הודעה, מוודא שזה אתה ושההודעה טרייה, מפעיל AI עם כלים *לקריאה בלבד* ועונה בעברית. הוספנו גם בדיקות אוטומטיות שמוודאות שהקוד תקין. הבוט עדיין לא דובר — נחבר אותו חי בסוף.
 - שלב D הושלם — עכשיו הבוט יכול גם לבקש *פעולה* (כמו "תריץ ניטור עכשיו" או "פרוס מחדש"), אבל רק כשאתה מאשר ב-✅ בטלגרם. בלי אישור — שום דבר לא רץ. הרשימה מוגבלת לשתי פעולות בטוחות בלבד, שום דבר הרסני.
 - שלב E הושלם — עדכנו את התיעוד: ה-roadmap משקף עכשיו שהבוט קיים ושה-core נשאר על הבית שלו (Cloud Run), וכתבנו מסמך קצר שמסביר איך הבוט עובד. בלי קוד.
+- שלב F הושלם — **הבוט חי!** יצרת בוט, חיברנו אותו, ובדיקה אמיתית עבדה: שאלת בעברית "מה מצב הפקטורי?" והבוט ענה תשובה אמיתית מבוססת-נתונים (ריצות, מערכות, מכסה). הפיתוח הסתיים בהצלחה. 🎉

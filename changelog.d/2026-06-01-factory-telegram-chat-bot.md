@@ -48,3 +48,8 @@
   כ-dispatch-input מאומת (CSV מספרי, ממראה את `set-oil-allowlist.yml`) ונכתב ל-`factory-telegram-chat-allowlist`
   — שניהם רצים *לפני* הפריסה כך ש-`:latest` נטען ו-`setWebhook` מפעיל את הבוט. no-op בטוח כששניהם ריקים.
   הקוד כבר קודם ונפרס; אומת חי (route מוגן `401`, מפתח-LLM נטבע). נותר רק ש-Or ייצור בוט ב-@BotFather.
+- **שלב F — הופעל ואומת חי.** Or יצר בוט ב-@BotFather, הזין טוקן ל-GH-secret + נתן id; dispatch של
+  `deploy-mcp-server.yml` עם `chat_allowlist` כתב את שני הסודות (`PASS: seeded ...`), נפרס, ורשם את
+  ה-chat webhook (`setWebhook → HTTP 200`). **סבב טלגרם אמיתי הצליח**: שאלה בעברית על מצב הפקטורי
+  החזירה תשובה מודעת-פקטורי מבוססת-כלים (ריצות/מערכות/מכסה/Cloudflare). הבוט הדו-כיווני חי בפרודקשן;
+  הפיתוח נסגר (`status: completed`).
