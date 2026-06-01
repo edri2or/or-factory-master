@@ -215,7 +215,9 @@ The change lives entirely in what the factory provisions:
   `N8N_DEFAULT_BINARY_DATA_MODE=default`, `OFFLOAD_MANUAL_EXECUTIONS_TO_WORKERS`,
   `N8N_GRACEFUL_SHUTDOWN_TIMEOUT`; **`N8N_DISABLE_PRODUCTION_MAIN_PROCESS` is deliberately not
   set** — the main stays a resilient fallback executor), and creates a second `worker` service
-  (same image, started as `n8n worker`, no public domain/Caddy — HTTP-less). All gated by `QM`;
+  (same image, started with the `worker` command — the n8n image entrypoint runs `n8n "$@"`, so
+  the start command is `worker`, not `n8n worker`, which would fall back to a second main — no
+  public domain/Caddy — HTTP-less). All gated by `QM`;
   service creation is SM-id idempotent.
 
 **Binary data:** queue mode sets `N8N_DEFAULT_BINARY_DATA_MODE=default` (the DB-backed mode —

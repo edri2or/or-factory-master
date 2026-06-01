@@ -166,7 +166,7 @@ queue (Bull) instead of one at a time.
   factory can toggle queue mode hands-off without editing the variable). Turning it off
   again is a manual Railway cleanup — treat enabling as a deliberate choice.
 - **What it adds:** a `redis:7-alpine` service (with an AOF volume so the queue survives a
-  restart) and a second `worker` service (same n8n image, started as `n8n worker`, no
+  restart) and a second `worker` service (same n8n image, started with the `worker` command, no
   public domain — it never serves HTTP). Webhooks still arrive through the main n8n + Caddy.
 - **Cost:** roughly **~$10–20/month** extra (Redis + worker run 24/7). That's why it's
   opt-in per system, not the default.
