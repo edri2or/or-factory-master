@@ -71,6 +71,7 @@ The factory has set up the following components for this system:
 - **`.claude/`** package — slash commands and skills (incl. `gcp-hands-client`)
 - **Agent Router + Telegram Chat Bot** — n8n workflows wired by `configure-agent-router.yml`: a classifier routes to ops/code/research/infra/unknown sub-agents, and an inbound Telegram bot turns the system's bot token into a smart, system-aware chat agent. → see [**Telegram Chat Bot**](#telegram-chat-bot) below.
 - **Observability emitter** — `scripts/emit-event.sh` ships factory.deploy.* events to Axiom/Telegram/Linear
+- **Queue mode** *(optional, off by default)* — see [**Queue mode (scaling)**](#queue-mode-scaling) below
 
 ## Telegram Chat Bot
 
@@ -152,6 +153,29 @@ Every Postgres path is **soft-fail**: if the Postgres credential is missing, `co
 Full detail (Hebrew) lives in `docs/telegram-chat-bot.md` in the factory repo
 ([edri2or/or-factory-master](https://github.com/edri2or/or-factory-master)).
 
+## Queue mode (scaling)
+
+By default this system runs n8n as a **single process** — fine for most workloads. For
+heavy, highly-parallel automation it can optionally run in **queue mode**: a **Redis**
+broker plus a separate n8n **worker** process, so executions run in parallel through a
+queue (Bull) instead of one at a time.
+
+- **Switch:** the repo variable **`QUEUE_MODE`** (default **`false`**). Set it to `true`
+  on this repo, then re-run the **deploy** workflow to enable. The deploy also takes an
+  optional `queue_mode` dispatch **input** that overrides the variable for one run (so the
+  factory can toggle queue mode hands-off without editing the variable). Turning it off
+  again is a manual Railway cleanup — treat enabling as a deliberate choice.
+- **What it adds:** a `redis:7-alpine` service (with an AOF volume so the queue survives a
+  restart) and a second `worker` service (same n8n image, started as `n8n worker`, no
+  public domain — it never serves HTTP). Webhooks still arrive through the main n8n + Caddy.
+- **Cost:** roughly **~$10–20/month** extra (Redis + worker run 24/7). That's why it's
+  opt-in per system, not the default.
+- **Storage note:** queue mode forces `N8N_DEFAULT_BINARY_DATA_MODE=database` (filesystem
+  binary storage isn't supported across separate worker containers), so binary data lives
+  in Postgres — expect the database to grow faster.
+- **Off = unchanged:** with `QUEUE_MODE=false` the deploy is byte-identical to a non-queue
+  system — no Redis, no worker, no extra cost.
+
 ## Secrets in GCP Secret Manager (names only — never echo, print, or log values)
 
 This system has access to the following secrets in its own GCP Secret Manager.
@@ -179,6 +203,10 @@ ${GENERIC_SECRETS}
 - `n8n-telegram-webhook-secret`
 - `caddy-railway-service-id`
 - `caddy-railway-url`
+- `redis-password` *(queue mode only)*
+- `railway-redis-service-id` *(queue mode only)*
+- `railway-redis-volume-id` *(queue mode only)*
+- `railway-worker-service-id` *(queue mode only)*
 
 ### OpenRouter (per-system inference key, minted at provision)
 

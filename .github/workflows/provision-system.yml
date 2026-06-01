@@ -1127,6 +1127,10 @@ jobs:
             n8n-telegram-webhook-secret
             caddy-railway-service-id
             caddy-railway-url
+            railway-redis-service-id
+            railway-redis-volume-id
+            railway-worker-service-id
+            redis-password
           )
           RUNTIME_SA="runtime-sa@${GCP_PROJECT}.iam.gserviceaccount.com"
           DEPLOY_SA="deploy-sa@${GCP_PROJECT}.iam.gserviceaccount.com"
@@ -1256,6 +1260,11 @@ jobs:
           _set_var "GCP_DEPLOY_SA"    "$GCP_DEPLOY_SA"
           _set_var "GCP_PROJECT_ID"   "$GCP_PROJECT"
           _set_var "SYSTEM_NAME"      "$SYSTEM_NAME"
+          # Optional per-system queue mode (Redis + n8n worker), default OFF.
+          # The deploy workflow reads this sticky repo var; flip it to "true"
+          # on a system's repo to opt that system into queue mode (then re-run
+          # its deploy). Default off keeps the system byte-identical + cost-free.
+          _set_var "QUEUE_MODE"       "false"
 
       - name: Summary
         env:

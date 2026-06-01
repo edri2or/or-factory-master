@@ -184,6 +184,49 @@ The **self-healing block** (covering automation/workflow failures, not just `scr
 Phase G Stage 7) is a separate follow-up development. Full design + status:
 `docs/telegram-chat-bot-factory.md`.
 
+## Phase J — feat: optional per-system queue mode (scale-by-workers)
+
+Every system runs n8n as a **single process**. That's right for most systems but caps
+throughput: heavy, highly-parallel automations serialize. Phase J adds an **optional**
+n8n **queue mode** to what the factory provisions — a **Redis** broker + a separate n8n
+**worker** process, so a system that needs it runs executions in parallel through a queue
+(Bull). It is **per-system opt-in** via a sticky repo variable **`QUEUE_MODE` (default
+off)**, so the ~$10–20/mo cost of Redis + worker is never forced on a system that doesn't
+need it.
+
+**Hard invariant:** a system with `QUEUE_MODE` off is **byte-identical to before** — the
+n8n service still gets exactly the same env vars, with no Redis and no worker (zero
+regression, zero cost). This was proven deterministically (the off-path env upsert is
+`{...base...} + {}`, identical bytes to the pre-queue-mode upsert).
+
+The change lives entirely in what the factory provisions:
+
+- `.github/workflows/provision-system.yml` — sets `QUEUE_MODE=false` on every new repo and
+  pre-creates 4 SM shells (`redis-password`, `railway-redis-service-id`,
+  `railway-redis-volume-id`, `railway-worker-service-id`).
+- `templates/system/.github/workflows/deploy-railway-cloudflare.yml` — reads the switch;
+  when `true`, provisions a `redis:7-alpine` service (AOF volume, password enforced via the
+  start command), merges the queue/Redis env vars into the main n8n service
+  (`EXECUTIONS_MODE=queue`, `QUEUE_BULL_REDIS_*`, `N8N_DEFAULT_BINARY_DATA_MODE=database`,
+  `N8N_DISABLE_PRODUCTION_MAIN_PROCESS`, `OFFLOAD_MANUAL_EXECUTIONS_TO_WORKERS`,
+  `N8N_GRACEFUL_SHUTDOWN_TIMEOUT`), and creates a second `worker` service (same image,
+  started as `n8n worker`, no public domain/Caddy — HTTP-less). All gated, all with
+  `*_FIRST_TIME` guards (idempotent re-runs).
+
+**Binary data:** queue mode forces `N8N_DEFAULT_BINARY_DATA_MODE=database` — filesystem
+binary storage isn't shared across separate worker containers — so Postgres grows faster.
+S3 mode is deliberately out of scope (no S3 infra in the factory today).
+
+**Enabling on an existing system:** flip `QUEUE_MODE=true` on the system's repo and re-run
+its deploy workflow (the deploy is idempotent and adds the Redis + worker in place), or — to
+toggle hands-off without editing a repo variable — dispatch the deploy with the optional
+`queue_mode=true` **input**, which overrides the variable for that run (the factory can set
+dispatch inputs but not repo variables). The change reaches only systems whose deploy runs
+after the template merge; existing systems are **not** auto-back-filled.
+
+**Not touched:** Caddy / webhooks (webhooks still flow through the main n8n behind Caddy);
+no default-on; no auto back-fill.
+
 ## Things we are deliberately not building
 
 The previous factory had these and they bought less than they cost:
