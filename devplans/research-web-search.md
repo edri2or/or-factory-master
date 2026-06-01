@@ -22,7 +22,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
-| 1 | כלי חיפוש Tavily בסוכן + ההתקנה | pending | `templates/system/workflows/n8n/research-agent.json`, `templates/system/.github/workflows/configure-agent-router.yml`, `tests/golden/system/**` |
+| 1 | כלי חיפוש Tavily בסוכן + ההתקנה | completed | `templates/system/workflows/n8n/research-agent.json`, `templates/system/.github/workflows/configure-agent-router.yml`, `tests/golden/system/**` |
 | 2 | תיקון Egress — בלוק "מקורות" לא נחסם | pending | `templates/system/workflows/n8n/agent-router.json`, `tests/golden/system/**` |
 | 3 | אימות חי (Layer B — build על factory-test-25) | pending | — (dispatch בלבד) |
 | 4 | תיעוד | pending | `docs/telegram-chat-bot.md`, `docs/roadmap.md` |
@@ -39,10 +39,10 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 - [ ] system-prompt תוקן: משפט ה"no web-search" הוסר; נוספו הוראות שימוש בשני הכלים + בלוק "מקורות" עם קישורים מלאים (dedup) + איסור המצאת URLs.
 - [ ] `configure-agent-router.yml`: credential "Tavily (factory-master)" נוצר (Bearer), `CRED_TAVILY_ID` נלכד, הוזרק ל-research-agent, strip graceful-degradation לשני הכלים כש-`TAVILY_KEY` ריק.
 - [ ] golden מרוענן באותו PR; פתק changelog; devplan מעודכן.
-- [ ] static gates ירוקים (Playground tests + Changelog gates).
+- [x] static gates ירוקים (Playground tests + Changelog gates) — אומת מקומית: golden + reference-sync PASS, JSON/YAML תקינים.
 - [ ] Layer-A: smoke על מערכת-הייחוס ירוק (no-regression בלבד — ראה הערה ב-יומן).
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הקוד נכתב ואומת מקומית — research-agent.json (agent v2.2 + 2 כלי Tavily + prompt מתוקן), configure-agent-router.yml (credential + הזרקה + strip), golden רוענן, reference-sync PASS. מחכה ל-CI ירוק על ה-PR ולאישור Or לשלב 2. Layer-A יבוצע באישור Or (re-deploy costed) או יוסבר מדוע מדלגים.
 
 **שינוי תוכנית:** —
 
@@ -103,3 +103,4 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 > שורה פשוטה אחת לכל שלב שהסתיים — בשפה ש-Or מבין, בלי ז'רגון.
 
 - הערה חשובה: האימות האמיתי שהחיפוש עובד נעשה על **מערכת test חדשה** (שלב 3), כי מערכת-הייחוס הוקמה לפני שנוצר מפתח Tavily ולכן לא תקבל אותו. שלב 1–2 נבדקים על מערכת-הייחוס רק לוודא ש"לא שברנו כלום".
+- שלב 1 הושלם — הוספנו לבוט שני כלי חיפוש-אינטרנט (מהיר ומעמיק) דרך Tavily, לימדנו אותו מתי להשתמש בכל אחד ולצרף מקורות, וההתקנה האוטומטית מטפלת גם במקרה שאין מפתח (הבוט פשוט ימשיך לענות מהידע שלו).

@@ -271,6 +271,32 @@ jobs:
             echo "WARN: railway-api-token missing in SM — railway-readonly tool skipped" >&2
           fi
 
+          # Research web-search (Tavily): the research-agent's web_search_quick /
+          # web_search_extended HTTP tools authenticate via an httpHeaderAuth
+          # "Authorization: Bearer <tavily-api-key>" credential so the key never lands in
+          # workflow JSON (same pattern as the Railway Bearer credential above). The key
+          # is copied into every new system's SM by copy-generic-secrets.sh at provision.
+          # Additive + soft: a miss only strips the two search tools; the research agent
+          # still answers from model knowledge.
+          TAVILY_KEY=$(_sm_read "tavily-api-key" || echo "")
+          [ -n "$TAVILY_KEY" ] && echo "::add-mask::${TAVILY_KEY}" || true
+          CRED_TAVILY_ID=""
+          if [ -n "$TAVILY_KEY" ]; then
+            TV_CRED_NAME="Tavily (factory-master)"
+            CRED_TAVILY_ID=$(jq -r --arg n "$TV_CRED_NAME" '[(.data // .) | .[]? | select(.name==$n)][0].id // empty' /tmp/ar-creds.json || echo "")
+            if [ -z "$CRED_TAVILY_ID" ]; then
+              TV_CRED_BODY=$(jq -cn --arg n "$TV_CRED_NAME" --arg k "Bearer ${TAVILY_KEY}" '{name:$n, type:"httpHeaderAuth", data:{name:"Authorization", value:$k}}')
+              HTTP=$(_napi POST "$BASE/rest/credentials" /tmp/ar-cred-tv.json "$TV_CRED_BODY")
+              { [ "$HTTP" = "200" ] || [ "$HTTP" = "201" ]; } || { head -c 300 /tmp/ar-cred-tv.json >&2 || true; echo "WARN: POST /rest/credentials (Tavily) HTTP $HTTP — web-search skipped" >&2; }
+              CRED_TAVILY_ID=$(jq -r '.data.id // .id // empty' /tmp/ar-cred-tv.json || echo "")
+            fi
+            { [ -n "$CRED_TAVILY_ID" ] && [ "$CRED_TAVILY_ID" != "null" ]; } \
+              && echo "INFO: Tavily credential id=${CRED_TAVILY_ID}" \
+              || { echo "WARN: no Tavily credential id — web-search skipped" >&2; CRED_TAVILY_ID=""; }
+          else
+            echo "WARN: tavily-api-key missing in SM — research web-search tools skipped" >&2
+          fi
+
           # (b) GitHub App secrets → a jwtAuth (RS256 + PEM) credential that
           #     github-readonly's built-in JWT node uses to sign the App JWT. The App id
           #     + installation id are NON-secret and injected as placeholders; only the
@@ -551,6 +577,7 @@ jobs:
             sed -e "s#@@CRED_OPENROUTER_ID@@#${CRED_ID}#g" \
                 -e "s#@@CRED_N8N_API_ID@@#${CRED_N8N_API_ID}#g" \
                 -e "s#@@CRED_POSTGRES_ID@@#${CRED_POSTGRES_ID}#g" \
+                -e "s#@@CRED_TAVILY_ID@@#${CRED_TAVILY_ID}#g" \
                 -e "s#@@N8N_DOMAIN@@#${N8N_DOMAIN}#g" \
                 -e "s#@@CHAT_ID@@#${CHAT_ID}#g" \
                 -e "s#@@SYSTEM_NAME@@#${SYSTEM_NAME}#g" \
@@ -643,6 +670,20 @@ jobs:
                 && mv "/tmp/ar-prep-${file}.tmp" "/tmp/ar-prep-${file}" \
                 || echo "WARN: ${file} request_write_action strip failed — placeholder may remain" >&2
               echo "INFO: ${file} request_write_action → stripped (no Postgres/Telegram credential)"
+            fi
+            # Research web-search (Tavily): if no Tavily credential was wired, strip the
+            # two web-search tool nodes + their ai_tool connections from research-agent so
+            # the agent never references an empty credential (it still answers from model
+            # knowledge). Same jq pattern as the read-only tool strips above.
+            if [ "$file" = "research-agent.json" ] \
+               && { [ -z "$CRED_TAVILY_ID" ] || [ "$CRED_TAVILY_ID" = "null" ]; }; then
+              jq '(.nodes |= map(select(.name != "web_search_quick" and .name != "web_search_extended")))
+                  | del(.connections."web_search_quick")
+                  | del(.connections."web_search_extended")' \
+                "/tmp/ar-prep-${file}" > "/tmp/ar-prep-${file}.tmp" \
+                && mv "/tmp/ar-prep-${file}.tmp" "/tmp/ar-prep-${file}" \
+                || echo "WARN: ${file} web-search strip failed — placeholder may remain" >&2
+              echo "INFO: ${file} web_search_quick/web_search_extended → stripped (no Tavily credential)"
             fi
             # Phase F follow-up (Stage 105): all 5 sub-agents now read style_profile from
             # Postgres and inject it into their system prompt. If no Postgres credential
