@@ -40,12 +40,15 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 - [ ] שערים סטטיים ירוקים (Changelog gates + Playground tests); אין שינוי golden (לא נגענו ב-`templates/system/**`).
 - [ ] לאחר אישור Or להרצה: ה-provider/SA/הרשאות קיימים ומינימליים (אימות ב-MCP `inspect_wif_provider`/`list_iam_bindings`/`list_secret_metadata`).
 
-**הערת התקדמות אחרונה:** הקוד נכתב (script + workflow) ועבר את כל השערים הסטטיים מקומית
-(shellcheck/yamllint/changelog/golden-sync/devplan — ירוקים). אין שינוי `templates/system/**`
-ולכן golden הוא no-op. נותר: מיזוג ה-PR ואז הרצת ה-bootstrap (מהלך-זהות → באישור Or), ואז
-אימות חי ב-MCP. עוצר כאן לאישור.
+**הערת התקדמות אחרונה:** הקוד מוזג ל-main (PR #266, כל השערים ירוקים). ה-bootstrap לא רץ
+אוטומטית (workflow_dispatch בלבד — בכוונה, מסיבות אבטחה). Or בחר שאוסיף אותו לרשימת-ההרצה
+האוטונומית (MCP allowlist) במקום לחיצה ידנית — אז הוספתי את `bootstrap-sandbox-tester.yml`
+ל-`DISPATCHABLE_WORKFLOWS` ב-`services/mcp-server/src/tools.ts` (build+test ירוקים). נותר:
+למזג את שינוי ה-MCP, להריץ `deploy-mcp-server.yml` כדי שהרשימה תיכנס לתוקף, ואז להריץ את
+ה-bootstrap ולאמת ב-MCP.
 
-**שינוי תוכנית:** —
+**שינוי תוכנית:** הקדמתי את הוספת ה-workflow ל-MCP allowlist (שתוכנן במקור לשלב 5) לתוך שלב 1,
+לפי בחירת Or "להוסיף לאוטומציה" במקום לחיצה ידנית חד-פעמית. דורש redeploy אחד של שרת ה-MCP.
 
 ---
 
