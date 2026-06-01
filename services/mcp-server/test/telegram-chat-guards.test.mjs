@@ -6,9 +6,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-const { PLACEHOLDER, MAX_MSG_AGE_SEC, parseAllowlist, isChatAllowed, isFresh, parseInboundMessage } = await import(
-  '../dist/telegram-chat-guards.js'
-);
+const {
+  PLACEHOLDER,
+  MAX_MSG_AGE_SEC,
+  parseAllowlist,
+  isChatAllowed,
+  isFresh,
+  parseInboundMessage,
+  parseActionCallback,
+} = await import('../dist/telegram-chat-guards.js');
 
 test('parseAllowlist: empty / placeholder → closed (nobody allowed)', () => {
   assert.equal(parseAllowlist(undefined).size, 0);
@@ -62,4 +68,19 @@ test('parseInboundMessage: non-message / empty / callback → null', () => {
   assert.equal(parseInboundMessage({ callback_query: { id: 'x' } }), null);
   assert.equal(parseInboundMessage({ message: { text: '   ', from: { id: 1 }, chat: { id: 1 } } }), null);
   assert.equal(parseInboundMessage({ message: { text: 'hi', chat: { id: 1 } } }), null); // no from.id
+});
+
+test('parseActionCallback: valid do/no with index', () => {
+  assert.deepEqual(parseActionCallback('cdo:0'), { action: 'do', idx: 0 });
+  assert.deepEqual(parseActionCallback('cdo:12'), { action: 'do', idx: 12 });
+  assert.deepEqual(parseActionCallback('cno:1'), { action: 'no', idx: 1 });
+});
+
+test('parseActionCallback: malformed / hostile → null', () => {
+  assert.equal(parseActionCallback('oilapprove:5'), null); // not ours
+  assert.equal(parseActionCallback('cdo:'), null);
+  assert.equal(parseActionCallback('cdo:1x'), null);
+  assert.equal(parseActionCallback('cdo:-1'), null);
+  assert.equal(parseActionCallback('cno:abc'), null);
+  assert.equal(parseActionCallback(''), null);
 });

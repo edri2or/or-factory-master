@@ -29,3 +29,11 @@
   `npm ci` + `tsc` + `node --test` — עד עכשיו שום שער PR לא קימפל את ה-TS (רק ה-Docker build בפריסה).
   בדיקות יחידה ל-guardrails ב-`test/telegram-chat-guards.test.mjs` (מוסכמת ה-`.mjs`-מול-`dist` הקיימת).
   הבוט נשאר רדום עד שמוזנים טוקן+מפתח אמיתיים (שלב F).
+- **שלב D — פעולות-כתיבה מאושרות (HITL).** הבוט יכול עכשיו *לבקש* פעולה דרך כלי `request_action`,
+  אבל **לעולם לא מבצע אותה בעצמו**: הכלי רק שולח ל-Or הודעת ✅/❌ בטלגרם, וה-`dispatchWorkflow`
+  קורה רק ב-`handleChatCallback` אחרי ✅ ממשתמש מורשה — לולאת-ה-LLM לא יכולה לכתוב ישירות (אותה
+  invariant של OIL: AI מציע, אדם מאשר). ה-state חי כולו ב-`callback_data` (`cdo:<idx>`/`cno:<idx>`,
+  מתחת ל-64 בתים), אז החלפת instance ב-Cloud Run לא מאבדת אישור ממתין. ה-allowlist קבוע ומכוון
+  לשני workflows בטוחים, פרמטרלס ו-idempotent בלבד (`meta-monitoring-watchdog.yml`,
+  `deploy-mcp-server.yml`); שום דבר הרסני (`decommission`/`provision`) אינו נגיש לבוט. ה-parser של
+  ה-callback (`parseActionCallback`) ב-`telegram-chat-guards.ts` (pure, נבדק). 40 בדיקות יחידה עוברות.

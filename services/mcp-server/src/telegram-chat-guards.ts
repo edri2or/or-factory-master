@@ -50,6 +50,32 @@ export function isFresh(dateSec: number, nowMs: number = Date.now(), maxAgeSec: 
   return ageSec <= maxAgeSec && ageSec >= -maxAgeSec;
 }
 
+// HITL action callbacks (Stage D). State-free, mirroring oil-approval: the only
+// thing carried in the button is the action verb + an index into the fixed
+// HITL_WORKFLOWS allowlist (a tiny integer — well under Telegram's 64-byte cap),
+// so a Cloud Run instance swap can never lose a pending approval. The index is
+// range-checked by the handler (this pure parser only validates shape).
+export const ACTION_DO_PREFIX = 'cdo:';
+export const ACTION_NO_PREFIX = 'cno:';
+
+export function parseActionCallback(data: string): { action: 'do' | 'no'; idx: number } | null {
+  let action: 'do' | 'no';
+  let rest: string;
+  if (data.startsWith(ACTION_DO_PREFIX)) {
+    action = 'do';
+    rest = data.slice(ACTION_DO_PREFIX.length);
+  } else if (data.startsWith(ACTION_NO_PREFIX)) {
+    action = 'no';
+    rest = data.slice(ACTION_NO_PREFIX.length);
+  } else {
+    return null;
+  }
+  if (!/^[0-9]+$/.test(rest)) return null; // reject "", "1x", "-1"
+  const idx = Number(rest);
+  if (!Number.isInteger(idx) || idx < 0) return null;
+  return { action, idx };
+}
+
 // Extract a usable text message from a Telegram update. Returns null for
 // anything that isn't a plain text message (callback_query, edited messages,
 // stickers, empty text, …) so the handler can cheaply ignore it.

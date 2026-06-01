@@ -21,7 +21,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 |---|---|---|---|
 | A | זהות בוט-צ'אט + secrets (תשתית, רדום) | completed | `.github/workflows/deploy-mcp-server.yml` |
 | B+C | route נכנס + guardrails + CI | completed | `services/mcp-server/src/{telegram-chat.ts,telegram-chat-guards.ts,index.ts}`, `test/`, `playground-tests.yml` |
-| D | פעולות-כתיבה מאושרות (HITL) | pending | `services/mcp-server/src/telegram-chat.ts`, `index.ts` |
+| D | פעולות-כתיבה מאושרות (HITL) | completed | `services/mcp-server/src/{telegram-chat.ts,telegram-chat-guards.ts}`, `test/` |
 | E | תיעוד + עיגון ב-roadmap | pending | `docs/roadmap.md`, `docs/telegram-chat-bot-factory.md` |
 | F | הוכחה חיה (פריסה + סבב טלגרם אמיתי) | pending | פריסת `deploy-mcp-server.yml` (Or-gated) |
 
@@ -75,14 +75,18 @@ allowlist כ-placeholders, webhook-secret אקראי, מפתח-OpenRouter מ-man
 ### שלב D — פעולות-כתיבה מאושרות (HITL)
 
 **Acceptance:**
-- [ ] הבוט יכול *לבקש* פעולת-כתיבה (למשל `dispatch_workflow` מהallowlist הקיים) — אף פעם לא מבצע ישירות.
-- [ ] שולח ✅/❌ inline-keyboard, state ב-`callback_data` (`chatdo:<id>`, <64 בתים), mirror של oil-approval.
-- [ ] ב-✅ משולח-מורשה → מבצע פעולה תחומה, עורך את ההודעה עם התוצאה. אין הרחבת גבולות ה-fixer.
-- [ ] build+unit-test ירוקים; מסלולי reject/ישן/לא-מורשה מכוסים בבדיקות.
+- [x] הבוט יכול *לבקש* פעולה דרך כלי `request_action` — אף פעם לא מבצע ישירות (ה-dispatch קורה רק ב-callback אחרי ✅).
+- [x] שולח ✅/❌ inline-keyboard בבוט-הצ'אט, state ב-`callback_data` (`cdo:<idx>`/`cno:<idx>`, <64 בתים), mirror של oil-approval.
+- [x] ב-✅ משולח-מורשה → `dispatchWorkflow` על workflow מ-allowlist קבוע (parameterless, idempotent בלבד: watchdog / deploy-mcp), עורך את ההודעה עם התוצאה. שום דבר הרסני (decommission/provision לא נגישים לבוט).
+- [x] build+unit-test ירוקים (40 בדיקות); מסלולי reject/לא-מורשה/callback-לא-תקין מכוסים.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם. הוספתי כלי `request_action` (רק *שולח* בקשת אישור — לא מבצע),
+ו-`handleChatCallback` שמבצע את ה-`dispatchWorkflow` רק אחרי ✅ ממשתמש מורשה. ה-LLM עדיין לא יכול לכתוב
+ישירות (ה-dispatch לא נגיש מלולאת-הכלים — רק מה-callback ההומני). allowlist קבוע של 2 workflows בטוחים
+ופרמטרלס. parser ה-callback ב-guards (pure, נבדק). 40 בדיקות עוברות; build ירוק.
 
-**שינוי תוכנית:** —
+**שינוי תוכנית:** במקום קידוד הפרמטרים המלאים ב-callback_data (חורג מ-64 בתים), v1 מוגבל ל-workflows
+פרמטרלס מ-allowlist קבוע (אינדקס בלבד ב-callback) — state-free ובטוח ל-Cloud Run (אין אובדן בהחלפת instance).
 
 ---
 
@@ -120,3 +124,4 @@ allowlist כ-placeholders, webhook-secret אקראי, מפתח-OpenRouter מ-man
 
 - שלב A הושלם — הכנו לפקטורי "תעודת זהות" לבוט-צ'אט חדש ונפרד: 4 מפתחות סודיים והחיווט שלהם לשרת, בלי לשנות עדיין שום התנהגות (הבוט עוד ישן).
 - שלב B+C הושלם — כתבנו את "המוח" של הבוט: הוא מקבל הודעה, מוודא שזה אתה ושההודעה טרייה, מפעיל AI עם כלים *לקריאה בלבד* ועונה בעברית. הוספנו גם בדיקות אוטומטיות שמוודאות שהקוד תקין. הבוט עדיין לא דובר — נחבר אותו חי בסוף.
+- שלב D הושלם — עכשיו הבוט יכול גם לבקש *פעולה* (כמו "תריץ ניטור עכשיו" או "פרוס מחדש"), אבל רק כשאתה מאשר ב-✅ בטלגרם. בלי אישור — שום דבר לא רץ. הרשימה מוגבלת לשתי פעולות בטוחות בלבד, שום דבר הרסני.
