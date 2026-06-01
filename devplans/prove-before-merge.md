@@ -18,7 +18,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
-| 1 | הקמת זהות-הסנדבוקס (תשתית; broker; ממוזג ראשון) | in-progress | `.github/workflows/bootstrap-sandbox-tester.yml`, `scripts/bootstrap-sandbox-tester.sh` |
+| 1 | הקמת זהות-הסנדבוקס (תשתית; broker; ממוזג ראשון) | completed | `.github/workflows/bootstrap-sandbox-tester.yml`, `scripts/bootstrap-sandbox-tester.sh`, `services/mcp-server/src/tools.ts` |
 | 2 | שלד ה-workflow המתזמר ל-main (כדי שיהיה ניתן-להרצה-מענף) | pending | `.github/workflows/prove-on-test-system.yml` |
 | 3 | גוף ה-workflow — מפותח ומוכח מענף (ה-dogfood) | pending | `.github/workflows/prove-on-test-system.yml` |
 | 4 | הוכחה חיה על מערכת-טסט (מהלך-עלות, באישור Or) | pending | — (הרצות חיות) |
@@ -36,16 +36,17 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 של מערכת-הטסט. ה-`github-pool`/test_pool הקיים (נעול ל-main) נשאר ללא נגיעה.
 
 **Acceptance:**
-- [ ] `bootstrap-sandbox-tester.yml` + `scripts/bootstrap-sandbox-tester.sh` נכתבו, idempotent, ועם hard-guard שמסרב לכל פרויקט שאינו `factory-test-25`.
-- [ ] שערים סטטיים ירוקים (Changelog gates + Playground tests); אין שינוי golden (לא נגענו ב-`templates/system/**`).
-- [ ] לאחר אישור Or להרצה: ה-provider/SA/הרשאות קיימים ומינימליים (אימות ב-MCP `inspect_wif_provider`/`list_iam_bindings`/`list_secret_metadata`).
+- [x] `bootstrap-sandbox-tester.yml` + `scripts/bootstrap-sandbox-tester.sh` נכתבו, idempotent, ועם hard-guard שמסרב לכל פרויקט שאינו `factory-test-25`.
+- [x] שערים סטטיים ירוקים (Changelog gates + Playground tests); אין שינוי golden (לא נגענו ב-`templates/system/**`).
+- [x] ה-bootstrap רץ בהצלחה ב-factory-test-25, וה-provider/SA/הרשאות אומתו חי ומינימליים (MCP `inspect_wif_provider` + `list_iam_bindings`).
 
-**הערת התקדמות אחרונה:** הקוד מוזג ל-main (PR #266, כל השערים ירוקים). ה-bootstrap לא רץ
-אוטומטית (workflow_dispatch בלבד — בכוונה, מסיבות אבטחה). Or בחר שאוסיף אותו לרשימת-ההרצה
-האוטונומית (MCP allowlist) במקום לחיצה ידנית — אז הוספתי את `bootstrap-sandbox-tester.yml`
-ל-`DISPATCHABLE_WORKFLOWS` ב-`services/mcp-server/src/tools.ts` (build+test ירוקים). נותר:
-למזג את שינוי ה-MCP, להריץ `deploy-mcp-server.yml` כדי שהרשימה תיכנס לתוקף, ואז להריץ את
-ה-bootstrap ולאמת ב-MCP.
+**הערת התקדמות אחרונה (הושלם):** הזהות באוויר ומאומתת חי. אימות MCP:
+(1) `inspect_wif_provider(sandbox-pool/github-sandbox-provider)` → state ACTIVE, CEL בדיוק
+`assertion.repository_owner_id=='259965754' && assertion.repository_id=='1245681889'` (הפקטורי, **כל ref**, ללא נעילת-main).
+(2) `list_iam_bindings(factory-test-25)` → `sandbox-tester-sa` מופיע **פעם אחת בלבד**, עם
+`roles/secretmanager.secretAccessor_withcond_...` (ה-`_withcond_` מאשר שה-IAM Condition מחובר —
+github-app-* בלבד), ואפס תפקידים אחרים (לא owner, לא admin, כלום). מינימלי בדיוק כמתוכנן.
+הדרך לשם: 3 הרצות — תוקנו propagation-retry ו-idempotency של "כבר-קיים" (PR #270, #271).
 
 **שינוי תוכנית:** הקדמתי את הוספת ה-workflow ל-MCP allowlist (שתוכנן במקור לשלב 5) לתוך שלב 1,
 לפי בחירת Or "להוסיף לאוטומציה" במקום לחיצה ידנית חד-פעמית. דורש redeploy אחד של שרת ה-MCP.
@@ -141,4 +142,4 @@ idempotent (אין diff → אין push). כאן "הוכח→מזג" מתבצע 
 
 > שורה פשוטה אחת לכל שלב שהסתיים — בשפה ש-Or מבין, בלי ז'רגון.
 
-- שלב 1 (קוד) הושלם — נבנה "מפתח-צעצוע" סנדבוקס: זהות-ענן זעירה על factory-test-25 שמותר להפעיל מענף, בלי לגעת במפתח החזק. כל הבדיקות האוטומטיות עברו.
+- שלב 1 הושלם ואומת חי — "מפתח-הצעצוע" באוויר על factory-test-25: זהות זעירה שמותר להפעיל מענף, יכולה לקרוא רק את סודות-הכניסה של מערכת-הטסט, ואפס גישה לכל השאר. המפתח החזק לא נגעו בו.
