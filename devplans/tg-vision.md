@@ -20,7 +20,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
 | 0 | תשתית התוכנית (devplan + פתק changelog) | completed | `devplans/tg-vision.md`, `changelog.d/2026-06-01-tg-vision.md` |
-| 1 | `tg-vision.json` — סאב-workflow קריאת-תמונה | pending | `templates/system/workflows/n8n/tg-vision.json`, `tests/golden/system/` |
+| 1 | `tg-vision.json` — סאב-workflow קריאת-תמונה | completed | `templates/system/workflows/n8n/tg-vision.json`, `tests/golden/system/` |
 | 2 | `tg-inbound.json` — זיהוי תמונה + ניתוב | pending | `templates/system/workflows/n8n/tg-inbound.json`, `tests/golden/system/` |
 | 3 | `configure-agent-router.yml` — התקנת tg-vision | pending | `templates/system/.github/workflows/configure-agent-router.yml`, `tests/golden/system/` |
 | 4 | תיעוד — AGENTS.md.template + docs | pending | `templates/system/AGENTS.md.template`, `docs/telegram-chat-bot.md`, `docs/openrouter-integration.md`, `tests/golden/system/` |
@@ -49,12 +49,20 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 - [ ] גארד-20MB מחזיר הודעת-עברית ידידותית ועוצר.
 - [ ] Telegram "Get File" (download) → Code binary→base64 + MIME דינמי (חסין).
 - [ ] HTTP POST ל-OpenRouter (Qwen3-VL, prompt הגנתי, טקסט-לפני-תמונה) + fallback Gemini ב-error.
-- [ ] Egress-Validation (מראָה L5) → `{ reply }`.
-- [ ] `jq .` תקין; placeholders רק מותרים; golden מרוענן; "Playground tests" ירוק.
+- [x] Egress-Validation (מראָה L5) → `{ reply }`.
+- [x] `jq .` תקין; placeholders רק `@@CRED_TELEGRAM_ID@@`/`@@CRED_OPENROUTER_ID@@`; golden מרוענן; שערים מקומיים ירוקים.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם — `tg-vision.json` נבנה (10 nodes): trigger passthrough → Normalize&Guard
+(גארד-20MB + drop ל-file_id חסר) → IF Blocked? → Get File (Telegram, download) → To Base64 Data-URI
+(המרה חסינה עם getBinaryDataBuffer fallback + MIME דינמי, בונה את גוף-הבקשה עם prompt הגנתי) →
+HTTP Qwen3-VL (predefinedCredentialType openRouterApi) → error→ HTTP Gemini fallback → Extract Reply
+→ Egress Validation. JSON תקין, golden רוענן (MANIFEST +1 שורה), validate-templates + golden-gate ירוקים מקומית.
+ממתין לאימות "Playground tests" ב-CI.
 
-**שינוי תוכנית:** —
+**שינוי תוכנית:** העברתי את בניית גוף-הבקשה (model+messages+data-URI) ל-node ההמרה (`To Base64 Data-URI`)
+כך ש-nodes ה-HTTP רק מבצעים `JSON.stringify` — מונע ביטוי-JSON שביר עם prompt עברי ארוך. שימוש ב-`openRouterApi`
+predefinedCredentialType ב-httpRequest (במקום סוד גולמי) כדי לנצל את ה-credential הקיים. שני ענפי-error
+(Qwen ו-Gemini) זורמים ל-Extract Reply, שמחזיר הודעת-עברית ידידותית אם שניהם נפלו — אין מסלול ללא תשובה.
 
 ---
 
@@ -115,3 +123,4 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 > שורה פשוטה אחת לכל שלב שהסתיים — בשפה ש-Or מבין, בלי ז'רגון.
 
 - שלב 0 הושלם — הקמנו את קובץ-התוכנית ואת פתק-השינויים. עוד לא נגענו בקוד.
+- שלב 1 הושלם — בנינו את ה"עיניים" של הבוט (`tg-vision`): מוריד תמונה מטלגרם, שולח ל-OpenRouter עם הוראת-אבטחה, מחזיר פירוש בעברית, עם גיבוי אוטומטי ובלם לתמונות-ענק. השערים האוטומטיים ירוקים.
