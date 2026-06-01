@@ -1,0 +1,16 @@
+# Per-system n8n worker image (queue mode).
+#
+# Runs n8n in WORKER mode deterministically: the official n8n image entrypoint
+# runs `exec n8n "$@"`, so CMD ["worker"] launches `n8n worker` — the Bull queue
+# consumer. We bake the command into the image instead of using Railway's service
+# "start command" because Railway APPENDS the start command as CMD args to the
+# entrypoint (so `n8n worker` becomes `n8n n8n worker` → invalid → n8n silently
+# falls back to a second MAIN that never consumes the queue), and its application
+# is timing-fragile (caught live on factory-test-qmode2..qmode5). This mirrors how
+# the Caddy gateway is built (Dockerfile.caddy + RAILWAY_DOCKERFILE_PATH).
+#
+# IMPORTANT: keep this FROM tag in sync with N8N_IMAGE in
+# .github/workflows/deploy-railway-cloudflare.yml — n8n queue mode requires the
+# main and worker to run the SAME n8n version.
+FROM n8nio/n8n:1.121.0
+CMD ["worker"]

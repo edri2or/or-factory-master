@@ -701,19 +701,20 @@ jobs:
 
           # ===== (queue mode) n8n worker service: SM-first, find, then create =====
           # Second n8n process that pulls jobs from Redis and runs them — created
-          # ONLY when QM=true. Same image as the main n8n; start command is just
-          # `worker` (NOT `n8n worker`): the n8n image entrypoint already runs
-          # `exec n8n "$@"`, so Railway's start command is passed as args to it —
-          # `worker` -> `n8n worker` (worker mode), whereas `n8n worker` would
-          # become `n8n n8n worker` and silently fall back to MAIN mode (a second
-          # main that only enqueues and never consumes the queue, so every webhook
-          # execution hangs — caught live on factory-test-qmode3: jobs 1/2/3 were
-          # "Enqueued" by the main but never processed). No public/custom domain, no Caddy — the
+          # ONLY when QM=true. Built from the system repo's `Dockerfile.worker`
+          # (`FROM n8nio/n8n:<ver>` + `CMD ["worker"]`) via RAILWAY_DOCKERFILE_PATH,
+          # exactly like the Caddy gateway. The Dockerfile bakes worker mode into
+          # the image (`n8n worker`) deterministically — we do NOT use a Railway
+          # start command, because Railway APPENDS the start command as CMD args to
+          # the n8n entrypoint (`exec n8n "$@"`), so `n8n worker` becomes
+          # `n8n n8n worker` → invalid → a silent fall-back to a second MAIN that
+          # never consumes the queue and hangs every webhook (caught live on
+          # factory-test-qmode2..qmode5). No public/custom domain, no Caddy — the
           # worker is HTTP-less. Shares the main n8n's DB, encryption key, and
           # queue/Redis config, but NOT the main-only `OFFLOAD_MANUAL_EXECUTIONS_TO_WORKERS`
-          # flag. WORKER_FIRST_TIME guards env/start-command to a
-          # single write (Railway-throttle caution, same as Caddy/Redis). When
-          # QM=false the whole block is skipped (byte-identical deploy).
+          # flag. WORKER_FIRST_TIME guards the env upsert to a single write
+          # (Railway-throttle caution, same as Caddy/Redis). When QM=false the whole
+          # block is skipped (byte-identical deploy).
           if [ "$QM" = "true" ]; then
             echo "=== Railway: n8n worker service (queue mode; SM-first lookup) ==="
             WORKER_FIRST_TIME=false
@@ -729,8 +730,8 @@ jobs:
 
               if [ -z "$WORKER_ID" ] || [ "$WORKER_ID" = "null" ]; then
                 resp=$(_gql 'mutation($input: ServiceCreateInput!) { serviceCreate(input: $input) { id } }' \
-                  "$(jq -cn --arg pid "$PROJECT_ID_RW" --arg img "$N8N_IMAGE" \
-                    '{input: {projectId: $pid, name: "worker", source: {image: $img}}}')")
+                  "$(jq -cn --arg pid "$PROJECT_ID_RW" --arg repo "edri2or/${SYSTEM_NAME}" \
+                    '{input: {projectId: $pid, name: "worker", source: {repo: $repo}}}')")
                 WORKER_ID=$(printf '%s' "$resp" | jq -r '.data.serviceCreate.id' 2>/dev/null || echo "")
                 [ -n "$WORKER_ID" ] && [ "$WORKER_ID" != "null" ] \
                   || { echo "FAIL: worker serviceCreate returned no id; resp=$resp" >&2; exit 1; }
@@ -768,40 +769,16 @@ jobs:
                   QUEUE_BULL_REDIS_PORT: "6379",
                   QUEUE_BULL_REDIS_PASSWORD: $rpw,
                   N8N_DEFAULT_BINARY_DATA_MODE: "default",
-                  N8N_GRACEFUL_SHUTDOWN_TIMEOUT: "30"
+                  N8N_GRACEFUL_SHUTDOWN_TIMEOUT: "30",
+                  RAILWAY_DOCKERFILE_PATH: "Dockerfile.worker"
                 }')"
-              echo "PASS: worker env set."
+              echo "PASS: worker env set (builds from Dockerfile.worker → n8n worker mode)."
             else
               echo "INFO: worker env already set — skipping to avoid a needless redeploy."
             fi
 
-            # Start command — run n8n in WORKER mode. Value is `n8n worker`:
-            # Railway's start command OVERRIDES the image ENTRYPOINT in exec form,
-            # so it runs the n8n binary with `worker` (Railway's own n8n templates
-            # use `n8n worker`). A bare `worker` is not a binary; and either value,
-            # when set inside the FIRST_TIME gate right after serviceCreate, was
-            # never APPLIED — the worker booted the image default (n8n main) and
-            # never consumed the queue (caught live on factory-test-qmode4:
-            # `n8n ready on port 5678`, not `n8n worker is now ready`; jobs were
-            # enqueued by the main but never processed). Apply it the SAME way the
-            # redis start command is applied (the pattern proven to take): an
-            # UNGATED compare-then-set, after the env upsert, so it triggers a clean
-            # redeploy that flips the worker into worker mode.
-            DESIRED_WORKER_CMD="n8n worker"
-            CUR_WORKER_CMD=$(_gql 'query($id: String!) { service(id: $id) { serviceInstances { edges { node { startCommand } } } } }' \
-              "$(jq -cn --arg id "$WORKER_ID" '{id: $id}')" 2>/dev/null \
-              | jq -r '(.data.service.serviceInstances.edges // []) | .[0].node.startCommand // ""' 2>/dev/null || echo "")
-            if [ "$CUR_WORKER_CMD" != "$DESIRED_WORKER_CMD" ]; then
-              _gql 'mutation($eid: String!, $sid: String!, $input: ServiceInstanceUpdateInput!) { serviceInstanceUpdate(environmentId: $eid, serviceId: $sid, input: $input) }' \
-                "$(jq -cn --arg eid "$ENV_ID" --arg sid "$WORKER_ID" --arg cmd "$DESIRED_WORKER_CMD" \
-                  '{eid: $eid, sid: $sid, input: {startCommand: $cmd}}')" >/dev/null
-              echo "PASS: worker start command set to 'n8n worker'."
-            else
-              echo "INFO: worker start command already 'n8n worker' — no redeploy needed."
-            fi
-
-            # Wait for the worker deployment to land (so the start-command redeploy
-            # that flips it into worker mode has completed). Mirrors the redis wait.
+            # Wait for the worker deployment to land — building Dockerfile.worker
+            # takes a few minutes (like the Caddy build). Mirrors the redis wait.
             echo "=== Railway: waiting for worker deployment to be ready (queue mode) ==="
             wstat=""
             for i in $(seq 1 18); do
