@@ -953,6 +953,25 @@ jobs:
           #     token being present; never fails the run.
           TG_WF_ID=""
           if [ "$SKIP_TELEGRAM" = "no" ]; then
+            # 5b-pre: install the tg-vision sub-workflow (Telegram image → OpenRouter
+            #   VLM → Hebrew reply), inactive (Execute Workflow Trigger only — n8n can't
+            #   activate those). Reuses the existing OpenRouter + Telegram credentials —
+            #   no new secret. Its id is substituted into tg-inbound's image branch below;
+            #   a failure just strips that branch so tg-inbound never points at a missing
+            #   sub-workflow. CRED_ID (OpenRouter) is guaranteed present here (the step
+            #   soft-exits earlier if it is missing).
+            TG_VISION_WF_ID=""
+            TGV_SRC="${WF_DIR}/tg-vision.json"
+            if [ -f "$TGV_SRC" ]; then
+              sed -e "s#@@CRED_TELEGRAM_ID@@#${CRED_TELEGRAM_ID}#g" \
+                  -e "s#@@CRED_OPENROUTER_ID@@#${CRED_ID}#g" \
+                  "$TGV_SRC" > /tmp/ar-prep-tg-vision.json
+              TG_VISION_WF_ID=$(_upsert_wf "factory-master: tg-vision" /tmp/ar-prep-tg-vision.json no) \
+                || { echo "WARN: tg-vision upsert failed — image branch will be stripped" >&2; TG_VISION_WF_ID=""; }
+              [ -n "$TG_VISION_WF_ID" ] && echo "PASS: factory-master: tg-vision → id=${TG_VISION_WF_ID}"
+            else
+              echo "WARN: tg-vision.json not found in repo — image understanding skipped" >&2
+            fi
             TG_SRC="${WF_DIR}/tg-inbound.json"
             if [ -f "$TG_SRC" ]; then
               sed -e "s#@@CRED_TELEGRAM_ID@@#${CRED_TELEGRAM_ID}#g" \
@@ -960,7 +979,24 @@ jobs:
                   -e "s#@@CHAT_ID@@#${CHAT_ID}#g" \
                   -e "s#@@N8N_DOMAIN@@#${N8N_DOMAIN}#g" \
                   -e "s#@@WF_PENDING_EXECUTOR_ID@@#${PENDING_EXECUTOR_ID}#g" \
+                  -e "s#@@WF_TG_VISION_ID@@#${TG_VISION_WF_ID}#g" \
                   "$TG_SRC" > /tmp/ar-prep-tg-inbound.json
+              # tg-vision (image branch): if tg-vision did not install, strip the image
+              # rule + its two nodes (Prep Vision Input, Call tg-vision) so tg-inbound
+              # never points at a missing sub-workflow. Runs BEFORE the approval/dedup
+              # strips so it restores Route Update to the original [approval, chat]
+              # 2-output shape those strips expect.
+              if [ -z "$TG_VISION_WF_ID" ] || [ "$TG_VISION_WF_ID" = "null" ]; then
+                jq '(.nodes |= map(select(.name as $n | (["Prep Vision Input","Call tg-vision"] | index($n)) | not)))
+                    | (.nodes |= map(if .name=="Route Update" then (.parameters.rules.values |= map(select(.outputKey != "image"))) else . end))
+                    | .connections."Route Update" = {"main":[[{"node":"Answer Callback","type":"main","index":0}],[{"node":"Call Agent Router","type":"main","index":0}]]}
+                    | del(.connections."Prep Vision Input")
+                    | del(.connections."Call tg-vision")' \
+                  /tmp/ar-prep-tg-inbound.json > /tmp/ar-prep-tg-inbound.json.tmp \
+                  && mv /tmp/ar-prep-tg-inbound.json.tmp /tmp/ar-prep-tg-inbound.json \
+                  || echo "WARN: tg-inbound image-branch strip failed — using as-is" >&2
+                echo "INFO: tg-inbound image branch → stripped (tg-vision not installed)"
+              fi
               # HITL (Stage C): the approval-callback path (Route Update → Answer
               # Callback → approve/reject → Run Executor) references the
               # pending-actions-executor sub-workflow. If that executor wasn't

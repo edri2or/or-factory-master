@@ -22,7 +22,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 | 0 | תשתית התוכנית (devplan + פתק changelog) | completed | `devplans/tg-vision.md`, `changelog.d/2026-06-01-tg-vision.md` |
 | 1 | `tg-vision.json` — סאב-workflow קריאת-תמונה | completed | `templates/system/workflows/n8n/tg-vision.json`, `tests/golden/system/` |
 | 2 | `tg-inbound.json` — זיהוי תמונה + ניתוב | completed | `templates/system/workflows/n8n/tg-inbound.json`, `tests/golden/system/` |
-| 3 | `configure-agent-router.yml` — התקנת tg-vision | pending | `templates/system/.github/workflows/configure-agent-router.yml`, `tests/golden/system/` |
+| 3 | `configure-agent-router.yml` — התקנת tg-vision | completed | `templates/system/.github/workflows/configure-agent-router.yml`, `tests/golden/system/` |
 | 4 | תיעוד — AGENTS.md.template + docs | pending | `templates/system/AGENTS.md.template`, `docs/telegram-chat-bot.md`, `docs/openrouter-integration.md`, `tests/golden/system/` |
 | 5 | אימות חי (costed) + קידום + פירוק | pending | מערכת-טסט חד-פעמית (reuse mode) |
 
@@ -91,12 +91,19 @@ tg-vision מ-`$('Extract & Normalize')` במפורש (לא מסתמכים על p
 
 **Acceptance:**
 - [ ] שלב-התקנת tg-vision (כבוי) לפני prep של §5b; לכידת `TG_VISION_WF_ID`.
-- [ ] החלפת `@@WF_TG_VISION_ID@@` ב-tg-inbound; cred OpenRouter+Telegram מוחלפים ב-tg-vision; soft-fail.
-- [ ] golden מרוענן; "Changelog gates" + "Playground tests" ירוקים.
+- [x] החלפת `@@WF_TG_VISION_ID@@` ב-tg-inbound; cred OpenRouter (`$CRED_ID`)+Telegram (`$CRED_TELEGRAM_ID`) מוחלפים ב-tg-vision; soft-fail.
+- [x] golden מרוענן; שערים מקומיים ירוקים (actionlint נקי, yamllint נקי, סימולציות jq עברו).
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם — הוספתי ל-§5b (בתוך `if SKIP_TELEGRAM=no`, לפני הכנת tg-inbound) שלב
+שמתקין את tg-vision (כבוי, `_upsert_wf ... no`) עם החלפת `@@CRED_TELEGRAM_ID@@`/`@@CRED_OPENROUTER_ID@@`,
+לוכד `TG_VISION_WF_ID`. ל-sed של tg-inbound נוסף `-e s#@@WF_TG_VISION_ID@@#${TG_VISION_WF_ID}#g`. הוספתי
+**פס-בטיחות**: אם tg-vision לא הותקן (קובץ חסר / upsert נכשל) — jq מסיר את ענף-התמונה (2 nodes + כלל ה-image)
+ומחזיר את `Route Update` ל-2 פלטים, *לפני* ה-strips הקיימים (approval/dedup) ששומרים על אותו מבנה. אומת:
+החלפה רגילה → JSON תקין, 0 placeholders שנותרו; strip → ענף הוסר נכון, Switch חזר ל-approval+chat. golden רוענן.
 
-**שינוי תוכנית:** —
+**שינוי תוכנית:** הוספתי פס-בטיחות (image-branch strip) שלא היה מפורש בתוכנית — מראה את דפוס ה-graceful-degradation
+הקיים (approval-path strip), כדי ש-tg-inbound לעולם לא יצביע ל-sub-workflow חסר. רץ ראשון כדי לא להתנגש עם
+ה-strips הקיימים.
 
 ---
 
@@ -133,3 +140,4 @@ tg-vision מ-`$('Extract & Normalize')` במפורש (לא מסתמכים על p
 - שלב 0 הושלם — הקמנו את קובץ-התוכנית ואת פתק-השינויים. עוד לא נגענו בקוד.
 - שלב 1 הושלם — בנינו את ה"עיניים" של הבוט (`tg-vision`): מוריד תמונה מטלגרם, שולח ל-OpenRouter עם הוראת-אבטחה, מחזיר פירוש בעברית, עם גיבוי אוטומטי ובלם לתמונות-ענק. השערים האוטומטיים ירוקים.
 - שלב 2 הושלם — חיברנו את העיניים: עכשיו כשמגיעה תמונה הבוט מזהה אותה (במקום לזרוק) ושולח אותה ל-tg-vision, ואז מחזיר את הפירוש. מסלול הטקסט והאישורים לא נגעו בכלל. השערים ירוקים.
+- שלב 3 הושלם — "חיברנו לחשמל": המתקין של כל מערכת חדשה יתקין עכשיו את tg-vision וילחים אותו ל-tg-inbound אוטומטית, עם ה-credential הקיים. הוספתי גם הגנה: אם משהו משתבש בהתקנה, הבוט פשוט ממשיך לעבוד בלי הפיצ'ר (במקום לקרוס). השערים ירוקים.
