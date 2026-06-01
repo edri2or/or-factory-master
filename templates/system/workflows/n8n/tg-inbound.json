@@ -22,7 +22,7 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "// The Webhook node delivers the raw Telegram update under .body. Normalize\n// message | edited_message | callback_query into one shape, and DROP anything\n// not from the single authorized operator chat (replaces the Telegram Trigger's\n// restrictToChatIds; Caddy already validated the secret token at the edge). This\n// chat-id check IS the from.id allowlist for callback presses (chatId = cb.from.id).\n// @@CHAT_ID@@ is substituted at install time.\n// HITL (Stage C): a callback whose data is `app:<id>` / `rej:<id>` is an approval\n// press — flag route='approval' + is_approve + action_id so the Switch downstream\n// runs the executor instead of the chat router. Any other update routes to chat.\n// Vision (Stage tg-vision): a message carrying a photo (largest size) or an\n// image/* document flags route='image' + file_id/file_size/mime so the Switch hands\n// it to the tg-vision sub-workflow. A photo with no caption is NO LONGER dropped\n// (previously `if (!text) return []` discarded it).\nconst u = ($input.first().json && $input.first().json.body) || $input.first().json || {};\nconst cb = u.callback_query || null;\nconst msg = u.message || u.edited_message || (cb && cb.message) || {};\nconst isCallback = !!cb;\nlet text = isCallback ? (cb.data || '') : (msg.text || msg.caption || '');\ntext = String(text).trim();\nconst chatId = (msg.chat && msg.chat.id) || (cb && cb.from && cb.from.id) || '';\nif (String(chatId) !== '@@CHAT_ID@@') { return []; }\nlet fileId = '';\nlet fileSize = 0;\nlet fileMime = '';\nif (!isCallback) {\n  if (Array.isArray(msg.photo) && msg.photo.length) {\n    const ph = msg.photo[msg.photo.length - 1] || {};\n    fileId = ph.file_id || '';\n    fileSize = Number(ph.file_size || 0);\n    fileMime = 'image/jpeg';\n  } else if (msg.document && typeof msg.document === 'object' && /^image\\//i.test(String(msg.document.mime_type || ''))) {\n    fileId = msg.document.file_id || '';\n    fileSize = Number(msg.document.file_size || 0);\n    fileMime = String(msg.document.mime_type || '');\n  }\n}\nif (!text && !fileId) { return []; }\nconst updateId = Number(u.update_id || 0);\nconst isApproval = isCallback && /^(app|rej):/.test(text);\nconst isApprove = text.slice(0, 4) === 'app:';\nconst actionId = isApproval ? Number(text.split(':')[1]) : null;\nreturn [{ json: { text: text, chat_id: chatId, kind: isCallback ? 'callback_query' : (u.edited_message ? 'edited_message' : 'message'), update_id: updateId, callback_id: (cb && cb.id) || '', message_id: (cb && cb.message && cb.message.message_id) || '', route: (isApproval && Number.isInteger(actionId) && actionId > 0) ? 'approval' : (fileId ? 'image' : 'chat'), is_approve: isApprove, action_id: actionId, file_id: fileId, file_size: fileSize, mime: fileMime } }];"
+        "jsCode": "// The Webhook node delivers the raw Telegram update under .body. Normalize\n// message | edited_message | callback_query into one shape, and DROP anything\n// not from the single authorized operator chat (replaces the Telegram Trigger's\n// restrictToChatIds; Caddy already validated the secret token at the edge). This\n// chat-id check IS the from.id allowlist for callback presses (chatId = cb.from.id).\n// @@CHAT_ID@@ is substituted at install time.\n// HITL (Stage C): a callback whose data is `app:<id>` / `rej:<id>` is an approval\n// press — flag route='approval' + is_approve + action_id so the Switch downstream\n// runs the executor instead of the chat router. Any other update routes to chat.\n// Vision (Stage tg-vision): a message carrying a photo (largest size) or an\n// image/* document flags route='image' + file_id/file_size/mime so the Switch hands\n// it to the tg-vision sub-workflow. A photo with no caption is NO LONGER dropped\n// (previously `if (!text) return []` discarded it).\nconst u = ($input.first().json && $input.first().json.body) || $input.first().json || {};\nconst cb = u.callback_query || null;\nconst msg = u.message || u.edited_message || (cb && cb.message) || {};\nconst isCallback = !!cb;\nlet text = isCallback ? (cb.data || '') : (msg.text || msg.caption || '');\ntext = String(text).trim();\nconst chatId = (msg.chat && msg.chat.id) || (cb && cb.from && cb.from.id) || '';\nif (String(chatId) !== '@@CHAT_ID@@') { return []; }\nlet fileId = '';\nlet fileSize = 0;\nlet fileMime = '';\nif (!isCallback) {\n  if (Array.isArray(msg.photo) && msg.photo.length) {\n    const ph = msg.photo[msg.photo.length - 1] || {};\n    fileId = ph.file_id || '';\n    fileSize = Number(ph.file_size || 0);\n    fileMime = 'image/jpeg';\n  } else if (msg.document && typeof msg.document === 'object' && /^image\\//i.test(String(msg.document.mime_type || ''))) {\n    fileId = msg.document.file_id || '';\n    fileSize = Number(msg.document.file_size || 0);\n    fileMime = String(msg.document.mime_type || '');\n  }\n}\nlet voiceFileId = '';\nlet voiceDuration = 0;\nif (!isCallback && msg.voice && msg.voice.file_id) {\n  voiceFileId = msg.voice.file_id;\n  voiceDuration = Number(msg.voice.duration || 0);\n}\nif (!text && !fileId && !voiceFileId) { return []; }\nconst updateId = Number(u.update_id || 0);\nconst isApproval = isCallback && /^(app|rej):/.test(text);\nconst isApprove = text.slice(0, 4) === 'app:';\nconst actionId = isApproval ? Number(text.split(':')[1]) : null;\nreturn [{ json: { text: text, chat_id: chatId, kind: isCallback ? 'callback_query' : (u.edited_message ? 'edited_message' : 'message'), update_id: updateId, callback_id: (cb && cb.id) || '', message_id: (cb && cb.message && cb.message.message_id) || '', route: (isApproval && Number.isInteger(actionId) && actionId > 0) ? 'approval' : (fileId ? 'image' : (voiceFileId ? 'voice' : 'chat')), is_approve: isApprove, action_id: actionId, file_id: fileId, file_size: fileSize, mime: fileMime, voice_file_id: voiceFileId, voice_duration: voiceDuration } }];"
       },
       "id": "10000000-0000-0000-0000-000000000002",
       "name": "Extract & Normalize",
@@ -107,6 +107,30 @@
               },
               "renameOutput": true,
               "outputKey": "image"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "11000000-0000-0000-0000-000000000004",
+                    "leftValue": "={{ $('Extract & Normalize').first().json.route }}",
+                    "rightValue": "voice",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "voice"
             }
           ]
         },
@@ -364,7 +388,7 @@
         "url": "http://localhost:5678/webhook/agent-router",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ text: $('Extract & Normalize').first().json.text }) }}",
+        "jsonBody": "={{ JSON.stringify({ text: $json.text || $('Extract & Normalize').first().json.text }) }}",
         "options": {
           "timeout": 120000
         }
@@ -403,6 +427,55 @@
           "name": "Telegram (factory-master)"
         }
       }
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "13000000-0000-0000-0000-000000000001",
+              "name": "file_id",
+              "type": "string",
+              "value": "={{ $('Extract & Normalize').first().json.voice_file_id }}"
+            },
+            {
+              "id": "13000000-0000-0000-0000-000000000002",
+              "name": "chat_id",
+              "type": "string",
+              "value": "={{ $('Extract & Normalize').first().json.chat_id }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "10000000-0000-0000-0000-000000000010",
+      "name": "Prep Voice Input",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        980,
+        720
+      ]
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "@@WF_TG_VOICE_STT_ID@@",
+          "mode": "id"
+        },
+        "mode": "once",
+        "options": {}
+      },
+      "id": "10000000-0000-0000-0000-000000000011",
+      "name": "Call tg-voice-stt",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [
+        1180,
+        720
+      ]
     }
   ],
   "connections": {
@@ -451,6 +524,13 @@
         [
           {
             "node": "Prep Vision Input",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prep Voice Input",
             "type": "main",
             "index": 0
           }
@@ -553,6 +633,28 @@
         [
           {
             "node": "Send Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep Voice Input": {
+      "main": [
+        [
+          {
+            "node": "Call tg-voice-stt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call tg-voice-stt": {
+      "main": [
+        [
+          {
+            "node": "Call Agent Router",
             "type": "main",
             "index": 0
           }
