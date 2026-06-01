@@ -10,3 +10,8 @@ standing, generic, documented method for validating provisioning changes.
   TXT, revoked its OpenRouter inference key, and archived `edri2or/or-factory-reference`.
   Verified: no Railway project, `/healthz` unreachable. The empty `factory-test-18` GCP
   project is soft-deleted separately via the operator-run `decommission-test-projects.yml`.
+- **Stage 2 — removed the reference-system core.** Deleted `reference-system/config.yml`,
+  `docs/reference-system.md`, `scripts/reference-config.sh`, `scripts/reference-system-smoke.sh`,
+  `scripts/tests/reference-system-smoke.bats`, and `.github/workflows/reference-system-reconcile.yml`,
+  and removed the `reference-system-reconcile` entry from `monitoring/watchdog-registry.json` in the
+  same change (so the watchdog gate stays green on the workflow removal).

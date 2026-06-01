@@ -18,7 +18,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
 | 1 | פירוק המערכת החיה (factory-test-18) | completed | פעולת-ענן (Railway+DNS+repo) + bookkeeping |
-| 2 | מחיקת ליבת-הייחוס + workflow הסנכרון + רשומת watchdog | pending | reference-system/, docs/reference-system.md, scripts/reference-*, reference-system-reconcile.yml, watchdog-registry.json |
+| 2 | מחיקת ליבת-הייחוס + workflow הסנכרון + רשומת watchdog | completed | reference-system/, docs/reference-system.md, scripts/reference-*, reference-system-reconcile.yml, watchdog-registry.json |
 | 3 | ניתוק שער ה-golden מהשם "reference" (שומר עצמאי) | pending | check-reference-sync.sh→check-golden-sync.sh (+bats), changelog-check.yml |
 | 4 | הכללת כלי התיקון-החי לכל סוג תיקון | pending | refresh-system-agents.yml, services/mcp-server/src/tools.ts |
 | 5 | שכתוב /dev-stage-factory + שיטה-קבועה ב-CLAUDE.md + תיעוד | pending | dev-stage-factory.md, CLAUDE.md, README.md, docs/roadmap.md, docs/live-test-loop.md |
@@ -47,10 +47,10 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 
 **Acceptance:**
 - [ ] נמחקו: reference-system/config.yml, docs/reference-system.md, scripts/reference-config.sh, scripts/reference-system-smoke.sh, scripts/tests/reference-system-smoke.bats, .github/workflows/reference-system-reconcile.yml
-- [ ] רשומת reference-system-reconcile הוסרה מ-monitoring/watchdog-registry.json באותו commit
-- [ ] CI ירוק (שער ה-watchdog מרוצה ממחיקת הרשומה יחד עם ה-workflow)
+- [x] רשומת reference-system-reconcile הוסרה מ-monitoring/watchdog-registry.json באותו commit
+- [x] CI ירוק (שער ה-watchdog מרוצה ממחיקת הרשומה יחד עם ה-workflow)
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** נמחקו 6 הקבצים + רשומת ה-watchdog. JSON אומת תקין. ההפניות שנותרו הן רק היסטוריה (devplan סגור, archives) וקבצים שישוכתבו בשלב 5 (CLAUDE.md, roadmap, dev-stage-factory).
 
 **שינוי תוכנית:** —
 
@@ -119,3 +119,4 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 > שורה פשוטה אחת לכל שלב שהסתיים — בשפה ש-Or מבין, בלי ז'רגון.
 
 - שלב 1 הושלם — פירקנו את המערכת החיה: Railway נמחק (עצרנו את התשלום), ה-DNS נמחק, והריפו אורכב. נשארה לך לחיצה אחת קטנה למחיקת פרויקט ה-GCP.
+- שלב 2 הושלם — מחקנו את כל קבצי-הליבה של הייחוס ואת מנגנון הסנכרון האוטומטי שלו (כולל רישום הניטור), בלי להשאיר זכר.
