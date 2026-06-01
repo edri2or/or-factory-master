@@ -18,3 +18,9 @@
   mode)` step now passes `--reuse` to `clean-project-secrets.sh`, activating the
   targeted-delete path for every reuse-mode provision. Comment updated to explain
   the savings. No behaviour change to adopt mode or default mode.
+
+### Stage 3 — Live verify (completed)
+
+Live provision run #26774497394 confirmed: 25 secrets deleted (not 62), all 40
+copied-from-factory generics skipped with "already has a version" in the copy step.
+Optimization validated end-to-end. devplans/secret-clean-optimize.md → completed.

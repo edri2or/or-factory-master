@@ -2,7 +2,7 @@
 dev_name: אופטימיזציית ניקוי סודות — reuse mode
 slug: secret-clean-optimize
 opened: 2026-06-01
-status: active
+status: completed
 ---
 
 # תוכנית פיתוח — אופטימיזציית ניקוי סודות (reuse mode)
@@ -17,7 +17,7 @@ status: active
 |---|---|---|---|
 | 1 | סקריפט: הוספת מצב `--reuse` + טסטים | completed | `scripts/clean-project-secrets.sh`, `scripts/tests/clean-project-secrets.bats` |
 | 2 | workflow: חיבור הדגל `--reuse` ב-provision | completed | `.github/workflows/provision-system.yml` |
-| 3 | אימות חי (Or-gated) | pending | — |
+| 3 | אימות חי (Or-gated) | completed | — |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
 
@@ -52,11 +52,11 @@ status: active
 ### שלב 3 — אימות חי (Or-gated)
 
 **Acceptance:**
-- [ ] הקמת מערכת-טסט ב-reuse mode מסיימת את צעד הניקוי עם ~22 מחיקות (לא 62)
-- [ ] לוגי `copy-generic-secrets` מציגים "already has a version — skipping" על 40 הגנריים
-- [ ] הקמה מהירה בהשוואה לקודם
+- [x] הקמת מערכת-טסט ב-reuse mode מסיימת את צעד הניקוי עם ~22 מחיקות (לא 62)
+- [x] לוגי `copy-generic-secrets` מציגים "already has a version — skipping" על 40 הגנריים
+- [x] הקמה מהירה בהשוואה לקודם
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** אומת על run #26774497394 — 25 מחיקות בלבד (vs. 62 קודם), כל 40 הגנריים דולגו בשלב copy. תוכנית הושלמה.
 
 **שינוי תוכנית:** —
 
@@ -68,3 +68,4 @@ status: active
 
 - שלב 1 הושלם — הסקריפט תומך עכשיו ב-`--reuse` שמוחק רק סודות ספציפיים-לטסט, עם bats tests מלאים.
 - שלב 2 הושלם — `provision-system.yml` מעביר `--reuse` לסקריפט; שינוי שורה אחת.
+- שלב 3 הושלם — אומת חי: 25 מחיקות (לא 62), 40 גנריים דולגו. תוכנית סגורה.
