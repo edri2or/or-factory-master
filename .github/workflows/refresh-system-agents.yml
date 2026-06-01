@@ -1,0 +1,141 @@
+name: Refresh System Agents (push current agent workflows to a live system)
+
+# The cheap "iterate on ONE live system" loop (the test-030 pattern). Applies the
+# factory's CURRENT agent-workflow JSONs (templates/system/workflows/n8n/*.json) to an
+# ALREADY-PROVISIONED system repo, then triggers that system's own
+# configure-agent-router.yml to reimport them into the live n8n — WITHOUT a full
+# re-provision/deploy (provision-system.yml refuses an existing system at preflight).
+#
+# Use it to apply a merged template fix to one standing test system in place and verify
+# it live in Telegram: fix template on main -> dispatch this -> ~40s later the live n8n
+# is updated. A round is ~1-2 minutes, no new Railway project, no manual clicks.
+#
+# Scope & safety:
+#   - Pushes ONLY workflows/n8n/*.json, copied from the factory's trusted `main`.
+#   - Source files carry @@PLACEHOLDERS@@; configure-agent-router substitutes them at
+#     import time (same as provision's scaffold), so the system repo stores the templated
+#     JSONs verbatim — exactly what provision pushes.
+#   - Broker App token is scoped to the ONE target repo (contents:write + actions:write).
+#   - Direct push to the system's main is by design (mirrors provision's scaffold push;
+#     system branch protection is enforce_admins:false and the broker is admin).
+#   - HARD-refuses the control project and the factory repo; validates system_name shape.
+#   - Idempotent: byte-identical JSONs -> no commit, no push (still optionally re-runs
+#     configure-agent-router, which is itself idempotent/soft-fail).
+
+on:
+  workflow_dispatch:
+    inputs:
+      system_name:
+        description: "Existing provisioned system repo to refresh (e.g. factory-test-tavily2)."
+        required: true
+        type: string
+      run_configure:
+        description: "After pushing, also trigger the system's configure-agent-router.yml to reimport into n8n (true/false)."
+        required: false
+        default: "true"
+        type: string
+
+permissions: {}
+
+jobs:
+  refresh:
+    name: Refresh agent workflows in a live system
+    runs-on: ubuntu-latest
+    environment: production
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      id-token: write
+
+    env:
+      BROKER_SA: "factory-master-broker@or-factory-master-control.iam.gserviceaccount.com"
+      WIF_PROVIDER: "projects/140345952904/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
+      CONTROL_PROJECT: "or-factory-master-control"
+
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
+        with:
+          persist-credentials: false
+
+      - name: Validate system_name
+        env:
+          SYSTEM_NAME: ${{ inputs.system_name }}
+        run: |
+          set -euo pipefail
+          # Same shape rule the factory enforces upstream (6-30 chars).
+          echo "$SYSTEM_NAME" | grep -qE '^[a-z][a-z0-9-]{4,28}[a-z0-9]$' \
+            || { echo "FAIL: system_name '$SYSTEM_NAME' must match ^[a-z][a-z0-9-]{4,28}[a-z0-9]\$" >&2; exit 1; }
+          # HARD refuse: never target the factory or any control/master project.
+          case "$SYSTEM_NAME" in
+            or-factory-master|or-factory-master-control|factory|factory-control-*|*-control)
+              echo "FAIL: refusing to target control/factory repo '$SYSTEM_NAME'" >&2; exit 1 ;;
+          esac
+          echo "OK: target edri2or/${SYSTEM_NAME}"
+
+      - name: Authenticate to GCP via WIF
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093  # v3.0.0
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.BROKER_SA }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db  # v3.0.1
+
+      - name: Push current agent workflows to the system repo
+        id: push
+        env:
+          SYSTEM_NAME: ${{ inputs.system_name }}
+        run: |
+          set -uo pipefail
+          # --- Mint a broker App token scoped to JUST this repo (contents+actions write) ---
+          APP_ID=$(gcloud secrets versions access latest --secret=factory-master-broker-app-id --project="$CONTROL_PROJECT" 2>/dev/null || true)
+          INSTALL_ID=$(gcloud secrets versions access latest --secret=factory-master-broker-app-installation-id --project="$CONTROL_PROJECT" 2>/dev/null || true)
+          echo "::add-mask::$APP_ID"; echo "::add-mask::$INSTALL_ID"
+          gcloud secrets versions access latest --secret=factory-master-broker-app-private-key --project="$CONTROL_PROJECT" > /tmp/rsa-key.pem 2>/dev/null || true
+          TOKEN=""
+          if [ -s /tmp/rsa-key.pem ] && [ -n "$APP_ID" ] && [ -n "$INSTALL_ID" ]; then
+            TOKEN=$(bash scripts/generate-app-token.sh /tmp/rsa-key.pem "$APP_ID" "$INSTALL_ID" "" '{"contents":"write","actions":"write"}' "[\"$SYSTEM_NAME\"]" 2>/dev/null || true)
+          fi
+          rm -f /tmp/rsa-key.pem
+          [ -n "$TOKEN" ] || { echo "FAIL: could not mint a broker token for edri2or/${SYSTEM_NAME}" >&2; exit 1; }
+          echo "::add-mask::$TOKEN"
+
+          # --- Clone the system repo (shallow), one-shot auth in the URL only ---
+          rm -rf sys-target
+          if ! git clone --depth 1 \
+               "https://x-access-token:${TOKEN}@github.com/edri2or/${SYSTEM_NAME}.git" sys-target 2>/dev/null; then
+            echo "FAIL: could not clone edri2or/${SYSTEM_NAME} (does it exist / is it provisioned?)" >&2; exit 1
+          fi
+
+          # --- Copy the agent-workflow JSONs from the factory's trusted main ---
+          [ -d templates/system/workflows/n8n ] || { echo "FAIL: templates/system/workflows/n8n not found" >&2; exit 1; }
+          mkdir -p sys-target/workflows/n8n
+          cp templates/system/workflows/n8n/*.json sys-target/workflows/n8n/
+
+          git -C sys-target config user.name "or-factory-master[bot]"
+          git -C sys-target config user.email "factory-master-broker@or-factory-master-control.iam.gserviceaccount.com"
+          git -C sys-target add workflows/n8n
+          if git -C sys-target diff --cached --quiet; then
+            echo "INFO: edri2or/${SYSTEM_NAME} agent workflows already current — nothing to push."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            git -C sys-target commit -q -m "ci: refresh agent workflows from or-factory-master templates"
+            # Direct push to main: mirrors provision's scaffold push (enforce_admins:false,
+            # broker is admin). Scrub the token from any error surfaced.
+            if ! perr=$(git -C sys-target push "https://x-access-token:${TOKEN}@github.com/edri2or/${SYSTEM_NAME}.git" HEAD:main 2>&1); then
+              echo "FAIL: push to edri2or/${SYSTEM_NAME}:main failed: $(printf '%s' "$perr" | sed "s/${TOKEN}/***/g")" >&2; exit 1
+            fi
+            echo "PASS: pushed refreshed workflows/n8n/*.json to edri2or/${SYSTEM_NAME}:main"
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+          # --- Optionally reimport into the live n8n via the system's own configure ---
+          if [ "${{ inputs.run_configure }}" = "true" ]; then
+            if GH_TOKEN="$TOKEN" gh workflow run configure-agent-router.yml --repo "edri2or/${SYSTEM_NAME}" --ref main 2>/dev/null; then
+              echo "PASS: dispatched configure-agent-router.yml on edri2or/${SYSTEM_NAME} (watch it to confirm the n8n reimport)."
+            else
+              echo "WARN: could not dispatch configure-agent-router.yml — dispatch it manually to reimport." >&2
+            fi
+          else
+            echo "INFO: run_configure=false — skipped reimport; dispatch configure-agent-router.yml when ready."
+          fi
