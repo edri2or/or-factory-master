@@ -21,3 +21,11 @@ standing, generic, documented method for validating provisioning changes.
   `changelog-check.yml` step at the new name. The golden gate (renderer + `check-system-golden.sh`
   + `tests/golden/system/` + the Playground "System golden gate" step) is unchanged and stays as
   an independent template-integrity guard.
+- **Stage 4 — generalized the live-fix loop.** `refresh-system-agents.yml` now takes optional
+  `paths` (which `templates/system/` subtree to sync; default `workflows/n8n`) and
+  `post_merge_workflow` (which system workflow to dispatch after merge; default
+  `configure-agent-router.yml`) inputs, so it can apply *any* template fix to a live system —
+  not just the n8n agent JSONs. The copy step loops over validated relative paths (no absolute,
+  no `..`); the defaults reproduce the original behaviour exactly (fully backward-compatible).
+  Updated the `dispatch_workflow` description in `services/mcp-server/src/tools.ts` (text only —
+  reaches the live MCP on the next operator-gated redeploy).

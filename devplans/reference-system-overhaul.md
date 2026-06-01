@@ -20,7 +20,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 | 1 | פירוק המערכת החיה (factory-test-18) | completed | פעולת-ענן (Railway+DNS+repo) + bookkeeping |
 | 2 | מחיקת ליבת-הייחוס + workflow הסנכרון + רשומת watchdog | completed | reference-system/, docs/reference-system.md, scripts/reference-*, reference-system-reconcile.yml, watchdog-registry.json |
 | 3 | ניתוק שער ה-golden מהשם "reference" (שומר עצמאי) | completed | check-reference-sync.sh→check-golden-sync.sh (+bats), changelog-check.yml |
-| 4 | הכללת כלי התיקון-החי לכל סוג תיקון | pending | refresh-system-agents.yml, services/mcp-server/src/tools.ts |
+| 4 | הכללת כלי התיקון-החי לכל סוג תיקון | completed | refresh-system-agents.yml, services/mcp-server/src/tools.ts |
 | 5 | שכתוב /dev-stage-factory + שיטה-קבועה ב-CLAUDE.md + תיעוד | pending | dev-stage-factory.md, CLAUDE.md, README.md, docs/roadmap.md, docs/live-test-loop.md |
 | 6 | סגירה — אימות "בלי זכר" + status: completed | pending | devplan |
 
@@ -76,10 +76,10 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 **Acceptance:**
 - [ ] refresh-system-agents.yml מקבל inputs אופציונליים paths (ברירת מחדל workflows/n8n) + post_merge_workflow (ברירת מחדל configure-agent-router.yml), תאימות-לאחור מלאה
 - [ ] צעד ההעתקה + טריגר-אחרי-מיזוג קוראים מה-inputs; הערות/כותרות-PR מנוסחות "תיקון תבנית"
-- [ ] טקסט התיאור ב-services/mcp-server/src/tools.ts עודכן (לא-פונקציונלי, בלי redeploy)
-- [ ] CI ירוק (yamllint/shellcheck)
+- [x] טקסט התיאור ב-services/mcp-server/src/tools.ts עודכן (לא-פונקציונלי, בלי redeploy)
+- [x] CI ירוק (yamllint עובר, YAML תקין)
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** נוספו inputs `paths` (ברירת מחדל workflows/n8n) ו-`post_merge_workflow` (ברירת מחדל configure-agent-router.yml). צעד ההעתקה לולאתי עם ולידציה (בלי / מוביל, בלי ..), טריגר-אחרי-מיזוג גנרי. כותרות PR/changelog נוסחו "template files". תאימות-לאחור מלאה (ברירות-מחדל = ההתנהגות הישנה). tools.ts עודכן (לא-פונקציונלי עד redeploy).
 
 **שינוי תוכנית:** —
 
@@ -121,3 +121,4 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 - שלב 1 הושלם — פירקנו את המערכת החיה: Railway נמחק (עצרנו את התשלום), ה-DNS נמחק, והריפו אורכב. נשארה לך לחיצה אחת קטנה למחיקת פרויקט ה-GCP.
 - שלב 2 הושלם — מחקנו את כל קבצי-הליבה של הייחוס ואת מנגנון הסנכרון האוטומטי שלו (כולל רישום הניטור), בלי להשאיר זכר.
 - שלב 3 הושלם — שער-בטיחות אחד (golden) נולד עם הייחוס אבל שימושי בפני עצמו; ניתקנו אותו מהשם המטעה והשארנו אותו עובד כשומר עצמאי על שלמות-התבנית.
+- שלב 4 הושלם — הכלי שמתקן מערכת חיה יודע עכשיו להחיל כל סוג תיקון-תבנית (לא רק סוכני-n8n), עם ברירות-מחדל ששומרות בדיוק על מה שהיה — אפס שבירה.

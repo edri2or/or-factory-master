@@ -351,12 +351,15 @@ export function registerTools(server: McpServer): void {
   // demand instead of an operator click. Its only write is that one-time SM
   // secret write, guarded inside the workflow.
   // refresh-system-agents.yml IS allowed — the cheap "iterate on one live system"
-  // loop: it pushes the factory's CURRENT agent-workflow JSONs
-  // (templates/system/workflows/n8n/*.json, from trusted main) into an already-
-  // provisioned system repo and triggers that system's configure-agent-router to
-  // reimport them into the live n8n — no full re-provision/deploy. Broker token is
-  // scoped to the one target repo (contents+actions write); it refuses control/
-  // factory repos and only ships the templated JSONs (same files provision pushes).
+  // loop and the factory's standing way to prove a template fix on a live system:
+  // it pushes the factory's CURRENT template files (any subtree under
+  // templates/system/, chosen by inputs.paths — default workflows/n8n, the agent
+  // JSONs — from trusted main) into an already-provisioned system repo via a PR, and
+  // then dispatches a system workflow (inputs.post_merge_workflow — default
+  // configure-agent-router.yml) to apply the change live — no full re-provision/
+  // deploy. Broker token is scoped to the one target repo (contents+actions write);
+  // it refuses control/factory repos and only ships the templated files (same files
+  // provision pushes).
   const DISPATCHABLE_WORKFLOWS = new Set([
     'provision-system.yml',
     'register-system-app.yml',
@@ -371,7 +374,7 @@ export function registerTools(server: McpServer): void {
 
   server.tool(
     'dispatch_workflow',
-    'Trigger a workflow_dispatch event for an ALLOWLISTED factory workflow (provision-system.yml, register-system-app.yml, deploy-railway-cloudflare.yml, configure-agent-router.yml, refresh-system-agents.yml, decommission-test-system.yml, oil-autofix-investigate.yml, deploy-mcp-server.yml, meta-monitoring-watchdog.yml). Dispatches as the org-wide broker App, so it works on or-factory-master AND any system repo (pass repo, e.g. "factory-test-24"). Polls briefly and returns the created run_id + run_url. This is the only WRITE tool on the server. configure-agent-router.yml wires the multi-agent router into a system\'s n8n (idempotent, soft-fail); refresh-system-agents.yml (dispatched on or-factory-master with inputs.system_name) pushes the factory\'s current agent-workflow JSONs into an existing system repo and reimports them into its live n8n — the cheap iterate-on-one-live-system loop, no re-provision; decommission-test-system.yml is test-only (Railway+DNS+repo-archive, no GCP/SM); deploy-mcp-server.yml idempotently redeploys this MCP service from main (to pick up new SM secret versions); meta-monitoring-watchdog.yml is the meta-monitor (cron-driven normally; dispatch it with setup_heartbeat=true for the one-time Better Stack heartbeat setup, or with no inputs for an ad-hoc run); the real-system decommission-system.yml is intentionally NOT dispatchable here.',
+    'Trigger a workflow_dispatch event for an ALLOWLISTED factory workflow (provision-system.yml, register-system-app.yml, deploy-railway-cloudflare.yml, configure-agent-router.yml, refresh-system-agents.yml, decommission-test-system.yml, oil-autofix-investigate.yml, deploy-mcp-server.yml, meta-monitoring-watchdog.yml). Dispatches as the org-wide broker App, so it works on or-factory-master AND any system repo (pass repo, e.g. "factory-test-24"). Polls briefly and returns the created run_id + run_url. This is the only WRITE tool on the server. configure-agent-router.yml wires the multi-agent router into a system\'s n8n (idempotent, soft-fail); refresh-system-agents.yml (dispatched on or-factory-master with inputs.system_name, optional inputs.paths + inputs.post_merge_workflow) syncs the factory\'s current template files (default: the agent-workflow JSONs) into an existing system repo via a PR and dispatches a system workflow (default configure-agent-router.yml) to apply the change live — the cheap iterate-on-one-live-system loop, no re-provision; decommission-test-system.yml is test-only (Railway+DNS+repo-archive, no GCP/SM); deploy-mcp-server.yml idempotently redeploys this MCP service from main (to pick up new SM secret versions); meta-monitoring-watchdog.yml is the meta-monitor (cron-driven normally; dispatch it with setup_heartbeat=true for the one-time Better Stack heartbeat setup, or with no inputs for an ad-hoc run); the real-system decommission-system.yml is intentionally NOT dispatchable here.',
     {
       ...repoParams,
       workflow_id: z.string().describe('Workflow file name to dispatch, e.g. provision-system.yml. Must be on the allowlist.'),
