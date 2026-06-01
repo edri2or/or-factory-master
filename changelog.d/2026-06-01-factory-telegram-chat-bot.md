@@ -59,3 +59,7 @@
   של טוקן-הבוט+סוד-ה-webhook קוצצו (נשארו רק allowlist + מפתח-OpenRouter). 40 בדיקות עוברות; OIL נשמר.
 - **שלב H — תיעוד בוט-אחד.** `docs/telegram-chat-bot-factory.md` (ארכיטקטורה/סודות/הפעלה), `docs/roadmap.md`
   Phase I (G/H/I), ושורת ה-MCP ב-`CLAUDE.md` עודכנו לתיאור הבוט המאוחד (`/telegram-webhook` יחיד, ניתוב לפי סוג).
+- **שלב I — אומת חי, הפיתוח נסגר.** מוזג (#269) ונפרס אוטומטית: ה-setWebhook המאוחד נרשם (`HTTP 200`,
+  `allowed_updates:["message","callback_query"]`), allowlist נשמר, LLM מחובר. **סבב חי הצליח** — Or שלח
+  ל**בוט-ההתראות הקיים** "מה מצב הפקטורי?" וקיבל תשובה מודעת-פקטורי בעברית מבוססת-כלים. אישורי OIL נשמרים
+  מבנית (ניתוב `oilapprove:`/`oilreject:` ל-handler הקיים ללא שינוי). `status: completed`.
