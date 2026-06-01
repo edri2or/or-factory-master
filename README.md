@@ -35,9 +35,7 @@ docs/
   bootstrap-record.md                    # how the factory was built
   external-state.md                      # IAM/App state outside the workflow
   roadmap.md                             # what's next
-  reference-system.md                    # standing reference system + anti-drift
-reference-system/
-  config.yml                             # the standing reference system's descriptor
+  live-test-loop.md                      # how provisioning changes are validated (live test system)
 skills/
   build-system/                          # provision a new system
   decommission-system/                   # tear one down (workflow TBD)

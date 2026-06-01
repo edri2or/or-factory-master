@@ -42,9 +42,9 @@ jobs:
       - name: Check watchdog registry updated
         run: bash scripts/check-watchdog-registry-updated.sh
 
-      - name: Check reference golden in sync
+      - name: Check template golden in sync
         # Anti-drift twin: a templates/system/ change must also update the
         # committed golden (tests/golden/system/), and the envsubst allow-list
         # must stay byte-identical across the renderer, provision, and
         # validator. No-op when already in sync.
-        run: bash scripts/check-reference-sync.sh
+        run: bash scripts/check-golden-sync.sh

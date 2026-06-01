@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# check-reference-sync.bats — unit tests for scripts/check-reference-sync.sh.
+# check-golden-sync.bats — unit tests for scripts/check-golden-sync.sh.
 #
 # The script enforces two invariants over HEAD~1..HEAD:
 #   (A) a templates/system/ change must also touch tests/golden/system/;
@@ -9,7 +9,7 @@
 
 load test_helper/common
 
-CHECK="$REPO_ROOT/scripts/check-reference-sync.sh"
+CHECK="$REPO_ROOT/scripts/check-golden-sync.sh"
 
 # The canonical allow-list used by the passing fixtures (content is irrelevant
 # to this gate — only that all three copies match).

@@ -24,17 +24,6 @@
       "enabled": true
     },
     {
-      "id": "reference-system-reconcile",
-      "name_he": "סנכרון מערכת-ייחוס",
-      "type": "cron-workflow",
-      "layer": "factory",
-      "proof_method": "gh-run-freshness",
-      "cadence": { "cron": "30 */6 * * *", "tolerance_hours": 9 },
-      "evidence": { "repo": "edri2or/or-factory-master", "workflow_file": "reference-system-reconcile.yml" },
-      "stage": 1,
-      "enabled": true
-    },
-    {
       "id": "audit-openrouter-orphan-keys",
       "name_he": "ביקורת מפתחות OpenRouter",
       "type": "cron-workflow",

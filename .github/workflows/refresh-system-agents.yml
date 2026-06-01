@@ -1,26 +1,32 @@
-name: Refresh System Agents (push current agent workflows to a live system)
+name: Refresh System (apply current factory templates to a live system)
 
 # The cheap "iterate on ONE live system" loop (the test-030 pattern). Applies the
-# factory's CURRENT agent-workflow JSONs (templates/system/workflows/n8n/*.json) to an
-# ALREADY-PROVISIONED system repo, then triggers that system's own
-# configure-agent-router.yml to reimport them into the live n8n — WITHOUT a full
-# re-provision/deploy (provision-system.yml refuses an existing system at preflight).
+# factory's CURRENT template files to an ALREADY-PROVISIONED system repo, then optionally
+# triggers a system workflow to apply them live — WITHOUT a full re-provision/deploy
+# (provision-system.yml refuses an existing system at preflight). This is the factory's
+# standing, generic method for proving a template fix on a live system before promotion.
 #
-# Use it to apply a merged template fix to one standing test system in place and verify
-# it live in Telegram: fix template on main -> dispatch this -> ~40s later the live n8n
-# is updated. A round is ~1-2 minutes, no new Railway project, no manual clicks.
+# It is generic over WHICH template subtree to sync (the `paths` input) and WHICH system
+# workflow to run afterwards (the `post_merge_workflow` input). The defaults reproduce the
+# original behaviour exactly: sync templates/system/workflows/n8n (the agent JSONs) and
+# run the system's configure-agent-router.yml to reimport them into the live n8n.
+#
+# Use it to apply a merged template fix to one live test system in place and verify it
+# live (e.g. in Telegram): fix template on main -> dispatch this -> ~40s later the live
+# system is updated. A round is ~1-2 minutes, no new Railway project, no manual clicks.
 #
 # Scope & safety:
-#   - Pushes ONLY workflows/n8n/*.json, copied from the factory's trusted `main`.
-#   - Source files carry @@PLACEHOLDERS@@; configure-agent-router substitutes them at
-#     import time (same as provision's scaffold), so the system repo stores the templated
-#     JSONs verbatim — exactly what provision pushes.
+#   - Syncs ONLY paths under templates/system/, copied from the factory's trusted `main`
+#     (the `paths` input is validated to be relative, no absolute paths, no `..`).
+#   - Template files carry @@PLACEHOLDERS@@; the post-merge system workflow substitutes
+#     them at apply time (same as provision's scaffold), so the system repo stores the
+#     templated files verbatim — exactly what provision pushes.
 #   - Broker App token is scoped to the ONE target repo (contents:write + actions:write).
 #   - Direct push to the system's main is by design (mirrors provision's scaffold push;
 #     system branch protection is enforce_admins:false and the broker is admin).
 #   - HARD-refuses the control project and the factory repo; validates system_name shape.
-#   - Idempotent: byte-identical JSONs -> no commit, no push (still optionally re-runs
-#     configure-agent-router, which is itself idempotent/soft-fail).
+#   - Idempotent: byte-identical files -> no commit, no push (still optionally re-runs the
+#     post-merge workflow, which is itself idempotent/soft-fail).
 
 on:
   workflow_dispatch:
@@ -29,8 +35,18 @@ on:
         description: "Existing provisioned system repo to refresh (e.g. factory-test-tavily2)."
         required: true
         type: string
+      paths:
+        description: "Comma-separated template subpaths under templates/system/ to sync into the system repo (file or dir; e.g. 'workflows/n8n' or 'Caddyfile,workflows/n8n'). Default: the agent-workflow JSONs."
+        required: false
+        default: "workflows/n8n"
+        type: string
+      post_merge_workflow:
+        description: "System workflow to dispatch after the merge to apply the change live (e.g. configure-agent-router.yml, deploy-railway-cloudflare.yml). Leave empty to skip. Default: configure-agent-router.yml."
+        required: false
+        default: "configure-agent-router.yml"
+        type: string
       run_configure:
-        description: "After pushing, also trigger the system's configure-agent-router.yml to reimport into n8n (true/false)."
+        description: "Master on/off for the post-merge dispatch (true/false). When true, dispatches post_merge_workflow; when false, skips it."
         required: false
         default: "true"
         type: string
@@ -87,6 +103,8 @@ jobs:
           SYSTEM_NAME: ${{ inputs.system_name }}
           RUN_ID: ${{ github.run_id }}
           RUN_CONFIGURE: ${{ inputs.run_configure }}
+          PATHS: ${{ inputs.paths }}
+          POST_MERGE_WORKFLOW: ${{ inputs.post_merge_workflow }}
         run: |
           set -uo pipefail
           # --- Mint a broker App token scoped to JUST this repo (contents + PRs + actions) ---
@@ -110,39 +128,52 @@ jobs:
             echo "FAIL: could not clone edri2or/${SYSTEM_NAME} (does it exist / is it provisioned?)" >&2; exit 1
           fi
 
-          # --- Copy the agent-workflow JSONs from the factory's trusted main ---
-          [ -d templates/system/workflows/n8n ] || { echo "FAIL: templates/system/workflows/n8n not found" >&2; exit 1; }
-          mkdir -p sys-target/workflows/n8n
-          cp templates/system/workflows/n8n/*.json sys-target/workflows/n8n/
-
+          # --- Copy the requested template subpaths from the factory's trusted main ---
+          # `paths` is a comma-separated list of file/dir paths RELATIVE to
+          # templates/system/. Each is validated (no absolute path, no `..`), then
+          # copied to the same relative location in the system repo. Default is
+          # `workflows/n8n` (the agent JSONs) — identical to the original behaviour.
           git -C sys-target config user.name "or-factory-master[bot]"
           git -C sys-target config user.email "factory-master-broker@or-factory-master-control.iam.gserviceaccount.com"
-          git -C sys-target add workflows/n8n
+          IFS=',' read -ra SYNC_PATHS <<< "${PATHS:-workflows/n8n}"
+          for raw in "${SYNC_PATHS[@]}"; do
+            p="${raw// /}"; [ -n "$p" ] || continue
+            case "$p" in
+              /*|*..*) echo "FAIL: path '$p' must be relative under templates/system/ (no leading / and no '..')" >&2; exit 1 ;;
+            esac
+            src="templates/system/${p}"
+            [ -e "$src" ] || { echo "FAIL: ${src} not found in factory main" >&2; exit 1; }
+            dest_parent="sys-target/$(dirname "$p")"
+            mkdir -p "$dest_parent"
+            cp -r "$src" "$dest_parent/"
+            git -C sys-target add "$p"
+            echo "INFO: synced templates/system/${p} -> ${p}"
+          done
           if git -C sys-target diff --cached --quiet; then
-            echo "INFO: edri2or/${SYSTEM_NAME} agent workflows already current — no PR needed."
+            echo "INFO: edri2or/${SYSTEM_NAME} template files already current — no PR needed."
             echo "changed=false" >> "$GITHUB_OUTPUT"
           else
             # System repos protect main (PR + 4 green CI checks required) — a GitHub
             # App is NOT an admin bypass, so go through a PR: branch -> push -> open
             # PR -> wait for the system's own CI -> merge. Add a changelog.d fragment
-            # so the system's "Changelog gates" check passes on the .json change.
-            BRANCH="refresh-agents-${RUN_ID}"
+            # so the system's "Changelog gates" check passes on the synced files.
+            BRANCH="refresh-system-${RUN_ID}"
             DATE_UTC=$(date -u +%Y-%m-%d)
             mkdir -p sys-target/changelog.d
             {
-              echo "### Refresh agent workflows from or-factory-master templates"
+              echo "### Refresh template files from or-factory-master"
               echo
-              echo "- Synced \`workflows/n8n/*.json\` to the factory's current templates via refresh-system-agents.yml (run ${RUN_ID})."
-            } > "sys-target/changelog.d/${DATE_UTC}-refresh-agents-${RUN_ID}.md"
+              echo "- Synced \`${PATHS}\` to the factory's current templates via refresh-system-agents.yml (run ${RUN_ID})."
+            } > "sys-target/changelog.d/${DATE_UTC}-refresh-system-${RUN_ID}.md"
             git -C sys-target add changelog.d
             git -C sys-target checkout -q -b "$BRANCH"
-            git -C sys-target commit -q -m "ci: refresh agent workflows from or-factory-master templates"
+            git -C sys-target commit -q -m "ci: refresh template files from or-factory-master"
             if ! perr=$(git -C sys-target push "https://x-access-token:${TOKEN}@github.com/edri2or/${SYSTEM_NAME}.git" "$BRANCH:$BRANCH" 2>&1); then
               echo "FAIL: push branch failed: $(printf '%s' "$perr" | sed "s/${TOKEN}/***/g")" >&2; exit 1
             fi
             PR_URL=$(gh pr create --repo "edri2or/${SYSTEM_NAME}" --base main --head "$BRANCH" \
-              --title "ci: refresh agent workflows from templates" \
-              --body "Automated refresh of workflows/n8n/*.json from or-factory-master templates (refresh-system-agents.yml run ${RUN_ID}).") \
+              --title "ci: refresh template files from or-factory-master" \
+              --body "Automated refresh of \`${PATHS}\` from or-factory-master templates (refresh-system-agents.yml run ${RUN_ID}).") \
               || { echo "FAIL: gh pr create failed for edri2or/${SYSTEM_NAME}" >&2; exit 1; }
             echo "INFO: opened ${PR_URL}"
             # Give the system's CI a moment to register, then wait for it to finish.
@@ -153,17 +184,20 @@ jobs:
             if ! merr=$(gh pr merge "$PR_URL" --repo "edri2or/${SYSTEM_NAME}" --squash --delete-branch 2>&1); then
               echo "FAIL: merge failed: $(printf '%s' "$merr" | sed "s/${TOKEN}/***/g")" >&2; exit 1
             fi
-            echo "PASS: merged refreshed workflows/n8n/*.json into edri2or/${SYSTEM_NAME}:main"
+            echo "PASS: merged refreshed \`${PATHS}\` into edri2or/${SYSTEM_NAME}:main"
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
 
-          # --- Reimport into the live n8n via the system's own configure (after merge) ---
-          if [ "$RUN_CONFIGURE" = "true" ]; then
-            if gh workflow run configure-agent-router.yml --repo "edri2or/${SYSTEM_NAME}" --ref main 2>/dev/null; then
-              echo "PASS: dispatched configure-agent-router.yml on edri2or/${SYSTEM_NAME} (watch it to confirm the n8n reimport)."
+          # --- Apply live via the system's own workflow (after merge) ---
+          # Dispatches post_merge_workflow (default configure-agent-router.yml) so the
+          # merged template change takes effect on the live system. Skipped when
+          # run_configure=false or post_merge_workflow is empty.
+          if [ "$RUN_CONFIGURE" = "true" ] && [ -n "${POST_MERGE_WORKFLOW:-}" ]; then
+            if gh workflow run "$POST_MERGE_WORKFLOW" --repo "edri2or/${SYSTEM_NAME}" --ref main 2>/dev/null; then
+              echo "PASS: dispatched ${POST_MERGE_WORKFLOW} on edri2or/${SYSTEM_NAME} (watch it to confirm the change is applied live)."
             else
-              echo "WARN: could not dispatch configure-agent-router.yml — dispatch it manually to reimport." >&2
+              echo "WARN: could not dispatch ${POST_MERGE_WORKFLOW} — dispatch it manually to apply the change." >&2
             fi
           else
-            echo "INFO: run_configure=false — skipped reimport; dispatch configure-agent-router.yml when ready."
+            echo "INFO: post-merge dispatch skipped (run_configure=${RUN_CONFIGURE}, post_merge_workflow='${POST_MERGE_WORKFLOW:-}')."
           fi
