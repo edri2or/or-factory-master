@@ -28,6 +28,12 @@
 |---|---|
 | fix | The idempotent re-run then failed at the `service-accounts create` step: the `_create_ok` helper only treated the literal token `ALREADY_EXISTS` as success, but gcloud phrases an existing service account differently (`... is the subject of a conflict: Service account ... already exists within project`), so a second run errored instead of continuing. `_create_ok` now matches `ALREADY_EXISTS`/`already exists`/`subject of a conflict` case-insensitively, so re-runs are truly idempotent across all three resource kinds (pool/provider/SA). `shellcheck --severity=error` clean. |
 
+## fix: prove-before-merge — provision _bind must pass --condition=None on conditional-policy projects (Stage 4 fix)
+
+| Type | Summary |
+|---|---|
+| fix | Standing up the Stage-4 live test system failed at provision's "Grant project-level IAM" step: `gcloud projects add-iam-policy-binding ... --quiet` errored with *"Adding a binding without specifying a condition to a policy containing conditions is prohibited in non-interactive mode. Run the command again with `--condition=None`."* Root cause is a side-effect of Stage 1: the sandbox toy-key's **conditioned** `secretAccessor` made `factory-test-25`'s project IAM policy contain a condition, and from then on gcloud refuses to add an *unconditional* binding there without an explicit `--condition=None`. Fix: provision-system.yml's `_bind` helper now passes `--condition=None` (a harmless no-op on condition-free policies — i.e. every real system's own project — and the documented requirement on a conditional one). This unblocks every reuse-mode provision onto the shared test backend; no behaviour change for normal/adopt provisions. |
+
 ## feat: prove-before-merge — prove-on-test-system apply body + per-system App pull_requests:write (Stage 3)
 
 | Type | Summary |
