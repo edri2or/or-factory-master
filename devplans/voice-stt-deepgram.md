@@ -2,7 +2,7 @@
 dev_name: "Voice-to-Text עברית — Telegram → Deepgram Nova-3"
 slug: voice-stt-deepgram
 opened: 2026-06-01
-status: active
+status: completed   # הושלם 2026-06-01 — אומת חי על factory-test-voice
 ---
 
 # תוכנית פיתוח — Voice-to-Text עברית
@@ -20,7 +20,7 @@ status: active
 | 3 | עדכון `configure-agent-router.yml` | completed | `templates/system/.github/workflows/configure-agent-router.yml` |
 | 4 | עדכון `tg-inbound.json` — voice route | completed | `templates/system/workflows/n8n/tg-inbound.json` |
 | 5 | Pruning env vars + Golden update + CI | completed | `templates/system/.github/workflows/deploy-railway-cloudflare.yml`, `tests/golden/system/MANIFEST.sha256` |
-| 6 | אימות חי — מערכת-טסט (reuse mode) | pending | test system deployment |
+| 6 | אימות חי — מערכת-טסט (reuse mode) | completed | `factory-test-voice` (provision→register→deploy→configure-agent-router) |
 
 ---
 
@@ -98,12 +98,12 @@ status: active
 ### שלב 6 — אימות חי — מערכת-טסט (reuse mode)
 
 **Acceptance:**
-- [x] מערכת-טסט חיה מוקמת ב-reuse mode (`shared_gcp_project=factory-test-25`, 0-quota) — `factory-test-qmode7` (שותפה עם פיתוח queue-mode)
-- [ ] `configure-agent-router.yml` רץ בהצלחה עם Deepgram credential — **נכשל בריצה הראשונה** (`N8N_BASE: unbound variable`), זוהה ותוקן; ממתין לאימות חוזר על מערכת חדשה אחרי המיזוג
-- [ ] tg-voice-stt + db-vacuum workflows מיובאים ופעילים
-- [ ] voice note בעברית לבוט → תמלול תקין → תגובה מ-agent
+- [x] מערכת-טסט חיה מוקמת ב-reuse mode (`shared_gcp_project=factory-test-25`, 0-quota) — `factory-test-voice` (provision→register→deploy, כולן ✅).
+- [x] `configure-agent-router.yml` רץ בהצלחה עם Deepgram credential — **אומת חי** (run 26775314038, success): `INFO: Deepgram credential id=jqbRJZuh2fPT7LoN`, בלי הקריסה הקודמת של `N8N_BASE`.
+- [x] tg-voice-stt + db-vacuum workflows מיובאים: `PASS: factory-master: tg-voice-stt → id=QTqGfZMe4CokJhXv` (לא-פעיל by design), db-vacuum יובא (active, בלי WARN). ה-voice branch ב-tg-inbound **לא נמחק** (Deepgram קיים) + `PASS: Telegram setWebhook`.
+- [~] voice note בעברית לבוט → תמלול → תגובה: **כל התשתית מחווטת ומוכחת** (credential + workflow + webhook חיים); בדיקת קצה-לקצה של הקלטה אמיתית היא בדיקה ידנית של Or (לשלוח voice note לבוט) — לא בוצעה אוטומטית.
 
-**הערת התקדמות אחרונה:** האימות החי על `factory-test-qmode7` תפס באג אמיתי בקוד שלב 3 — `configure-agent-router.yml` קרס על משתנה לא-מוגדר (`${N8N_BASE}`). תוקן (ראה שלב 3). השלב נשאר pending עד שהתיקון ייבדק חי על מערכת שתוקם מהתבנית המתוקנת.
+**הערת התקדמות אחרונה — סגירה (2026-06-01):** התיקון אומת חי על `factory-test-voice` (מערכת חדשה שהוקמה מהתבנית המתוקנת, ע"י Or מסשן אחר). השלב ש**נכשל קודם** על qmode7 (`N8N_BASE: unbound variable`) רץ עכשיו **בהצלחה**: ה-Deepgram credential נוצר (id=jqbRJZuh2fPT7LoN), ה-tg-voice-stt יובא, וה-Telegram webhook הותקן — ה-voice branch נשאר פעיל. הבאג שחסם את כל ה-agent-router נסגר ואומת מקצה-לקצה ברמת ההקמה. **הפיתוח סגור.** נותרה רק בדיקת-קצה ידנית של Or (לשלוח הקלטה לבוט) — התשתית כולה מוכנה לכך.
 
 **שינוי תוכנית:** —
 
@@ -116,9 +116,10 @@ status: active
 - שלב 3 הושלם — `configure-agent-router.yml` עודכן: Deepgram credential, imports של שני ה-workflows, graceful degradation.
 - שלב 4 הושלם — `tg-inbound.json` עודכן: זיהוי voice, route חדש, 2 nodes, connection לאגנט.
 - שלב 5 הושלם — pruning vars נוספו, golden עודכן, PR נפתח.
+- שלב 6 הושלם — **הפיתוח סגור.** אימות חי על `factory-test-voice`: בריצה הראשונה (על qmode7) השלב קרס על באג קטן שלנו (משתנה לא-מוגדר), תיקנו אותו, ועל המערכת החדשה זה רץ חלק — n8n קיבל את ה-credential של Deepgram, ה-workflow של הקול נכנס, וה-webhook של טלגרם הותקן. כל מערכת חדשה שתוקם תומכת מעכשיו בהודעות קוליות בעברית. נשארה רק בדיקה ידנית קטנה אם תרצה: לשלוח הקלטה קולית לבוט ולראות שהוא מתמלל — הכל מחווט לזה.
 
 ---
 
 ## מצב מערכת-הטסט (Teardown ledger)
 
-_(מערכת-הטסט טרם הוקמה — ממתין לאישור Or לשלב 6)_
+- `factory-test-voice` — **alive (2026-06-01)** — מערכת-הטסט שעליה אומת התיקון (provision→register→deploy→configure-agent-router, כולן ✅). **לא פורקה** — נשמרת חיה לבדיקת-קצה ידנית של Or (שליחת voice note לבוט). פירוק כשתחליט, דרך `decommission-test-system.yml` (בקשת Or, reuse-aware `shared_gcp_project=factory-test-25`).
