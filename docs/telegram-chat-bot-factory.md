@@ -88,9 +88,25 @@ The allowlist is a small, fixed set of **safe, parameterless, idempotent** workf
   processes the LLM loop synchronously (bounded: ≤4 tool rounds, 45s/call) and then `sendMessage`s
   the reply, rather than fire-and-forget. This mirrors the OIL approval webhook.
 - **Dormant by default.** Until the real bot token + an OpenRouter key are set, the bot stays off
-  (the deploy creates placeholders; `setWebhook` skips a placeholder token). To activate: set
-  `factory-telegram-chat-bot-token` (from @BotFather) and Or's id in `factory-telegram-chat-allowlist`,
-  then re-run `deploy-mcp-server.yml`.
+  (the deploy creates placeholders; `setWebhook` skips a placeholder token). The OpenRouter LLM key
+  is minted automatically from `openrouter-management-key` at deploy.
+
+### Activating the bot (one-time)
+
+Two operator-supplied values are needed; `deploy-mcp-server.yml` seeds both into Secret Manager
+and then `setWebhook` activates the bot — no terminal, no printed secrets:
+
+1. **Create the bot** — in Telegram, message **@BotFather** → `/newbot`, follow the prompts, copy
+   the bot token it gives you.
+2. **Store the token** — add it as a GitHub Actions **secret** named `FACTORY_TG_CHAT_BOT_TOKEN`
+   on `edri2or/or-factory-master` (Settings → Secrets and variables → Actions → New secret). It's
+   masked and never logged; the deploy's seed step writes it to `factory-telegram-chat-bot-token`.
+3. **Allow your account** — re-run `deploy-mcp-server.yml` with the `chat_allowlist` input set to
+   your numeric Telegram user id (from @userinfobot). The seed step validates it (numeric CSV) and
+   writes `factory-telegram-chat-allowlist`. (Mirrors `set-oil-allowlist.yml`; the id is non-secret.)
+
+The same deploy run mounts the new `:latest` versions and registers the chat bot's `setWebhook`.
+Re-running with both blank is a safe no-op (never overwrites a real value with empty).
 
 ## Not in scope here
 
