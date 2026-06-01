@@ -22,7 +22,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 | 1 | מתג `QUEUE_MODE` + מעטפות SM (תשתית רדומה) | completed | `provision-system.yml`, deploy template, golden |
 | 2 | שירות Redis מותנה | completed | deploy template, golden |
 | 3 | env ראשי מותנה + שירות worker מותנה | completed | deploy template, golden |
-| 4 | תיעוד | pending | `docs/roadmap.md`, `AGENTS.md.template`, golden |
+| 4 | תיעוד | completed | `docs/roadmap.md`, `AGENTS.md.template`, golden |
 | 5 | אימות חי (Or-gated) + סגירה | pending | מערכת-טסט reuse |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
@@ -104,12 +104,13 @@ golden רוענן. נקודות לאימות חי (שלב 5): שפקודת `n8n 
 ### שלב 4 — תיעוד
 
 **Acceptance:**
-- [ ] `docs/roadmap.md`: מקטע חדש — המתג, ברירת-מחדל כבוי, עלות ~$10–20, Postgres גדל מהר יותר
-      (binary ב-DB), והדלקה על מערכת קיימת (re-run deploy עם `QUEUE_MODE=true`; אין back-fill).
-- [ ] `templates/system/AGENTS.md.template`: הערה קצרה על אפשרות queue mode.
-- [ ] golden רוענן (AGENTS תחת `templates/system/**`); שערים ירוקים.
+- [x] `docs/roadmap.md`: מקטע "Phase J" חדש — המתג, ברירת-מחדל כבוי, עלות ~$10–20, Postgres גדל
+      מהר יותר (binary ב-DB), והדלקה על מערכת קיימת (re-run deploy עם `QUEUE_MODE=true`; אין back-fill).
+- [x] `templates/system/AGENTS.md.template`: מקטע "Queue mode (scaling)" + 4 מעטפות חדשות + bullet.
+- [x] golden רוענן (AGENTS תחת `templates/system/**`); שערים ירוקים.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם. roadmap (Phase J) + AGENTS template עודכנו; golden רוענן (hash של
+AGENTS.md + rendered/AGENTS.md). נשאר רק שלב 5 — אימות חי על מערכת-טסט, באישור עלות מ-Or.
 
 **שינוי תוכנית:** —
 
@@ -142,3 +143,4 @@ golden רוענן. נקודות לאימות חי (שלב 5): שפקודת `n8n 
 - שלב 1 הושלם — הוספנו כפתור `QUEUE_MODE` (כבוי כברירת-מחדל) ו-4 "מגירות" ריקות ב-Secret Manager. שינוי רדום לגמרי; מערכת כבויה נשארת בדיוק כמו היום.
 - שלב 2 הושלם — הוספנו את שירות ה-Redis (התור), אבל הוא קם **רק** כשהכפתור דלוק. עדיין קוד בלבד, אפס עלות. מערכת כבויה לא רואה שום שינוי.
 - שלב 3 הושלם — חיברנו את n8n לתור והוספנו את העובד (worker), שניהם רק כשהכפתור דלוק. הוכחנו במתמטיקה שמערכת כבויה מקבלת בדיוק אותם משתנים כמו היום, אות-באות. עדיין קוד בלבד, אפס עלות.
+- שלב 4 הושלם — תיעדנו את הכל (ב-roadmap ובמסמך שכל מערכת מקבלת): מה הכפתור עושה, כמה זה עולה, ואיך מדליקים על מערכת קיימת. נשאר רק האימות החי.
