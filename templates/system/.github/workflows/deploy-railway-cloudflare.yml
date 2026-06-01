@@ -591,8 +591,7 @@ jobs:
             # Railway does not shell-expand the start command, and an embedded
             # quoted "$VAR" gets mangled and silently dropped, so redis falls back
             # to its default config with NO password and NO AOF (caught live on
-            # factory-test-qmode: the worker's clean `n8n worker` command applied
-            # but redis's quoted one did not). The password is hex (openssl rand
+            # factory-test-qmode). The password is hex (openssl rand
             # -hex), so it needs no quoting and parses cleanly. Idempotent +
             # self-healing: read the current start command and update only when it
             # differs, so a re-deploy repairs a mis-configured redis without a
@@ -699,9 +698,14 @@ jobs:
 
           # ===== (queue mode) n8n worker service: SM-first, find, then create =====
           # Second n8n process that pulls jobs from Redis and runs them — created
-          # ONLY when QM=true. Same image as the main n8n; start command
-          # `n8n worker` (the n8n binary is on PATH, so Railway's shell start
-          # command runs the worker). No public/custom domain, no Caddy — the
+          # ONLY when QM=true. Same image as the main n8n; start command is just
+          # `worker` (NOT `n8n worker`): the n8n image entrypoint already runs
+          # `exec n8n "$@"`, so Railway's start command is passed as args to it —
+          # `worker` -> `n8n worker` (worker mode), whereas `n8n worker` would
+          # become `n8n n8n worker` and silently fall back to MAIN mode (a second
+          # main that only enqueues and never consumes the queue, so every webhook
+          # execution hangs — caught live on factory-test-qmode3: jobs 1/2/3 were
+          # "Enqueued" by the main but never processed). No public/custom domain, no Caddy — the
           # worker is HTTP-less. Shares the main n8n's DB, encryption key, and
           # queue/Redis config, but NOT the main-only `OFFLOAD_MANUAL_EXECUTIONS_TO_WORKERS`
           # flag. WORKER_FIRST_TIME guards env/start-command to a
@@ -764,8 +768,8 @@ jobs:
                 }')"
               _gql 'mutation($eid: String!, $sid: String!, $input: ServiceInstanceUpdateInput!) { serviceInstanceUpdate(environmentId: $eid, serviceId: $sid, input: $input) }' \
                 "$(jq -cn --arg eid "$ENV_ID" --arg sid "$WORKER_ID" \
-                  '{eid: $eid, sid: $sid, input: {startCommand: "n8n worker"}}')" >/dev/null
-              echo "PASS: worker env + 'n8n worker' start command set."
+                  '{eid: $eid, sid: $sid, input: {startCommand: "worker"}}')" >/dev/null
+              echo "PASS: worker env + 'worker' start command set (entrypoint runs 'n8n worker')."
             else
               echo "INFO: worker env/start command already set — skipping to avoid a needless redeploy."
             fi
