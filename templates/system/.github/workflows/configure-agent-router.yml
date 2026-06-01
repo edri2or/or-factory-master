@@ -310,10 +310,7 @@ jobs:
             if [ -z "$CRED_DEEPGRAM_ID" ]; then
               DG_BODY=$(jq -cn --arg n "$DG_CRED_NAME" --arg k "$DEEPGRAM_KEY" \
                 '{"name":$n,"type":"httpHeaderAuth","data":{"name":"Authorization","value":("Token "+$k)}}')
-              HTTP=$(curl -sS -o /tmp/ar-cred-dg.json -w '%{http_code}' --max-time 20 \
-                -X POST "${N8N_BASE}/rest/credentials" \
-                -H "Content-Type: application/json" -H "X-N8N-API-KEY: ${N8N_API_KEY}" \
-                -d "$DG_BODY" || echo "000")
+              HTTP=$(_napi POST "$BASE/rest/credentials" /tmp/ar-cred-dg.json "$DG_BODY")
               { [ "$HTTP" = "200" ] || [ "$HTTP" = "201" ]; } || { head -c 300 /tmp/ar-cred-dg.json >&2 || true; echo "WARN: POST /rest/credentials (Deepgram) HTTP $HTTP — voice STT skipped" >&2; }
               CRED_DEEPGRAM_ID=$(jq -r '.data.id // .id // empty' /tmp/ar-cred-dg.json || echo "")
             fi
