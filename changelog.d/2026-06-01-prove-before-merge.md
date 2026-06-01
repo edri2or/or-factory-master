@@ -27,3 +27,9 @@
 | Type | Summary |
 |---|---|
 | fix | The idempotent re-run then failed at the `service-accounts create` step: the `_create_ok` helper only treated the literal token `ALREADY_EXISTS` as success, but gcloud phrases an existing service account differently (`... is the subject of a conflict: Service account ... already exists within project`), so a second run errored instead of continuing. `_create_ok` now matches `ALREADY_EXISTS`/`already exists`/`subject of a conflict` case-insensitively, so re-runs are truly idempotent across all three resource kinds (pool/provider/SA). `shellcheck --severity=error` clean. |
+
+## feat: prove-before-merge — branch-runnable prove-on-test-system skeleton (Stage 2)
+
+| Type | Summary |
+|---|---|
+| feat | Stage 2 — the dispatch interface for "prove → merge". New `.github/workflows/prove-on-test-system.yml`: `workflow_dispatch` (inputs `system_name`/`paths`/`post_apply_workflow`) with **no** `if: refs/heads/main` guard — it is the one factory workflow meant to run off a work branch. It authenticates as the minimal `sandbox-tester-sa` via `github-sandbox-provider` (factory repo, any ref) — **never** the broker — validates `system_name` (refusing control/factory targets), and asserts the active credential is the sandbox SA (hard-fails if it sees the broker). The apply/prove body (mint the test repo's token from `factory-test-25` SM, push the branch's `templates/system/<paths>`, dispatch the post-apply workflow) is Stage 3. Landing the skeleton on `main` is what makes it branch-dispatchable (GitHub requires a `workflow_dispatch` file on the default branch). Also adds it to the MCP `dispatch_workflow` allowlist (`services/mcp-server/src/tools.ts`, so it can be dispatched with `ref=<branch>`) and to `monitoring/registry-exempt.txt` (manual tool, no cadence). `yamllint` + `tsc` + `node --test` (40/40) green; needs one MCP redeploy to take effect. |

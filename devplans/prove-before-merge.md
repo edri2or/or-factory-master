@@ -19,7 +19,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
 | 1 | הקמת זהות-הסנדבוקס (תשתית; broker; ממוזג ראשון) | completed | `.github/workflows/bootstrap-sandbox-tester.yml`, `scripts/bootstrap-sandbox-tester.sh`, `services/mcp-server/src/tools.ts` |
-| 2 | שלד ה-workflow המתזמר ל-main (כדי שיהיה ניתן-להרצה-מענף) | pending | `.github/workflows/prove-on-test-system.yml` |
+| 2 | שלד ה-workflow המתזמר ל-main (כדי שיהיה ניתן-להרצה-מענף) | in-progress | `.github/workflows/prove-on-test-system.yml`, `services/mcp-server/src/tools.ts`, `monitoring/registry-exempt.txt` |
 | 3 | גוף ה-workflow — מפותח ומוכח מענף (ה-dogfood) | pending | `.github/workflows/prove-on-test-system.yml` |
 | 4 | הוכחה חיה על מערכת-טסט (מהלך-עלות, באישור Or) | pending | — (הרצות חיות) |
 | 5 | תיעוד + סגירה | pending | `docs/live-test-loop.md`, `CLAUDE.md` |
@@ -66,12 +66,17 @@ github-app-* בלבד), ואפס תפקידים אחרים (לא owner, לא adm
 הזהות. נדרש מיזוג ל-main כדי ש-GitHub יאפשר הרצה-מענף בהמשך.
 
 **Acceptance:**
-- [ ] הקובץ קיים עם `workflow_dispatch` + ה-inputs, גוף-שלד שמאמת מול provider-הסנדבוקס.
-- [ ] שערים סטטיים ירוקים; אין שינוי golden.
+- [x] הקובץ קיים עם `workflow_dispatch` + ה-inputs, גוף-שלד שמאמת מול provider-הסנדבוקס ומוודא שהזהות הפעילה היא ה-sandbox SA (לא broker).
+- [x] שערים סטטיים ירוקים (yamllint + tsc + node --test 40/40); אין שינוי golden.
+- [ ] לאחר מיזוג + redeploy של ה-MCP: אימות חי שהשלד ניתן-להרצה ומאמת כ-sandbox SA.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** השלד נכתב — `workflow_dispatch` בלי נעילת-main, אימות דרך
+`github-sandbox-provider`→`sandbox-tester-sa`, ובדיקת-זהות שנכשלת אם רואים את ה-broker. הוסף
+ל-allowlist של ה-MCP (`tools.ts`) ולרשימת-הפטור של השומר. נותר: מיזוג + redeploy אחד של ה-MCP,
+ואז הרצת-בדיקה (אפשר מ-main קודם) שמאשרת שהאימות עובד.
 
-**שינוי תוכנית:** —
+**שינוי תוכנית:** הוספתי כבר בשלב 2 גם את ה-allowlist + הפטור (במקור תוכננו לשלב 5), כדי
+שרענון-ה-MCP אחד יספיק גם לשלב 3 (הרצת השלד/הגוף מענף).
 
 ---
 

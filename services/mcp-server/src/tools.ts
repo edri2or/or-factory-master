@@ -365,6 +365,12 @@ export function registerTools(server: McpServer): void {
   // minimal sandbox-tester-sa). It runs as the broker (main-locked) but BUILDS a weak,
   // sandbox-only identity; the script hard-refuses any project other than
   // factory-test-25. Allowlisting lets the agent run it without an operator click.
+  // prove-on-test-system.yml IS allowed — the "prove -> merge" loop: apply a WORK-BRANCH's
+  // change to an already-standing live test system and prove it live BEFORE merge. Unique
+  // among dispatchable workflows in that it is meant to run off a NON-main ref (pass
+  // ref=<branch>); its safety is the sandbox identity it auths as (sandbox-tester-sa via
+  // github-sandbox-provider, factory repo / any ref) — never the broker. It can only reach a
+  // throwaway test repo's contents via that test system's own github-app-* creds.
   const DISPATCHABLE_WORKFLOWS = new Set([
     'provision-system.yml',
     'register-system-app.yml',
@@ -376,11 +382,12 @@ export function registerTools(server: McpServer): void {
     'deploy-mcp-server.yml',
     'meta-monitoring-watchdog.yml',
     'bootstrap-sandbox-tester.yml',
+    'prove-on-test-system.yml',
   ]);
 
   server.tool(
     'dispatch_workflow',
-    'Trigger a workflow_dispatch event for an ALLOWLISTED factory workflow (provision-system.yml, register-system-app.yml, deploy-railway-cloudflare.yml, configure-agent-router.yml, refresh-system-agents.yml, decommission-test-system.yml, oil-autofix-investigate.yml, deploy-mcp-server.yml, meta-monitoring-watchdog.yml). Dispatches as the org-wide broker App, so it works on or-factory-master AND any system repo (pass repo, e.g. "factory-test-24"). Polls briefly and returns the created run_id + run_url. This is the only WRITE tool on the server. configure-agent-router.yml wires the multi-agent router into a system\'s n8n (idempotent, soft-fail); refresh-system-agents.yml (dispatched on or-factory-master with inputs.system_name, optional inputs.paths + inputs.post_merge_workflow) syncs the factory\'s current template files (default: the agent-workflow JSONs) into an existing system repo via a PR and dispatches a system workflow (default configure-agent-router.yml) to apply the change live — the cheap iterate-on-one-live-system loop, no re-provision; decommission-test-system.yml is test-only (Railway+DNS+repo-archive, no GCP/SM); deploy-mcp-server.yml idempotently redeploys this MCP service from main (to pick up new SM secret versions); meta-monitoring-watchdog.yml is the meta-monitor (cron-driven normally; dispatch it with setup_heartbeat=true for the one-time Better Stack heartbeat setup, or with no inputs for an ad-hoc run); bootstrap-sandbox-tester.yml is the one-time, idempotent setup of the sandbox toy-key identity on factory-test-25 (a dedicated WIF pool+provider + a minimal sandbox-tester-sa; the script hard-refuses any other project); the real-system decommission-system.yml is intentionally NOT dispatchable here.',
+    'Trigger a workflow_dispatch event for an ALLOWLISTED factory workflow (provision-system.yml, register-system-app.yml, deploy-railway-cloudflare.yml, configure-agent-router.yml, refresh-system-agents.yml, decommission-test-system.yml, oil-autofix-investigate.yml, deploy-mcp-server.yml, meta-monitoring-watchdog.yml). Dispatches as the org-wide broker App, so it works on or-factory-master AND any system repo (pass repo, e.g. "factory-test-24"). Polls briefly and returns the created run_id + run_url. This is the only WRITE tool on the server. configure-agent-router.yml wires the multi-agent router into a system\'s n8n (idempotent, soft-fail); refresh-system-agents.yml (dispatched on or-factory-master with inputs.system_name, optional inputs.paths + inputs.post_merge_workflow) syncs the factory\'s current template files (default: the agent-workflow JSONs) into an existing system repo via a PR and dispatches a system workflow (default configure-agent-router.yml) to apply the change live — the cheap iterate-on-one-live-system loop, no re-provision; decommission-test-system.yml is test-only (Railway+DNS+repo-archive, no GCP/SM); deploy-mcp-server.yml idempotently redeploys this MCP service from main (to pick up new SM secret versions); meta-monitoring-watchdog.yml is the meta-monitor (cron-driven normally; dispatch it with setup_heartbeat=true for the one-time Better Stack heartbeat setup, or with no inputs for an ad-hoc run); bootstrap-sandbox-tester.yml is the one-time, idempotent setup of the sandbox toy-key identity on factory-test-25 (a dedicated WIF pool+provider + a minimal sandbox-tester-sa; the script hard-refuses any other project); prove-on-test-system.yml is the "prove -> merge" loop — dispatch it with ref=<branch> + inputs.system_name (optional inputs.paths + inputs.post_apply_workflow) to apply that branch\'s templates/system change to an already-standing live test system and prove it live BEFORE merge; it auths as the minimal sandbox-tester-sa (never the broker), so it is the one workflow meant to run off a non-main ref; the real-system decommission-system.yml is intentionally NOT dispatchable here.',
     {
       ...repoParams,
       workflow_id: z.string().describe('Workflow file name to dispatch, e.g. provision-system.yml. Must be on the allowlist.'),
