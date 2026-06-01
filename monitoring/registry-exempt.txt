@@ -42,3 +42,4 @@ templates/system/workflows/n8n/pending-actions-cleanup.json
 .github/workflows/decommission-test-projects.yml
 .github/workflows/decommission-test-system.yml
 .github/workflows/provision-system.yml
+.github/workflows/refresh-system-agents.yml

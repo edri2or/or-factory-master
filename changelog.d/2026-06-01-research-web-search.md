@@ -34,3 +34,13 @@
   עלה ל-`anthropic/claude-sonnet-4.5` וה-prompt הודק (היצמד לתוצאות, אל תחשוף שמות-כלים). ב-
   `configure-agent-router.yml` ה-strip של ה-web-search הורחב לכסות גם `unknown-agent.json`
   (ה-sed של `@@CRED_TAVILY_ID@@` כבר חל על כל הסוכנים). golden רוענן.
+- **כלי תומך — `refresh-system-agents.yml` (לולאת אימות חי זולה).** נוסף workflow פקטורי
+  (`workflow_dispatch(system_name, run_configure)`) שמחיל תיקון-תבנית על מערכת קיימת **בלי
+  re-provision**: הוא ממנה broker App token מצומצם לריפו-היעד (contents+actions write),
+  משכפל אותו, מעתיק את `templates/system/workflows/n8n/*.json` מ-main המהימן, דוחף ישירות
+  ל-main של המערכת (כמו ה-scaffold של provision; `enforce_admins:false` + broker=admin),
+  ואז מפעיל את `configure-agent-router.yml` של המערכת לייבוא מחדש ל-n8n החי. מסרב לריפו
+  control/factory, מאמת תבנית-שם, ואידמפוטנטי (אין diff → אין push). נוסף ל-allowlist של
+  `dispatch_workflow` ב-`services/mcp-server/src/tools.ts` כדי שהסוכן יוכל להפעילו (דורש
+  redeploy של ה-MCP כדי שייכנס לתוקף). זהו "דפוס טסט-030": סבב תיקון ≈ 2 דקות, 0 קליקים,
+  0 עלות חדשה, והדרך היחידה לתפוס באגים שה-CI מפספס (תקלות שמתגלות רק חי).
