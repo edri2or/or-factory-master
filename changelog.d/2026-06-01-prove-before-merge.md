@@ -21,3 +21,9 @@
 | Type | Summary |
 |---|---|
 | fix | The first live bootstrap run (factory-test-25) created the pool, provider, and `sandbox-tester-sa` fine, but the final project-level `secretAccessor` binding failed with `INVALID_ARGUMENT: Service account ... does not exist` — the documented IAM eventual-consistency window between SA creation and the SA being visible as a policy member (CLAUDE.md "Propagation patterns", "SA → IAM policy member ~5-30s"). `scripts/bootstrap-sandbox-tester.sh` now wraps both SA-member bindings (workloadIdentityUser + the conditioned secretAccessor) in a `_bind_retry` helper that retries only the `does not exist`/`PERMISSION_DENIED` class (12×10s), mirroring the `_bind` retry already used in `provision-system.yml`. Idempotent re-run completes the binding. `shellcheck --severity=error` clean. |
+
+## fix: prove-before-merge — recognise the SA "already exists" conflict on re-run (Stage 1, fix)
+
+| Type | Summary |
+|---|---|
+| fix | The idempotent re-run then failed at the `service-accounts create` step: the `_create_ok` helper only treated the literal token `ALREADY_EXISTS` as success, but gcloud phrases an existing service account differently (`... is the subject of a conflict: Service account ... already exists within project`), so a second run errored instead of continuing. `_create_ok` now matches `ALREADY_EXISTS`/`already exists`/`subject of a conflict` case-insensitively, so re-runs are truly idempotent across all three resource kinds (pool/provider/SA). `shellcheck --severity=error` clean. |
