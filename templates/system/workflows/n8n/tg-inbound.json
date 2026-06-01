@@ -385,7 +385,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://localhost:5678/webhook/agent-router",
+        "url": "http://n8n.railway.internal:5678/webhook/agent-router",
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ text: $json.text || $('Extract & Normalize').first().json.text }) }}",
