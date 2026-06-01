@@ -20,7 +20,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 |---|---|---|---|
 | 1 | הקמת זהות-הסנדבוקס (תשתית; broker; ממוזג ראשון) | completed | `.github/workflows/bootstrap-sandbox-tester.yml`, `scripts/bootstrap-sandbox-tester.sh`, `services/mcp-server/src/tools.ts` |
 | 2 | שלד ה-workflow המתזמר ל-main (כדי שיהיה ניתן-להרצה-מענף) | in-progress | `.github/workflows/prove-on-test-system.yml`, `services/mcp-server/src/tools.ts`, `monitoring/registry-exempt.txt` |
-| 3 | גוף ה-workflow — מפותח ומוכח מענף (ה-dogfood) | pending | `.github/workflows/prove-on-test-system.yml` |
+| 3 | גוף ה-workflow — מפותח ומוכח מענף (ה-dogfood) | in-progress | `.github/workflows/prove-on-test-system.yml`, `.github/workflows/register-system-app.yml` |
 | 4 | הוכחה חיה על מערכת-טסט (מהלך-עלות, באישור Or) | pending | — (הרצות חיות) |
 | 5 | תיעוד + סגירה | pending | `docs/live-test-loop.md`, `CLAUDE.md` |
 
@@ -91,11 +91,15 @@ idempotent (אין diff → אין push). כאן "הוכח→מזג" מתבצע 
 ה-workflow **מהענף**, וממזגים רק כשעובד.
 
 **Acceptance:**
-- [ ] הגוף המלא נכתב; מסרב לריפו בקרה/אמיתי; idempotent.
-- [ ] שערים סטטיים ירוקים.
-- [ ] הוכחה מהענף (לפני מיזוג): הרצה מהענף הצליחה, הלוגים מראים אימות כ-`sandbox-tester-sa` (לעולם לא broker), והשינוי הוחל על ריפו-הטסט.
+- [x] הגוף המלא נכתב; מסרב לריפו בקרה/אמיתי; idempotent; מאמת זהות (נכשל אם broker).
+- [x] שערים סטטיים ירוקים (yamllint).
+- [ ] הוכחה חיה מהענף (שלב 4): הרצה מענף מחילה שינוי על מערכת-טסט חיה דרך PR+CI ומוכיחה חי.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הגוף נכתב — קורא את פרטי-האפליקציה של ריפו-הטסט מ-SM של
+`factory-test-25` (דרך ה-SA הסנדבוקס, הרשאה מותנית ל-github-app-* בלבד), מנפיק token מצומצם
+לריפו-הטסט, מעתיק את `templates/system/<paths>` **מהענף**, ומחיל דרך **אותו שער PR+CI+merge**
+של ריפו-הטסט, ואז מפעיל את ה-post_apply_workflow. תוקן גם באג ה-echo משלב 2. yamllint ירוק.
+ההרצה מהענף בשלב 2 כבר הוכיחה אימות כ-sandbox SA (לא broker).
 
 **שינוי תוכנית:** —
 
@@ -131,7 +135,11 @@ idempotent (אין diff → אין push). כאן "הוכח→מזג" מתבצע 
 
 **הערת התקדמות אחרונה:** —
 
-**שינוי תוכנית:** —
+**שינוי תוכנית:** התגלה בשלב 3 ש-App של מערכת מורשה רק `pull_requests:read`, ולכן זהות-הצעצוע
+לא יכלה לפתוח/למזג PR על ריפו-הטסט (וה-main מוגן, אין דחיפה ישירה). באישור Or הרחבתי את
+ה-App ל-`pull_requests:write` (ב-`register-system-app.yml`) — מינימלי (כבר יש לו הרשאות חזקות
+יותר על אותו ריפו), חל רק על מערכות עתידיות, ומשמר את שער ה-CI. שלב 4 ידרוש מערכת-טסט טרייה
+(שתקבל את ההרשאה).
 
 ---
 
