@@ -59,9 +59,9 @@ status: active
 - [x] `@@WF_TG_VOICE_STT_ID@@` מוחלף ב-sed ב-tg-inbound לפני upsert
 - [x] Graceful degradation: voice branch נמחק אם Deepgram credential חסר
 
-**הערת התקדמות אחרונה:** configure-agent-router.yml עודכן עם כל 5 הנקודות.
+**הערת התקדמות אחרונה:** configure-agent-router.yml עודכן עם כל 5 הנקודות. **תיקון (נתפס באימות החי, שלב 6):** בלוק יצירת ה-credential של Deepgram פנה ל-`${N8N_BASE}/rest/credentials` — משתנה שלא הוגדר אף פעם (השלב משתמש ב-`$BASE`). תחת `set -u` זה הפיל את כל השלב עם `N8N_BASE: unbound variable`. בנוסף הבלוק חרג מכל ה-credentials האחרים — `curl` גולמי עם אימות `X-N8N-API-KEY` מול endpoint של `/rest/` (שמאמת ב-cookie, לא ב-API key). תוקן: ה-POST עובר עכשיו דרך ה-helper המשותף `_napi POST "$BASE/rest/credentials"` בדיוק כמו Tavily/Railway/Postgres. golden רוענן.
 
-**שינוי תוכנית:** —
+**שינוי תוכנית:** הבלוק נכתב מחדש לתבנית האחידה (`_napi`) במקום `curl` גולמי — תיקון bug שנתפס רק כשהשלב רץ חי.
 
 ---
 
@@ -98,12 +98,12 @@ status: active
 ### שלב 6 — אימות חי — מערכת-טסט (reuse mode)
 
 **Acceptance:**
-- [ ] מערכת-טסט חיה מוקמת ב-reuse mode (`shared_gcp_project=factory-test-25`, 0-quota)
-- [ ] `configure-agent-router.yml` רץ בהצלחה עם Deepgram credential
+- [x] מערכת-טסט חיה מוקמת ב-reuse mode (`shared_gcp_project=factory-test-25`, 0-quota) — `factory-test-qmode7` (שותפה עם פיתוח queue-mode)
+- [ ] `configure-agent-router.yml` רץ בהצלחה עם Deepgram credential — **נכשל בריצה הראשונה** (`N8N_BASE: unbound variable`), זוהה ותוקן; ממתין לאימות חוזר על מערכת חדשה אחרי המיזוג
 - [ ] tg-voice-stt + db-vacuum workflows מיובאים ופעילים
 - [ ] voice note בעברית לבוט → תמלול תקין → תגובה מ-agent
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** האימות החי על `factory-test-qmode7` תפס באג אמיתי בקוד שלב 3 — `configure-agent-router.yml` קרס על משתנה לא-מוגדר (`${N8N_BASE}`). תוקן (ראה שלב 3). השלב נשאר pending עד שהתיקון ייבדק חי על מערכת שתוקם מהתבנית המתוקנת.
 
 **שינוי תוכנית:** —
 

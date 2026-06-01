@@ -31,6 +31,19 @@ is stripped from tg-inbound so the system starts without it.
 `EXECUTIONS_DATA_MAX_AGE=48`, `EXECUTIONS_DATA_PRUNE_MAX_COUNT=1000` to prevent n8n
 Postgres from accumulating large binary execution payloads.
 
+### Fix — Deepgram credential POST used an undefined variable (live-test catch)
+
+The stage-6 live test (on a throwaway test system) surfaced a real bug in the stage-3
+code: the Deepgram credential creation block in `configure-agent-router.yml` POSTed to
+`${N8N_BASE}/rest/credentials` — a variable that is never defined (the step uses `$BASE`).
+Under `set -u` this aborted the whole "Create Agent Router" step with
+`N8N_BASE: unbound variable`, so no n8n workflows were imported. The block also deviated
+from every sibling credential by using a raw `curl` with `X-N8N-API-KEY` header auth
+against a `/rest/` endpoint (which authenticates by session cookie, not API key). Fixed by
+routing the POST through the shared `_napi POST "$BASE/rest/credentials"` helper — identical
+to the Tavily/Railway/Postgres credential blocks — which both resolves the unbound variable
+and uses the proven cookie-auth + curl-level retry path. Golden refreshed.
+
 ### Propagation
 
 Changes to `templates/system/**` propagate to NEW systems provisioned after this merge.
