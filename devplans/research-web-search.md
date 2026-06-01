@@ -6,7 +6,7 @@
 dev_name: יכולת חיפוש ומחקר-אינטרנט לבוט הטלגרם (ברמת התבנית)
 slug: research-web-search
 opened: 2026-06-01
-status: active   # active בזמן פיתוח → completed בסיום (משחרר את שער ה-CI)
+status: completed   # active בזמן פיתוח → completed בסיום (משחרר את שער ה-CI)
 ---
 
 # תוכנית פיתוח — יכולת חיפוש ומחקר-אינטרנט לבוט הטלגרם
@@ -25,10 +25,11 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 | 1 | כלי חיפוש Tavily בסוכן + ההתקנה | completed | `templates/system/workflows/n8n/research-agent.json`, `templates/system/.github/workflows/configure-agent-router.yml`, `tests/golden/system/**` |
 | 2 | תיקון Egress — בלוק "מקורות" לא נחסם | completed | `templates/system/workflows/n8n/agent-router.json`, `tests/golden/system/**` |
 | 3 | אימות חי (Layer B — build על factory-test-25) | completed | — (dispatch בלבד) |
-| 6 | סבב 2: חיפוש לסוכן-השיחה הכללי (unknown-agent) + הידוק prompt + הרחבת strip | in-progress | `unknown-agent.json`, `configure-agent-router.yml`, golden |
-| 7 | סבב 2: מודל חזק (sonnet-4.5) + הידוק prompt לסוכן-המחקר | in-progress | `research-agent.json`, golden |
-| 8 | סבב 2: אימות חי (build טרי מ-main) | pending | — (dispatch בלבד) |
-| 4 | תיעוד | pending | `docs/telegram-chat-bot.md`, `docs/roadmap.md` |
+| 6 | סבב 2: חיפוש לסוכן-השיחה הכללי (unknown-agent) + הידוק prompt + הרחבת strip | completed | `unknown-agent.json`, `configure-agent-router.yml`, golden |
+| 7 | סבב 2: מודל חזק (sonnet-4.5) + הידוק prompt לסוכן-המחקר | completed | `research-agent.json`, golden |
+| 7א | כלי `refresh-system-agents.yml` (לולאת אימות חי זולה) | completed | `.github/workflows/refresh-system-agents.yml`, `services/mcp-server/src/tools.ts` |
+| 8 | סבב 2: אימות חי על factory-test-tavily2 | completed | — (refresh + configure + בדיקת טלגרם) |
+| 4 | תיעוד | completed | `docs/telegram-chat-bot.md`, `docs/roadmap.md` |
 | 5 | מחקר-עמוק אסינכרוני — **נדחה (תלוי n8n 2.0)** | pending | `templates/system/workflows/n8n/deep-research.json` (עתידי) |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
@@ -165,3 +166,5 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 - שלב 3 הושלם — בנינו מערכת-בדיקה טרייה מ-main, והחיפוש אכן הותקן ופעל (חיבור Tavily נוצר, הבוט חיפש והחזיר מקורות). אבל באמת-מבחן עם Or התגלו 3 בעיות איכות → פתחנו סבב 2.
 - סבב 2 (שלבים 6–7) — הקוד מוכן: נתנו חיפוש גם לסוכן-השיחה הרגיל (סוף ל"פיצול האישיות"), העלינו את סוכן-המחקר למודל חזק יותר, והידקנו את ההוראות (לא לחשוף שמות-כלים, לעולם לא "אני לא יכול לחפש"). נשאר: מיזוג + אימות חי (שלב 8).
 - בניתי כלי קבוע (refresh-system-agents) שמחיל תיקון על מערכת חיה קיימת תוך ~2 דקות בלי לבנות מחדש — בדיוק לולאת טסט-030 שביקשת. מעכשיו כל סבב תיקון זול ומהיר. צריך redeploy קטן של ה-MCP פעם אחת כדי להפעיל אותו (אבקש אישור).
+- שלב 8 הושלם — האימות החי על factory-test-tavily2 הצליח מקצה-לקצה: שיחה רגילה שמבקשת חיפוש עובדת (סוף לפיצול-האישיות), התשובות מדויקות ("הפועל באר שבע" — נכון!), המקורות מגיעים מלאים בבלוק "מקורות", ומחקר-העומק עם 9 מקורות. בלי שמות-כלים חשופים.
+- הפיתוח נסגר (`status: completed`). התיעוד עודכן (docs/telegram-chat-bot.md + roadmap.md). factory-test-tavily2 נשארת חיה לבקשת Or; שני יתומים (tavily-test-01, factory-test-tavily) ממתינים לניקוי עתידי.
