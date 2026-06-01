@@ -19,7 +19,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 |---|---|---|---|
 | 1 | פירוק המערכת החיה (factory-test-18) | completed | פעולת-ענן (Railway+DNS+repo) + bookkeeping |
 | 2 | מחיקת ליבת-הייחוס + workflow הסנכרון + רשומת watchdog | completed | reference-system/, docs/reference-system.md, scripts/reference-*, reference-system-reconcile.yml, watchdog-registry.json |
-| 3 | ניתוק שער ה-golden מהשם "reference" (שומר עצמאי) | pending | check-reference-sync.sh→check-golden-sync.sh (+bats), changelog-check.yml |
+| 3 | ניתוק שער ה-golden מהשם "reference" (שומר עצמאי) | completed | check-reference-sync.sh→check-golden-sync.sh (+bats), changelog-check.yml |
 | 4 | הכללת כלי התיקון-החי לכל סוג תיקון | pending | refresh-system-agents.yml, services/mcp-server/src/tools.ts |
 | 5 | שכתוב /dev-stage-factory + שיטה-קבועה ב-CLAUDE.md + תיעוד | pending | dev-stage-factory.md, CLAUDE.md, README.md, docs/roadmap.md, docs/live-test-loop.md |
 | 6 | סגירה — אימות "בלי זכר" + status: completed | pending | devplan |
@@ -62,10 +62,10 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 - [ ] scripts/check-reference-sync.sh → scripts/check-golden-sync.sh (לוגיקה ללא שינוי)
 - [ ] scripts/tests/check-reference-sync.bats → scripts/tests/check-golden-sync.bats
 - [ ] changelog-check.yml קורא ל-check-golden-sync.sh, בלי המילה "reference"
-- [ ] check-system-golden.sh / render-system-golden.sh / tests/golden/system/ / צעד ה-Playground נשארים כמות שהם
-- [ ] CI ירוק
+- [x] check-system-golden.sh / render-system-golden.sh / tests/golden/system/ / צעד ה-Playground נשארים כמות שהם
+- [x] CI ירוק (4 בדיקות ה-bats עוברות עם השם החדש; ה-glob scripts/tests/*.bats קולט אוטומטית)
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** check-reference-sync.sh→check-golden-sync.sh (+bats), אזכורי "reference" הפנימיים נוקו ("template golden"), צעד ה-CI עודכן. שער ה-golden נשאר שומר עצמאי. נותרו אזכורים לשם הישן רק ב-CLAUDE.md+roadmap (שלב 5) ובהיסטוריה.
 
 **שינוי תוכנית:** —
 
@@ -120,3 +120,4 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 
 - שלב 1 הושלם — פירקנו את המערכת החיה: Railway נמחק (עצרנו את התשלום), ה-DNS נמחק, והריפו אורכב. נשארה לך לחיצה אחת קטנה למחיקת פרויקט ה-GCP.
 - שלב 2 הושלם — מחקנו את כל קבצי-הליבה של הייחוס ואת מנגנון הסנכרון האוטומטי שלו (כולל רישום הניטור), בלי להשאיר זכר.
+- שלב 3 הושלם — שער-בטיחות אחד (golden) נולד עם הייחוס אבל שימושי בפני עצמו; ניתקנו אותו מהשם המטעה והשארנו אותו עובד כשומר עצמאי על שלמות-התבנית.

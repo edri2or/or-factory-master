@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Anti-drift twin gate for the reference system's golden master.
+# Anti-drift twin gate for the system template's golden master.
 #
 # Two invariants, both cheap, both no-op when already satisfied:
 #
@@ -67,4 +67,4 @@ if [ "$rc" -ne 0 ]; then
   exit 1
 fi
 
-echo "PASS: reference golden in sync (mould↔golden coupling + allow-list parity)."
+echo "PASS: template golden in sync (mould↔golden coupling + allow-list parity)."

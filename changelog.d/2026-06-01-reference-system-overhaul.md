@@ -15,3 +15,9 @@ standing, generic, documented method for validating provisioning changes.
   `scripts/tests/reference-system-smoke.bats`, and `.github/workflows/reference-system-reconcile.yml`,
   and removed the `reference-system-reconcile` entry from `monitoring/watchdog-registry.json` in the
   same change (so the watchdog gate stays green on the workflow removal).
+- **Stage 3 — detached the golden gate from the "reference" naming.** Renamed
+  `scripts/check-reference-sync.sh` → `scripts/check-golden-sync.sh` (and its bats), reworded
+  its internal "reference golden" wording to "template golden", and pointed the
+  `changelog-check.yml` step at the new name. The golden gate (renderer + `check-system-golden.sh`
+  + `tests/golden/system/` + the Playground "System golden gate" step) is unchanged and stays as
+  an independent template-integrity guard.
