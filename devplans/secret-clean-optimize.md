@@ -16,7 +16,7 @@ status: active
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
 | 1 | סקריפט: הוספת מצב `--reuse` + טסטים | completed | `scripts/clean-project-secrets.sh`, `scripts/tests/clean-project-secrets.bats` |
-| 2 | workflow: חיבור הדגל `--reuse` ב-provision | pending | `.github/workflows/provision-system.yml` |
+| 2 | workflow: חיבור הדגל `--reuse` ב-provision | completed | `.github/workflows/provision-system.yml` |
 | 3 | אימות חי (Or-gated) | pending | — |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
@@ -40,10 +40,10 @@ status: active
 ### שלב 2 — workflow: חיבור הדגל `--reuse`
 
 **Acceptance:**
-- [ ] `provision-system.yml` עובר מ-`clean-project-secrets.sh "$GCP_PROJECT"` ל-`clean-project-secrets.sh --reuse "$GCP_PROJECT"` בסטפ של reuse mode
-- [ ] CI (shellcheck + yamllint) עובר ירוק
+- [x] `provision-system.yml` עובר מ-`clean-project-secrets.sh "$GCP_PROJECT"` ל-`clean-project-secrets.sh --reuse "$GCP_PROJECT"` בסטפ של reuse mode
+- [x] CI (shellcheck + yamllint) עובר ירוק
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** שורה אחת שונתה + תגובה מעודכנת; shellcheck + yamllint נקיים מקומית.
 
 **שינוי תוכנית:** —
 
@@ -67,3 +67,4 @@ status: active
 > שורה פשוטה אחת לכל שלב שהסתיים — בשפה ש-Or מבין, בלי ז'רגון.
 
 - שלב 1 הושלם — הסקריפט תומך עכשיו ב-`--reuse` שמוחק רק סודות ספציפיים-לטסט, עם bats tests מלאים.
+- שלב 2 הושלם — `provision-system.yml` מעביר `--reuse` לסקריפט; שינוי שורה אחת.

@@ -11,3 +11,10 @@
   unchanged. Old default behaviour (full wipe) is untouched.
 - `scripts/tests/clean-project-secrets.bats`: 18 new bats unit tests covering
   all guards, both modes, and the label-filter path (mock gcloud, no GCP calls).
+
+### Stage 2 — Workflow: wire `--reuse` in provision-system.yml
+
+- `.github/workflows/provision-system.yml`: `Clean shared-project secrets (reuse
+  mode)` step now passes `--reuse` to `clean-project-secrets.sh`, activating the
+  targeted-delete path for every reuse-mode provision. Comment updated to explain
+  the savings. No behaviour change to adopt mode or default mode.
