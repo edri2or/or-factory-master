@@ -1,34 +1,41 @@
 #!/usr/bin/env bash
-# Deletes ALL Secret Manager secrets in a shared TEST project, so each test run
-# starts from a clean slate (generics are re-copied and runtime shells re-created
-# by provision-system.yml right after this runs; the deploy workflow regenerates
-# n8n-encryption-key / n8n-owner-password / railway-* on first deploy).
+# Deletes Secret Manager secrets in a shared TEST project.
 #
-# Usage: bash scripts/clean-project-secrets.sh <gcp-project-id>
+# Modes:
+#   default  — deletes ALL secrets (full wipe; each test run starts clean).
+#   --reuse  — targeted delete: keeps secrets labeled copied-from-factory=true
+#              (the 40 generic API keys that are identical every test round) and
+#              deletes only the test-specific ones (runtime-shell, openrouter-mint,
+#              github-app-*). Saves ~160 API calls (~3-5 min) per reuse provision.
+#   --adopt  — one-time full wipe of a REAL system's recovered/adopted project.
+#
+# Usage: bash scripts/clean-project-secrets.sh [--adopt | --reuse] <gcp-project-id>
 #
 # Requires: gcloud authenticated as factory-master-broker (via WIF in CI).
 #
-# HARD GUARD: refuses to run against a control project, and only accepts the
-# test-system patterns (factory-test-*/v2-test-*/or-test-*). This is the only
-# destructive secret operation in the factory — the guard mirrors
-# decommission-test-projects.yml so a stray project id can never wipe the
-# control project's broker App credentials.
+# HARD GUARD: refuses to run against a control project.  Default and --reuse
+# modes only accept the test-system patterns (factory-test-*/v2-test-*/or-test-*).
+# --adopt allows any non-control project except factory-test-25.
 set -euo pipefail
 
-# --adopt: one-time clean of a REAL system's recovered/adopted project (a
-# deliberate repurpose, gated upstream by provision-system.yml's adopt mode).
-# Allows any non-control project except factory-test-25; the default (no flag)
-# stays locked to the test patterns.
 ADOPT=false
-if [ "${1:-}" = "--adopt" ]; then
-  ADOPT=true
-  shift
+REUSE=false
+while [[ "${1:-}" = --* ]]; do
+  case "${1}" in
+    --adopt) ADOPT=true;  shift ;;
+    --reuse) REUSE=true;  shift ;;
+    *) echo "FAIL: unknown flag '${1}'" >&2; exit 1 ;;
+  esac
+done
+
+if [ "$ADOPT" = true ] && [ "$REUSE" = true ]; then
+  echo "FAIL: --adopt and --reuse are mutually exclusive" >&2; exit 1
 fi
 
 PROJECT="${1:-}"
-[ -n "$PROJECT" ] || { echo "Usage: $0 [--adopt] <gcp-project-id>" >&2; exit 1; }
+[ -n "$PROJECT" ] || { echo "Usage: $0 [--adopt | --reuse] <gcp-project-id>" >&2; exit 1; }
 
-# Absolute refusal in BOTH modes: never wipe a control project's broker creds.
+# Absolute refusal in ALL modes: never wipe a control project's broker creds.
 case "$PROJECT" in
   or-factory-master-control|factory-control-9piybr)
     echo "FAIL: refusing to wipe secrets in control project '$PROJECT'" >&2; exit 1 ;;
@@ -46,6 +53,7 @@ if [ "$ADOPT" = true ]; then
     exit 1
   fi
 else
+  # Default and --reuse: restricted to test project patterns.
   if ! [[ "$PROJECT" =~ ^(factory-test-|v2-test-|or-test-)[a-z0-9-]+$ ]]; then
     echo "FAIL: '$PROJECT' is not an allowed test project (factory-test-*/v2-test-*/or-test-*)" >&2
     exit 1
@@ -54,12 +62,24 @@ fi
 
 echo "=== Clean secrets: $PROJECT ==="
 
-mapfile -t SECRETS < <(
-  gcloud secrets list --project="$PROJECT" --format="value(name)" \
-  | awk -F'/' '{print $NF}'
-)
+if [ "$REUSE" = true ]; then
+  echo "Mode: targeted (reuse) — keeping copied-from-factory secrets intact."
+  mapfile -t SECRETS < <(
+    gcloud secrets list \
+      --project="$PROJECT" \
+      --format="value(name)" \
+      --filter="NOT labels.copied-from-factory:true" \
+    | awk -F'/' '{print $NF}'
+  )
+else
+  echo "Mode: full wipe — deleting all secrets."
+  mapfile -t SECRETS < <(
+    gcloud secrets list --project="$PROJECT" --format="value(name)" \
+    | awk -F'/' '{print $NF}'
+  )
+fi
 
-echo "Found ${#SECRETS[@]} secret(s)."
+echo "Found ${#SECRETS[@]} secret(s) to delete."
 
 DELETED=0
 for secret in "${SECRETS[@]}"; do

@@ -951,10 +951,12 @@ jobs:
           GCP_PROJECT: ${{ steps.validate.outputs.gcp_project }}
         run: |
           set -euo pipefail
-          # Give each test run a clean slate: wipe all Secret Manager secrets in
-          # the shared project before re-copying generics + re-creating shells.
-          # The script hard-guards to test projects and refuses control projects.
-          bash scripts/clean-project-secrets.sh "$GCP_PROJECT"
+          # Targeted clean for reuse mode: delete only test-specific secrets
+          # (runtime-shell, openrouter-mint, github-app-*) and keep the 40
+          # copied-from-factory generics intact. copy-generic-secrets.sh skips
+          # secrets that already have a version, so they are not re-copied.
+          # Saves ~160 API calls (~3-5 min) vs. a full wipe every round.
+          bash scripts/clean-project-secrets.sh --reuse "$GCP_PROJECT"
 
       - name: Clean adopted-project secrets (adopt mode)
         if: steps.validate.outputs.adopt == 'true'
