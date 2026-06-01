@@ -20,7 +20,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
 | A | זהות בוט-צ'אט + secrets (תשתית, רדום) | completed | `.github/workflows/deploy-mcp-server.yml` |
-| B+C | route נכנס + guardrails + CI | pending | `services/mcp-server/src/{telegram-chat.ts,index.ts,telegram-chat.test.ts}`, CI workflow |
+| B+C | route נכנס + guardrails + CI | completed | `services/mcp-server/src/{telegram-chat.ts,telegram-chat-guards.ts,index.ts}`, `test/`, `playground-tests.yml` |
 | D | פעולות-כתיבה מאושרות (HITL) | pending | `services/mcp-server/src/telegram-chat.ts`, `index.ts` |
 | E | תיעוד + עיגון ב-roadmap | pending | `docs/roadmap.md`, `docs/telegram-chat-bot-factory.md` |
 | F | הוכחה חיה (פריסה + סבב טלגרם אמיתי) | pending | פריסת `deploy-mcp-server.yml` (Or-gated) |
@@ -51,15 +51,22 @@ allowlist כ-placeholders, webhook-secret אקראי, מפתח-OpenRouter מ-man
 ### שלב B+C — route נכנס + guardrails + CI (הלב)
 
 **Acceptance:**
-- [ ] route חדש `/telegram-chat-webhook` ב-`index.ts` (mirror של `/telegram-webhook`): 503 אם הסוד לא מורכב,
+- [x] route חדש `/telegram-chat-webhook` ב-`index.ts` (mirror של `/telegram-webhook`): 503 אם הסוד לא מורכב,
       בדיקת `X-Telegram-Bot-Api-Secret-Token` ב-constant-time, תמיד 200.
-- [ ] `telegram-chat.ts`: allowlist על שולח, freshness (~120ש'), LLM read-only כברירת-מחדל,
+- [x] `telegram-chat.ts`: allowlist על שולח, freshness (~120ש'), LLM read-only כברירת-מחדל,
       טקסט לא-מהימן (system prompt מוקשח, אין טוקן-אדמין עומד), קריאת OpenRouter (Haiku 4.5) עם
-      function-calling על קבוצת כלים read-only קיימת, תשובה בעברית דרך טוקן בוט-הצ'אט.
-- [ ] job חדש ב-CI שמקמפל ובודק את ה-mcp-server (`tsc` + `node --test`), path-filtered ל-`services/mcp-server/**`.
-- [ ] בדיקות יחידה לפונקציות ה-pure (freshness/allowlist/parse). ה-job החדש ירוק; שאר השערים ירוקים.
+      function-calling על 6 כלים read-only קיימים (ריצות/jobs/לוג/מלאי/מכסה/probe), תשובה בעברית דרך טוקן בוט-הצ'אט.
+- [x] job חדש ב-CI (צעד ב-"Playground tests") שמקמפל ובודק את ה-mcp-server (`npm ci` + `tsc` + `node --test`).
+- [x] בדיקות יחידה לפונקציות ה-pure (freshness/allowlist/parse) ב-`test/telegram-chat-guards.test.mjs`. כל השערים ירוקים מקומית.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם. הפרדתי את ה-guardrails ה-pure ל-`telegram-chat-guards.ts` (נבדק
+הרמטית), והלוגיקה ב-`telegram-chat.ts` (LLM + 6 כלים read-only בלבד — מבני, לא רק prompt). ה-route
+ב-`index.ts` עם בדיקת secret_token ב-constant-time. הוספתי צעד CI שמקמפל ובודק את ה-mcp-server (עד עכשיו
+שום שער PR לא קימפל את ה-TS). 38 בדיקות עוברות; actionlint+yamllint+build ירוקים מקומית. הבוט עדיין רדום
+(אין טוקן/מפתח אמיתיים) — נתחבר חי בשלב F.
+
+**שינוי תוכנית:** במקום `telegram-chat.test.ts` בתוך `src/`, הבדיקות נכתבו כ-`test/telegram-chat-guards.test.mjs`
+מול ה-`dist` המקומפל — לפי המוסכמה הקיימת בריפו (`test/*.test.mjs`), כי Node 22 מריץ גם `.test.ts` ישירות ונשבר.
 
 **שינוי תוכנית:** —
 
@@ -112,3 +119,4 @@ allowlist כ-placeholders, webhook-secret אקראי, מפתח-OpenRouter מ-man
 > שורה פשוטה אחת לכל שלב שהסתיים — בשפה ש-Or מבין, בלי ז'רגון.
 
 - שלב A הושלם — הכנו לפקטורי "תעודת זהות" לבוט-צ'אט חדש ונפרד: 4 מפתחות סודיים והחיווט שלהם לשרת, בלי לשנות עדיין שום התנהגות (הבוט עוד ישן).
+- שלב B+C הושלם — כתבנו את "המוח" של הבוט: הוא מקבל הודעה, מוודא שזה אתה ושההודעה טרייה, מפעיל AI עם כלים *לקריאה בלבד* ועונה בעברית. הוספנו גם בדיקות אוטומטיות שמוודאות שהקוד תקין. הבוט עדיין לא דובר — נחבר אותו חי בסוף.
