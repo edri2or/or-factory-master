@@ -22,7 +22,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 | A | זהות בוט-צ'אט + secrets (תשתית, רדום) | completed | `.github/workflows/deploy-mcp-server.yml` |
 | B+C | route נכנס + guardrails + CI | completed | `services/mcp-server/src/{telegram-chat.ts,telegram-chat-guards.ts,index.ts}`, `test/`, `playground-tests.yml` |
 | D | פעולות-כתיבה מאושרות (HITL) | completed | `services/mcp-server/src/{telegram-chat.ts,telegram-chat-guards.ts}`, `test/` |
-| E | תיעוד + עיגון ב-roadmap | pending | `docs/roadmap.md`, `docs/telegram-chat-bot-factory.md` |
+| E | תיעוד + עיגון ב-roadmap | completed | `docs/roadmap.md`, `docs/telegram-chat-bot-factory.md`, `CLAUDE.md` |
 | F | הוכחה חיה (פריסה + סבב טלגרם אמיתי) | pending | פריסת `deploy-mcp-server.yml` (Or-gated) |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
@@ -93,11 +93,12 @@ allowlist כ-placeholders, webhook-secret אקראי, מפתח-OpenRouter מ-man
 ### שלב E — תיעוד + עיגון ב-roadmap
 
 **Acceptance:**
-- [ ] עדכון `docs/roadmap.md`: תיקון השורה הישנה "factory-actions MCP — לא לבנות" שתשקף שה-MCP קיים
-      ורץ ומארח עכשיו את הבוט הדו-כיווני; תיעוד החלטת-העיגון (core על Cloud Run+Actions; n8n/Railway למערכות בלבד).
-- [ ] `docs/telegram-chat-bot-factory.md` חדש (סטטוס + עיצוב). שערי changelog/devplan ירוקים.
+- [x] עדכון `docs/roadmap.md`: נוסף "Phase I" עם החלטת-העיגון (core על Cloud Run+Actions; n8n/Railway
+      למערכות בלבד), ותוקנה השורה הישנה "factory-actions MCP — לא לבנות" שתשקף שה-MCP קיים ורץ ומארח את הבוט.
+- [x] `docs/telegram-chat-bot-factory.md` חדש (ארכיטקטורה, סודות, guardrails, HITL, הפעלה). הערת MCP ב-`CLAUDE.md`.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם. שלב תיעוד בלבד (אין קוד). עודכן ה-roadmap (Phase I + תיקון השורה הישנה),
+נוצר מסמך עיצוב/סטטוס ייעודי, ונוספה שורה ל-`CLAUDE.md` על ה-endpoint החדש. נשאר רק שלב F — ההדלקה החיה.
 
 **שינוי תוכנית:** —
 
@@ -125,3 +126,4 @@ allowlist כ-placeholders, webhook-secret אקראי, מפתח-OpenRouter מ-man
 - שלב A הושלם — הכנו לפקטורי "תעודת זהות" לבוט-צ'אט חדש ונפרד: 4 מפתחות סודיים והחיווט שלהם לשרת, בלי לשנות עדיין שום התנהגות (הבוט עוד ישן).
 - שלב B+C הושלם — כתבנו את "המוח" של הבוט: הוא מקבל הודעה, מוודא שזה אתה ושההודעה טרייה, מפעיל AI עם כלים *לקריאה בלבד* ועונה בעברית. הוספנו גם בדיקות אוטומטיות שמוודאות שהקוד תקין. הבוט עדיין לא דובר — נחבר אותו חי בסוף.
 - שלב D הושלם — עכשיו הבוט יכול גם לבקש *פעולה* (כמו "תריץ ניטור עכשיו" או "פרוס מחדש"), אבל רק כשאתה מאשר ב-✅ בטלגרם. בלי אישור — שום דבר לא רץ. הרשימה מוגבלת לשתי פעולות בטוחות בלבד, שום דבר הרסני.
+- שלב E הושלם — עדכנו את התיעוד: ה-roadmap משקף עכשיו שהבוט קיים ושה-core נשאר על הבית שלו (Cloud Run), וכתבנו מסמך קצר שמסביר איך הבוט עובד. בלי קוד.

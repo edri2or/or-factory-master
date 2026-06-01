@@ -37,3 +37,8 @@
   לשני workflows בטוחים, פרמטרלס ו-idempotent בלבד (`meta-monitoring-watchdog.yml`,
   `deploy-mcp-server.yml`); שום דבר הרסני (`decommission`/`provision`) אינו נגיש לבוט. ה-parser של
   ה-callback (`parseActionCallback`) ב-`telegram-chat-guards.ts` (pure, נבדק). 40 בדיקות יחידה עוברות.
+- **שלב E — תיעוד + עיגון.** `docs/roadmap.md` קיבל "Phase I" שמתעד את הבוט ואת **החלטת-העיגון**
+  (ה-core נשאר על Cloud Run + Actions; n8n/Railway למערכות-בנות בלבד — הימנעות מ-circular-dependency),
+  והשורה הישנה "factory-actions MCP — לא לבנות" תוקנה: ה-MCP קיים ורץ ומארח את הגשר-OIL ואת הבוט;
+  מה שנמנע הוא רק *משטח-כתיבה רחב* (כתיבה נשארת human-gated ו-allow-listed). נוסף מסמך ייעודי
+  `docs/telegram-chat-bot-factory.md` (ארכיטקטורה, סודות, guardrails, HITL, הפעלה), ושורת-הסבר ב-`CLAUDE.md`.
