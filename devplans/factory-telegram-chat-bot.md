@@ -23,7 +23,10 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 | B+C | route נכנס + guardrails + CI | completed | `services/mcp-server/src/{telegram-chat.ts,telegram-chat-guards.ts,index.ts}`, `test/`, `playground-tests.yml` |
 | D | פעולות-כתיבה מאושרות (HITL) | completed | `services/mcp-server/src/{telegram-chat.ts,telegram-chat-guards.ts}`, `test/` |
 | E | תיעוד + עיגון ב-roadmap | completed | `docs/roadmap.md`, `docs/telegram-chat-bot-factory.md`, `CLAUDE.md` |
-| F | הוכחה חיה (פריסה + סבב טלגרם אמיתי) | in-progress | `deploy-mcp-server.yml` (seed-step), פריסה (Or-gated) |
+| F | הוכחה חיה (פריסה + סבב טלגרם אמיתי) | completed | `deploy-mcp-server.yml` (seed-step), פריסה (Or-gated) |
+| G | איחוד לבוט אחד (הבוט הקיים עונה גם) | completed | `services/mcp-server/src/{index.ts,telegram-chat.ts}`, `deploy-mcp-server.yml` |
+| H | תיעוד עדכון לבוט-אחד | completed | `docs/telegram-chat-bot-factory.md`, `docs/roadmap.md`, `CLAUDE.md` |
+| I | הוכחה חיה לבוט המאוחד | pending | פריסה (Or-gated) + סבב טלגרם + ודא OIL תקין |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
 
@@ -112,14 +115,61 @@ allowlist כ-placeholders, webhook-secret אקראי, מפתח-OpenRouter מ-man
       ומוגן); מפתח ה-LLM (OpenRouter) נטבע אמיתי (`http=201`); ה-chat setWebhook דילג כצפוי (בוט רדום).
 - [x] מנגנון הפעלה מאובטח: נוסף seed-step ל-`deploy-mcp-server.yml` (קורא GH-secret `FACTORY_TG_CHAT_BOT_TOKEN`
       ממוסך + input `chat_allowlist`), כך ש-Or לא נוגע בטרמינל ושום סוד לא נרשם בלוג.
-- [ ] **נותר:** Or יוצר בוט ב-@BotFather, מזין את הטוקן ל-GH-secret + נותן id; dispatch deploy עם `chat_allowlist`;
-      **סבב טלגרם אמיתי** (Or שואל → תשובה מודעת-פקטורי) + פעולת HITL ✅ אחת. ואז `status: completed`.
+- [x] **בוצע:** Or יצר בוט ב-@BotFather, הזין טוקן ל-GH-secret + נתן id `5786217215`; dispatch deploy עם
+      `chat_allowlist` כתב את הסודות, נפרס, רשם webhook (`HTTP 200`); **סבב טלגרם אמיתי הצליח** — תשובה
+      מודעת-פקטורי מבוססת-כלים. הבוט (בגרסת שני-בוטים) עבד מקצה-לקצה.
 
-**הערת התקדמות אחרונה:** הקוד קודם ל-main ונפרס; אומת חי בפרודקשן (route מוגן 401, LLM מחובר). הוספתי
-מנגנון הפעלה מאובטח (seed-step ב-deploy). נותרה רק יצירת הבוט ע"י Or + ההזנה, ואז סבב חי.
+**הערת התקדמות אחרונה:** הושלם ואומת חי (סבב אמיתי). **אבל** Or החליט אחרי-כן שלא רוצה שני בוטים —
+רוצה בוט אחד (בוט-המערכת הקיים) שגם שולח התראות וגם עונה. לכן ממשיכים לשלבים G–I (איחוד), לא סוגרים עדיין.
 
-**שינוי תוכנית:** הפעלת הבוט נעשית דרך seed-step ב-`deploy-mcp-server.yml` (GH-secret לטוקן + dispatch-input
-ל-allowlist) במקום כתיבה ידנית ל-SM — כדי שיהיה MCP-dispatchable ובלי פעולת-טרמינל של Or ובלי סוד בלוגים.
+**שינוי תוכנית:** הפעלת הבוט נעשתה דרך seed-step ב-`deploy-mcp-server.yml`. ההמשך (G–I) מאחד את הצ'אט
+על בוט-ההתראות הקיים ומבטל את הבוט הנפרד — לבקשת Or.
+
+---
+
+### שלב G — איחוד לבוט אחד (קוד + תצורת פריסה)
+
+**Acceptance:**
+- [x] `index.ts`: `/telegram-webhook` הפך לכניסה מאוחדת — ניתוב לפי סוג: callback `oilapprove:`/`oilreject:`
+      → `handleTelegramCallback` (OIL, ללא שינוי); message או `cdo:`/`cno:` → `handleChatUpdate`. ה-route
+      `/telegram-chat-webhook` + `FACTORY_TG_CHAT_WEBHOOK_SECRET`/`chatTokenMatches` הוסרו.
+- [x] `telegram-chat.ts`: שימוש חוזר ב-senders של `observability-client` (טוקן בוט-ההתראות); הוסרו
+      `FACTORY_TG_CHAT_BOT_TOKEN`/`botConfigured()` + ארבעת ה-senders הייעודיים; allowlist+freshness+LLM נשמרו.
+- [x] `deploy-mcp-server.yml`: ה-setWebhook המאוחד → `allowed_updates:["message","callback_query"]`; צעד
+      ה-CHAT setWebhook הוסר; mounts/mints של bot-token + webhook-secret הוסרו; ה-seed קוצץ ל-allowlist בלבד.
+- [x] build + 40 בדיקות ירוקים; yamllint+actionlint ירוקים; אין שאריות-רפרנס; OIL routing נשמר (לפי prefix).
+
+**הערת התקדמות אחרונה:** הושלם מקומית. הצ'אט עבר לבוט-ההתראות הקיים דרך `/telegram-webhook` המאוחד (ניתוב
+לפי סוג-עדכון/prefix), הבוט הנפרד + ה-route + הסוד שלו הוסרו. כל לוגיקת ה-LLM/כלים/HITL נשמרה — רק ה"דלת
+הקדמית" הוחלפה. ממתין ל-CI ואז לפריסה+סבב חי (שלב I).
+
+**שינוי תוכנית:** —
+
+---
+
+### שלב H — תיעוד עדכון לבוט-אחד
+
+**Acceptance:**
+- [x] עודכן `docs/telegram-chat-bot-factory.md` (ארכיטקטורת בוט-אחד + הפעלה), `docs/roadmap.md` Phase I
+      (G/H/I), ושורת ה-MCP ב-`CLAUDE.md` (`/telegram-chat-webhook` → מאוחד ב-`/telegram-webhook`).
+
+**הערת התקדמות אחרונה:** הושלם — אוחד עם שלב G ל-PR אחד (#269) כדי לצמצם תקורה ל-Or.
+
+**שינוי תוכנית:** אוחד עם G לאותו PR (במקום PR נפרד) לבקשת-העדפת Or לפחות שלבים.
+
+---
+
+### שלב I — הוכחה חיה לבוט המאוחד
+
+**Acceptance:**
+- [ ] merge → פריסה אוטומטית (approval setWebhook מקבל עכשיו `message`).
+- [ ] **סבב חי:** Or שולח ל**בוט-ההתראות הקיים** שאלה → מקבל תשובה מודעת-פקטורי בעברית.
+- [ ] **ודא שאישורי OIL עדיין עובדים** (הקו האדום). אופציונלי: סבב HITL ✅ אחד.
+- [ ] הצבת `status: completed`.
+
+**הערת התקדמות אחרונה:** —
+
+**שינוי תוכנית:** —
 
 ---
 
@@ -131,3 +181,5 @@ allowlist כ-placeholders, webhook-secret אקראי, מפתח-OpenRouter מ-man
 - שלב B+C הושלם — כתבנו את "המוח" של הבוט: הוא מקבל הודעה, מוודא שזה אתה ושההודעה טרייה, מפעיל AI עם כלים *לקריאה בלבד* ועונה בעברית. הוספנו גם בדיקות אוטומטיות שמוודאות שהקוד תקין. הבוט עדיין לא דובר — נחבר אותו חי בסוף.
 - שלב D הושלם — עכשיו הבוט יכול גם לבקש *פעולה* (כמו "תריץ ניטור עכשיו" או "פרוס מחדש"), אבל רק כשאתה מאשר ב-✅ בטלגרם. בלי אישור — שום דבר לא רץ. הרשימה מוגבלת לשתי פעולות בטוחות בלבד, שום דבר הרסני.
 - שלב E הושלם — עדכנו את התיעוד: ה-roadmap משקף עכשיו שהבוט קיים ושה-core נשאר על הבית שלו (Cloud Run), וכתבנו מסמך קצר שמסביר איך הבוט עובד. בלי קוד.
+- שלב F הושלם — הבוט עלה חי ובדיקה אמיתית עבדה (שאלת "מה מצב הפקטורי?" וקיבלת תשובה אמיתית). אבל החלטת שעדיף בוט אחד במקום שניים — אז ממשיכים לאחד (שלבים G–I).
+- שלב G הושלם — איחדנו לבוט אחד: הצ'אט עבר לבוט-ההתראות הקיים (אותו בוט ששולח לך עדכונים עכשיו גם עונה). הבוט הנפרד בוטל. כל היכולות נשמרו — רק "הדלת" הוחלפה. נשאר לעדכן תיעוד ולבדוק חי.
