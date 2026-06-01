@@ -25,7 +25,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 | E | תיעוד + עיגון ב-roadmap | completed | `docs/roadmap.md`, `docs/telegram-chat-bot-factory.md`, `CLAUDE.md` |
 | F | הוכחה חיה (פריסה + סבב טלגרם אמיתי) | completed | `deploy-mcp-server.yml` (seed-step), פריסה (Or-gated) |
 | G | איחוד לבוט אחד (הבוט הקיים עונה גם) | completed | `services/mcp-server/src/{index.ts,telegram-chat.ts}`, `deploy-mcp-server.yml` |
-| H | תיעוד עדכון לבוט-אחד | pending | `docs/telegram-chat-bot-factory.md`, `docs/roadmap.md`, `CLAUDE.md` |
+| H | תיעוד עדכון לבוט-אחד | completed | `docs/telegram-chat-bot-factory.md`, `docs/roadmap.md`, `CLAUDE.md` |
 | I | הוכחה חיה לבוט המאוחד | pending | פריסה (Or-gated) + סבב טלגרם + ודא OIL תקין |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
@@ -150,12 +150,12 @@ allowlist כ-placeholders, webhook-secret אקראי, מפתח-OpenRouter מ-man
 ### שלב H — תיעוד עדכון לבוט-אחד
 
 **Acceptance:**
-- [ ] עדכון `docs/telegram-chat-bot-factory.md` (ארכיטקטורת בוט-אחד + הפעלה), `docs/roadmap.md` Phase I,
-      ושורת ה-MCP ב-`CLAUDE.md` (`/telegram-chat-webhook` → מאוחד ב-`/telegram-webhook`).
+- [x] עודכן `docs/telegram-chat-bot-factory.md` (ארכיטקטורת בוט-אחד + הפעלה), `docs/roadmap.md` Phase I
+      (G/H/I), ושורת ה-MCP ב-`CLAUDE.md` (`/telegram-chat-webhook` → מאוחד ב-`/telegram-webhook`).
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם — אוחד עם שלב G ל-PR אחד (#269) כדי לצמצם תקורה ל-Or.
 
-**שינוי תוכנית:** —
+**שינוי תוכנית:** אוחד עם G לאותו PR (במקום PR נפרד) לבקשת-העדפת Or לפחות שלבים.
 
 ---
 

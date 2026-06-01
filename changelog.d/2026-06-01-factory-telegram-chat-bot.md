@@ -57,3 +57,5 @@
   וכל לוגיקת הכלים/HITL נשמרו. ב-`deploy-mcp-server.yml`: ה-setWebhook המאוחד עבר ל-
   `allowed_updates:["message","callback_query"]`, צעד ה-CHAT-setWebhook הנפרד הוסר, וה-mounts/mints/seed
   של טוקן-הבוט+סוד-ה-webhook קוצצו (נשארו רק allowlist + מפתח-OpenRouter). 40 בדיקות עוברות; OIL נשמר.
+- **שלב H — תיעוד בוט-אחד.** `docs/telegram-chat-bot-factory.md` (ארכיטקטורה/סודות/הפעלה), `docs/roadmap.md`
+  Phase I (G/H/I), ושורת ה-MCP ב-`CLAUDE.md` עודכנו לתיאור הבוט המאוחד (`/telegram-webhook` יחיד, ניתוב לפי סוג).

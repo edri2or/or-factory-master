@@ -161,23 +161,24 @@ and heals failures would share the failure domain of what it manages). The bot i
 *extension of the existing Express/MCP service*, and self-healing extends the existing OIL pipeline —
 neither moves the core off Cloud Run.
 
-A **separate** Telegram bot from the alerts bot (a bot holds one webhook; the alerts bot's
-`/telegram-webhook` is callback-only for OIL approvals). The chat bot drives
-`/telegram-chat-webhook` on the MCP server. Shipped as ordered `/dev-stage-factory` stages:
+**One bot.** The factory has a single Telegram bot (the existing alerts bot, `telegram-bot-token`)
+that both *sends* alerts and *answers* questions, via a **unified `/telegram-webhook`** that routes
+by update kind: OIL approval callbacks (`oilapprove:`/`oilreject:`) → the approval bridge; a text
+message or a chat HITL callback (`cdo:`/`cno:`) → the chat handler. Shipped as ordered
+`/dev-stage-factory` stages:
 
-- **Stage A** ✅ — chat-bot identity + secrets (`deploy-mcp-server.yml` mints
-  `factory-telegram-chat-{bot-token,webhook-secret,allowlist}` + `factory-telegram-chat-openrouter-key`,
-  mounts them, registers a separate `setWebhook`). Dormant until real token + LLM key land.
-- **Stage B+C** ✅ — inbound route + guardrails: secret-token (constant-time) + sender allowlist +
-  ~120s freshness (anti-replay) + an LLM (OpenRouter, Haiku 4.5) with a **read-only-by-construction**
-  tool set (no write fn importable) + a hardened prompt (tool/alert text is untrusted). Plus the
-  first PR-time CI gate that compiles + unit-tests the mcp-server TypeScript (`tsc` + `node --test`).
-- **Stage D** ✅ — HITL write actions: the bot may *request* one of a small fixed allowlist of safe,
-  parameterless, idempotent workflows; it never runs one autonomously — `dispatchWorkflow` happens
-  only after Or's Telegram ✅ (the OIL "AI proposes / human approves" invariant). State-free callback
-  data survives a Cloud Run instance swap.
-- **Stage E** ✅ — docs (this section + `docs/telegram-chat-bot-factory.md`).
-- **Stage F** — live proof: deploy the MCP + a real Telegram round-trip (Or-gated).
+- **Stage A–F** ✅ — built and proven live as a *separate* chat bot first (identity + secrets;
+  inbound route + guardrails — secret-token, sender allowlist, ~120s freshness, an
+  OpenRouter/Haiku-4.5 LLM with a **read-only-by-construction** tool set + hardened prompt; the
+  first PR-time CI gate compiling + unit-testing the mcp-server TS; HITL write actions gated on a
+  Telegram ✅; docs; and a live round-trip). A real Hebrew "מה מצב הפקטורי?" returned a tool-backed
+  answer.
+- **Stage G** ✅ — **consolidated onto the one bot** at Or's request (two bots was confusing): the
+  chat moved onto the alerts bot via the unified `/telegram-webhook`; the separate chat bot, its
+  route, and its webhook secret were retired. All LLM/tools/guards/HITL logic was reused unchanged.
+- **Stage H** ✅ — docs (this section + `docs/telegram-chat-bot-factory.md`).
+- **Stage I** — live proof of the unified bot (redeploy + a real round-trip on the existing bot;
+  OIL approvals verified intact).
 
 The **self-healing block** (covering automation/workflow failures, not just `scripts/*.sh` — see
 Phase G Stage 7) is a separate follow-up development. Full design + status:
