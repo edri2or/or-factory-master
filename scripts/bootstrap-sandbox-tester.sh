@@ -61,6 +61,31 @@ _create_ok() {
   return 1
 }
 
+# Retry a binding that references a JUST-CREATED service account. IAM has eventual
+# consistency between SA creation and the SA being visible as a policy member: an
+# add-iam-policy-binding can fail with "does not exist" or PERMISSION_DENIED for up
+# to ~60s (the documented "SA -> IAM policy member" window in CLAUDE.md). Retry only
+# that class; surface anything else immediately.
+_bind_retry() {
+  local desc="$1"; shift
+  local out i
+  for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
+    if out=$("$@" 2>&1); then
+      printf '%s\n' "$out"
+      echo "OK: ${desc}."
+      return 0
+    fi
+    printf '%s\n' "$out" >&2
+    if ! printf '%s' "$out" | grep -qE "does not exist|PERMISSION_DENIED"; then
+      return 1
+    fi
+    echo "Retry ${i}/12 for ${desc} (sleeping 10s — SA propagation)..." >&2
+    sleep 10
+  done
+  echo "FAIL: ${desc} still failing after 12 attempts" >&2
+  return 1
+}
+
 echo "== Bootstrapping sandbox tester identity on ${PROJECT} =="
 
 # 1) Dedicated WIF pool.
@@ -95,22 +120,22 @@ _create_ok "service account ${SA_EMAIL}" \
 # 4) Let the factory repo (via the sandbox provider) impersonate ONLY this SA.
 PROJECT_NUMBER=$(gcloud projects describe "$PROJECT" --format="value(projectNumber)")
 PRINCIPAL="principalSet://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${POOL}/attribute.repository/${FACTORY_REPO}"
-gcloud iam service-accounts add-iam-policy-binding "$SA_EMAIL" \
-  --project="$PROJECT" \
-  --role="roles/iam.workloadIdentityUser" \
-  --member="$PRINCIPAL" \
-  --quiet
-echo "OK: workloadIdentityUser granted to ${SA_EMAIL} for ${FACTORY_REPO} (any ref)."
+_bind_retry "workloadIdentityUser granted to ${SA_EMAIL} for ${FACTORY_REPO} (any ref)" \
+  gcloud iam service-accounts add-iam-policy-binding "$SA_EMAIL" \
+    --project="$PROJECT" \
+    --role="roles/iam.workloadIdentityUser" \
+    --member="$PRINCIPAL" \
+    --quiet
 
 # 5) Minimal secret access: ONLY github-app-* secrets, via an IAM Condition. Project-level so
 #    it survives the per-provision secret wipe+reseed; conditioned so it can never read the
 #    Railway/Cloudflare/management secrets in the same project.
-gcloud projects add-iam-policy-binding "$PROJECT" \
-  --member="serviceAccount:${SA_EMAIL}" \
-  --role="roles/secretmanager.secretAccessor" \
-  --condition="expression=resource.name.startsWith(\"projects/${PROJECT_NUMBER}/secrets/github-app-\"),title=sandbox-github-app-only,description=Toy key may read ONLY github-app-* test secrets" \
-  --quiet
-echo "OK: conditioned secretAccessor (github-app-* only) granted to ${SA_EMAIL}."
+_bind_retry "conditioned secretAccessor (github-app-* only) granted to ${SA_EMAIL}" \
+  gcloud projects add-iam-policy-binding "$PROJECT" \
+    --member="serviceAccount:${SA_EMAIL}" \
+    --role="roles/secretmanager.secretAccessor" \
+    --condition="expression=resource.name.startsWith(\"projects/${PROJECT_NUMBER}/secrets/github-app-\"),title=sandbox-github-app-only,description=Toy key may read ONLY github-app-* test secrets" \
+    --quiet
 
 echo "== Done. Sandbox tester identity is ready on ${PROJECT}. =="
 echo "Provider: projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${POOL}/providers/${PROVIDER}"

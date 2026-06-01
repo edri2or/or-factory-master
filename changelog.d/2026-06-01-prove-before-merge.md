@@ -15,3 +15,9 @@
 | Type | Summary |
 |---|---|
 | feat | Adds `bootstrap-sandbox-tester.yml` to the MCP `dispatch_workflow` allowlist (`services/mcp-server/src/tools.ts` — the `DISPATCHABLE_WORKFLOWS` set + the tool description), so the agent runs the one-time sandbox-identity bootstrap autonomously rather than via an operator click (Or's explicit choice). The workflow is broker-authed + main-locked like every dispatchable workflow; the identity it BUILDS is the weak, sandbox-only one, and its script hard-refuses any project other than `factory-test-25`. Requires an MCP redeploy (`deploy-mcp-server.yml`) to take effect. `tsc` build + `node --test` (40/40) green. |
+
+## fix: prove-before-merge — retry IAM bindings against SA-propagation in bootstrap (Stage 1, fix)
+
+| Type | Summary |
+|---|---|
+| fix | The first live bootstrap run (factory-test-25) created the pool, provider, and `sandbox-tester-sa` fine, but the final project-level `secretAccessor` binding failed with `INVALID_ARGUMENT: Service account ... does not exist` — the documented IAM eventual-consistency window between SA creation and the SA being visible as a policy member (CLAUDE.md "Propagation patterns", "SA → IAM policy member ~5-30s"). `scripts/bootstrap-sandbox-tester.sh` now wraps both SA-member bindings (workloadIdentityUser + the conditioned secretAccessor) in a `_bind_retry` helper that retries only the `does not exist`/`PERMISSION_DENIED` class (12×10s), mirroring the `_bind` retry already used in `provision-system.yml`. Idempotent re-run completes the binding. `shellcheck --severity=error` clean. |
