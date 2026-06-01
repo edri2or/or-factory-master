@@ -145,3 +145,21 @@ LLM ב-dispatch/push-to-main).
 (`anthropic/claude-haiku-4.5`, זיכרון חלון, כלי קריאה ל-n8n) שעונה גם כ-GPT/Gemini וגם
 על שאלות מערכת. צריכת ה-OpenRouter של הצ'אט נכנסת בקלות ב-cap של $25/חודש; מעקב עלויות
 מפורט (`spend_log`) נדחה ל-follow-up. תיעוד מלא: `docs/telegram-chat-bot.md`.
+
+## 9. הבנת תמונה בטלגרם (tg-vision)
+
+מ-Stage tg-vision כל מערכת חדשה מקבלת יכולת "הבנת תמונה" בבוט, גם היא דרך OpenRouter ובלי
+ספק/סוד חדש. כשמגיעה תמונה, `tg-inbound` מנתב ל-sub-workflow `tg-vision`, שקורא ישירות ל-API
+המולטימודלי: `POST https://openrouter.ai/api/v1/chat/completions` עם הודעת `messages` רב-חלקית
+(טקסט **לפני** התמונה) ו-`image_url` כ-base64 data-URI (נדרש לקובץ טלגרם פרטי). ה-credential
+הוא אותו `OpenRouter (factory-master)` הקיים (ב-node מסוג HTTP Request עם
+`predefinedCredentialType: openRouterApi`).
+
+- **מודל ראשי:** `qwen/qwen3-vl-30b-a3b-instruct` (VLM יחיד שעושה OCR + הבנה ויזואלית בקריאה
+  אחת; תומך עברית; זול יחסית).
+- **fallback:** `google/gemini-2.5-flash` ב-error/timeout.
+- **אבטחה:** prompt הגנתי (טקסט-בתמונה = נתון לא-מהימן, OWASP LLM01), אפס כלים במסלול,
+  וולידציית-egress על הפלט — כמו שכבת L5 של ה-router.
+- **בלם:** תמונות מעל 20MB נעצרות עם הודעת-עברית (מגבלת Telegram cloud getFile).
+
+צריכת הראייה נכנסת באותו cap של $25/חודש פר-מערכת. תיעוד הזרימה המלא: `docs/telegram-chat-bot.md` §10.

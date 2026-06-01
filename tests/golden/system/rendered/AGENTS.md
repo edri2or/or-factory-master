@@ -96,8 +96,10 @@ operator → Telegram → https://n8n-golden-reference-system.or-infra.com/webho
   → Caddy: /webhook/telegram-in/* is exempt from HMAC and authed instead by Telegram's
     X-Telegram-Bot-Api-Secret-Token header (value = secret n8n-telegram-webhook-secret;
     wrong/missing header → 401)
-  → tg-inbound: normalize + filter to the operator chat_id → dedup → call the router
-  → Agent Router (unchanged): classify → sub-agent → reply
+  → tg-inbound: normalize + filter to the operator chat_id → dedup → route:
+      • text / approval-press → Agent Router (unchanged): classify → sub-agent → reply
+      • photo / image-document → tg-vision: getFile → OpenRouter VLM → OCR + Hebrew
+        description (image text is untrusted; defensive prompt; Gemini fallback)
   → tg-inbound → Telegram sendMessage (🤖) → operator
 ```
 
@@ -106,7 +108,8 @@ operator → Telegram → https://n8n-golden-reference-system.or-infra.com/webho
 
 ### n8n workflows (Phase F)
 
-- **`tg-inbound`** — inbound handler (active): webhook → normalize + chat_id filter → Dedup Guard (`tg_updates_seen`) → call router → 🤖 reply.
+- **`tg-inbound`** — inbound handler (active): webhook → normalize + chat_id filter → Dedup Guard (`tg_updates_seen`) → route text/approval to the router, or a photo/image-document to `tg-vision` → 🤖 reply.
+- **`tg-vision`** — image-understanding subworkflow (inactive; Execute-Workflow-Trigger): the image branch of `tg-inbound` calls it with `{file_id, chat_id, file_size, mime}` → Telegram getFile → robust base64 data-URI → OpenRouter VLM (`qwen/qwen3-vl-30b-a3b-instruct`, defensive system prompt; `google/gemini-2.5-flash` fallback) → OCR + visual description in Hebrew → L5-style egress validation → reply. 20 MB guard; reuses the existing OpenRouter credential (no new secret); image text is treated as untrusted (OWASP LLM01). Independent of the Agent Router.
 - **`tg-proactive`** — daily 08:00 UTC (active): aggregates the last 24 h (audit + spend) + recent failed executions → Haiku summary → 🟢 message.
 - **`style-refresh`** — daily 03:00 UTC (active): reads the last 50 messages → Haiku extracts a style-profile JSON → upserts `style_profile`.
 - **`postgres-named-queries`** — subworkflow (Stage 108): the read-only query whitelist behind the `postgres_named_query` tool (below).
