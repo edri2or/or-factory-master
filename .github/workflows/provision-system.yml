@@ -682,6 +682,14 @@ jobs:
           mkdir -p "$CLONE_DIR/caddy"
           cp -r "$CADDY_MODULE_SRC"/. "$CLONE_DIR/caddy/"
 
+          # Dockerfile.worker (queue mode): the deploy builds the n8n worker service
+          # from the system repo via RAILWAY_DOCKERFILE_PATH=Dockerfile.worker, so the
+          # file must live in the repo (same requirement as Dockerfile.caddy). Inert
+          # unless QUEUE_MODE=true makes the deploy build the worker.
+          WORKER_DOCKERFILE_SRC="${GITHUB_WORKSPACE}/templates/system/Dockerfile.worker"
+          [ -f "$WORKER_DOCKERFILE_SRC" ] || { echo "FAIL: Dockerfile.worker not found at $WORKER_DOCKERFILE_SRC" >&2; exit 1; }
+          cp "$WORKER_DOCKERFILE_SRC" "$CLONE_DIR/Dockerfile.worker"
+
           # Observability emitter (Phase C): ship emit-event.sh + libs so the system's
           # own deploy can emit factory.deploy.* events (reads the system's SM via EMIT_SM_PROJECT).
           EMITTER_SRC="${GITHUB_WORKSPACE}/scripts/emit-event.sh"
@@ -734,7 +742,7 @@ jobs:
 
           git -C "$CLONE_DIR" config user.name "or-factory-master[bot]"
           git -C "$CLONE_DIR" config user.email "factory-master-broker@or-factory-master-control.iam.gserviceaccount.com"
-          git -C "$CLONE_DIR" add .claude workflows .github/workflows Caddyfile Dockerfile.caddy caddy scripts templates .yamllint CHANGELOG.md changelog.d
+          git -C "$CLONE_DIR" add .claude workflows .github/workflows Caddyfile Dockerfile.caddy Dockerfile.worker caddy scripts templates .yamllint CHANGELOG.md changelog.d
           # Guard the commit: a reuse-mode re-provision with byte-identical files would
           # otherwise abort this step under `set -e` ("nothing to commit").
           git -C "$CLONE_DIR" diff --cached --quiet \
