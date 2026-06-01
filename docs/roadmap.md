@@ -207,12 +207,16 @@ The change lives entirely in what the factory provisions:
 - `templates/system/.github/workflows/deploy-railway-cloudflare.yml` — reads the switch;
   when `true`, provisions a `redis:7-alpine` service (AOF volume, password enforced via the
   start command — set with the literal password, idempotently/self-healing, since Railway
-  doesn't shell-expand the start command), merges the queue/Redis env vars into the main n8n
-  service (`EXECUTIONS_MODE=queue`, `QUEUE_BULL_REDIS_*`, `N8N_DEFAULT_BINARY_DATA_MODE=default`,
-  `N8N_DISABLE_PRODUCTION_MAIN_PROCESS`, `OFFLOAD_MANUAL_EXECUTIONS_TO_WORKERS`,
-  `N8N_GRACEFUL_SHUTDOWN_TIMEOUT`), and creates a second `worker` service (same image,
-  started as `n8n worker`, no public domain/Caddy — HTTP-less). All gated by `QM`; service
-  creation is SM-id idempotent.
+  doesn't shell-expand the start command) **and waits for redis to be healthy BEFORE the main
+  n8n is given its queue env** (so the main connects exactly once to a ready, password-protected
+  redis — applying the redis start-command redeploy after the main was already connected
+  restarted redis under it and crashed the main on a redis-connection timeout). It then merges
+  the queue/Redis env vars into the main n8n service (`EXECUTIONS_MODE=queue`, `QUEUE_BULL_REDIS_*`,
+  `N8N_DEFAULT_BINARY_DATA_MODE=default`, `OFFLOAD_MANUAL_EXECUTIONS_TO_WORKERS`,
+  `N8N_GRACEFUL_SHUTDOWN_TIMEOUT`; **`N8N_DISABLE_PRODUCTION_MAIN_PROCESS` is deliberately not
+  set** — the main stays a resilient fallback executor), and creates a second `worker` service
+  (same image, started as `n8n worker`, no public domain/Caddy — HTTP-less). All gated by `QM`;
+  service creation is SM-id idempotent.
 
 **Binary data:** queue mode sets `N8N_DEFAULT_BINARY_DATA_MODE=default` (the DB-backed mode —
 filesystem binary storage isn't shared across separate worker containers) — so Postgres grows
