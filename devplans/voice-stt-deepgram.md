@@ -86,10 +86,10 @@ status: active
 - [x] `deploy-railway-cloudflare.yml`: `EXECUTIONS_DATA_PRUNE=true`, `EXECUTIONS_DATA_MAX_AGE=48`, `EXECUTIONS_DATA_PRUNE_MAX_COUNT=1000` נוספו
 - [x] `bash scripts/render-system-golden.sh --update` הורץ
 - [x] `bash scripts/check-golden-sync.sh` ירוק
-- [ ] CI ירוק (Changelog gates + Playground tests)
-- [ ] PR פתוח
+- [x] CI ירוק (Changelog gates + Playground tests)
+- [x] PR #283 מוזג
 
-**הערת התקדמות אחרונה:** עדכוני קוד בוצעו, golden עודכן. PR נפתח, CI בהמתנה.
+**הערת התקדמות אחרונה:** PR #283 מוזג. כל 5 בדיקות CI ירוקות.
 
 **שינוי תוכנית:** —
 
