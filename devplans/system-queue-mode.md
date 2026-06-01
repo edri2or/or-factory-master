@@ -23,6 +23,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 | 2 | שירות Redis מותנה | completed | deploy template, golden |
 | 3 | env ראשי מותנה + שירות worker מותנה | completed | deploy template, golden |
 | 4 | תיעוד | completed | `docs/roadmap.md`, `AGENTS.md.template`, golden |
+| 4b | מתג דרך dispatch input (override) | completed | deploy template, docs, golden |
 | 5 | אימות חי (Or-gated) + סגירה | pending | מערכת-טסט reuse |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
@@ -116,6 +117,20 @@ AGENTS.md + rendered/AGENTS.md). נשאר רק שלב 5 — אימות חי על
 
 ---
 
+### שלב 4b — מתג דרך dispatch input (override)
+
+**Acceptance:**
+- [x] `deploy-railway-cloudflare.yml` מקבל input אופציונלי `queue_mode` ל-`workflow_dispatch`
+      שגובר על `vars.QUEUE_MODE` (input לא-ריק מנצח; אחרת נופלים למשתנה; ברירת-מחדל off).
+- [x] נרמול `QM` עודכן + אומת בטבלת-אמת (5 מקרים); off-path נשאר זהה-בייט.
+- [x] תועד ב-roadmap (Phase J) + AGENTS template; golden רוענן.
+
+**הערת התקדמות אחרונה:** הושלם. פותר את פער ההפעלה — עכשיו הסוכן יכול להדליק queue mode hands-off
+דרך dispatch input, בלי כלי להגדרת משתנה-ריפו. גם מאפשר את האימות החי (שלב 5) בלי לגעת במשתנה.
+
+**שינוי תוכנית:** שלב חדש שנוסף תוך כדי. נחשף ש-`QUEUE_MODE` כמשתנה-ריפו בלבד אינו ניתן-להפעלה
+hands-off (אין כלי MCP להגדרת משתנה; Or לא נוגע ב-UI). הפתרון: dispatch input שגובר על המשתנה.
+
 ### שלב 5 — אימות חי (Or-gated) + סגירה
 
 **Acceptance:**
@@ -150,3 +165,4 @@ QUEUE_MODE=true → אמת Redis+worker חי → תקן-קדימה אם צריך
 - שלב 2 הושלם — הוספנו את שירות ה-Redis (התור), אבל הוא קם **רק** כשהכפתור דלוק. עדיין קוד בלבד, אפס עלות. מערכת כבויה לא רואה שום שינוי.
 - שלב 3 הושלם — חיברנו את n8n לתור והוספנו את העובד (worker), שניהם רק כשהכפתור דלוק. הוכחנו במתמטיקה שמערכת כבויה מקבלת בדיוק אותם משתנים כמו היום, אות-באות. עדיין קוד בלבד, אפס עלות.
 - שלב 4 הושלם — תיעדנו את הכל (ב-roadmap ובמסמך שכל מערכת מקבלת): מה הכפתור עושה, כמה זה עולה, ואיך מדליקים על מערכת קיימת. נשאר רק האימות החי.
+- שלב 4b הושלם — גילינו שלכפתור לא הייתה דרך הדלקה אוטומטית (אני לא יכול לשנות משתנה, ואתה לא נוגע במסכים), אז הוספנו דרך שנייה: אני יכול להדליק/לכבות בלחיצת-הרצה אחת בלי לגעת בכפתור הקבוע. זה גם פותח את האימות החי.

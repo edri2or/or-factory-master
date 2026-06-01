@@ -218,9 +218,11 @@ binary storage isn't shared across separate worker containers — so Postgres gr
 S3 mode is deliberately out of scope (no S3 infra in the factory today).
 
 **Enabling on an existing system:** flip `QUEUE_MODE=true` on the system's repo and re-run
-its deploy workflow (the deploy is idempotent and adds the Redis + worker in place). The
-change reaches only systems whose deploy runs after the template merge; existing systems
-are **not** auto-back-filled.
+its deploy workflow (the deploy is idempotent and adds the Redis + worker in place), or — to
+toggle hands-off without editing a repo variable — dispatch the deploy with the optional
+`queue_mode=true` **input**, which overrides the variable for that run (the factory can set
+dispatch inputs but not repo variables). The change reaches only systems whose deploy runs
+after the template merge; existing systems are **not** auto-back-filled.
 
 **Not touched:** Caddy / webhooks (webhooks still flow through the main n8n behind Caddy);
 no default-on; no auto back-fill.

@@ -11,6 +11,8 @@ name: Deploy n8n on Railway + Cloudflare DNS
 #   QUEUE_MODE (optional, default "false") — when "true", also provisions a
 #     Redis service + an n8n worker so the system runs automations in parallel
 #     through a queue. Default OFF keeps the deploy byte-identical + cost-free.
+#     Can also be overridden per-run via the workflow_dispatch input `queue_mode`
+#     (the input wins over the variable) — lets the factory toggle it hands-off.
 # Reads from its own GCP Secret Manager:
 #   railway-api-token, cloudflare-token-creator, cloudflare-zone-id-or-infra
 # Generates/persists in its own SM on first run:
@@ -20,7 +22,13 @@ name: Deploy n8n on Railway + Cloudflare DNS
 #     railway-redis-volume-id, railway-worker-service-id
 
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      queue_mode:
+        description: "Override QUEUE_MODE for this run: 'true' or 'false'. Leave empty to use the sticky vars.QUEUE_MODE (default). Lets the factory enable/disable queue mode hands-off without setting a repo variable."
+        required: false
+        type: string
+        default: ""
 
 permissions: {}
 
@@ -169,18 +177,24 @@ jobs:
           PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
           SYSTEM_NAME: ${{ vars.SYSTEM_NAME }}
           QUEUE_MODE: ${{ vars.QUEUE_MODE }}
+          QUEUE_MODE_INPUT: ${{ inputs.queue_mode }}
         run: |
           set -euo pipefail
 
-          # Optional per-system queue mode (Redis + n8n worker). Sticky repo var
-          # QUEUE_MODE, default OFF (provision sets "false"; unset is also OFF).
-          # Normalize to a strict boolean QM here; every queue-mode block below
-          # is gated on `[ "$QM" = "true" ]`. When OFF this workflow behaves
-          # byte-identical to the pre-queue-mode deploy: no Redis, no worker,
-          # and the n8n service receives exactly the same env vars as before.
+          # Optional per-system queue mode (Redis + n8n worker). Resolve a strict
+          # boolean QM: an explicit dispatch input `queue_mode` wins (so the
+          # factory can enable/disable queue mode hands-off for one run — it can
+          # dispatch with inputs but cannot set a repo variable), otherwise fall
+          # back to the sticky repo var QUEUE_MODE (default OFF — provision sets
+          # "false"; unset is also OFF). Every queue-mode block below is gated on
+          # `[ "$QM" = "true" ]`. When OFF this workflow is byte-identical to the
+          # pre-queue-mode deploy: no Redis, no worker, and the n8n service
+          # receives exactly the same env vars as before.
+          QM_RAW="${QUEUE_MODE_INPUT:-}"
+          [ -n "$QM_RAW" ] || QM_RAW="${QUEUE_MODE:-false}"
           QM=false
-          [ "${QUEUE_MODE:-false}" = "true" ] && QM=true
-          echo "INFO: QUEUE_MODE=${QUEUE_MODE:-<unset>} -> QM=${QM}"
+          [ "$QM_RAW" = "true" ] && QM=true
+          echo "INFO: queue_mode input='${QUEUE_MODE_INPUT:-<none>}' var='${QUEUE_MODE:-<unset>}' -> QM=${QM}"
 
           # GraphQL helper: posts a query/mutation, fails on .errors[].
           _gql() {

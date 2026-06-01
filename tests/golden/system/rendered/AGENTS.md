@@ -161,8 +161,10 @@ broker plus a separate n8n **worker** process, so executions run in parallel thr
 queue (Bull) instead of one at a time.
 
 - **Switch:** the repo variable **`QUEUE_MODE`** (default **`false`**). Set it to `true`
-  on this repo, then re-run the **deploy** workflow to enable. Turning it off again is a
-  manual Railway cleanup — treat enabling as a deliberate choice.
+  on this repo, then re-run the **deploy** workflow to enable. The deploy also takes an
+  optional `queue_mode` dispatch **input** that overrides the variable for one run (so the
+  factory can toggle queue mode hands-off without editing the variable). Turning it off
+  again is a manual Railway cleanup — treat enabling as a deliberate choice.
 - **What it adds:** a `redis:7-alpine` service (with an AOF volume so the queue survives a
   restart) and a second `worker` service (same n8n image, started as `n8n worker`, no
   public domain — it never serves HTTP). Webhooks still arrive through the main n8n + Caddy.
