@@ -170,9 +170,9 @@ queue (Bull) instead of one at a time.
   public domain — it never serves HTTP). Webhooks still arrive through the main n8n + Caddy.
 - **Cost:** roughly **~$10–20/month** extra (Redis + worker run 24/7). That's why it's
   opt-in per system, not the default.
-- **Storage note:** queue mode forces `N8N_DEFAULT_BINARY_DATA_MODE=database` (filesystem
-  binary storage isn't supported across separate worker containers), so binary data lives
-  in Postgres — expect the database to grow faster.
+- **Storage note:** queue mode sets `N8N_DEFAULT_BINARY_DATA_MODE=default` — the DB-backed
+  mode (filesystem binary storage isn't shared across separate worker containers), so binary
+  data lives in Postgres — expect the database to grow faster.
 - **Off = unchanged:** with `QUEUE_MODE=false` the deploy is byte-identical to a non-queue
   system — no Redis, no worker, no extra cost.
 
