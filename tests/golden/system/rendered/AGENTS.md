@@ -104,7 +104,7 @@ operator → Telegram → https://n8n-golden-reference-system.or-infra.com/webho
   → tg-inbound → Telegram sendMessage (🤖) → operator
 ```
 
-`tg-inbound` calls the router over the **internal** `http://localhost:5678/webhook/agent-router`
+`tg-inbound` calls the router over the **internal** `http://n8n.railway.internal:5678/webhook/agent-router`
 — the public domain would be blocked by Caddy's HMAC.
 
 ### n8n workflows (Phase F)
