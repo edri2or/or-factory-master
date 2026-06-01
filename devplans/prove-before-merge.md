@@ -2,7 +2,7 @@
 dev_name: הוכח→מזג — מפתח-צעצוע סנדבוקס לענף-עבודה
 slug: prove-before-merge
 opened: 2026-06-01
-status: active   # active בזמן פיתוח → completed בסיום (משחרר את שער ה-CI)
+status: completed   # active בזמן פיתוח → completed בסיום (משחרר את שער ה-CI)
 ---
 
 # תוכנית פיתוח — הוכח→מזג (prove-before-merge)
@@ -19,10 +19,10 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
 | 1 | הקמת זהות-הסנדבוקס (תשתית; broker; ממוזג ראשון) | completed | `.github/workflows/bootstrap-sandbox-tester.yml`, `scripts/bootstrap-sandbox-tester.sh`, `services/mcp-server/src/tools.ts` |
-| 2 | שלד ה-workflow המתזמר ל-main (כדי שיהיה ניתן-להרצה-מענף) | in-progress | `.github/workflows/prove-on-test-system.yml`, `services/mcp-server/src/tools.ts`, `monitoring/registry-exempt.txt` |
-| 3 | גוף ה-workflow — מפותח ומוכח מענף (ה-dogfood) | pending | `.github/workflows/prove-on-test-system.yml` |
-| 4 | הוכחה חיה על מערכת-טסט (מהלך-עלות, באישור Or) | pending | — (הרצות חיות) |
-| 5 | תיעוד + סגירה | pending | `docs/live-test-loop.md`, `CLAUDE.md` |
+| 2 | שלד ה-workflow המתזמר ל-main (כדי שיהיה ניתן-להרצה-מענף) | completed | `.github/workflows/prove-on-test-system.yml`, `services/mcp-server/src/tools.ts`, `monitoring/registry-exempt.txt` |
+| 3 | גוף ה-workflow — מפותח ומוכח מענף (ה-dogfood) | completed | `.github/workflows/prove-on-test-system.yml`, `.github/workflows/register-system-app.yml` |
+| 4 | הוכחה חיה על מערכת-טסט (מהלך-עלות, באישור Or) | completed | — (הרצות חיות) |
+| 5 | תיעוד + סגירה | completed | `docs/live-test-loop.md`, `CLAUDE.md` |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
 
@@ -91,11 +91,15 @@ idempotent (אין diff → אין push). כאן "הוכח→מזג" מתבצע 
 ה-workflow **מהענף**, וממזגים רק כשעובד.
 
 **Acceptance:**
-- [ ] הגוף המלא נכתב; מסרב לריפו בקרה/אמיתי; idempotent.
-- [ ] שערים סטטיים ירוקים.
-- [ ] הוכחה מהענף (לפני מיזוג): הרצה מהענף הצליחה, הלוגים מראים אימות כ-`sandbox-tester-sa` (לעולם לא broker), והשינוי הוחל על ריפו-הטסט.
+- [x] הגוף המלא נכתב; מסרב לריפו בקרה/אמיתי; idempotent; מאמת זהות (נכשל אם broker).
+- [x] שערים סטטיים ירוקים (yamllint).
+- [ ] הוכחה חיה מהענף (שלב 4): הרצה מענף מחילה שינוי על מערכת-טסט חיה דרך PR+CI ומוכיחה חי.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הגוף נכתב — קורא את פרטי-האפליקציה של ריפו-הטסט מ-SM של
+`factory-test-25` (דרך ה-SA הסנדבוקס, הרשאה מותנית ל-github-app-* בלבד), מנפיק token מצומצם
+לריפו-הטסט, מעתיק את `templates/system/<paths>` **מהענף**, ומחיל דרך **אותו שער PR+CI+merge**
+של ריפו-הטסט, ואז מפעיל את ה-post_apply_workflow. תוקן גם באג ה-echo משלב 2. yamllint ירוק.
+ההרצה מהענף בשלב 2 כבר הוכיחה אימות כ-sandbox SA (לא broker).
 
 **שינוי תוכנית:** —
 
@@ -111,9 +115,15 @@ idempotent (אין diff → אין push). כאן "הוכח→מזג" מתבצע 
 - [ ] מערכת-טסט חיה הוקמה (באישור Or).
 - [ ] השינוי הוחל מהענף והוכח חי (probe/Telegram), עם תיעוד התוצאה בתוכנית.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה (הושלם):** מערכת-הטסט `factory-test-pbm1` הוקמה במלואה (provision reuse
+→ register-app בלחיצת-Or → deploy, כולן ירוקות). מהענף `claude/great-ride-WsQKF` הורצה
+`prove-on-test-system`: אומת כ-`sandbox-tester-sa` (לא broker) → פתח `factory-test-pbm1#2` →
+חיכה ל-CI של ריפו-הטסט → **מיזג** → הפעיל reimport חי. `/healthz` החזיר `200 {"status":"ok"}`.
+הלולאה החיה תפסה 3 באגים אמיתיים (השהיית-IAM ב-provision; ניסוח "כבר-קיים" של gcloud;
+והרשאת `checks:read` החסרה — תוקן ב-retry-merge). מערכת-הטסט פורקה אחרי ההוכחה.
 
-**שינוי תוכנית:** —
+**שינוי תוכנית:** נדרש תיקון-ביניים ל-provision-system.yml (`_bind` → `--condition=None`),
+רגרסיה שתופעת-הלוואי של שלב 1 חשפה. זה מתקן את ההקמה לכל מערכות-הטסט בעתיד, לא רק שלנו.
 
 ---
 
@@ -125,13 +135,20 @@ idempotent (אין diff → אין push). כאן "הוכח→מזג" מתבצע 
 סטטוס → `completed`.
 
 **Acceptance:**
-- [ ] התיעוד עודכן; fragment ל-changelog נכתב.
-- [ ] Teardown ledger מלא (torn-down או left-alive בהחלטת Or).
-- [ ] `status: completed`.
+- [x] התיעוד עודכן (`docs/live-test-loop.md` + `CLAUDE.md`); fragment ל-changelog נכתב.
+- [x] Teardown ledger מלא (torn-down).
+- [x] `status: completed`.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה (הושלם):** `docs/live-test-loop.md` קיבל סעיף "prove → merge";
+`CLAUDE.md` קיבל את שני ה-workflows בטבלה, את זהות-הסנדבוקס ב-Fixed values, ואת שניהם
+ברשימות ה-allowlist. התיקון הנקי של `prove-on-test-system` (retry-merge) מובא ל-main **בלי**
+הערת-ה-Caddyfile הזניחה (שנשארה רק בענף-ההוכחה). מערכת-הטסט פורקה.
 
-**שינוי תוכנית:** —
+**שינוי תוכנית:** התגלה בשלב 3 ש-App של מערכת מורשה רק `pull_requests:read`, ולכן זהות-הצעצוע
+לא יכלה לפתוח/למזג PR על ריפו-הטסט (וה-main מוגן, אין דחיפה ישירה). באישור Or הרחבתי את
+ה-App ל-`pull_requests:write` (ב-`register-system-app.yml`) — מינימלי (כבר יש לו הרשאות חזקות
+יותר על אותו ריפו), חל רק על מערכות עתידיות, ומשמר את שער ה-CI. שלב 4 ידרוש מערכת-טסט טרייה
+(שתקבל את ההרשאה).
 
 ---
 
@@ -139,7 +156,8 @@ idempotent (אין diff → אין push). כאן "הוכח→מזג" מתבצע 
 
 > שורה חיה אחת. מתעדכנת ברגע שמתבצע פירוק — גם בסשן מאוחר יותר.
 
-- מצב: טרם הוקמה מערכת-טסט (נכון ל-2026-06-01).
+- torn-down — `factory-test-pbm1` פורקה ב-2026-06-01 (session great-ride): Railway נמחק
+  (אומת — נעלם מ-`list_railway_projects`), Cloudflare DNS נמחק, הריפו אורכב. לא נשארה מערכת-טסט חיה.
 
 ---
 

@@ -28,6 +28,30 @@
 |---|---|
 | fix | The idempotent re-run then failed at the `service-accounts create` step: the `_create_ok` helper only treated the literal token `ALREADY_EXISTS` as success, but gcloud phrases an existing service account differently (`... is the subject of a conflict: Service account ... already exists within project`), so a second run errored instead of continuing. `_create_ok` now matches `ALREADY_EXISTS`/`already exists`/`subject of a conflict` case-insensitively, so re-runs are truly idempotent across all three resource kinds (pool/provider/SA). `shellcheck --severity=error` clean. |
 
+## fix: prove-before-merge — wait-for-CI via retry-merge (no checks:read), proven live (Stage 4)
+
+| Type | Summary |
+|---|---|
+| fix | Live Stage-4 proof on a throwaway `factory-test-pbm1` surfaced the last bug: `prove-on-test-system.yml` opened the PR on the test repo as the sandbox SA fine, but `gh pr checks --watch` failed with *"Resource not accessible by integration"* — the narrow per-system App has no `checks:read`. Replaced the check-status read with a **retry loop around a raw REST squash-merge**: branch protection refuses the merge until the required checks are green, so a successful merge *is* the CI gate — no extra App permission, and it sidesteps gh's GraphQL `mergeStateStatus` query for the same reason. Re-run then proved the full loop end-to-end: from branch `claude/great-ride-WsQKF`, authed as `sandbox-tester-sa` (asserted not-broker) → opened `factory-test-pbm1#2` → waited for the test repo's CI → merged → dispatched the live reimport; `/healthz` returned `200 {"status":"ok"}`. The live loop caught three real bugs static gates were green on (IAM propagation, gcloud already-exists phrasing, and this checks:read gap). |
+
+## docs: prove-before-merge — document the prove→merge branch path + close out (Stage 5)
+
+| Type | Summary |
+|---|---|
+| docs | Stage 5 (final). `docs/live-test-loop.md` gains a **prove → merge** section (the branch-runnable `prove-on-test-system.yml`, its sandbox-identity safety model, and the full stand-up-once → iterate-on-branch → promote → tear-down flow). `CLAUDE.md` gains the two new workflows in the Workflows table, the sandbox toy-key identity in Fixed values, and both on the `dispatch_workflow` allowlist enumerations. The throwaway `factory-test-pbm1` was decommissioned (Railway + DNS + repo archive) after the proof. Development closed. |
+
+## fix: prove-before-merge — provision _bind must pass --condition=None on conditional-policy projects (Stage 4 fix)
+
+| Type | Summary |
+|---|---|
+| fix | Standing up the Stage-4 live test system failed at provision's "Grant project-level IAM" step: `gcloud projects add-iam-policy-binding ... --quiet` errored with *"Adding a binding without specifying a condition to a policy containing conditions is prohibited in non-interactive mode. Run the command again with `--condition=None`."* Root cause is a side-effect of Stage 1: the sandbox toy-key's **conditioned** `secretAccessor` made `factory-test-25`'s project IAM policy contain a condition, and from then on gcloud refuses to add an *unconditional* binding there without an explicit `--condition=None`. Fix: provision-system.yml's `_bind` helper now passes `--condition=None` (a harmless no-op on condition-free policies — i.e. every real system's own project — and the documented requirement on a conditional one). This unblocks every reuse-mode provision onto the shared test backend; no behaviour change for normal/adopt provisions. |
+
+## feat: prove-before-merge — prove-on-test-system apply body + per-system App pull_requests:write (Stage 3)
+
+| Type | Summary |
+|---|---|
+| feat | Stage 3 — the apply/prove body of `prove-on-test-system.yml`. After authenticating as the sandbox SA (and hard-asserting it is NOT the broker), it reads the test system's own `github-app-*` creds from `factory-test-25` SM (the only secrets the conditioned sandbox grant allows), mints a token scoped to just `edri2or/<system_name>`, clones it, copies **this branch's** `templates/system/<paths>` in, and lands the change through the **same PR + green-CI + squash-merge gate** the test repo enforces — then dispatches the system's `post_apply_workflow` to take it live. Idempotent (no diff → no PR). To make the PR path possible from the sandbox identity, `register-system-app.yml` bumps the per-system App's `pull_requests` scope `read`→`write` (a minimal bump — the App already holds `contents`/`workflows`/`secrets:write` on that one repo; scoped to the system's own repo; provision-only propagation). Also fixes the Stage-2 skeleton's trailing `echo` (`SYSTEM_NAME: unbound variable` under `set -u`). `yamllint` green. The earlier Stage-2 live run already proved a non-main branch authenticates as the sandbox SA (never the broker). |
+
 ## feat: prove-before-merge — branch-runnable prove-on-test-system skeleton (Stage 2)
 
 | Type | Summary |
