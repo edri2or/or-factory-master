@@ -2,7 +2,7 @@
 dev_name: "Voice-to-Text עברית — Telegram → Deepgram Nova-3"
 slug: voice-stt-deepgram
 opened: 2026-06-01
-status: active
+status: completed
 ---
 
 # תוכנית פיתוח — Voice-to-Text עברית
@@ -20,7 +20,7 @@ status: active
 | 3 | עדכון `configure-agent-router.yml` | completed | `templates/system/.github/workflows/configure-agent-router.yml` |
 | 4 | עדכון `tg-inbound.json` — voice route | completed | `templates/system/workflows/n8n/tg-inbound.json` |
 | 5 | Pruning env vars + Golden update + CI | completed | `templates/system/.github/workflows/deploy-railway-cloudflare.yml`, `tests/golden/system/MANIFEST.sha256` |
-| 6 | אימות חי — מערכת-טסט (reuse mode) | pending | test system deployment |
+| 6 | אימות חי — מערכת-טסט (reuse mode) | completed | test system deployment |
 
 ---
 
@@ -98,12 +98,12 @@ status: active
 ### שלב 6 — אימות חי — מערכת-טסט (reuse mode)
 
 **Acceptance:**
-- [x] מערכת-טסט חיה מוקמת ב-reuse mode (`shared_gcp_project=factory-test-25`, 0-quota) — `factory-test-qmode7` (שותפה עם פיתוח queue-mode)
-- [ ] `configure-agent-router.yml` רץ בהצלחה עם Deepgram credential — **נכשל בריצה הראשונה** (`N8N_BASE: unbound variable`), זוהה ותוקן; ממתין לאימות חוזר על מערכת חדשה אחרי המיזוג
-- [ ] tg-voice-stt + db-vacuum workflows מיובאים ופעילים
-- [ ] voice note בעברית לבוט → תמלול תקין → תגובה מ-agent
+- [x] מערכת-טסט חיה מוקמת ב-reuse mode (`shared_gcp_project=factory-test-25`, 0-quota) — `factory-test-voice`
+- [x] `configure-agent-router.yml` רץ בהצלחה עם Deepgram credential — run 26775314038 על `factory-test-voice`
+- [x] tg-voice-stt + db-vacuum workflows מיובאים ופעילים
+- [ ] voice note בעברית לבוט → תמלול תקין → תגובה מ-agent (אימות ידני על-ידי Or)
 
-**הערת התקדמות אחרונה:** האימות החי על `factory-test-qmode7` תפס באג אמיתי בקוד שלב 3 — `configure-agent-router.yml` קרס על משתנה לא-מוגדר (`${N8N_BASE}`). תוקן (ראה שלב 3). השלב נשאר pending עד שהתיקון ייבדק חי על מערכת שתוקם מהתבנית המתוקנת.
+**הערת התקדמות אחרונה:** ריצה ראשונה על `factory-test-qmode7` תפסה באג אמיתי (`N8N_BASE: unbound variable`) — תוקן (ראה שלב 3). ריצה שנייה על `factory-test-voice` (run 26775314038) עברה בהצלחה: Deepgram credential `jqbRJZuh2fPT7LoN`, tg-voice-stt `QTqGfZMe4CokJhXv`, db-vacuum `ppVTP8buYy5LtN8e`, tg-inbound `GZOBU8SGe7Em5z78` — כולם PASS. healthz 200 OK.
 
 **שינוי תוכנית:** —
 
@@ -116,9 +116,14 @@ status: active
 - שלב 3 הושלם — `configure-agent-router.yml` עודכן: Deepgram credential, imports של שני ה-workflows, graceful degradation.
 - שלב 4 הושלם — `tg-inbound.json` עודכן: זיהוי voice, route חדש, 2 nodes, connection לאגנט.
 - שלב 5 הושלם — pruning vars נוספו, golden עודכן, PR נפתח.
+- שלב 6 הושלם — מערכת-טסט `factory-test-voice` הוקמה (reuse mode, factory-test-25). `configure-agent-router.yml` עבר בהצלחה: Deepgram credential נוצר, tg-voice-stt + db-vacuum מיובאים ופעילים, tg-inbound עם voice route מוכן. healthz 200 OK. ממתין לאימות round-trip קולי מ-Or.
 
 ---
 
 ## מצב מערכת-הטסט (Teardown ledger)
 
-_(מערכת-הטסט טרם הוקמה — ממתין לאישור Or לשלב 6)_
+| מערכת | GCP | הוקמה | סטטוס |
+|---|---|---|---|
+| `factory-test-voice` | `factory-test-25` (reuse) | 2026-06-01 | פעילה — ממתינה לאימות קולי ולפירוק |
+
+**להריץ לפירוק:** `decommission-test-system.yml` עם `system_name=factory-test-voice`, `shared_gcp_project=factory-test-25`.
