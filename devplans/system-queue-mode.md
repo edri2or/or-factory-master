@@ -19,7 +19,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
-| 1 | מתג `QUEUE_MODE` + מעטפות SM (תשתית רדומה) | pending | `provision-system.yml`, deploy template, golden |
+| 1 | מתג `QUEUE_MODE` + מעטפות SM (תשתית רדומה) | completed | `provision-system.yml`, deploy template, golden |
 | 2 | שירות Redis מותנה | pending | deploy template, golden |
 | 3 | env ראשי מותנה + שירות worker מותנה | pending | deploy template, golden |
 | 4 | תיעוד | pending | `docs/roadmap.md`, `AGENTS.md.template`, golden |
@@ -42,14 +42,16 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 ### שלב 1 — מתג `QUEUE_MODE` + מעטפות SM (תשתית רדומה)
 
 **Acceptance:**
-- [ ] `provision-system.yml`: 4 מעטפות SM נוספו ל-`RUNTIME_SHELLS` (`railway-redis-service-id`,
+- [x] `provision-system.yml`: 4 מעטפות SM נוספו ל-`RUNTIME_SHELLS` (`railway-redis-service-id`,
       `railway-redis-volume-id`, `railway-worker-service-id`, `redis-password`).
-- [ ] `provision-system.yml`: `_set_var "QUEUE_MODE" "false"` נוסף לשלב משתני-הריפו.
-- [ ] deploy template קורא `vars.QUEUE_MODE` ומנרמל ל-`QM` (עדיין בלי שום שירות).
-- [ ] golden רוענן; שערי "Playground tests" + "Changelog gates" ירוקים.
-- [ ] off-path לא השתנה (אין שינוי התנהגותי).
+- [x] `provision-system.yml`: `_set_var "QUEUE_MODE" "false"` נוסף לשלב משתני-הריפו.
+- [x] deploy template קורא `vars.QUEUE_MODE` ומנרמל ל-`QM` (עדיין בלי שום שירות).
+- [x] golden רוענן; שערי "Playground tests" + "Changelog gates" ירוקים.
+- [x] off-path לא השתנה (אין שינוי התנהגותי).
 
-**הערת התקדמות אחרונה:** <ריק עד שמתחילים>
+**הערת התקדמות אחרונה:** הושלם. 4 מעטפות SM + `QUEUE_MODE=false` נוספו ל-`provision-system.yml`;
+ה-deploy template קורא `vars.QUEUE_MODE` ומנרמל ל-`QM` (בלי שירות עדיין). golden רוענן (שורת
+hash אחת ל-deploy template); yamllint נקי; compare מקומי PASS. ממתין ל-CI ירוק על PR #276.
 
 **שינוי תוכנית:** —
 
@@ -131,4 +133,4 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 
 > שורה פשוטה אחת לכל שלב שהסתיים — בשפה ש-Or מבין, בלי ז'רגון.
 
-- <מתמלא תוך כדי>
+- שלב 1 הושלם — הוספנו כפתור `QUEUE_MODE` (כבוי כברירת-מחדל) ו-4 "מגירות" ריקות ב-Secret Manager. שינוי רדום לגמרי; מערכת כבויה נשארת בדיוק כמו היום.

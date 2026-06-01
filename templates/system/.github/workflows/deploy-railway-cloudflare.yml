@@ -8,11 +8,16 @@ name: Deploy n8n on Railway + Cloudflare DNS
 #
 # Reads from this repo's variables (set by the factory):
 #   GCP_WIF_PROVIDER, GCP_DEPLOY_SA, GCP_PROJECT_ID, SYSTEM_NAME
+#   QUEUE_MODE (optional, default "false") — when "true", also provisions a
+#     Redis service + an n8n worker so the system runs automations in parallel
+#     through a queue. Default OFF keeps the deploy byte-identical + cost-free.
 # Reads from its own GCP Secret Manager:
 #   railway-api-token, cloudflare-token-creator, cloudflare-zone-id-or-infra
 # Generates/persists in its own SM on first run:
 #   n8n-encryption-key, railway-project-id, railway-n8n-service-id,
 #   railway-postgres-service-id
+#   (queue mode only) redis-password, railway-redis-service-id,
+#     railway-redis-volume-id, railway-worker-service-id
 
 on:
   workflow_dispatch: {}
@@ -163,8 +168,19 @@ jobs:
         env:
           PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
           SYSTEM_NAME: ${{ vars.SYSTEM_NAME }}
+          QUEUE_MODE: ${{ vars.QUEUE_MODE }}
         run: |
           set -euo pipefail
+
+          # Optional per-system queue mode (Redis + n8n worker). Sticky repo var
+          # QUEUE_MODE, default OFF (provision sets "false"; unset is also OFF).
+          # Normalize to a strict boolean QM here; every queue-mode block below
+          # is gated on `[ "$QM" = "true" ]`. When OFF this workflow behaves
+          # byte-identical to the pre-queue-mode deploy: no Redis, no worker,
+          # and the n8n service receives exactly the same env vars as before.
+          QM=false
+          [ "${QUEUE_MODE:-false}" = "true" ] && QM=true
+          echo "INFO: QUEUE_MODE=${QUEUE_MODE:-<unset>} -> QM=${QM}"
 
           # GraphQL helper: posts a query/mutation, fails on .errors[].
           _gql() {

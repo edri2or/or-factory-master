@@ -1,0 +1,3 @@
+### queue mode אופציונלי למערכות (Redis + n8n worker) — מאחורי מתג `QUEUE_MODE`, ברירת-מחדל כבוי
+
+- **שלב 1 — מתג + מעטפות SM (תשתית רדומה).** `provision-system.yml` מקבל 4 מעטפות SM חדשות ב-`RUNTIME_SHELLS` (`railway-redis-service-id`, `railway-redis-volume-id`, `railway-worker-service-id`, `redis-password`) ומגדיר משתנה-ריפו חדש `QUEUE_MODE=false` לכל מערכת חדשה. ה-deploy של המערכת (`templates/system/.github/workflows/deploy-railway-cloudflare.yml`) קורא את `vars.QUEUE_MODE` ומנרמל ל-`QM` בוליאני בראש שלב "Provision Railway" — עדיין בלי שום שירות חדש. כש-`QUEUE_MODE` כבוי (ברירת-המחדל), הפריסה זהה-בייט למצב הקודם: אין Redis, אין worker, ו-n8n מקבל בדיוק את אותם 15 משתני-סביבה. ה-golden (`tests/golden/system/MANIFEST.sha256`) רוענן לשינוי ה-deploy template.
