@@ -2,7 +2,7 @@
 dev_name: הקמה נועלת main כמו הפקטורי (ruleset)
 slug: provision-ruleset-protection
 opened: 2026-06-02
-status: active   # active בזמן פיתוח → completed בסיום (משחרר את שער ה-CI)
+status: completed   # active בזמן פיתוח → completed בסיום (משחרר את שער ה-CI)
 ---
 
 # תוכנית פיתוח — הקמה נועלת main כמו הפקטורי
@@ -17,8 +17,8 @@ ruleset יחיד (`protect-main`) במקום ה-classic branch-protection היש
 
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
-| 1 | החלפת classic ב-ruleset ב-provision | in-progress | `.github/workflows/provision-system.yml`, `CLAUDE.md` |
-| 2 | הוכחה על מערכת-טסט חיה + פירוק | pending | (dispatch provision + verify + decommission) |
+| 1 | החלפת classic ב-ruleset ב-provision | completed | `.github/workflows/provision-system.yml`, `CLAUDE.md` |
+| 2 | הוכחה על מערכת-טסט חיה + פירוק | completed | (dispatch provision + verify + decommission) |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
 
@@ -27,11 +27,11 @@ ruleset יחיד (`protect-main`) במקום ה-classic branch-protection היש
 ### שלב 1 — החלפת classic ב-ruleset ב-provision
 
 **Acceptance:**
-- [ ] שלב "Branch protection on main" קורא ל-`ensure-protect-main-ruleset.sh` עם 4 ה-contexts של המערכת
-- [ ] ה-classic curl (`branches/main/protection`) הוסר לגמרי
-- [ ] CLAUDE.md מעודכן; CI ירוק
+- [x] שלב "Branch protection on main" קורא ל-`ensure-protect-main-ruleset.sh` עם 4 ה-contexts של המערכת
+- [x] ה-classic curl (`branches/main/protection`) הוסר לגמרי
+- [x] CLAUDE.md מעודכן; CI ירוק
 
-**הערת התקדמות אחרונה:** הטוקן בהקמה (שורה 147) לא-מ-scoped → כבר נושא administration:write, אז אין שינוי טבעת. ב-PR.
+**הערת התקדמות אחרונה:** הושלם ומוזג (PR #303). הטוקן בהקמה (שורה 147) לא-מ-scoped → כבר נושא administration:write, אז לא נדרש שינוי טבעת.
 
 **שינוי תוכנית:** —
 
@@ -40,11 +40,11 @@ ruleset יחיד (`protect-main`) במקום ה-classic branch-protection היש
 ### שלב 2 — הוכחה על מערכת-טסט חיה + פירוק
 
 **Acceptance:**
-- [ ] provision של מערכת-טסט זמנית (reuse, `factory-test-25`, 0 quota)
-- [ ] `verify_github_system(<throwaway>)` → `ruleset-protect-main-active: PASS`, ואין classic protection
-- [ ] פירוק המערכת הזמנית (`decommission-test-system.yml`)
+- [x] provision של מערכת-טסט זמנית (reuse, `factory-test-25`, 0 quota) — `test-lock-check` (run 26822185745, success)
+- [x] `verify_github_system(test-lock-check)` → `ruleset-protect-main-active: PASS` (נולד נעול ב-ruleset; classic הוסר מהקוד אז לא קיים)
+- [x] פירוק המערכת הזמנית (`decommission-test-system.yml`, run 26823195711, success)
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הוכח חי — מערכת חדשה נולדה עם ruleset פעיל, ואז פורקה נקי. הערה תפעולית: לפירוק מערכת ללא קידומת-טסט בשם, חובה להעביר `shared_gcp_project=factory-test-25` (שער הבטיחות דחה את הניסיון הראשון בלי זה — התנהגות נכונה).
 
 **שינוי תוכנית:** —
 
@@ -54,4 +54,5 @@ ruleset יחיד (`protect-main`) במקום ה-classic branch-protection היש
 
 > שורה פשוטה אחת לכל שלב שהסתיים — בשפה ש-Or מבין, בלי ז'רגון.
 
-- (מתמלא תוך כדי)
+- שלב 1 הושלם — שינינו את ההקמה כך שכל מערכת חדשה תיוולד עם אותו מנעול חזק כמו הפקטורי (ruleset), במקום הישן.
+- שלב 2 הושלם — הוכחנו חי על מערכת זמנית שנולדה נעולה, ואז פירקנו אותה. המשימה הושלמה.
