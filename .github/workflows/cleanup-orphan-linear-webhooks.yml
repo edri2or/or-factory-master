@@ -1,0 +1,103 @@
+name: Cleanup Orphan Linear Webhooks
+
+# Manual dispatch only. Scans every Linear webhook in the haestrateg-ops
+# workspace, marks each one whose URL host is "<repo>.or-infra.com" /
+# "n8n-<repo>.or-infra.com" where `edri2or/<repo>` is missing or archived as
+# orphan, and (when apply=true) deletes them via Linear's webhookDelete
+# mutation. Default is a dry-run.
+#
+# This exists because decommission-test-system.yml didn't historically delete
+# the per-system Linear webhook, so torn-down test systems leave behind orphan
+# webhooks that Linear keeps retrying — eventually emailing "Linear webhook is
+# failing / disabled" for hosts that haven't existed in weeks. The script's
+# HARD SAFETY rule is that it only touches hosts ending in `.or-infra.com`
+# (never run.app, never anywhere else — so the OIL webhook on the MCP server
+# is safe).
+#
+# Auth: WIF as the broker SA for reading `linear-api-key` from
+# or-factory-master-control SM, plus the broker App token for the GitHub repo
+# archived/exists check.
+
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: "Set to 'true' to actually delete. Default 'false' is a dry-run."
+        required: false
+        type: choice
+        default: "false"
+        options:
+          - "false"
+          - "true"
+
+permissions: {}
+
+jobs:
+  cleanup:
+    name: Cleanup orphan Linear webhooks (apply=${{ inputs.apply }})
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      id-token: write
+
+    env:
+      GCP_PROJECT: "or-factory-master-control"
+      BROKER_SA: "factory-master-broker@or-factory-master-control.iam.gserviceaccount.com"
+      WIF_PROVIDER: "projects/140345952904/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
+
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
+
+      - name: Authenticate to GCP via WIF
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093  # v3.0.0
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.BROKER_SA }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db  # v3.0.1
+
+      - name: Resolve broker App token + Linear API key
+        run: |
+          set -euo pipefail
+          BROKER_APP_ID=$(gcloud secrets versions access latest \
+            --secret="factory-master-broker-app-id" --project="${GCP_PROJECT}")
+          BROKER_INSTALL_ID=$(gcloud secrets versions access latest \
+            --secret="factory-master-broker-app-installation-id" --project="${GCP_PROJECT}")
+          gcloud secrets versions access latest \
+            --secret="factory-master-broker-app-private-key" --project="${GCP_PROJECT}" \
+            > /tmp/broker-app-key.pem
+          chmod 600 /tmp/broker-app-key.pem
+          BROKER_TOKEN=$(bash scripts/generate-app-token.sh \
+            /tmp/broker-app-key.pem "$BROKER_APP_ID" "$BROKER_INSTALL_ID")
+          shred -u /tmp/broker-app-key.pem 2>/dev/null || rm -f /tmp/broker-app-key.pem
+          [ -n "$BROKER_TOKEN" ] || { echo "FAIL: could not mint broker App token" >&2; exit 1; }
+          echo "::add-mask::${BROKER_TOKEN}"
+          echo "BROKER_TOKEN=${BROKER_TOKEN}" >> "$GITHUB_ENV"
+
+          LINEAR_KEY=$(gcloud secrets versions access latest \
+            --secret="linear-api-key" --project="${GCP_PROJECT}")
+          [ -n "$LINEAR_KEY" ] || { echo "FAIL: linear-api-key not readable" >&2; exit 1; }
+          echo "::add-mask::${LINEAR_KEY}"
+          echo "LINEAR_API_KEY=${LINEAR_KEY}" >> "$GITHUB_ENV"
+
+      - name: Scan + (optionally) delete orphan webhooks
+        env:
+          APPLY: ${{ inputs.apply }}
+        run: |
+          set -euo pipefail
+          if [ "$APPLY" = "true" ]; then FLAG="--apply"; else FLAG="--dry-run"; fi
+          bash scripts/cleanup-orphan-linear-webhooks.sh \
+            --mode=scan-all \
+            --api-key="${LINEAR_API_KEY}" \
+            --github-token="${BROKER_TOKEN}" \
+            "${FLAG}" | tee /tmp/cleanup.log
+
+          {
+            echo "## Cleanup orphan Linear webhooks (apply=${APPLY})"
+            echo ""
+            echo '```'
+            cat /tmp/cleanup.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

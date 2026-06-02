@@ -1,0 +1,11 @@
+# Changelog fragment — cleanup-orphan-linear-webhooks (2026-06-02)
+
+> Per-development changelog fragment (date + slug ⇒ collision-free), written here instead of
+> the head of `CHANGELOG.md`. Folded into `CHANGELOG.md` with a running Stage number by
+> `scripts/compile-changelog.sh`.
+
+## fix: decommission leaves orphan Linear webhooks behind (root-cause + one-time cleanup)
+
+| Type | Summary |
+|---|---|
+| fix | `decommission-test-system.yml` historically tore down Railway + Cloudflare DNS + archived the GitHub repo but never told **Linear** that the per-system webhook (created by the system's own n8n, pointing at `https://<system>.or-infra.com/...`) was dead — so Linear kept retrying decommissioned hosts and eventually emailed "Linear webhook is failing / disabled" (4 disabled on 2026-05-26 for `test-service`/`or-life-12`/`e2e-test-4`/`e2e-test-3`; 7 still-failing on 2026-05-30 / 2026-06-02 for `project-life-{14..19}` + `project16`). Two-part fix: (1) `decommission-test-system.yml` now runs a new `Delete this system's Linear webhooks (host-scoped)` step BEFORE archiving the repo — reads `linear-api-key` from `or-factory-master-control` SM, invokes `scripts/cleanup-orphan-linear-webhooks.sh --mode=single --system="${SYSTEM_NAME}" --apply` (best-effort, soft-fails: webhook cleanup must never block a teardown); the summary now lists the deleted webhooks alongside the deleted Railway/DNS/repo lines. (2) New one-shot `cleanup-orphan-linear-webhooks.yml` workflow scans every webhook in the workspace, marks each one whose URL host is `<repo>.or-infra.com` / `n8n-<repo>.or-infra.com` where `edri2or/<repo>` is missing or archived as orphan, and (when `inputs.apply=true`) deletes them — default is a dry-run. Both flows go through `scripts/cleanup-orphan-linear-webhooks.sh` (new), which has a HARD safety rule: it only touches webhooks whose URL host ends with `.or-infra.com`, so the OIL webhook on the MCP server's `run.app` host is structurally untouchable. `cleanup-orphan-linear-webhooks.yml` is added to the `dispatch_workflow` MCP allowlist so the agent can run the periodic sweep. Pure additive change; no existing decommission behaviour is broken (the new step is wedged after Cloudflare and before repo archive, and best-effort soft-fails). |
