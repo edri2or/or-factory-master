@@ -41,6 +41,7 @@ templates/system/workflows/n8n/db-vacuum.json
 .github/workflows/compile-changelog.yml
 .github/workflows/list-recoverable-projects.yml
 .github/workflows/set-factory-branch-protection.yml
+.github/workflows/protect-system-main.yml
 .github/workflows/set-oil-allowlist.yml
 .github/workflows/decommission-railway-projects.yml
 .github/workflows/decommission-test-projects.yml
