@@ -1,0 +1,5 @@
+### Added
+- `.github/workflows/protect-system-main.yml`: new manual-dispatch workflow that applies the `protect-main` ruleset to any system repo under `edri2or/`. Mints a broker App token scoped to the target repo with `administration:write` (and `contents:write` only when also writing the `.bootstrap-complete` marker), then reuses the same idempotent ensure-script the factory uses on itself. Closes a hardening gap on existing systems (e.g. `or-adhd-agent`) where the `protect-main` ruleset was never installed, so direct pushes to `main` were possible. Inputs: `system_repo` (required), `required_contexts_json` (default = the 4 CI gates every system inherits), `write_bootstrap_marker` (default `true`).
+
+### Changed
+- `scripts/ensure-protect-main-ruleset.sh`: parameterized for any target repo via `TARGET_REPO` and `REQUIRED_CONTEXTS_JSON` env vars. Defaults preserved (factory repo + 5 gates), so `.github/workflows/protect-main.yml` keeps working unchanged. `REQUIRED_CONTEXTS_JSON` accepts either a plain string array or the `{context}` object form.
