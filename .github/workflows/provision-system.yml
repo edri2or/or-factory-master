@@ -704,8 +704,8 @@ jobs:
           cp "$EMITTER_LIB_SRC"/*.sh "$CLONE_DIR/scripts/lib/"
 
           # Governance bundle: ship the CI gates + doc policy so every system enforces
-          # PR-only + green-CI on main (the "Branch protection on main" step below sets
-          # these as required status checks). 4 workflows + .yamllint + CHANGELOG.md seed
+          # PR-only + green-CI on main (the "Branch protection on main (protect-main
+          # ruleset)" step below requires these contexts). 4 workflows + .yamllint + CHANGELOG.md seed
           # from templates/system/; the portable check scripts come from the factory's
           # own scripts/ (single source of truth — check-skills-mirror.sh is
           # factory-specific and intentionally NOT shipped).
@@ -903,47 +903,21 @@ jobs:
             echo "- אם תרצה שם אחר — הרץ provision מחדש עם השדה \`agent_name\` מלא, או ערוך \`AGENTS.md\` ישירות."
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Branch protection on main
+      - name: Branch protection on main (protect-main ruleset)
+        # Apply the SAME protect-main ruleset the factory enforces on itself —
+        # not the legacy classic branch-protection API. A ruleset blocks direct
+        # pushes to main for EVERYONE (PR required, 0 approvals), including the
+        # broker App (it is not a repo admin, so it does not match the admin
+        # bypass actor), and also blocks force-push + deletion. Reuses the
+        # shared, idempotent ensure-protect-main-ruleset.sh; APP_TOKEN (minted
+        # earlier, unscoped → carries administration:write) is already in env.
+        # The 4 CI contexts were pushed to main in the scaffold step above, and
+        # this step runs AFTER all scaffold pushes, so applying the lock here is
+        # safe. System repos have no "Playground tests" job, so only 4 contexts.
         env:
-          SYSTEM_NAME: ${{ inputs.system_name }}
-        run: |
-          set -euo pipefail
-          # auto_init created an initial commit; main exists. Add protection:
-          # PR required (0 approvals — a solo owner can still merge), no direct
-          # push, no force-push/deletion, and the 4 scaffolded CI checks must be
-          # green before merge. The CI workflows were pushed to main in the
-          # scaffold step above, so these contexts resolve. `strict:true` means
-          # the PR branch must be up to date with main before merging.
-          BODY=$(jq -cn '{
-            required_status_checks: {
-              strict: true,
-              contexts: [
-                "Changelog gates",
-                "shellcheck + yamllint",
-                "Scan for committed secrets",
-                "Supply chain gates"
-              ]
-            },
-            enforce_admins: false,
-            required_pull_request_reviews: {
-              required_approving_review_count: 0,
-              dismiss_stale_reviews: false
-            },
-            restrictions: null,
-            allow_force_pushes: false,
-            allow_deletions: false
-          }')
-          resp=$(curl -sS -w '\nHTTP_STATUS:%{http_code}' -X PUT \
-            -H "Authorization: Bearer ${APP_TOKEN}" \
-            -H "Accept: application/vnd.github+json" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            "https://api.github.com/repos/edri2or/${SYSTEM_NAME}/branches/main/protection" \
-            -d "$BODY")
-          http_code=$(printf '%s' "$resp" | tail -1 | sed 's/HTTP_STATUS://')
-          body=$(printf '%s' "$resp" | sed '$d')
-          [ "$http_code" = "200" ] \
-            || { echo "FAIL: branch protection HTTP ${http_code}: ${body}" >&2; exit 1; }
-          echo "PASS: branch protection set on main."
+          TARGET_REPO: edri2or/${{ inputs.system_name }}
+          REQUIRED_CONTEXTS_JSON: '["Changelog gates","shellcheck + yamllint","Scan for committed secrets","Supply chain gates"]'
+        run: bash scripts/ensure-protect-main-ruleset.sh
 
       - name: Clean shared-project secrets (reuse mode)
         if: steps.validate.outputs.reuse == 'true'
