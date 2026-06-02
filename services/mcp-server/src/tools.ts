@@ -371,6 +371,13 @@ export function registerTools(server: McpServer): void {
   // ref=<branch>); its safety is the sandbox identity it auths as (sandbox-tester-sa via
   // github-sandbox-provider, factory repo / any ref) — never the broker. It can only reach a
   // throwaway test repo's contents via that test system's own github-app-* creds.
+  // cleanup-orphan-linear-webhooks.yml IS allowed — read-mostly maintenance that lists
+  // every Linear webhook in the haestrateg-ops workspace and (when inputs.apply=true)
+  // deletes the ones whose URL host is "<repo>.or-infra.com" / "n8n-<repo>.or-infra.com"
+  // for a repo that's missing or archived. Default is a dry-run; the script hard-refuses
+  // anything outside *.or-infra.com (the OIL webhook on the MCP server's run.app host is
+  // therefore safe). Pairs with decommission-test-system.yml, which now also deletes the
+  // torn-down system's Linear webhook inline so new orphans never accumulate.
   const DISPATCHABLE_WORKFLOWS = new Set([
     'provision-system.yml',
     'register-system-app.yml',
@@ -383,6 +390,7 @@ export function registerTools(server: McpServer): void {
     'meta-monitoring-watchdog.yml',
     'bootstrap-sandbox-tester.yml',
     'prove-on-test-system.yml',
+    'cleanup-orphan-linear-webhooks.yml',
   ]);
 
   server.tool(
