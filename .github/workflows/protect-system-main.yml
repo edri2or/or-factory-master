@@ -97,13 +97,10 @@ jobs:
           echo "APP_TOKEN=${TOKEN}" >> "$GITHUB_ENV"
           shred -u /tmp/broker-app-key.pem 2>/dev/null || rm -f /tmp/broker-app-key.pem
 
-      - name: Apply protect-main ruleset
-        env:
-          TARGET_REPO: edri2or/${{ inputs.system_repo }}
-          REQUIRED_CONTEXTS_JSON: ${{ inputs.required_contexts_json }}
-        run: bash scripts/ensure-protect-main-ruleset.sh
-
       - name: Write .bootstrap-complete marker
+        # MUST run BEFORE applying protect-main: once the ruleset is active,
+        # direct pushes to main are blocked, and the broker App is not admin
+        # on system repos so it does not match the ruleset's bypass_actors.
         if: ${{ inputs.write_bootstrap_marker }}
         env:
           SYSTEM_REPO: ${{ inputs.system_repo }}
@@ -140,3 +137,9 @@ jobs:
             exit 1
           fi
           echo "PASS: .bootstrap-complete written to edri2or/${SYSTEM_REPO}"
+
+      - name: Apply protect-main ruleset
+        env:
+          TARGET_REPO: edri2or/${{ inputs.system_repo }}
+          REQUIRED_CONTEXTS_JSON: ${{ inputs.required_contexts_json }}
+        run: bash scripts/ensure-protect-main-ruleset.sh

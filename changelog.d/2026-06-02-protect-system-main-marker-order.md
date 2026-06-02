@@ -1,0 +1,2 @@
+### Fixed
+- `.github/workflows/protect-system-main.yml`: write `.bootstrap-complete` BEFORE applying the protect-main ruleset, not after. The broker App is not admin on system repos so it does not match the ruleset's `bypass_actors`; once the ruleset is active, the App's direct PUT to `main` gets 409 ("Changes must be made through a pull request"). Reversing the order keeps the step idempotent and doesn't require any new bypass.
