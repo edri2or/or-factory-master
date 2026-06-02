@@ -1,0 +1,142 @@
+name: Apply protect-main ruleset to a system repo
+
+# Generalized form of protect-main.yml — applies the same ruleset
+# (PR required, required status checks, block force-push, block deletion)
+# to any system repo under edri2or/. Manual dispatch only.
+#
+# Closes the hardening gap where system repos (e.g. or-adhd-agent) were
+# scaffolded but never had their protect-main ruleset installed, so
+# direct pushes to main were possible.
+
+on:
+  workflow_dispatch:
+    inputs:
+      system_repo:
+        description: 'System repo NAME under edri2or/ (e.g. or-adhd-agent). NOT the full owner/repo.'
+        required: true
+        type: string
+      required_contexts_json:
+        description: 'JSON array of required status-check contexts (job names). Default matches the 4 CI gates every system inherits.'
+        required: false
+        type: string
+        default: '["Changelog gates","shellcheck + yamllint","Scan for committed secrets","Supply chain gates"]'
+      write_bootstrap_marker:
+        description: 'Also write .bootstrap-complete to the system repo root (flips verify_github_system bootstrap-complete-marker to PASS).'
+        required: false
+        type: boolean
+        default: true
+
+permissions: {}
+
+jobs:
+  apply:
+    name: Apply protect-main to ${{ inputs.system_repo }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
+        with:
+          persist-credentials: false
+
+      - name: Validate system_repo input
+        env:
+          SYSTEM_REPO: ${{ inputs.system_repo }}
+        run: |
+          set -euo pipefail
+          # Same validator shape as system_name elsewhere in the factory, but
+          # accept any existing repo name (some legacy repos may not match the
+          # 6-30 char window). Refuse the factory + control repos explicitly.
+          case "$SYSTEM_REPO" in
+            ""|*/*|*..*|*' '*)
+              echo "FAIL: invalid system_repo '$SYSTEM_REPO' (must be a bare repo name, no slashes/spaces)" >&2
+              exit 1 ;;
+            or-factory-master|or-factory-master-control)
+              echo "FAIL: refusing to target the factory itself — use protect-main.yml" >&2
+              exit 1 ;;
+          esac
+          echo "Target: edri2or/${SYSTEM_REPO}"
+
+      - name: Authenticate to GCP via WIF
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093  # v3.0.0
+        with:
+          workload_identity_provider: "projects/140345952904/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
+          service_account: "factory-master-broker@or-factory-master-control.iam.gserviceaccount.com"
+
+      - name: Mint broker App token scoped to ${{ inputs.system_repo }}
+        env:
+          SYSTEM_REPO: ${{ inputs.system_repo }}
+          WRITE_MARKER: ${{ inputs.write_bootstrap_marker }}
+        run: |
+          set -euo pipefail
+          APP_ID=$(gcloud secrets versions access latest \
+            --secret="factory-master-broker-app-id" \
+            --project="or-factory-master-control")
+          INSTALL_ID=$(gcloud secrets versions access latest \
+            --secret="factory-master-broker-app-installation-id" \
+            --project="or-factory-master-control")
+          gcloud secrets versions access latest \
+            --secret="factory-master-broker-app-private-key" \
+            --project="or-factory-master-control" > /tmp/broker-app-key.pem
+          chmod 600 /tmp/broker-app-key.pem
+
+          # Permissions: administration:write is always required (rulesets API);
+          # contents:write is added only if we also need to commit .bootstrap-complete.
+          if [ "${WRITE_MARKER}" = "true" ]; then
+            PERMS='{"administration":"write","contents":"write"}'
+          else
+            PERMS='{"administration":"write"}'
+          fi
+          REPOS=$(jq -cn --arg r "${SYSTEM_REPO}" '[$r]')
+
+          TOKEN=$(bash scripts/generate-app-token.sh /tmp/broker-app-key.pem "$APP_ID" "$INSTALL_ID" \
+            "" "${PERMS}" "${REPOS}")
+          [ -n "$TOKEN" ] || { echo "FAIL: could not obtain App installation token" >&2; exit 1; }
+          echo "::add-mask::${TOKEN}"
+          echo "APP_TOKEN=${TOKEN}" >> "$GITHUB_ENV"
+          shred -u /tmp/broker-app-key.pem 2>/dev/null || rm -f /tmp/broker-app-key.pem
+
+      - name: Apply protect-main ruleset
+        env:
+          TARGET_REPO: edri2or/${{ inputs.system_repo }}
+          REQUIRED_CONTEXTS_JSON: ${{ inputs.required_contexts_json }}
+        run: bash scripts/ensure-protect-main-ruleset.sh
+
+      - name: Write .bootstrap-complete marker
+        if: ${{ inputs.write_bootstrap_marker }}
+        env:
+          SYSTEM_REPO: ${{ inputs.system_repo }}
+        run: |
+          set -euo pipefail
+          API="https://api.github.com/repos/edri2or/${SYSTEM_REPO}/contents/.bootstrap-complete"
+          _api() {
+            curl -sS -o /tmp/marker-resp.json -w '%{http_code}' \
+              -H "Authorization: Bearer ${APP_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "$@"
+          }
+          # If the marker already exists, do nothing (idempotent).
+          STATUS=$(_api "${API}")
+          if [ "${STATUS}" = "200" ]; then
+            echo "PASS: .bootstrap-complete already present on edri2or/${SYSTEM_REPO}"
+            exit 0
+          fi
+          if [ "${STATUS}" != "404" ]; then
+            echo "FAIL: unexpected status ${STATUS} probing marker" >&2
+            cat /tmp/marker-resp.json >&2
+            exit 1
+          fi
+          CONTENT=$(printf 'bootstrap-complete\nsystem: %s\nmarked-at: %s\n' \
+            "${SYSTEM_REPO}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" | base64 -w0)
+          BODY=$(jq -cn --arg msg "chore: mark bootstrap complete" \
+                       --arg content "${CONTENT}" \
+                       '{message: $msg, content: $content}')
+          STATUS=$(_api -X PUT -d "${BODY}" "${API}")
+          if [ "${STATUS}" != "201" ] && [ "${STATUS}" != "200" ]; then
+            echo "FAIL: could not write .bootstrap-complete (status ${STATUS})" >&2
+            cat /tmp/marker-resp.json >&2
+            exit 1
+          fi
+          echo "PASS: .bootstrap-complete written to edri2or/${SYSTEM_REPO}"
