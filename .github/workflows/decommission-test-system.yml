@@ -344,6 +344,28 @@ jobs:
           delete_record "CNAME" "n8n-${SYSTEM_NAME}.or-infra.com"
           delete_record "TXT"   "_railway-verify.n8n-${SYSTEM_NAME}.or-infra.com"
 
+      - name: Delete this system's Linear webhooks (host-scoped)
+        run: |
+          set -euo pipefail
+          # n8n workflows in each test system register a Linear webhook pointing
+          # at this system's own host (e.g. https://<system>.or-infra.com/...).
+          # Without this step those webhooks orbit forever after teardown and
+          # Linear eventually disables them with a noisy email. Best-effort:
+          # missing linear-api-key just warns and continues — webhook leftovers
+          # are not a teardown blocker.
+          LINEAR_KEY=$(gcloud secrets versions access latest \
+            --secret="linear-api-key" --project="${GCP_PROJECT}" 2>/dev/null || echo "")
+          if [ -z "$LINEAR_KEY" ]; then
+            echo "::warning::linear-api-key not readable in ${GCP_PROJECT} — skipping Linear webhook cleanup"
+            exit 0
+          fi
+          echo "::add-mask::${LINEAR_KEY}"
+          bash scripts/cleanup-orphan-linear-webhooks.sh \
+            --mode=single \
+            --system="${SYSTEM_NAME}" \
+            --api-key="${LINEAR_KEY}" \
+            --apply || echo "::warning::Linear webhook cleanup encountered an error — continuing teardown"
+
       - name: Archive GitHub repo
         run: |
           set -euo pipefail
@@ -379,6 +401,7 @@ jobs:
             echo "Tore down (idempotent — skips anything already gone):"
             echo "- Railway project named \`${SYSTEM_NAME}\` (deleted)"
             echo "- Cloudflare DNS \`n8n-${SYSTEM_NAME}\` CNAME + \`_railway-verify\` TXT"
+            echo "- Linear webhooks pointing at \`${SYSTEM_NAME}.or-infra.com\` / \`n8n-${SYSTEM_NAME}.or-infra.com\` (deleted)"
             echo "- GitHub repo \`edri2or/${SYSTEM_NAME}\` (archived)"
             echo ""
             echo "Untouched by design: GCP project / Secret Manager (\`${SYS_PROJECT:-?}\`), WIF/test_pool, and the per-system GitHub App (delete that via org admin if desired)."
