@@ -2,7 +2,7 @@
 dev_name: הקשחת main של מערכות (protect-system-main)
 slug: protect-system-main
 opened: 2026-06-02
-status: active   # active בזמן פיתוח → completed בסיום (משחרר את שער ה-CI)
+status: completed   # active בזמן פיתוח → completed בסיום (משחרר את שער ה-CI)
 ---
 
 # תוכנית פיתוח — הקשחת main של מערכות
@@ -18,8 +18,8 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
 | 1 | הכללת protect-main ל-system repos | completed | `.github/workflows/protect-system-main.yml`, `scripts/ensure-protect-main-ruleset.sh` |
-| 2 | כתיבת `.bootstrap-complete` דרך PR | in-progress | `.github/workflows/protect-system-main.yml` |
-| 3 | הרצה ואימות על or-adhd-agent | pending | — (dispatch + verify_github_system) |
+| 2 | כתיבת `.bootstrap-complete` דרך PR | completed | `.github/workflows/protect-system-main.yml` |
+| 3 | הרצה ואימות על or-adhd-agent | completed | — (dispatch + verify_github_system) |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
 
@@ -52,10 +52,10 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 ### שלב 3 — הרצה ואימות על or-adhd-agent
 
 **Acceptance:**
-- [ ] dispatch של `protect-system-main.yml` עם `system_repo=or-adhd-agent`
-- [ ] `verify_github_system(or-adhd-agent)` → גם `bootstrap-complete-marker` וגם `ruleset-protect-main-active` הם PASS
+- [x] dispatch של `protect-system-main.yml` עם `system_repo=or-adhd-agent`
+- [x] `verify_github_system(or-adhd-agent)` → גם `bootstrap-complete-marker` וגם `ruleset-protect-main-active` הם PASS
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם (run 26820384617). marker מוזג ל-or-adhd-agent דרך PR #7 (factory-master-broker[bot]); שתי הבדיקות PASS.
 
 **שינוי תוכנית:** —
 
@@ -66,3 +66,5 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 > שורה פשוטה אחת לכל שלב שהסתיים — בשפה ש-Or מבין, בלי ז'רגון.
 
 - שלב 1 הושלם — בנינו "מנעול" אחיד שאפשר להתקין על main של כל מערכת, והתקנו אותו על or-adhd-agent.
+- שלב 2 הושלם — סימון סיום-ההקמה נכתב דרך PR (גם הברוקר עובר דרך PR, בלי עקיפה).
+- שלב 3 הושלם — אומת חי על or-adhd-agent: גם המנעול וגם סימון ההקמה תקינים (PASS). הפיתוח נסגר.
