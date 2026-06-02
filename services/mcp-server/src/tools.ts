@@ -23,6 +23,8 @@ import {
   listArtifactRegistryRepos as gcpListArRepos,
   listArtifactRegistryDockerImages as gcpListArImages,
   listCloudBuilds as gcpListCloudBuilds,
+  searchAllOrgResources as gcpSearchAllOrgResources,
+  queryBillingCosts as gcpQueryBillingCosts,
 } from './gcp-client.js';
 import { tailCloudRunLogs as gcpTailCloudRunLogs } from './gcp-logging-client.js';
 import {
@@ -1408,6 +1410,57 @@ export function registerTools(server: McpServer): void {
         ...status,
       };
       return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
+    },
+  );
+
+  server.tool(
+    'inspect_all_org_resources',
+    'Inventory ALL GCP resources across every project in the org via Cloud Asset searchAllResources, summarized by project and by asset type — "what exists everywhere" in one call. Optional assetTypes filter (e.g. ["compute.googleapis.com/Instance"]). Requires roles/cloudasset.viewer at the org scope + cloudasset.googleapis.com enabled on or-factory-master-control (both granted). Read-only. Returns counts only (not per-resource rows); pages are capped (truncated=true if the cap is hit).',
+    {
+      assetTypes: z
+        .array(z.string())
+        .optional()
+        .describe('Optional Cloud Asset asset-type filters, e.g. compute.googleapis.com/Instance'),
+    },
+    async ({ assetTypes }) => {
+      try {
+        const summary = await gcpSearchAllOrgResources(assetTypes);
+        const result = {
+          timestamp: new Date().toISOString(),
+          scope: 'organizations/905978345393',
+          assetTypesFilter: assetTypes ?? null,
+          ...summary,
+        };
+        return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
+      } catch (e) {
+        const msg = String(e);
+        if (/403|PERMISSION_DENIED/i.test(msg)) {
+          return { content: [{ type: 'text' as const, text: JSON.stringify({ error: 'permission_denied', expected: 'broker SA needs roles/cloudasset.viewer at the org scope and cloudasset.googleapis.com enabled on or-factory-master-control', detail: msg.slice(0, 300) }, null, 2) }] };
+        }
+        throw e;
+      }
+    },
+  );
+
+  server.tool(
+    'get_billing_costs',
+    'Report GCP cost grouped by project and/or service over a lookback window (default 30 days) by querying the Detailed-usage Billing→BigQuery export in or-factory-master-control. Params: days (default 30), groupBy ("project"|"service"|"both", default "both"). Requires roles/bigquery.dataViewer + roles/bigquery.jobUser on or-factory-master-control. If the export table is not present yet (warming up, ~24h after enablement) returns available=false with a friendly note instead of erroring. Read-only.',
+    {
+      days: z.number().int().min(1).max(365).optional().describe('Lookback window in days (default 30)'),
+      groupBy: z.enum(['project', 'service', 'both']).optional().describe('Grouping dimension (default "both")'),
+    },
+    async ({ days, groupBy }) => {
+      try {
+        const costs = await gcpQueryBillingCosts(days ?? 30, groupBy ?? 'both');
+        const result = { timestamp: new Date().toISOString(), ...costs };
+        return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
+      } catch (e) {
+        const msg = String(e);
+        if (/403|PERMISSION_DENIED|accessDenied/i.test(msg)) {
+          return { content: [{ type: 'text' as const, text: JSON.stringify({ error: 'permission_denied', expected: 'broker SA needs roles/bigquery.dataViewer + roles/bigquery.jobUser on or-factory-master-control (grant in Cloud Shell — the deploy workflow cannot self-grant)', detail: msg.slice(0, 300) }, null, 2) }] };
+        }
+        throw e;
+      }
     },
   );
 

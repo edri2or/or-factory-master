@@ -673,3 +673,171 @@ export async function listCloudBuilds(
     tags: b.tags ?? [],
   }));
 }
+
+// --- Org-wide cost & resource visibility (cloudasset + billing-export) ---
+// These run as the live Cloud Run runtime SA (the broker SA
+// factory-master-broker@or-factory-master-control), which was granted
+// roles/cloudasset.viewer at the org scope, roles/billing.viewer on the billing
+// account, and roles/bigquery.{dataViewer,jobUser} on or-factory-master-control.
+// All access is REST + bearer token (no @google-cloud/* libraries), matching
+// the rest of this module.
+
+const ORG_SCOPE = 'organizations/905978345393';
+
+export interface OrgResourceSummary {
+  totalResources: number;
+  byProject: Record<string, number>;
+  byAssetType: Record<string, number>;
+  byProjectAndType: Record<string, Record<string, number>>;
+  pagesFetched: number;
+  truncated: boolean; // true if we hit the page cap before exhausting results
+}
+
+// Inventories every GCP resource across the whole org via Cloud Asset
+// searchAllResources, summarized as counts (not per-resource rows) to keep the
+// response bounded. Requires roles/cloudasset.viewer at the org scope AND
+// cloudasset.googleapis.com enabled on the calling project. Paginates via
+// nextPageToken (mirrors listSoftDeletedProjects); caps total pages so a large
+// org can never produce an unbounded response (truncated=true signals the cap).
+export async function searchAllOrgResources(
+  assetTypes?: string[],
+  maxPages = 20,
+): Promise<OrgResourceSummary> {
+  const byProject: Record<string, number> = {};
+  const byAssetType: Record<string, number> = {};
+  const byProjectAndType: Record<string, Record<string, number>> = {};
+  let totalResources = 0;
+  let pageToken: string | undefined;
+  let pagesFetched = 0;
+  let truncated = false;
+
+  do {
+    const qs = new URLSearchParams({ pageSize: '500' });
+    if (pageToken) qs.set('pageToken', pageToken);
+    if (assetTypes && assetTypes.length) {
+      for (const t of assetTypes) qs.append('assetTypes', t);
+    }
+    const data = (await gcpFetch(
+      `https://cloudasset.googleapis.com/v1/${ORG_SCOPE}:searchAllResources?${qs.toString()}`,
+    )) as {
+      results?: Array<{ project?: string; assetType?: string; name?: string }>;
+      nextPageToken?: string;
+    };
+    for (const r of data.results ?? []) {
+      totalResources += 1;
+      const proj = (r.project ?? 'unknown').replace(/^projects\//, '');
+      const type = r.assetType ?? 'unknown';
+      byProject[proj] = (byProject[proj] ?? 0) + 1;
+      byAssetType[type] = (byAssetType[type] ?? 0) + 1;
+      (byProjectAndType[proj] ??= {})[type] = (byProjectAndType[proj][type] ?? 0) + 1;
+    }
+    pageToken = data.nextPageToken;
+    pagesFetched += 1;
+    if (pagesFetched >= maxPages && pageToken) {
+      truncated = true;
+      break;
+    }
+  } while (pageToken);
+
+  return { totalResources, byProject, byAssetType, byProjectAndType, pagesFetched, truncated };
+}
+
+const BILLING_PROJECT = 'or-factory-master-control';
+const BILLING_DATASET = 'billing_export';
+// Detailed-usage export table name is derived from the billing account id
+// (014D0F-AC8E0F-5A7EE7) with dashes turned into underscores.
+const BILLING_TABLE = 'gcp_billing_export_resource_v1_014D0F_AC8E0F_5A7EE7';
+
+export interface BillingCostRow {
+  groupKey: string; // project id or service description, per groupBy
+  secondaryKey?: string; // the other dimension when groupBy === 'both'
+  cost: number;
+  currency: string;
+}
+
+export interface BillingCostsResult {
+  available: boolean; // false when the export table is not present yet
+  message?: string; // friendly "warming up" note when available === false
+  days: number;
+  groupBy: 'project' | 'service' | 'both';
+  rows: BillingCostRow[];
+  totalCost: number;
+  currency: string | null;
+}
+
+// Reports GCP cost grouped by project and/or service over a lookback window by
+// querying the Detailed-usage Billing→BigQuery export. Requires
+// roles/bigquery.{dataViewer,jobUser} on BILLING_PROJECT. The dataset is US
+// multi-region, so the synchronous jobs.query MUST carry location:"US" or the
+// dataset won't resolve. Returns available:false (not an error) when the export
+// table is absent — it warms up ~24h after the export is first enabled.
+export async function queryBillingCosts(
+  days = 30,
+  groupBy: 'project' | 'service' | 'both' = 'both',
+): Promise<BillingCostsResult> {
+  const table = `\`${BILLING_PROJECT}.${BILLING_DATASET}.${BILLING_TABLE}\``;
+  const selectCols =
+    groupBy === 'project'
+      ? 'project.id AS groupKey, CAST(NULL AS STRING) AS secondaryKey'
+      : groupBy === 'service'
+        ? 'service.description AS groupKey, CAST(NULL AS STRING) AS secondaryKey'
+        : 'project.id AS groupKey, service.description AS secondaryKey';
+  const groupCols =
+    groupBy === 'both'
+      ? 'project.id, service.description'
+      : groupBy === 'project'
+        ? 'project.id'
+        : 'service.description';
+
+  const query =
+    `SELECT ${selectCols}, SUM(cost) AS cost, ANY_VALUE(currency) AS currency ` +
+    `FROM ${table} ` +
+    `WHERE usage_start_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL @days DAY) ` +
+    `GROUP BY ${groupCols} ORDER BY cost DESC LIMIT 200`;
+
+  const body = {
+    query,
+    useLegacySql: false,
+    location: 'US',
+    timeoutMs: 30000,
+    parameterMode: 'NAMED',
+    queryParameters: [
+      { name: 'days', parameterType: { type: 'INT64' }, parameterValue: { value: String(days) } },
+    ],
+  };
+
+  try {
+    const data = (await gcpFetchPost(
+      `https://bigquery.googleapis.com/bigquery/v2/projects/${encodeURIComponent(BILLING_PROJECT)}/queries`,
+      body,
+    )) as { rows?: Array<{ f: Array<{ v: string | null }> }> };
+    const rows: BillingCostRow[] = (data.rows ?? []).map((r) => ({
+      groupKey: r.f[0]?.v ?? '(unknown)',
+      secondaryKey: r.f[1]?.v ?? undefined,
+      cost: Number(r.f[2]?.v ?? 0),
+      currency: r.f[3]?.v ?? '',
+    }));
+    const totalCost = rows.reduce((s, r) => s + r.cost, 0);
+    return { available: true, days, groupBy, rows, totalCost, currency: rows[0]?.currency ?? null };
+  } catch (e) {
+    const msg = String(e);
+    // A missing table surfaces as a true 404 (NotFoundError, missing dataset) or
+    // an HTTP 400 with "Not found: Table ..." — both mean the export is still
+    // warming up, so degrade to a friendly available:false rather than throwing.
+    if (e instanceof NotFoundError || /404|Not found:\s*Table|notFound/i.test(msg)) {
+      return {
+        available: false,
+        message:
+          'Billing export table not present yet. The Detailed-usage Billing→BigQuery ' +
+          'export was recently enabled; the first data typically lands within ~24h. ' +
+          'Re-run this tool once the export has warmed up.',
+        days,
+        groupBy,
+        rows: [],
+        totalCost: 0,
+        currency: null,
+      };
+    }
+    throw e; // permission errors etc. are surfaced at the tool layer
+  }
+}
