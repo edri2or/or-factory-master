@@ -46,7 +46,7 @@ Claude Code / claude.ai  --Bearer-->  /n8n/<system>/mcp (gateway)
 | 3b | התחברות Google לאופרטור (במקום admin-secret) | code-ready | `src/google-oauth.ts`, `src/index.ts`, `scripts/render-mcp-service-yaml.sh`, `deploy-mcp-server.yml` |
 | 3c | התחברות Google — חיה ומאומתת (Or מחובר) | completed | `/oauth/authorize`→Google אומת; Or חיבר connector |
 | 4 | הכללה לרב-דייר (`N8N_DEV_ALLOWED_SYSTEMS="*"`) | code-ready | `n8n-mcp-proxy.ts`, `deploy-mcp-server.yml`, test |
-| 5 | SA ייעודי least-privilege (conditioned secretAccessor) | blocked-on-IAM | `deploy-mcp-server.yml` ← **חסם: broker חסר admin על control + אישור Or** |
+| 5 | SA ייעודי least-privilege (read-only) | code-ready | זהות `mcp-gateway-runtime` נוצרה (Or, Cloud Shell); deploy מחליף `RUNTIME_SA` |
 
 ## סטטוס נוכחי
 

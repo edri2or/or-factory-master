@@ -1,0 +1,5 @@
+## feat: run the MCP gateway as a dedicated least-privilege runtime SA
+
+| Type | Summary |
+|---|---|
+| feat | Stop running the gateway's Cloud Run service as the broker SA (which holds `secretmanager.admin` + `run.admin` + folder-level project create/delete — far more than a runtime needs). It now runs AS a dedicated **read-only** identity `mcp-gateway-runtime@or-factory-master-control` whose only roles are `roles/viewer` + `roles/secretmanager.secretAccessor` on the control project AND the Systems folder (read its mounted secrets + each system's `n8n-api-key`, introspect — but can't create/delete/deploy anything). The deploy still authenticates as the broker (its admin roles are needed for build/push/secret-mint/`services replace`) and holds `iam.serviceAccountUser` on the runtime SA to deploy as it. The SA + grants were created out-of-band (operator Cloud Shell, one-time); the workflow just swaps `RUNTIME_SA_EMAIL` → the dedicated SA. Shrinks the gateway's runtime blast radius from broker-admin to read-only. |

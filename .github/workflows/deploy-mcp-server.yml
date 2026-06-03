@@ -64,19 +64,17 @@ jobs:
       # Google-login email allowlist for the operator OAuth flow (gateway-native
       # Google IdP). Only these emails may authenticate interactively.
       OAUTH_ALLOWED_EMAILS: "edri2or@gmail.com"
-      # Cloud Run runtime SA = broker SA. The broker SA already holds
-      # secretAccessor on every secret we mount (Stage 3 + 4 of
-      # bootstrap-record). Spinning a dedicated read-only runtime SA would
-      # need `iam.serviceAccounts.create` + `projects.setIamPolicy` on
-      # or-factory-master-control, which the broker SA does not have
-      # (empirically confirmed in run 26304244093 — IAM_PERMISSION_DENIED on
-      # iam.serviceAccounts.create). Deferred to a later bootstrap PR that
-      # grants the broker `roles/iam.serviceAccountAdmin` +
-      # `roles/resourcemanager.projectIamAdmin` on the control project; at
-      # that point we'd swap RUNTIME_SA to a dedicated identity. Until then,
-      # broker-as-runtime keeps the MCP exclusively read-only at the tool
-      # surface (no write tools exist), so the larger blast radius isn't
-      # exercised.
+      # Cloud Run RUNTIME SA = a dedicated least-privilege identity
+      # (mcp-gateway-runtime), created out-of-band with READ-ONLY roles only:
+      # roles/viewer + roles/secretmanager.secretAccessor on the control project
+      # AND on the Systems folder (so it can read its mounted secrets + each
+      # system's n8n-api-key, and introspect, but cannot create/delete/deploy
+      # anything). The DEPLOY still authenticates as the BROKER_SA (which keeps
+      # run.admin / secretmanager.admin etc. for build + secret-mint + replace),
+      # and the broker holds iam.serviceAccountUser on the runtime SA so it may
+      # deploy the service AS that identity. This shrinks the gateway's runtime
+      # blast radius from broker-admin to read-only.
+      RUNTIME_SA: "mcp-gateway-runtime@or-factory-master-control.iam.gserviceaccount.com"
       BROKER_SA: "factory-master-broker@or-factory-master-control.iam.gserviceaccount.com"
       WIF_PROVIDER: "projects/140345952904/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
 
@@ -101,15 +99,16 @@ jobs:
       # and provision-system.yml use these APIs directly without a
       # precondition enable step.
 
-      - name: Resolve runtime SA (= broker SA)
+      - name: Resolve runtime SA (dedicated least-privilege identity)
         id: runtime-sa
         run: |
           set -euo pipefail
-          # See env-block comment for why runtime SA = broker SA. Persist
-          # under RUNTIME_SA_EMAIL so the deploy step's --service-account
-          # flag has a stable name.
-          echo "RUNTIME_SA_EMAIL=${BROKER_SA}" >> "$GITHUB_ENV"
-          echo "INFO: using ${BROKER_SA} as both deploy caller and Cloud Run runtime SA"
+          # The Cloud Run service runs AS the dedicated read-only RUNTIME_SA
+          # (mcp-gateway-runtime); the deploy itself still authenticates as the
+          # broker (build/push/secret-mint/replace need its admin roles) and
+          # holds iam.serviceAccountUser on RUNTIME_SA to deploy as it.
+          echo "RUNTIME_SA_EMAIL=${RUNTIME_SA}" >> "$GITHUB_ENV"
+          echo "INFO: deploy caller=${BROKER_SA}; Cloud Run runtime SA=${RUNTIME_SA}"
 
       - name: Ensure MCP_ADMIN_SECRET exists (mint if missing) + self-heal trailing newline
         run: |
