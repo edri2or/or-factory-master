@@ -545,6 +545,7 @@ jobs:
               --max-instances=3 \
               --timeout=300 \
               --labels="owner=factory-master,purpose=mcp-server" \
+              --quiet \
               --container gateway \
                 --image="${{ steps.image.outputs.image }}" \
                 --port=3000 \
@@ -558,7 +559,7 @@ jobs:
                 --memory=512Mi \
                 --set-env-vars="MCP_MODE=http,ENABLE_MULTI_TENANT=true,PORT=3001,HOST=0.0.0.0,TRUST_PROXY=1,LOG_LEVEL=info" \
                 --set-secrets="AUTH_TOKEN=n8n-mcp-internal-auth-token:latest,MCP_AUTH_TOKEN=n8n-mcp-internal-auth-token:latest" \
-              --quiet 2>&1
+              2>&1
           }
           for i in 1 2 3 4 5 6 7 8 9 10; do
             OUTPUT=$(deploy_once) && { echo "${OUTPUT}"; break; }
