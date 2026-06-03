@@ -24,18 +24,27 @@ export class N8nKeyMissingError extends Error {
   }
 }
 
-// GET a path under the system's n8n Public API. Returns parsed JSON.
-export async function n8nApiGet(systemName: string, path: string): Promise<unknown> {
+// The live n8n target for a system: its public base URL + its API key. The key
+// is read from the SYSTEM's own GCP Secret Manager (never the control project,
+// never the session) and lives only in server memory. Used both by n8nApiGet
+// (read tools) and by the n8n-mcp live-write proxy, which injects baseUrl/apiKey
+// as the x-n8n-url / x-n8n-key headers server-side.
+export interface N8nTarget {
+  baseUrl: string;   // https://n8n-<system>.or-infra.com  (no trailing slash)
+  apiKey: string;
+}
+
+export async function resolveN8nTarget(systemName: string): Promise<N8nTarget> {
   const m = await resolveSystem(systemName);
   const projectId = m.gcpProjectId;
   if (!projectId) {
     throw new Error(`cannot resolve GCP project for ${systemName} (repo var GCP_PROJECT_ID)`);
   }
-  const url = `https://n8n-${systemName}.or-infra.com/api/v1${path}`;
-  if (!isAllowedUrl(url)) {
-    throw new Error(`url not in allowlist: ${url}`);
+  const baseUrl = `https://n8n-${systemName}.or-infra.com`;
+  // Reuse the read-path SSRF allowlist (*.or-infra.com) on the /api/v1 base.
+  if (!isAllowedUrl(`${baseUrl}/api/v1`)) {
+    throw new Error(`url not in allowlist: ${baseUrl}`);
   }
-
   let apiKey: string;
   try {
     apiKey = (await getSecretValue(projectId, 'n8n-api-key')).trim();
@@ -44,6 +53,13 @@ export async function n8nApiGet(systemName: string, path: string): Promise<unkno
       `n8n-api-key not found in ${projectId} Secret Manager — run deploy-railway-cloudflare.yml on ${systemName} (it mints the key)`,
     );
   }
+  return { baseUrl, apiKey };
+}
+
+// GET a path under the system's n8n Public API. Returns parsed JSON.
+export async function n8nApiGet(systemName: string, path: string): Promise<unknown> {
+  const { baseUrl, apiKey } = await resolveN8nTarget(systemName);
+  const url = `${baseUrl}/api/v1${path}`;
 
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);

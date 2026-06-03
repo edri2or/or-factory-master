@@ -49,6 +49,13 @@ jobs:
       GCP_REGION: "me-west1"
       AR_REPO: "bootstrap-images"
       SERVICE: "factory-master-actions-mcp"
+      # Internal n8n-mcp sidecar for live n8n workflow development (MCP write).
+      # MUST stay >= 2.51.2 (GHSA-jxx9-px88-pj69: older builds fell back to env
+      # creds when the multi-tenant x-n8n-* headers were missing). Pinned to a
+      # version tag; prefer a digest pin (@sha256:...) before heavy production use.
+      N8N_MCP_IMAGE: "ghcr.io/czlonkowski/n8n-mcp:2.51.2"
+      # v1 single-tenant allowlist: only these systems may be driven live.
+      N8N_DEV_ALLOWED_SYSTEMS: "or-adhd-agent"
       # Cloud Run runtime SA = broker SA. The broker SA already holds
       # secretAccessor on every secret we mount (Stage 3 + 4 of
       # bootstrap-record). Spinning a dedicated read-only runtime SA would
@@ -181,6 +188,44 @@ jobs:
               --labels="owner=factory-master,purpose=mcp-bearer-signing" \
               --data-file=-
             echo "PASS: mcp-server-bearer-signing-key minted (no trailing newline)."
+          fi
+
+      - name: Ensure n8n-mcp-internal-auth-token exists (mint if missing) + self-heal
+        run: |
+          set -euo pipefail
+          # AUTH_TOKEN for the internal n8n-mcp sidecar (live n8n write proxy).
+          # The gateway sends it as `Authorization: Bearer` on every localhost
+          # call to the sidecar; n8n-mcp requires >= 32 chars (we mint 64 hex).
+          # The sidecar is never publicly reachable (Cloud Run sidecars only get
+          # traffic from the ingress container over localhost), so this token's
+          # role is defence-in-depth, not the sole gate. Same trailing-newline
+          # self-heal as the other minted secrets.
+          if gcloud secrets describe "n8n-mcp-internal-auth-token" \
+               --project="${GCP_PROJECT}" >/dev/null 2>&1; then
+            TMP=$(mktemp)
+            # shellcheck disable=SC2064
+            trap "rm -f '${TMP}'" EXIT
+            gcloud secrets versions access latest \
+              --secret="n8n-mcp-internal-auth-token" --project="${GCP_PROJECT}" > "${TMP}"
+            raw_size=$(wc -c < "${TMP}")
+            trimmed_size=$(tr -d '\r\n' < "${TMP}" | wc -c)
+            if [ "${raw_size}" -eq "${trimmed_size}" ]; then
+              echo "INFO: n8n-mcp-internal-auth-token already clean (${raw_size} bytes); reusing."
+            else
+              echo "INFO: n8n-mcp-internal-auth-token has trailing whitespace (${raw_size} -> ${trimmed_size} bytes) — adding clean version."
+              tr -d '\r\n' < "${TMP}" | gcloud secrets versions add "n8n-mcp-internal-auth-token" \
+                --project="${GCP_PROJECT}" --data-file=-
+              echo "PASS: clean version added."
+            fi
+            rm -f "${TMP}"
+            trap - EXIT
+          else
+            printf '%s' "$(openssl rand -hex 32)" | gcloud secrets create "n8n-mcp-internal-auth-token" \
+              --project="${GCP_PROJECT}" \
+              --replication-policy=automatic \
+              --labels="owner=factory-master,purpose=n8n-mcp-internal-auth" \
+              --data-file=-
+            echo "PASS: n8n-mcp-internal-auth-token minted (no trailing newline)."
           fi
 
       - name: Ensure cloudflare-zones-read-token exists (placeholder if missing)
@@ -483,22 +528,36 @@ jobs:
 
           # IAM propagation for the actAs binding can take up to 5 minutes
           # (per Google docs); retry with back-off on actAs permission errors.
+          # Multi-container deploy: the public `gateway` container (our image, the
+          # ingress on :3000) plus an internal `n8nmcp` sidecar (czlonkowski/n8n-mcp,
+          # multi-tenant HTTP). Cloud Run sidecars get traffic ONLY from the ingress
+          # container over localhost, so the n8n-mcp endpoint is never publicly
+          # reachable — the gateway proxies /n8n/<system>/mcp to localhost:3001 and
+          # injects x-n8n-url / x-n8n-key server-side. Per-container flags follow
+          # each --container; service-level flags (region/SA/ingress/scaling) are global.
           deploy_once() {
             gcloud run deploy "${SERVICE}" \
-              --image="${{ steps.image.outputs.image }}" \
               --region="${GCP_REGION}" \
               --project="${GCP_PROJECT}" \
               --service-account="${RUNTIME_SA_EMAIL}" \
               --allow-unauthenticated \
               --min-instances=0 \
               --max-instances=3 \
-              --memory=512Mi \
-              --cpu=1 \
-              --port=3000 \
               --timeout=300 \
-              --set-env-vars="PUBLIC_BASE_URL=${PUBLIC_BASE_URL},FACTORY_TG_CHAT_MODEL=anthropic/claude-haiku-4.5" \
-              --set-secrets="MCP_ADMIN_SECRET=mcp-server-admin-secret:latest,BEARER_SIGNING_KEY=mcp-server-bearer-signing-key:latest,GITHUB_APP_ID=factory-master-broker-app-id:latest,GITHUB_APP_PRIVATE_KEY=factory-master-broker-app-private-key:latest,GITHUB_APP_INSTALLATION_ID=factory-master-broker-app-installation-id:latest,RAILWAY_API_TOKEN=railway-api-token:latest,CLOUDFLARE_API_TOKEN=cloudflare-token-creator:latest,CLOUDFLARE_ZONE_ID=cloudflare-zone-id-or-infra:latest,CLOUDFLARE_ZONES_READ_TOKEN=cloudflare-zones-read-token:latest,SENTRY_DSN=sentry-api-key:latest,BS_WEBHOOK_SECRET=bs-webhook-secret:latest,LINEAR_WEBHOOK_SECRET=linear-webhook-secret:latest,TELEGRAM_APPROVAL_WEBHOOK_SECRET=telegram-approval-webhook-secret:latest,OIL_APPROVER_TELEGRAM_ALLOWLIST=oil-approver-telegram-allowlist:latest,OIL_APPROVER_APP_ID=oil-autofix-approver-app-id:latest,OIL_APPROVER_INSTALLATION_ID=oil-autofix-approver-app-installation-id:latest,OIL_APPROVER_PRIVATE_KEY=oil-autofix-approver-app-private-key:latest,FACTORY_TG_CHAT_ALLOWLIST=factory-telegram-chat-allowlist:latest,FACTORY_TG_CHAT_OPENROUTER_KEY=factory-telegram-chat-openrouter-key:latest" \
               --labels="owner=factory-master,purpose=mcp-server" \
+              --container gateway \
+                --image="${{ steps.image.outputs.image }}" \
+                --port=3000 \
+                --cpu=1 \
+                --memory=512Mi \
+                --set-env-vars="PUBLIC_BASE_URL=${PUBLIC_BASE_URL},FACTORY_TG_CHAT_MODEL=anthropic/claude-haiku-4.5,N8N_MCP_URL=http://localhost:3001/mcp,N8N_DEV_ALLOWED_SYSTEMS=${N8N_DEV_ALLOWED_SYSTEMS}" \
+                --set-secrets="MCP_ADMIN_SECRET=mcp-server-admin-secret:latest,BEARER_SIGNING_KEY=mcp-server-bearer-signing-key:latest,N8N_MCP_AUTH_TOKEN=n8n-mcp-internal-auth-token:latest,GITHUB_APP_ID=factory-master-broker-app-id:latest,GITHUB_APP_PRIVATE_KEY=factory-master-broker-app-private-key:latest,GITHUB_APP_INSTALLATION_ID=factory-master-broker-app-installation-id:latest,RAILWAY_API_TOKEN=railway-api-token:latest,CLOUDFLARE_API_TOKEN=cloudflare-token-creator:latest,CLOUDFLARE_ZONE_ID=cloudflare-zone-id-or-infra:latest,CLOUDFLARE_ZONES_READ_TOKEN=cloudflare-zones-read-token:latest,SENTRY_DSN=sentry-api-key:latest,BS_WEBHOOK_SECRET=bs-webhook-secret:latest,LINEAR_WEBHOOK_SECRET=linear-webhook-secret:latest,TELEGRAM_APPROVAL_WEBHOOK_SECRET=telegram-approval-webhook-secret:latest,OIL_APPROVER_TELEGRAM_ALLOWLIST=oil-approver-telegram-allowlist:latest,OIL_APPROVER_APP_ID=oil-autofix-approver-app-id:latest,OIL_APPROVER_INSTALLATION_ID=oil-autofix-approver-app-installation-id:latest,OIL_APPROVER_PRIVATE_KEY=oil-autofix-approver-app-private-key:latest,FACTORY_TG_CHAT_ALLOWLIST=factory-telegram-chat-allowlist:latest,FACTORY_TG_CHAT_OPENROUTER_KEY=factory-telegram-chat-openrouter-key:latest" \
+              --container n8nmcp \
+                --image="${N8N_MCP_IMAGE}" \
+                --cpu=1 \
+                --memory=512Mi \
+                --set-env-vars="MCP_MODE=http,ENABLE_MULTI_TENANT=true,PORT=3001,HOST=0.0.0.0,TRUST_PROXY=1,LOG_LEVEL=info" \
+                --set-secrets="AUTH_TOKEN=n8n-mcp-internal-auth-token:latest,MCP_AUTH_TOKEN=n8n-mcp-internal-auth-token:latest" \
               --quiet 2>&1
           }
           for i in 1 2 3 4 5 6 7 8 9 10; do
