@@ -50,3 +50,4 @@ templates/system/workflows/n8n/db-vacuum.json
 .github/workflows/refresh-system-agents.yml
 .github/workflows/prove-on-test-system.yml
 .github/workflows/cleanup-orphan-linear-webhooks.yml
+.github/workflows/n8n-mcp-smoke.yml
