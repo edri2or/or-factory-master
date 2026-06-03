@@ -53,7 +53,10 @@ jobs:
       # MUST stay >= 2.51.2 (GHSA-jxx9-px88-pj69: older builds fell back to env
       # creds when the multi-tenant x-n8n-* headers were missing). Pinned to a
       # version tag; prefer a digest pin (@sha256:...) before heavy production use.
-      N8N_MCP_IMAGE: "ghcr.io/czlonkowski/n8n-mcp:2.51.2"
+      # Upstream n8n-mcp image. Cloud Run cannot pull from ghcr.io, so the deploy
+      # mirrors this into Artifact Registry (bootstrap-images) and runs the AR copy.
+      N8N_MCP_UPSTREAM_IMAGE: "ghcr.io/czlonkowski/n8n-mcp:2.51.2"
+      N8N_MCP_IMAGE_TAG: "2.51.2"
       # v1 single-tenant allowlist: only these systems may be driven live.
       N8N_DEV_ALLOWED_SYSTEMS: "or-adhd-agent"
       # Cloud Run runtime SA = broker SA. The broker SA already holds
@@ -512,6 +515,22 @@ jobs:
           docker push "${IMAGE}"
           echo "image=${IMAGE}" >> "$GITHUB_OUTPUT"
 
+      - name: Mirror n8n-mcp sidecar image into Artifact Registry
+        id: n8nmcp-image
+        run: |
+          set -euo pipefail
+          # Cloud Run only pulls from gcr.io / *-docker.pkg.dev / docker.io — NOT
+          # ghcr.io. Mirror the pinned upstream n8n-mcp image into this project's
+          # Artifact Registry (bootstrap-images) and deploy the AR copy. Idempotent:
+          # re-pushing the same tag is a no-op. The digest is logged for provenance.
+          DEST="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT}/${AR_REPO}/n8n-mcp:${N8N_MCP_IMAGE_TAG}"
+          gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
+          docker pull "${N8N_MCP_UPSTREAM_IMAGE}"
+          docker tag "${N8N_MCP_UPSTREAM_IMAGE}" "${DEST}"
+          docker push "${DEST}"
+          echo "image=${DEST}" >> "$GITHUB_OUTPUT"
+          echo "INFO: mirrored ${N8N_MCP_UPSTREAM_IMAGE} -> ${DEST}"
+
       - name: Deploy to Cloud Run
         id: deploy
         run: |
@@ -543,7 +562,7 @@ jobs:
           deploy_once() {
             SERVICE="${SERVICE}" \
             GATEWAY_IMAGE="${{ steps.image.outputs.image }}" \
-            N8N_MCP_IMAGE="${N8N_MCP_IMAGE}" \
+            N8N_MCP_IMAGE="${{ steps.n8nmcp-image.outputs.image }}" \
             RUNTIME_SA_EMAIL="${RUNTIME_SA_EMAIL}" \
             PUBLIC_BASE_URL="${PUBLIC_BASE_URL}" \
             N8N_DEV_ALLOWED_SYSTEMS="${N8N_DEV_ALLOWED_SYSTEMS}" \

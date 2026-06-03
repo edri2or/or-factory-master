@@ -51,13 +51,15 @@ Claude Code / claude.ai  --Bearer-->  /n8n/<system>/mcp (gateway)
 שלב 1 מוזג (PR #305). שלב 2 — פריסה (Or אישר), שתי איטרציות תיקון על מכניקת ה-deploy:
 1. ריצה 26905243218 נכשלה על `--quiet` (דגל גלובלי) שהונח אחרי ה-`--container` האחרון →
    `unrecognized arguments`. תוקן (PR #306): `--quiet` לפני ה-`--container` הראשון.
-2. ריצה 26905606580 נכשלה על `spec.template.spec.containers: should contain exactly one
-   container with an exposed port` — `gcloud run deploy --container` מול שירות חד-קונטיינר קיים
-   השאיר את הקונטיינר הישן. תיקון: מעבר ל-`gcloud run services replace` עם spec דקלרטיבי
-   שמרונדר ע"י `scripts/render-mcp-service-yaml.sh` (gateway = ingress יחיד בפורט 3000, n8nmcp =
-   sidecar בלי פורט). מאומת מקומית (YAML תקין, קונטיינר-ingress יחיד, shellcheck נקי).
+2. ריצה 26905606580 נכשלה על `should contain exactly one container with an exposed port` —
+   `gcloud run deploy --container` מול שירות חד-קונטיינר קיים השאיר את הקונטיינר הישן. תיקון
+   (#307): מעבר ל-`gcloud run services replace` עם spec דקלרטיבי שמרונדר ע"י
+   `scripts/render-mcp-service-yaml.sh`. מאומת מקומית.
+3. ריצה 26907190322 נכשלה על `containers[1].image ... ghcr.io ... host is one of gcr.io,
+   docker.pkg.dev or docker.io` — Cloud Run לא מושך מ-ghcr.io. תיקון: צעד שמשכפל (mirror) את
+   image של n8n-mcp ל-Artifact Registry של הפרויקט (bootstrap-images) ופורס את העותק משם.
 
-הסודות, הבנייה והדחיפה עברו בכל הריצות — רק פקודת הפריסה נשארה לתקן.
+הסודות, הבנייה והדחיפה עברו בכל הריצות — רק פקודת/קונפיגורציית הפריסה נשארה לתקן, איטרציה אחר איטרציה.
 
 ## סוד חדש (rotation)
 
