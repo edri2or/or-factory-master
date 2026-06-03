@@ -41,8 +41,8 @@ Claude Code / claude.ai  --Bearer-->  /n8n/<system>/mcp (gateway)
 |---|---|---|---|
 | 0 | מחקר + אימות גישה + pin גרסה | completed | (קריאה-בלבד; אומת SM+Railway; `N8N_MCP_IMAGE` ל-2.51.2) |
 | 1 | קוד השער + sidecar בקובץ הפריסה | code-ready | `services/mcp-server/src/{bearer,n8n-client,n8n-mcp-proxy,index}.ts`, `.github/workflows/deploy-mcp-server.yml`, test |
-| 2 | פריסה (Or-gated) + הוכחת לולאה חיה על or-adhd-agent | pending | dispatch `deploy-mcp-server.yml` ← **אישור Or** |
-| 3 | אימות #46140 לצ'אט claude.ai + תיעוד fallback | pending | `/debug/recent`, docs |
+| 2 | פריסה (Or-gated) — השרת חי | completed | rev 00053 חי; `/health`=200, `/n8n/or-adhd-agent/mcp`=401, מערכת-לא-מורשית=404 |
+| 3 | הוכחת לולאה חיה (smoke) + אימות #46140 לצ'אט | in-progress | `scripts/n8n-mcp-smoke.py` + `.github/workflows/n8n-mcp-smoke.yml` |
 | 4 | הכללה לרב-דייר (דרישת claim, הסרת hardwire) | pending | `n8n-mcp-proxy.ts`, `index.ts` |
 | 5 | SA ייעודי least-privilege (conditioned secretAccessor) | pending | `deploy-mcp-server.yml` ← **אישור Or (IAM)** |
 
@@ -59,7 +59,14 @@ Claude Code / claude.ai  --Bearer-->  /n8n/<system>/mcp (gateway)
    docker.pkg.dev or docker.io` — Cloud Run לא מושך מ-ghcr.io. תיקון: צעד שמשכפל (mirror) את
    image של n8n-mcp ל-Artifact Registry של הפרויקט (bootstrap-images) ופורס את העותק משם.
 
-הסודות, הבנייה והדחיפה עברו בכל הריצות — רק פקודת/קונפיגורציית הפריסה נשארה לתקן, איטרציה אחר איטרציה.
+הסודות, הבנייה והדחיפה עברו בכל הריצות — רק קונפיגורציית הפריסה נדרשה לליטוש, איטרציה אחר
+איטרציה. **ריצה 26907493544 הצליחה** — rev 00053 חי עם שני הקונטיינרים. אומת חי: `/health`=200,
+`/n8n/or-adhd-agent/mcp` בלי טוקן=401 (מסלול חי + מורשה), מערכת-לא-מורשית=404 (בידוד עובד).
+
+שלב 3 (הוכחת לולאה אוטונומית): `n8n-mcp-smoke.yml` מריץ את `scripts/n8n-mcp-smoke.py` — מנפיק
+טוקן (admin secret נקרא ב-CI מ-SM, ממוסך, לא בסשן), עושה MCP handshake דרך השער ל-sidecar,
+`tools/list` (חייב להחזיר כלי `n8n_*`), `n8n_health_check` (sidecar→n8n של המערכת), ואז
+create+delete של workflow `dev-`. נתיב הצ'אט (#46140) ייבדק ע"י Or בעת חיבור ה-connector.
 
 ## סוד חדש (rotation)
 
