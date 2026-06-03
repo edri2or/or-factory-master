@@ -11,6 +11,7 @@ import { sendTelegramMessage } from './observability-client.js';
 import { handleLinearWebhook, registerLinearWebhook } from './oil-autofix.js';
 import { registerApproval, handleTelegramCallback } from './oil-approval.js';
 import { handleChatUpdate } from './telegram-chat.js';
+import { proxyToN8nMcp, n8nMcpEnabled, isAllowedN8nSystem } from './n8n-mcp-proxy.js';
 
 const PORT = Number(process.env.PORT ?? 3000);
 const ADMIN_SECRET = process.env.MCP_ADMIN_SECRET;
@@ -478,6 +479,64 @@ app.all('/mcp', async (req: Request, res: Response) => {
   } finally {
     await server.close().catch(() => undefined);
   }
+});
+
+// ── Live n8n development (MCP write) — per-system, isolated ─────────────────────
+//
+// /n8n/<system>/mcp reverse-proxies the MCP protocol to the internal n8n-mcp
+// sidecar, which the proxy points at the RIGHT system's live n8n by injecting
+// x-n8n-url / x-n8n-key server-side (n8n-mcp-proxy.ts). The system identity is
+// the URL path AND, for system-scoped 'n8n-dev' bearers, the signed `system`
+// claim — a token minted for one system is a hard 403 on any other path.
+
+// Mint a system-scoped live-write bearer (admin-gated, X-Admin-Secret). The
+// Claude-Code path can fetch mcp-server-admin-secret from SM and exchange it
+// here for a token bound to exactly one system. (The claude.ai OAuth flow issues
+// a generic 'oauth' bearer, which the allowlist below still permits in v1.)
+app.post('/n8n/:system/token', (req: Request, res: Response) => {
+  const provided = (req.headers['x-admin-secret'] as string | undefined) ?? '';
+  if (!secretMatches(provided)) {
+    res.status(403).json({ error: 'unauthorized' });
+    return;
+  }
+  const system = req.params.system;
+  if (!isAllowedN8nSystem(system)) {
+    res.status(404).json({ error: 'unknown_system' });
+    return;
+  }
+  const token = signBearer(TOKEN_TTL_MS, 'n8n-dev', { system });
+  res.json({ access_token: token, token_type: 'Bearer', expires_in: TOKEN_TTL_SEC });
+});
+
+app.all('/n8n/:system/mcp', async (req: Request, res: Response) => {
+  const system = req.params.system;
+  if (!n8nMcpEnabled()) {
+    res.status(503).json({ error: 'n8n_live_write_disabled' });
+    return;
+  }
+  if (!isAllowedN8nSystem(system)) {
+    res.status(404).json({ error: 'unknown_system' });
+    return;
+  }
+  const authHeader = req.headers['authorization'] ?? '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
+  const payload = token ? verifyBearer(token) : null;
+  if (!token || payload === null) {
+    res
+      .status(401)
+      .set(
+        'WWW-Authenticate',
+        `Bearer realm="${BASE_URL}", resource_metadata="${BASE_URL}/.well-known/oauth-protected-resource"`,
+      )
+      .json({ error: 'unauthorized' });
+    return;
+  }
+  // Hard tenant isolation: a system-scoped token may drive only its own system.
+  if (payload.kind === 'n8n-dev' && payload.system !== system) {
+    res.status(403).json({ error: 'system_mismatch' });
+    return;
+  }
+  await proxyToN8nMcp(req, res, system);
 });
 
 // Must be registered after all routes so it sees errors thrown by handlers.
