@@ -116,6 +116,56 @@ def tool_call(name, arguments):
     return True, text
 
 
+def _walk_id_name(node, out):
+    """Recursively collect every {id, name} pair from an arbitrary structure."""
+    if isinstance(node, dict):
+        if "id" in node and "name" in node and isinstance(node.get("name"), str):
+            out.append((str(node["id"]), node["name"]))
+        for v in node.values():
+            _walk_id_name(v, out)
+    elif isinstance(node, list):
+        for v in node:
+            _walk_id_name(v, out)
+
+
+def _maybe_json(text):
+    text = (text or "").strip()
+    for candidate in (text, text[text.find("{"):text.rfind("}") + 1] if "{" in text else "",
+                      text[text.find("["):text.rfind("]") + 1] if "[" in text else ""):
+        if not candidate:
+            continue
+        try:
+            return json.loads(candidate)
+        except Exception:
+            continue
+    return None
+
+
+def ids_for_name_prefix(prefix):
+    """Return [(id, name), ...] of workflows whose name starts with `prefix`,
+    by parsing n8n_list_workflows output robustly (id/name pairs, any shape)."""
+    ok, text = tool_call("n8n_list_workflows", {})
+    if not ok:
+        return []
+    obj = _maybe_json(text)
+    pairs = []
+    if obj is not None:
+        _walk_id_name(obj, pairs)
+    # de-dupe, keep only matching names that look like real workflow ids
+    seen, result = set(), []
+    for wid, name in pairs:
+        if name.startswith(prefix) and wid not in seen and wid.lower() != name.lower():
+            seen.add(wid)
+            result.append((wid, name))
+    return result
+
+
+def delete_workflow(wid, name):
+    ok, text = tool_call("n8n_delete_workflow", {"id": str(wid)})
+    print(f"  deleted '{name}' (id={wid}) -> {'ok' if ok else 'FAILED: ' + text[:160]}")
+    return ok
+
+
 # ── 1. mint token ──
 st, _, body = _http(
     f"{GATEWAY}/n8n/{SYSTEM}/token", b"", {"X-Admin-Secret": ADMIN}
@@ -156,9 +206,15 @@ if not ok:
     _fail("n8n_health_check failed (sidecar could not reach the system n8n)", text)
 print(f"PASS [4/5] n8n_health_check ok -> reached {SYSTEM}'s live n8n")
 
-# ── 5. live write: create + delete a dev- scratch workflow ──
+# ── pre-sweep: remove any leftover dev-smoke-* scratch from earlier runs ──
+leftovers = ids_for_name_prefix("dev-smoke-")
+if leftovers:
+    print(f"pre-sweep: removing {len(leftovers)} leftover dev-smoke-* workflow(s):")
+    for wid, name in leftovers:
+        delete_workflow(wid, name)
+
+# ── 5. live write: create a dev- scratch workflow, then delete it ──
 wf_name = f"dev-smoke-{RUN_ID}"
-created_id = None
 ok, text = tool_call(
     "n8n_create_workflow",
     {
@@ -178,22 +234,19 @@ ok, text = tool_call(
 )
 if not ok:
     _fail(f"n8n_create_workflow({wf_name}) failed", text)
-try:
-    for tok in text.replace('"', " ").replace(",", " ").split():
-        pass
-    obj = json.loads(text) if text.strip().startswith("{") else {}
-    created_id = obj.get("id") or obj.get("data", {}).get("id")
-except Exception:
-    created_id = None
-print(f"PASS [5/5] created live scratch workflow '{wf_name}'"
-      + (f" (id={created_id})" if created_id else ""))
+print(f"PASS [5/5] created live scratch workflow '{wf_name}'")
 
-# cleanup — best effort
-if created_id:
-    ok, text = tool_call("n8n_delete_workflow", {"id": str(created_id)})
-    print(f"cleanup: deleted '{wf_name}' -> {'ok' if ok else 'FAILED: ' + text[:200]}")
-else:
-    print(f"cleanup: NOTE — could not parse created id; remove '{wf_name}' manually if it lingers")
+# ── cleanup: find it by name and delete (asserted — no scratch may linger) ──
+created = ids_for_name_prefix(wf_name)
+if not created:
+    _fail(f"cleanup: could not locate '{wf_name}' to delete (it would linger live)", text[:300])
+all_deleted = all(delete_workflow(wid, name) for wid, name in created)
+if not all_deleted:
+    _fail("cleanup: failed to delete the scratch workflow")
+# verify gone
+if ids_for_name_prefix(wf_name):
+    _fail(f"cleanup: '{wf_name}' still present after delete")
+print(f"PASS cleanup: '{wf_name}' created and deleted — nothing lingers")
 
-print("\nSMOKE PASS: full loop proven (gateway auth -> sidecar -> live n8n write), "
-      "no secret in session.")
+print("\nSMOKE PASS: full loop proven (gateway auth -> sidecar -> live n8n create + "
+      "delete), no secret in session, no scratch left behind.")
