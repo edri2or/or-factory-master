@@ -19,6 +19,7 @@ set -euo pipefail
 
 : "${SERVICE:?}"; : "${GATEWAY_IMAGE:?}"; : "${N8N_MCP_IMAGE:?}"
 : "${RUNTIME_SA_EMAIL:?}"; : "${PUBLIC_BASE_URL:?}"; : "${N8N_DEV_ALLOWED_SYSTEMS:?}"
+OAUTH_ALLOWED_EMAILS="${OAUTH_ALLOWED_EMAILS:-}"   # Google-login email allowlist (may be empty)
 
 # Gateway env vars sourced from Secret Manager (ENV_NAME=secret-name). The
 # gateway already shipped these 19; N8N_MCP_AUTH_TOKEN is the only addition.
@@ -26,6 +27,8 @@ GATEWAY_SECRETS=(
   "MCP_ADMIN_SECRET=mcp-server-admin-secret"
   "BEARER_SIGNING_KEY=mcp-server-bearer-signing-key"
   "N8N_MCP_AUTH_TOKEN=n8n-mcp-internal-auth-token"
+  "GOOGLE_OAUTH_CLIENT_ID=google-oauth-client-id"
+  "GOOGLE_OAUTH_CLIENT_SECRET=google-oauth-client-secret"
   "GITHUB_APP_ID=factory-master-broker-app-id"
   "GITHUB_APP_PRIVATE_KEY=factory-master-broker-app-private-key"
   "GITHUB_APP_INSTALLATION_ID=factory-master-broker-app-installation-id"
@@ -84,6 +87,7 @@ emit_env PUBLIC_BASE_URL "${PUBLIC_BASE_URL}"
 emit_env FACTORY_TG_CHAT_MODEL "anthropic/claude-haiku-4.5"
 emit_env N8N_MCP_URL "http://localhost:3001/mcp"
 emit_env N8N_DEV_ALLOWED_SYSTEMS "${N8N_DEV_ALLOWED_SYSTEMS}"
+emit_env OAUTH_ALLOWED_EMAILS "${OAUTH_ALLOWED_EMAILS}"
 for pair in "${GATEWAY_SECRETS[@]}"; do
   emit_secret "${pair%%=*}" "${pair#*=}"
 done

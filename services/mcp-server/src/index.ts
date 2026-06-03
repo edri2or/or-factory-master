@@ -12,6 +12,7 @@ import { handleLinearWebhook, registerLinearWebhook } from './oil-autofix.js';
 import { registerApproval, handleTelegramCallback } from './oil-approval.js';
 import { handleChatUpdate } from './telegram-chat.js';
 import { proxyToN8nMcp, n8nMcpEnabled, isAllowedN8nSystem } from './n8n-mcp-proxy.js';
+import { googleConfigured, googleAuthorizeUrl, exchangeGoogleCode, emailAllowed } from './google-oauth.js';
 
 const PORT = Number(process.env.PORT ?? 3000);
 const ADMIN_SECRET = process.env.MCP_ADMIN_SECRET;
@@ -77,6 +78,23 @@ setInterval(() => {
   const now = Date.now();
   for (const [code, data] of pendingCodes) {
     if (now > data.expiry) pendingCodes.delete(code);
+  }
+}, 60_000).unref();
+
+// Pending Google logins: maps our random `serverState` (sent to Google) back to
+// the MCP client's original OAuth request, so its PKCE/state survive the Google
+// round-trip. Used only when Google login is configured.
+interface PendingAuth {
+  clientRedirectUri: string;
+  clientState: string;
+  codeChallenge: string;
+  expiry: number;
+}
+const pendingAuth = new Map<string, PendingAuth>();
+setInterval(() => {
+  const now = Date.now();
+  for (const [s, data] of pendingAuth) {
+    if (now > data.expiry) pendingAuth.delete(s);
   }
 }, 60_000).unref();
 
@@ -331,9 +349,32 @@ function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-// Authorization page (GET)
+// Authorization (GET). When Google login is configured, redirect the operator
+// to Google (delegated identity) — the MCP client's PKCE/state are stashed in
+// pendingAuth, keyed by a random serverState, and restored in /oauth/callback.
+// Otherwise fall back to the admin-secret form (backward compatible).
 app.get('/oauth/authorize', (req: Request, res: Response) => {
   const q = req.query as Record<string, string>;
+
+  if (googleConfigured()) {
+    const redirect_uri = q['redirect_uri'] ?? '';
+    const code_challenge = q['code_challenge'] ?? '';
+    if (!redirect_uri) { res.status(400).send('Missing redirect_uri'); return; }
+    if (!code_challenge || q['code_challenge_method'] !== 'S256') {
+      res.status(400).send('PKCE with code_challenge_method=S256 is required');
+      return;
+    }
+    const serverState = randomBytes(32).toString('hex');
+    pendingAuth.set(serverState, {
+      clientRedirectUri: redirect_uri,
+      clientState: q['state'] ?? '',
+      codeChallenge: code_challenge,
+      expiry: Date.now() + AUTH_CODE_TTL_MS,
+    });
+    res.redirect(302, googleAuthorizeUrl(serverState, `${BASE_URL}/oauth/callback`));
+    return;
+  }
+
   res.send(`<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -387,6 +428,47 @@ app.post('/oauth/authorize', (req: Request, res: Response) => {
   const url = new URL(redirect_uri);
   url.searchParams.set('code', code);
   if (state) url.searchParams.set('state', state);
+  res.redirect(302, url.toString());
+});
+
+// Google login callback. Google redirects here after the operator authenticates;
+// we exchange the code for the identity, check the email allowlist, then mint our
+// own auth code (bound to the MCP client's PKCE) and redirect back to the client.
+app.get('/oauth/callback', async (req: Request, res: Response) => {
+  const q = req.query as Record<string, string>;
+  const serverState = q['state'] ?? '';
+  const googleCode = q['code'] ?? '';
+  const pending = pendingAuth.get(serverState);
+  if (!pending || Date.now() > pending.expiry) {
+    res.status(400).send('Login session expired or invalid — please reconnect.');
+    return;
+  }
+  pendingAuth.delete(serverState);
+  if (q['error']) { res.status(403).send(`Google login failed: ${esc(q['error'])}`); return; }
+  if (!googleCode) { res.status(400).send('Missing authorization code from Google.'); return; }
+
+  let identity;
+  try {
+    identity = await exchangeGoogleCode(googleCode, `${BASE_URL}/oauth/callback`);
+  } catch (e) {
+    process.stdout.write(`[oauth/callback] google exchange error: ${String(e).slice(0, 200)}\n`);
+    res.status(502).send('Could not complete Google login. Please try again.');
+    return;
+  }
+  if (!identity.emailVerified || !emailAllowed(identity.email)) {
+    res.status(403).send('This Google account is not authorized for this server.');
+    return;
+  }
+
+  const code = randomBytes(32).toString('hex');
+  pendingCodes.set(code, {
+    redirectUri: pending.clientRedirectUri,
+    codeChallenge: pending.codeChallenge,
+    expiry: Date.now() + AUTH_CODE_TTL_MS,
+  });
+  const url = new URL(pending.clientRedirectUri);
+  url.searchParams.set('code', code);
+  if (pending.clientState) url.searchParams.set('state', pending.clientState);
   res.redirect(302, url.toString());
 });
 

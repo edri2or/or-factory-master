@@ -42,7 +42,8 @@ Claude Code / claude.ai  --Bearer-->  /n8n/<system>/mcp (gateway)
 | 0 | מחקר + אימות גישה + pin גרסה | completed | (קריאה-בלבד; אומת SM+Railway; `N8N_MCP_IMAGE` ל-2.51.2) |
 | 1 | קוד השער + sidecar בקובץ הפריסה | code-ready | `services/mcp-server/src/{bearer,n8n-client,n8n-mcp-proxy,index}.ts`, `.github/workflows/deploy-mcp-server.yml`, test |
 | 2 | פריסה (Or-gated) — השרת חי | completed | rev 00053 חי; `/health`=200, `/n8n/or-adhd-agent/mcp`=401, מערכת-לא-מורשית=404 |
-| 3 | הוכחת לולאה חיה (smoke) + אימות #46140 לצ'אט | in-progress | `scripts/n8n-mcp-smoke.py` + `.github/workflows/n8n-mcp-smoke.yml` |
+| 3 | הוכחת לולאה חיה (smoke) — ✅ create+delete חי | completed | `scripts/n8n-mcp-smoke.py` + `.github/workflows/n8n-mcp-smoke.yml`; run 26909246600 PASS |
+| 3b | התחברות Google לאופרטור (במקום admin-secret) | code-ready | `src/google-oauth.ts`, `src/index.ts`, `scripts/render-mcp-service-yaml.sh`, `deploy-mcp-server.yml` |
 | 4 | הכללה לרב-דייר (דרישת claim, הסרת hardwire) | pending | `n8n-mcp-proxy.ts`, `index.ts` |
 | 5 | SA ייעודי least-privilege (conditioned secretAccessor) | pending | `deploy-mcp-server.yml` ← **אישור Or (IAM)** |
 
@@ -63,10 +64,15 @@ Claude Code / claude.ai  --Bearer-->  /n8n/<system>/mcp (gateway)
 איטרציה. **ריצה 26907493544 הצליחה** — rev 00053 חי עם שני הקונטיינרים. אומת חי: `/health`=200,
 `/n8n/or-adhd-agent/mcp` בלי טוקן=401 (מסלול חי + מורשה), מערכת-לא-מורשית=404 (בידוד עובד).
 
-שלב 3 (הוכחת לולאה אוטונומית): `n8n-mcp-smoke.yml` מריץ את `scripts/n8n-mcp-smoke.py` — מנפיק
-טוקן (admin secret נקרא ב-CI מ-SM, ממוסך, לא בסשן), עושה MCP handshake דרך השער ל-sidecar,
-`tools/list` (חייב להחזיר כלי `n8n_*`), `n8n_health_check` (sidecar→n8n של המערכת), ואז
-create+delete של workflow `dev-`. נתיב הצ'אט (#46140) ייבדק ע"י Or בעת חיבור ה-connector.
+שלב 3 הושלם: `n8n-mcp-smoke.yml` (run 26909246600) הוכיח חי create+delete של workflow `dev-`
+ב-n8n של or-adhd-agent דרך MCP, בלי סוד בסשן, בלי שאריות.
+
+שלב 3b (התחברות Google): Or בחר "Login with Google" כדי לא להתעסק בסוד. במקום Cloudflare Access
+(שדורש Tunnel always-on — נדחה), השער מנצל את שרת ה-OAuth הקיים: `/oauth/authorize` מפנה ל-Google,
+`/oauth/callback` מאמת את ה-email מול allowlist (`OAUTH_ALLOWED_EMAILS`) ואז מנפיק את ה-bearer
+הרגיל. ה-PKCE של הלקוח נשמר. נשאר ל-fallback ל-admin-secret אם Google לא מוגדר (deploy בטוח לפני
+שה-client קיים). סודות חדשים: `google-oauth-client-{id,secret}` (placeholder עד שייווצר client
+ידנית ב-Google Console — הצעד הידני היחיד). **עוצרים לפני re-deploy לאישור Or + ליצירת ה-client.**
 
 ## סוד חדש (rotation)
 
