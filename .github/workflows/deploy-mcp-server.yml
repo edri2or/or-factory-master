@@ -59,6 +59,9 @@ jobs:
       N8N_MCP_IMAGE_TAG: "2.51.2"
       # v1 single-tenant allowlist: only these systems may be driven live.
       N8N_DEV_ALLOWED_SYSTEMS: "or-adhd-agent"
+      # Google-login email allowlist for the operator OAuth flow (gateway-native
+      # Google IdP). Only these emails may authenticate interactively.
+      OAUTH_ALLOWED_EMAILS: "edri2or@gmail.com"
       # Cloud Run runtime SA = broker SA. The broker SA already holds
       # secretAccessor on every secret we mount (Stage 3 + 4 of
       # bootstrap-record). Spinning a dedicated read-only runtime SA would
@@ -230,6 +233,59 @@ jobs:
               --data-file=-
             echo "PASS: n8n-mcp-internal-auth-token minted (no trailing newline)."
           fi
+
+      - name: Ensure google-oauth-client secrets exist (placeholder if missing)
+        run: |
+          set -euo pipefail
+          # Google client id/secret for the operator "Login with Google" flow.
+          # Created once, manually, in Google Cloud Console (consent screen +
+          # OAuth Web client; the one step that can't be API-automated), then
+          # stored here. We seed __NOT_CONFIGURED__ placeholders if absent so the
+          # Cloud Run secret mount never fails — the gateway treats the placeholder
+          # as "Google not configured" and falls back to the admin-secret form
+          # until the real values are added. Never overwrites a real value.
+          for NAME in google-oauth-client-id google-oauth-client-secret; do
+            if gcloud secrets describe "${NAME}" --project="${GCP_PROJECT}" >/dev/null 2>&1; then
+              echo "INFO: ${NAME} exists; leaving as-is."
+            else
+              gcloud secrets create "${NAME}" \
+                --project="${GCP_PROJECT}" \
+                --replication-policy=automatic \
+                --labels="owner=factory-master,purpose=mcp-google-oauth"
+              printf '__NOT_CONFIGURED__' | gcloud secrets versions add "${NAME}" \
+                --project="${GCP_PROJECT}" --data-file=-
+              echo "PASS: ${NAME} created with placeholder."
+            fi
+          done
+
+      - name: Seed google-oauth secrets from repo secrets (if provided)
+        env:
+          GH_GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+          GH_GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+        run: |
+          set -euo pipefail
+          # Secure handoff of the operator's Google OAuth client: the values live
+          # only as encrypted GitHub Actions repo secrets (masked here, never in a
+          # chat or a plain log). If present, add them as real SM versions on top
+          # of the placeholders; if absent, leave the placeholders (Google login
+          # stays dormant, admin-form fallback). Idempotent — only writes a new
+          # version when the repo secret differs from what's already in SM.
+          seed() {
+            local sm_name="$1" val="$2"
+            [ -n "${val}" ] || { echo "INFO: ${sm_name} repo secret not set; leaving SM as-is."; return 0; }
+            local cur
+            cur=$(gcloud secrets versions access latest --secret="${sm_name}" \
+              --project="${GCP_PROJECT}" 2>/dev/null || echo "")
+            if [ "${cur}" = "${val}" ]; then
+              echo "INFO: ${sm_name} already matches repo secret; no new version."
+            else
+              printf '%s' "${val}" | gcloud secrets versions add "${sm_name}" \
+                --project="${GCP_PROJECT}" --data-file=-
+              echo "PASS: ${sm_name} updated from repo secret."
+            fi
+          }
+          seed google-oauth-client-id "${GH_GOOGLE_CLIENT_ID}"
+          seed google-oauth-client-secret "${GH_GOOGLE_CLIENT_SECRET}"
 
       - name: Ensure cloudflare-zones-read-token exists (placeholder if missing)
         run: |
@@ -566,6 +622,7 @@ jobs:
             RUNTIME_SA_EMAIL="${RUNTIME_SA_EMAIL}" \
             PUBLIC_BASE_URL="${PUBLIC_BASE_URL}" \
             N8N_DEV_ALLOWED_SYSTEMS="${N8N_DEV_ALLOWED_SYSTEMS}" \
+            OAUTH_ALLOWED_EMAILS="${OAUTH_ALLOWED_EMAILS}" \
             bash scripts/render-mcp-service-yaml.sh > /tmp/mcp-service.yaml || return 1
             gcloud run services replace /tmp/mcp-service.yaml \
               --region="${GCP_REGION}" \
