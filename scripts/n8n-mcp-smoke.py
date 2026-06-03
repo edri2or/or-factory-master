@@ -113,6 +113,11 @@ def tool_call(name, arguments):
     for c in result.get("content", []):
         if c.get("type") == "text":
             text += c.get("text", "")
+    # n8n-mcp signals application-level failure with `"success": false` in the
+    # content text (not the MCP isError flag), so inspect the parsed payload too.
+    parsed = _maybe_json(text)
+    if isinstance(parsed, dict) and parsed.get("success") is False:
+        return False, text
     return True, text
 
 
@@ -219,17 +224,29 @@ ok, text = tool_call(
     "n8n_create_workflow",
     {
         "name": wf_name,
+        # n8n-mcp rejects a single non-webhook node, so wire a 2-node workflow:
+        # manual trigger -> no-op.
         "nodes": [
             {
                 "id": "trigger",
-                "name": "When clicking Test",
+                "name": "Start",
                 "type": "n8n-nodes-base.manualTrigger",
                 "typeVersion": 1,
                 "position": [0, 0],
                 "parameters": {},
-            }
+            },
+            {
+                "id": "noop",
+                "name": "NoOp",
+                "type": "n8n-nodes-base.noOp",
+                "typeVersion": 1,
+                "position": [260, 0],
+                "parameters": {},
+            },
         ],
-        "connections": {},
+        "connections": {
+            "Start": {"main": [[{"node": "NoOp", "type": "main", "index": 0}]]}
+        },
     },
 )
 if not ok:
