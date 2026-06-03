@@ -57,8 +57,10 @@ jobs:
       # mirrors this into Artifact Registry (bootstrap-images) and runs the AR copy.
       N8N_MCP_UPSTREAM_IMAGE: "ghcr.io/czlonkowski/n8n-mcp:2.51.2"
       N8N_MCP_IMAGE_TAG: "2.51.2"
-      # v1 single-tenant allowlist: only these systems may be driven live.
-      N8N_DEV_ALLOWED_SYSTEMS: "or-adhd-agent"
+      # Multi-tenant: "*" = any syntactically-valid system (reachability still
+      # gated by resolveN8nTarget needing a real GCP project + n8n-api-key).
+      # Set to a CSV instead to pin to specific systems.
+      N8N_DEV_ALLOWED_SYSTEMS: "*"
       # Google-login email allowlist for the operator OAuth flow (gateway-native
       # Google IdP). Only these emails may authenticate interactively.
       OAUTH_ALLOWED_EMAILS: "edri2or@gmail.com"

@@ -28,14 +28,20 @@ import { resolveN8nTarget } from './n8n-client.js';
 const N8N_MCP_URL = process.env.N8N_MCP_URL;
 const N8N_MCP_AUTH_TOKEN = process.env.N8N_MCP_AUTH_TOKEN;
 
-// v1 is single-tenant: only systems on this allowlist may be driven. Generalised
-// to a bearer `system`-claim assertion when we go multi-tenant (Stage 4).
+// Which systems may be driven. Either an explicit CSV (pinning), or "*" =
+// any syntactically-valid system name (multi-tenant). Even with "*", actual
+// reachability is gated by resolveN8nTarget (the system must resolve to a GCP
+// project that holds an n8n-api-key), so an unknown/unprovisioned system fails
+// cleanly; and a system-scoped n8n-dev bearer stays hard-bound to its own system.
 const ALLOWED_SYSTEMS = new Set(
   (process.env.N8N_DEV_ALLOWED_SYSTEMS ?? 'or-adhd-agent')
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean),
 );
+const ALLOW_ANY_SYSTEM = ALLOWED_SYSTEMS.has('*');
+// Same shape the factory enforces on system_name (6–30 chars).
+const SYSTEM_NAME_RE = /^[a-z][a-z0-9-]{4,28}[a-z0-9]$/;
 
 const PROXY_TIMEOUT_MS = 60_000;
 
@@ -44,6 +50,7 @@ export function n8nMcpEnabled(): boolean {
 }
 
 export function isAllowedN8nSystem(system: string): boolean {
+  if (ALLOW_ANY_SYSTEM) return SYSTEM_NAME_RE.test(system);
   return ALLOWED_SYSTEMS.has(system);
 }
 

@@ -44,8 +44,9 @@ Claude Code / claude.ai  --Bearer-->  /n8n/<system>/mcp (gateway)
 | 2 | פריסה (Or-gated) — השרת חי | completed | rev 00053 חי; `/health`=200, `/n8n/or-adhd-agent/mcp`=401, מערכת-לא-מורשית=404 |
 | 3 | הוכחת לולאה חיה (smoke) — ✅ create+delete חי | completed | `scripts/n8n-mcp-smoke.py` + `.github/workflows/n8n-mcp-smoke.yml`; run 26909246600 PASS |
 | 3b | התחברות Google לאופרטור (במקום admin-secret) | code-ready | `src/google-oauth.ts`, `src/index.ts`, `scripts/render-mcp-service-yaml.sh`, `deploy-mcp-server.yml` |
-| 4 | הכללה לרב-דייר (דרישת claim, הסרת hardwire) | pending | `n8n-mcp-proxy.ts`, `index.ts` |
-| 5 | SA ייעודי least-privilege (conditioned secretAccessor) | pending | `deploy-mcp-server.yml` ← **אישור Or (IAM)** |
+| 3c | התחברות Google — חיה ומאומתת (Or מחובר) | completed | `/oauth/authorize`→Google אומת; Or חיבר connector |
+| 4 | הכללה לרב-דייר (`N8N_DEV_ALLOWED_SYSTEMS="*"`) | code-ready | `n8n-mcp-proxy.ts`, `deploy-mcp-server.yml`, test |
+| 5 | SA ייעודי least-privilege (conditioned secretAccessor) | blocked-on-IAM | `deploy-mcp-server.yml` ← **חסם: broker חסר admin על control + אישור Or** |
 
 ## סטטוס נוכחי
 
