@@ -1,0 +1,5 @@
+## fix: deploy MCP sidecar via `gcloud run services replace` (declarative spec)
+
+| Type | Summary |
+|---|---|
+| fix | The multi-container deploy's second failure (run 26905606580): `gcloud run deploy --container ...` against the already-existing single-container service produced `spec.template.spec.containers: Revision template should contain exactly one container with an exposed port` (the imperative form left the pre-existing container in the set). Switch the deploy step to `gcloud run services replace` with a declarative Knative spec rendered by a new, locally-testable `scripts/render-mcp-service-yaml.sh` (gateway = sole ingress on :3000; `n8nmcp` = portless localhost sidecar; 22 secret-backed envs via `valueFrom.secretKeyRef`). The renderer is printf-built (no heredoc/indentation fragility) and validated locally (well-formed YAML, exactly one ingress container, shellcheck clean). The actAs-propagation retry wrapper is unchanged; the existing allUsers-invoker IAM persists across replace. |
