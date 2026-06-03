@@ -48,11 +48,16 @@ Claude Code / claude.ai  --Bearer-->  /n8n/<system>/mcp (gateway)
 
 ## סטטוס נוכחי
 
-שלב 1 מוזג (PR #305). שלב 2: Or אישר פריסה → מיזוג הפעיל את `deploy-mcp-server.yml`. הריצה
-הראשונה (26905243218) נכשלה בצעד הפריסה בלבד (הסודות+בנייה+דחיפה עברו) על באג תחבירי של gcloud
-מרובה-קונטיינרים: `--quiet` (דגל גלובלי) הונח אחרי ה-`--container` האחרון → `unrecognized
-arguments: --quiet`. תיקון: העברת `--quiet` לבלוק הדגלים הגלובליים לפני ה-`--container` הראשון.
-fix-forward ב-PR נפרד; אחרי מיזוג, ה-redeploy ירוץ אוטומטית.
+שלב 1 מוזג (PR #305). שלב 2 — פריסה (Or אישר), שתי איטרציות תיקון על מכניקת ה-deploy:
+1. ריצה 26905243218 נכשלה על `--quiet` (דגל גלובלי) שהונח אחרי ה-`--container` האחרון →
+   `unrecognized arguments`. תוקן (PR #306): `--quiet` לפני ה-`--container` הראשון.
+2. ריצה 26905606580 נכשלה על `spec.template.spec.containers: should contain exactly one
+   container with an exposed port` — `gcloud run deploy --container` מול שירות חד-קונטיינר קיים
+   השאיר את הקונטיינר הישן. תיקון: מעבר ל-`gcloud run services replace` עם spec דקלרטיבי
+   שמרונדר ע"י `scripts/render-mcp-service-yaml.sh` (gateway = ingress יחיד בפורט 3000, n8nmcp =
+   sidecar בלי פורט). מאומת מקומית (YAML תקין, קונטיינר-ingress יחיד, shellcheck נקי).
+
+הסודות, הבנייה והדחיפה עברו בכל הריצות — רק פקודת הפריסה נשארה לתקן.
 
 ## סוד חדש (rotation)
 

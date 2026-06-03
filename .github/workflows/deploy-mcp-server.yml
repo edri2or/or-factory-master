@@ -528,38 +528,30 @@ jobs:
 
           # IAM propagation for the actAs binding can take up to 5 minutes
           # (per Google docs); retry with back-off on actAs permission errors.
-          # Multi-container deploy: the public `gateway` container (our image, the
-          # ingress on :3000) plus an internal `n8nmcp` sidecar (czlonkowski/n8n-mcp,
-          # multi-tenant HTTP). Cloud Run sidecars get traffic ONLY from the ingress
-          # container over localhost, so the n8n-mcp endpoint is never publicly
-          # reachable — the gateway proxies /n8n/<system>/mcp to localhost:3001 and
-          # injects x-n8n-url / x-n8n-key server-side. Per-container flags follow
-          # each --container; service-level flags (region/SA/ingress/scaling) are global.
+          # Multi-container service via `gcloud run services replace` with a
+          # rendered Knative spec: the public `gateway` container (our image, the
+          # sole ingress on :3000) plus an internal `n8nmcp` sidecar
+          # (czlonkowski/n8n-mcp, multi-tenant HTTP, PORTLESS → reachable only at
+          # localhost). `services replace` is the deterministic, Google-recommended
+          # way to run sidecars; `gcloud run deploy --container` was abandoned
+          # because, against the already-existing single-container service, it
+          # produced "exactly one container with an exposed port". The gateway
+          # proxies /n8n/<system>/mcp to localhost:3001 and injects
+          # x-n8n-url / x-n8n-key server-side. The spec carries serviceAccountName
+          # + scaling annotations; the existing allUsers invoker IAM persists
+          # (replace doesn't touch IAM policy).
           deploy_once() {
-            gcloud run deploy "${SERVICE}" \
+            SERVICE="${SERVICE}" \
+            GATEWAY_IMAGE="${{ steps.image.outputs.image }}" \
+            N8N_MCP_IMAGE="${N8N_MCP_IMAGE}" \
+            RUNTIME_SA_EMAIL="${RUNTIME_SA_EMAIL}" \
+            PUBLIC_BASE_URL="${PUBLIC_BASE_URL}" \
+            N8N_DEV_ALLOWED_SYSTEMS="${N8N_DEV_ALLOWED_SYSTEMS}" \
+            bash scripts/render-mcp-service-yaml.sh > /tmp/mcp-service.yaml || return 1
+            gcloud run services replace /tmp/mcp-service.yaml \
               --region="${GCP_REGION}" \
               --project="${GCP_PROJECT}" \
-              --service-account="${RUNTIME_SA_EMAIL}" \
-              --allow-unauthenticated \
-              --min-instances=0 \
-              --max-instances=3 \
-              --timeout=300 \
-              --labels="owner=factory-master,purpose=mcp-server" \
-              --quiet \
-              --container gateway \
-                --image="${{ steps.image.outputs.image }}" \
-                --port=3000 \
-                --cpu=1 \
-                --memory=512Mi \
-                --set-env-vars="PUBLIC_BASE_URL=${PUBLIC_BASE_URL},FACTORY_TG_CHAT_MODEL=anthropic/claude-haiku-4.5,N8N_MCP_URL=http://localhost:3001/mcp,N8N_DEV_ALLOWED_SYSTEMS=${N8N_DEV_ALLOWED_SYSTEMS}" \
-                --set-secrets="MCP_ADMIN_SECRET=mcp-server-admin-secret:latest,BEARER_SIGNING_KEY=mcp-server-bearer-signing-key:latest,N8N_MCP_AUTH_TOKEN=n8n-mcp-internal-auth-token:latest,GITHUB_APP_ID=factory-master-broker-app-id:latest,GITHUB_APP_PRIVATE_KEY=factory-master-broker-app-private-key:latest,GITHUB_APP_INSTALLATION_ID=factory-master-broker-app-installation-id:latest,RAILWAY_API_TOKEN=railway-api-token:latest,CLOUDFLARE_API_TOKEN=cloudflare-token-creator:latest,CLOUDFLARE_ZONE_ID=cloudflare-zone-id-or-infra:latest,CLOUDFLARE_ZONES_READ_TOKEN=cloudflare-zones-read-token:latest,SENTRY_DSN=sentry-api-key:latest,BS_WEBHOOK_SECRET=bs-webhook-secret:latest,LINEAR_WEBHOOK_SECRET=linear-webhook-secret:latest,TELEGRAM_APPROVAL_WEBHOOK_SECRET=telegram-approval-webhook-secret:latest,OIL_APPROVER_TELEGRAM_ALLOWLIST=oil-approver-telegram-allowlist:latest,OIL_APPROVER_APP_ID=oil-autofix-approver-app-id:latest,OIL_APPROVER_INSTALLATION_ID=oil-autofix-approver-app-installation-id:latest,OIL_APPROVER_PRIVATE_KEY=oil-autofix-approver-app-private-key:latest,FACTORY_TG_CHAT_ALLOWLIST=factory-telegram-chat-allowlist:latest,FACTORY_TG_CHAT_OPENROUTER_KEY=factory-telegram-chat-openrouter-key:latest" \
-              --container n8nmcp \
-                --image="${N8N_MCP_IMAGE}" \
-                --cpu=1 \
-                --memory=512Mi \
-                --set-env-vars="MCP_MODE=http,ENABLE_MULTI_TENANT=true,PORT=3001,HOST=0.0.0.0,TRUST_PROXY=1,LOG_LEVEL=info" \
-                --set-secrets="AUTH_TOKEN=n8n-mcp-internal-auth-token:latest,MCP_AUTH_TOKEN=n8n-mcp-internal-auth-token:latest" \
-              2>&1
+              --quiet 2>&1
           }
           for i in 1 2 3 4 5 6 7 8 9 10; do
             OUTPUT=$(deploy_once) && { echo "${OUTPUT}"; break; }
