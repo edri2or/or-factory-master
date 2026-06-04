@@ -38,6 +38,7 @@ templates/system/workflows/n8n/pending-actions-cleanup.json
 templates/system/workflows/n8n/db-vacuum.json
 
 # Manual operator tools (workflow_dispatch only, no schedule to prove):
+.github/workflows/grant-secret-accessor.yml
 .github/workflows/compile-changelog.yml
 .github/workflows/list-recoverable-projects.yml
 .github/workflows/set-factory-branch-protection.yml
