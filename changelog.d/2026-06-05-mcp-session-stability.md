@@ -1,0 +1,5 @@
+## fix: stabilize n8n-mcp gateway MCP sessions (single warm Cloud Run instance)
+
+| Type | Summary |
+|---|---|
+| fix | The n8n-mcp live gateway kept failing with `Session not found or expired` (JSON-RPC `-32000`) on nearly every call. Root cause: the `czlonkowski/n8n-mcp` sidecar is a STATEFUL streamable-HTTP MCP server (it holds the `mcp-session-id` in instance memory), but `render-mcp-service-yaml.sh` deployed it with `minScale: "0"` (scale-to-zero erases the session on cold start) and `maxScale: "3"` with no session affinity (a follow-up request can land on a different instance that never saw the session). Fix: pin the service to a single always-warm instance — `minScale: "0"→"1"`, `maxScale: "3"→"1"` — so every gateway+sidecar request hits the same pod and the session survives; add `run.googleapis.com/sessionAffinity: "true"` as best-effort belt-and-suspenders if maxScale is ever raised. The stateless read tools (`inspect_n8n_execution`, `list_n8n_workflows`) were unaffected and already worked. Small fixed cost: one always-on Cloud Run instance. |

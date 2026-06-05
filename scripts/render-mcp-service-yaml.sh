@@ -66,8 +66,15 @@ printf 'spec:\n'
 printf '  template:\n'
 printf '    metadata:\n'
 printf '      annotations:\n'
-printf '        autoscaling.knative.dev/minScale: "0"\n'
-printf '        autoscaling.knative.dev/maxScale: "3"\n'
+# Pin to a single always-warm instance. The n8nmcp sidecar is a STATEFUL
+# streamable-HTTP MCP server (keeps the mcp-session-id in instance memory), so a
+# scale-to-zero (minScale 0) or a second instance (maxScale > 1, no affinity)
+# loses the session → "Session not found or expired" on the next call. One warm
+# instance keeps every gateway+sidecar request on the same pod. sessionAffinity
+# is belt-and-suspenders (cookie-based, best-effort) if maxScale is ever raised.
+printf '        autoscaling.knative.dev/minScale: "1"\n'
+printf '        autoscaling.knative.dev/maxScale: "1"\n'
+printf '        run.googleapis.com/sessionAffinity: "true"\n'
 printf '    spec:\n'
 printf '      serviceAccountName: %s\n' "${RUNTIME_SA_EMAIL}"
 printf '      timeoutSeconds: 300\n'
