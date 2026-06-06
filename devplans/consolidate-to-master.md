@@ -22,8 +22,8 @@ status: active   # active בזמן פיתוח → completed בשלב 5 (משחר
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
 | 0 | צילום מצב (קריאה בלבד) | completed | — |
-| 1 | קיפול כלי org-reader ל-MCP הקיים | in-progress | `services/mcp-server/src/{org-read-tools.ts,github-client.ts,index.ts}` |
-| 2 | פורט מסווג-סיכון GCP (לוגיקה בלבד) | pending | `scripts/gcp-classify.sh`, `policy/gcp-risk-tiers.yml`, `tests/`, CI job |
+| 1 | קיפול כלי org-reader ל-MCP הקיים | in-progress (ממתין ל-deploy+אימות חי) | `services/mcp-server/src/{org-read-tools.ts,github-client.ts,index.ts}` |
+| 2 | פורט מסווג-סיכון GCP (לוגיקה בלבד) | in-progress (self-test 9/9 ✅) | `scripts/gcp-classify.sh`, `policy/gcp-risk-tiers.yml`, `tests/gcp-classify-fixtures.yml`, `scripts/test-gcp-classify.sh`, `pipeline-tests.yml` |
 | 3 | שער-סיכון GCP + גשר אישור טלגרם | pending | `.github/workflows/gcp-action.yml`, `services/mcp-server/src/gcp-approval.ts`, `index.ts` |
 | 4 | איחוד סודות (כנראה ריק) | pending | (אופציונלי) `.github/workflows/import-secret-from-control.yml` |
 | 5 | פירוק הישן (כל מחיקה ב-✅ נפרד של Or) | pending | — |

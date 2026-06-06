@@ -1,0 +1,26 @@
+# GCP risk-tier policy for or-factory-master. Source of truth for
+# scripts/gcp-classify.sh (consolidated from edri2or/gcp-hands).
+# A command (gcloud args without the leading "gcloud") is matched token-wise
+# against these patterns: green first, then yellow; "*" matches exactly one
+# token. Anything unmatched — and any empty input — is RED (fail-safe).
+#
+# Routing in or-factory-master (.github/workflows/gcp-action.yml):
+#   green  → broker SA runs the read immediately
+#   yellow → run + emit an audit event (scripts/emit-event.sh)
+#   red    → NOT run here; routed to the existing Telegram ✅ approval bridge
+version: "1.0"
+default_tier: red  # fail-safe — never green
+tiers:
+  green:
+    patterns:
+      - "secrets list"
+      - "secrets describe *"
+      - "projects describe *"
+      - "projects get-iam-policy *"
+      - "run services describe *"
+  yellow:
+    patterns:
+      - "secrets versions add *"  # adding a version to an existing secret
+      - "run deploy *"             # deploying to an existing service
+      - "services enable *"
+  # red is implicit — anything else (create / delete / IAM binding / unknown)
