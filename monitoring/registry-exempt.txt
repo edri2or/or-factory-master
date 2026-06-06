@@ -7,6 +7,7 @@
 # daily proof" decision (one-shots, internal verifiers, manual operator tools).
 
 # One-shot / already-used registrations (run once, never on a cadence):
+.github/workflows/copy-gmail-oauth-to-control.yml
 .github/workflows/bootstrap-sandbox-tester.yml
 .github/workflows/register-broker-app.yml
 .github/workflows/register-oil-approver-app.yml
