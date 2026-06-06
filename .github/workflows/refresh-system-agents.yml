@@ -182,13 +182,21 @@ jobs:
               --body "Automated refresh of \`${PATHS}\` from or-factory-master templates (refresh-system-agents.yml run ${RUN_ID}).") \
               || { echo "FAIL: gh pr create failed for edri2or/${SYSTEM_NAME}" >&2; exit 1; }
             echo "INFO: opened ${PR_URL}"
-            # Give the system's CI a moment to register, then wait for it to finish.
-            sleep 20
-            if ! gh pr checks "$PR_URL" --repo "edri2or/${SYSTEM_NAME}" --watch --fail-fast; then
-              echo "FAIL: system CI did not pass on ${PR_URL} — not merging." >&2; exit 1
-            fi
-            if ! merr=$(gh pr merge "$PR_URL" --repo "edri2or/${SYSTEM_NAME}" --squash --delete-branch 2>&1); then
-              echo "FAIL: merge failed: $(printf '%s' "$merr" | sed "s/${TOKEN}/***/g")" >&2; exit 1
+            # The broker App token has no `checks:read`, so we can't read the PR's
+            # status to gate the merge (gh pr checks fails with "Resource not
+            # accessible by integration"). Instead, RETRY the protected merge — the
+            # branch ruleset enforces the 4 required checks server-side, so the merge
+            # only succeeds once CI is green (same approach as prove-on-test-system.yml).
+            merged=""
+            for attempt in $(seq 1 20); do
+              if merr=$(gh pr merge "$PR_URL" --repo "edri2or/${SYSTEM_NAME}" --squash --delete-branch 2>&1); then
+                merged="yes"; break
+              fi
+              echo "INFO: merge attempt ${attempt}/20 not yet allowed (waiting for required checks)…"
+              sleep 15
+            done
+            if [ -z "$merged" ]; then
+              echo "FAIL: merge never succeeded after retries: $(printf '%s' "$merr" | sed "s/${TOKEN}/***/g")" >&2; exit 1
             fi
             echo "PASS: merged refreshed \`${PATHS}\` into edri2or/${SYSTEM_NAME}:main"
             echo "changed=true" >> "$GITHUB_OUTPUT"
