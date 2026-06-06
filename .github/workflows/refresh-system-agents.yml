@@ -107,14 +107,17 @@ jobs:
           POST_MERGE_WORKFLOW: ${{ inputs.post_merge_workflow }}
         run: |
           set -uo pipefail
-          # --- Mint a broker App token scoped to JUST this repo (contents + PRs + actions) ---
+          # --- Mint a broker App token scoped to JUST this repo (contents + PRs + actions + workflows) ---
+          # `workflows:write` is required to sync files under .github/workflows/ — GitHub
+          # refuses an App push that creates/updates a workflow file without it. Without it,
+          # `paths` can only carry non-workflow templates (n8n JSONs, Caddyfile, etc.).
           APP_ID=$(gcloud secrets versions access latest --secret=factory-master-broker-app-id --project="$CONTROL_PROJECT" 2>/dev/null || true)
           INSTALL_ID=$(gcloud secrets versions access latest --secret=factory-master-broker-app-installation-id --project="$CONTROL_PROJECT" 2>/dev/null || true)
           echo "::add-mask::$APP_ID"; echo "::add-mask::$INSTALL_ID"
           gcloud secrets versions access latest --secret=factory-master-broker-app-private-key --project="$CONTROL_PROJECT" > /tmp/rsa-key.pem 2>/dev/null || true
           TOKEN=""
           if [ -s /tmp/rsa-key.pem ] && [ -n "$APP_ID" ] && [ -n "$INSTALL_ID" ]; then
-            TOKEN=$(bash scripts/generate-app-token.sh /tmp/rsa-key.pem "$APP_ID" "$INSTALL_ID" "" '{"contents":"write","pull_requests":"write","actions":"write"}' "[\"$SYSTEM_NAME\"]" 2>/dev/null || true)
+            TOKEN=$(bash scripts/generate-app-token.sh /tmp/rsa-key.pem "$APP_ID" "$INSTALL_ID" "" '{"contents":"write","pull_requests":"write","actions":"write","workflows":"write"}' "[\"$SYSTEM_NAME\"]" 2>/dev/null || true)
           fi
           rm -f /tmp/rsa-key.pem
           [ -n "$TOKEN" ] || { echo "FAIL: could not mint a broker token for edri2or/${SYSTEM_NAME}" >&2; exit 1; }
