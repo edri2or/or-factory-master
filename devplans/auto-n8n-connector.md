@@ -20,7 +20,8 @@ status: active
 |---|---|---|---|
 | 1 | צעד הודעת connector ב-deploy + תיעוד + רענון גולדן | completed | `templates/system/.github/workflows/deploy-railway-cloudflare.yml`, `templates/system/AGENTS.md.template`, `tests/golden/system/` |
 | 2 | אימות על מערכת-בדיקה חיה (live-test loop) | in-progress | (הרצת workflows — בעלות, אושר ע"י אור) |
-| 3 | תיקון refresh-system-agents — הרשאת workflows לסנכרון קבצי-workflow | in-progress | `.github/workflows/refresh-system-agents.yml` |
+| 3 | תיקון refresh-system-agents — הרשאת workflows לסנכרון קבצי-workflow | completed | `.github/workflows/refresh-system-agents.yml` |
+| 4 | תיקון refresh-system-agents — מיזוג בניסיון-חוזר (בלי checks:read) | in-progress | `.github/workflows/refresh-system-agents.yml` |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
 
@@ -67,8 +68,22 @@ status: active
       לסנכרן קבצים תחת `.github/workflows/` (לא רק n8n JSON/Caddyfile).
 - [ ] PR ירוק ומוזג; re-run של refresh על `tok-conn-test` עם ה-deploy workflow מצליח לדחוף.
 
-**הערת התקדמות אחרונה:** התיקון הוא שורה אחת (הוספת `"workflows":"write"` לבקשת הטוקן). שיפור
-אמיתי בכלי — לא רק עוקף את החסם לאימות הנוכחי.
+**הערת התקדמות אחרונה:** הושלם ומוזג (PR #322). אחרי התיקון ה-refresh הצליח לדחוף את ה-deploy
+workflow ולפתוח PR במערכת הבדיקה — אבל נחשף חסם נוסף (שלב 4).
+
+**שינוי תוכנית:** —
+
+---
+
+### שלב 4 — תיקון refresh-system-agents (מיזוג בניסיון-חוזר)
+
+**Acceptance:**
+- [ ] לוגיקת המיזוג ב-`refresh-system-agents.yml` לא תלויה ב-`checks:read` (שאין ל-broker):
+      במקום `gh pr checks --watch`, לולאת `gh pr merge` בניסיון-חוזר (GitHub חוסם עד CI ירוק).
+- [ ] PR ירוק ומוזג; re-run של refresh על `tok-conn-test` ממזג את ה-PR ומדליק deploy.
+- [ ] ה-deploy מסתיים ב-success; הנאדג' מדפיס `[connector-nudge] telegram='ok'`; אור מקבל את ההודעה.
+
+**הערת התקדמות אחרונה:** התיקון מחקה את הדפוס המוכח של `prove-on-test-system` (מיזוג בניסיון-חוזר).
 
 **שינוי תוכנית:** —
 
