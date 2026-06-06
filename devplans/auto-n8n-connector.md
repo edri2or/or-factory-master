@@ -19,7 +19,8 @@ status: active
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
 | 1 | צעד הודעת connector ב-deploy + תיעוד + רענון גולדן | completed | `templates/system/.github/workflows/deploy-railway-cloudflare.yml`, `templates/system/AGENTS.md.template`, `tests/golden/system/` |
-| 2 | אימות על מערכת-בדיקה חיה (live-test loop) | pending | (הרצת workflows — בעלות, דורש אישור אור) |
+| 2 | אימות על מערכת-בדיקה חיה (live-test loop) | in-progress | (הרצת workflows — בעלות, אושר ע"י אור) |
+| 3 | תיקון refresh-system-agents — הרשאת workflows לסנכרון קבצי-workflow | in-progress | `.github/workflows/refresh-system-agents.yml` |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
 
@@ -50,8 +51,24 @@ status: active
       הודעה עם הכתובת `…/n8n/<test-system>/mcp`.
 - [ ] (אופציונלי) הוספת connector ב-Claude.ai + Login with Google + קריאת כלי מול ה-n8n של מערכת הבדיקה.
 
-**הערת התקדמות אחרונה:** ממתין לאישור אור להקמת מערכת-בדיקה (צעד בעלות). השינוי עצמו provision-only —
-רק מערכות שייבנו מעכשיו יקבלו אותו.
+**הערת התקדמות אחרונה:** הוקמה מערכת-בדיקה `tok-conn-test` (reuse, 0 מכסה). ה-PR מוזג ל-main.
+ניסיון להחיל את ה-deploy workflow המעודכן על מערכת הבדיקה דרך `refresh-system-agents` נכשל
+כי הכלי לא החזיק הרשאת `workflows` (ראה שלב 3). אחרי תיקון שלב 3 → re-run refresh → deploy אמיתי → אימות הנאדג' בטלגרם.
+
+**שינוי תוכנית:** האימות החי קורה אחרי המיזוג (לא לפניו), כי הדרך "לפני מיזוג" (`prove-on-test-system`)
+דורשת לחיצות התקנה ידניות של אור — מנוגד לעיקרון "אור לא נוגע בכלום".
+
+---
+
+### שלב 3 — תיקון refresh-system-agents (הרשאת workflows)
+
+**Acceptance:**
+- [ ] טוקן ה-broker ב-`refresh-system-agents.yml` מנפיק גם `workflows:write`, כדי שהכלי יוכל
+      לסנכרן קבצים תחת `.github/workflows/` (לא רק n8n JSON/Caddyfile).
+- [ ] PR ירוק ומוזג; re-run של refresh על `tok-conn-test` עם ה-deploy workflow מצליח לדחוף.
+
+**הערת התקדמות אחרונה:** התיקון הוא שורה אחת (הוספת `"workflows":"write"` לבקשת הטוקן). שיפור
+אמיתי בכלי — לא רק עוקף את החסם לאימות הנוכחי.
 
 **שינוי תוכנית:** —
 
