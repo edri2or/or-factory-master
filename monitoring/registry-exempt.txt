@@ -38,6 +38,10 @@ templates/system/workflows/n8n/tg-voice-stt.json
 templates/system/workflows/n8n/pending-actions-cleanup.json
 templates/system/workflows/n8n/db-vacuum.json
 
+# Per-system manual bootstrap shipped into every provisioned system
+# (workflow_dispatch only, dispatched once per system; no cadence to prove):
+templates/system/.github/workflows/bootstrap-gmail-oauth.yml
+
 # Manual operator tools (workflow_dispatch only, no schedule to prove):
 .github/workflows/grant-secret-accessor.yml
 .github/workflows/mirror-secret-to-system.yml

@@ -68,6 +68,7 @@ d734bf57a5d88650f3d6fdf8efda57f98c7b6fa69d588e200e221b02902ff354  .claude/skills
 ca5a080fc2e5ef305eb93f0608335cf96b19a0b7c224e4c68557ad2b70511b4d  .claude/skills/gcp-hands-client/SKILL.md
 791930a926a19f50bc2f014b352a9ae552793dbe96f6fe889b6c84afbb36bc7c  .claude/skills/github-app-operations/SKILL.md
 c8896e156a752f72f6945c1d47c0a7eef7c27af3cc94ab15c9068e1b2f997b34  .claude/skills/github-app-operations/scripts/generate-app-token.sh
+afa005ecf0183e89e9e9b021371c0d763386c6780fbc6be5a7e001e0041ec2f4  .github/workflows/bootstrap-gmail-oauth.yml
 00c99f1cd451049e7630c582aafa73de29fa97a94478e4329fcf33057e1e4a45  .github/workflows/changelog-check.yml
 6e88372502a6ba6fe587ae94ad1b214eec59798ef200a3924f12fb0346d0bee7  .github/workflows/configure-agent-router.yml
 db39a43b0dc20e954a6091e13a64119efa8eb2dcedb3ac56481a2342a7278eeb  .github/workflows/deploy-railway-cloudflare.yml

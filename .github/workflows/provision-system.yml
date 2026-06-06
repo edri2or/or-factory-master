@@ -714,6 +714,10 @@ jobs:
             [ -f "$CI_WF_SRC/${wf}.yml" ] || { echo "FAIL: CI workflow template $CI_WF_SRC/${wf}.yml not found" >&2; exit 1; }
             cp "$CI_WF_SRC/${wf}.yml" "$CLONE_DIR/.github/workflows/${wf}.yml"
           done
+          # Gmail OAuth bootstrap: connects the system's n8n to the shared Gmail
+          # credential (one-click consent fallback). Dispatched manually per system.
+          [ -f "$CI_WF_SRC/bootstrap-gmail-oauth.yml" ] || { echo "FAIL: bootstrap-gmail-oauth.yml template not found" >&2; exit 1; }
+          cp "$CI_WF_SRC/bootstrap-gmail-oauth.yml" "$CLONE_DIR/.github/workflows/bootstrap-gmail-oauth.yml"
           [ -f "${GITHUB_WORKSPACE}/templates/system/.yamllint" ] || { echo "FAIL: templates/system/.yamllint not found" >&2; exit 1; }
           cp "${GITHUB_WORKSPACE}/templates/system/.yamllint" "$CLONE_DIR/.yamllint"
           # Seed CHANGELOG.md only if absent (fresh repo: it is) so the doc gate has a baseline.
