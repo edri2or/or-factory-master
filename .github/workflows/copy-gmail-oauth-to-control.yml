@@ -1,0 +1,132 @@
+name: Copy Gmail OAuth secrets (factory-test-7 → control)
+
+# One-shot tool. Copies the Gmail OAuth secrets from a source system project
+# (factory-test-7, the GCP project behind edri2or/or-adhd-agent) into
+# or-factory-master-control's Secret Manager.
+#
+# Background: only two of the three Gmail OAuth secrets actually carry a value
+# in the source —
+#   - gmail-oauth-client-id      → has a value, copied
+#   - gmail-oauth-client-secret  → has a value, copied
+#   - gmail-oauth-refresh-token  → EMPTY shell (0 versions) in the source; the
+#       live refresh token lives encrypted inside n8n, not in Secret Manager,
+#       so there is nothing to copy. Per the operator's decision we still
+#       create an empty shell of the same name in control, to be filled later
+#       by a fresh Google consent on the factory side.
+#
+# Auth: WIF as factory-master-broker. The broker holds roles/owner on
+# factory-test-7 (read source values) and manages secrets in
+# or-factory-master-control (create + add version). No new IAM is granted.
+#
+# Idempotent: creates a secret shell only if absent, and adds a version only if
+# the secret has no enabled version yet. Re-running is a no-op once copied.
+# Secret VALUES are never printed or logged (written to a shredded temp file).
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "copy" to confirm copying the Gmail OAuth secrets into control.'
+        required: true
+        type: string
+
+permissions: {}
+
+jobs:
+  copy:
+    name: Copy Gmail OAuth secrets into control
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Validate confirmation
+        env:
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          set -euo pipefail
+          [ "$CONFIRM" = "copy" ] || { echo "FAIL: type 'copy' to confirm" >&2; exit 1; }
+          echo "PASS: confirmed"
+
+      - name: Authenticate to GCP via WIF
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093  # v3.0.0
+        with:
+          workload_identity_provider: "projects/140345952904/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
+          service_account: "factory-master-broker@or-factory-master-control.iam.gserviceaccount.com"
+
+      - name: Copy secrets
+        run: |
+          set -euo pipefail
+
+          SRC_PROJECT="factory-test-7"
+          DST_PROJECT="or-factory-master-control"
+          VALUE_SECRETS=("gmail-oauth-client-id" "gmail-oauth-client-secret")
+          SHELL_ONLY=("gmail-oauth-refresh-token")
+          LABELS="copied-from=factory-test-7,owner=factory-master,purpose=gmail-oauth"
+
+          TMP_FILE="$(mktemp /tmp/gmail_secret_XXXXXX)"
+          trap 'shred -u "$TMP_FILE" 2>/dev/null || rm -f "$TMP_FILE"' EXIT
+
+          _ensure_shell() {
+            local name="$1"
+            if gcloud secrets describe "$name" --project="$DST_PROJECT" >/dev/null 2>&1; then
+              echo "INFO: $name shell already exists in $DST_PROJECT"
+            else
+              gcloud secrets create "$name" \
+                --project="$DST_PROJECT" \
+                --replication-policy="automatic" \
+                --labels="$LABELS" \
+                --quiet
+              echo "PASS: created shell $name in $DST_PROJECT"
+            fi
+          }
+
+          copied=0; shells=0; skipped=0
+
+          for name in "${VALUE_SECRETS[@]}"; do
+            echo "--- $name ---"
+            # Source must carry a value.
+            if ! gcloud secrets versions access latest --secret="$name" \
+                 --project="$SRC_PROJECT" > "$TMP_FILE" 2>/dev/null; then
+              echo "FAIL: $name has no accessible value in $SRC_PROJECT" >&2
+              exit 1
+            fi
+            [ -s "$TMP_FILE" ] || { echo "FAIL: $name source value is empty" >&2; exit 1; }
+
+            _ensure_shell "$name"
+
+            # Skip if destination already has a version (idempotent).
+            if gcloud secrets versions access latest --secret="$name" \
+                 --project="$DST_PROJECT" >/dev/null 2>&1; then
+              echo "INFO: $name already has a version in $DST_PROJECT — skipping copy"
+              skipped=$((skipped + 1))
+            else
+              gcloud secrets versions add "$name" \
+                --project="$DST_PROJECT" \
+                --data-file="$TMP_FILE" \
+                --quiet
+              echo "PASS: copied value for $name into $DST_PROJECT"
+              copied=$((copied + 1))
+            fi
+            : > "$TMP_FILE"
+          done
+
+          for name in "${SHELL_ONLY[@]}"; do
+            echo "--- $name (shell only) ---"
+            _ensure_shell "$name"
+            shells=$((shells + 1))
+          done
+
+          {
+            echo "## Gmail OAuth secret copy — done"
+            echo ""
+            echo "Source: \`$SRC_PROJECT\` → Destination: \`$DST_PROJECT\`"
+            echo ""
+            echo "- values copied      : $copied"
+            echo "- already had value  : $skipped"
+            echo "- empty shells made  : $shells (gmail-oauth-refresh-token — fill via a fresh Google consent on the factory side)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          echo "DONE"
