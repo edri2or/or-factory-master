@@ -2,7 +2,7 @@
 dev_name: חיבור Claude↔n8n אוטומטי לכל מערכת חדשה
 slug: auto-n8n-connector
 opened: 2026-06-06
-status: active
+status: completed
 ---
 
 # תוכנית פיתוח — חיבור Claude↔n8n אוטומטי לכל מערכת חדשה
