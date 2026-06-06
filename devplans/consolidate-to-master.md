@@ -24,9 +24,9 @@ status: active   # active בזמן פיתוח → completed בשלב 5 (משחר
 | 0 | צילום מצב (קריאה בלבד) | completed | — |
 | 1 | קיפול כלי org-reader ל-MCP הקיים | in-progress (ממתין ל-deploy+אימות חי) | `services/mcp-server/src/{org-read-tools.ts,github-client.ts,index.ts}` |
 | 2 | פורט מסווג-סיכון GCP (לוגיקה בלבד) | in-progress (self-test 9/9 ✅) | `scripts/gcp-classify.sh`, `policy/gcp-risk-tiers.yml`, `tests/gcp-classify-fixtures.yml`, `scripts/test-gcp-classify.sh`, `pipeline-tests.yml` |
-| 3 | שער-סיכון GCP + גשר אישור טלגרם | in-progress (קוד נכתב, ממתין ל-deploy+אימות חי) | `.github/workflows/gcp-action.yml`, `services/mcp-server/src/gcp-approval.ts`, `index.ts` |
-| 4 | איחוד סודות (כנראה ריק) | pending | (אופציונלי) `.github/workflows/import-secret-from-control.yml` |
-| 5 | פירוק הישן (כל מחיקה ב-✅ נפרד של Or) | pending | — |
+| 3 | שער-סיכון GCP + גשר אישור טלגרם | completed (אומת חי: ירוק רץ, אדום→כרטיס; באג double-gcloud בגשר תוקן + טסט) | `.github/workflows/gcp-action.yml`, `services/mcp-server/src/gcp-approval.ts`, `index.ts` |
+| 4 | איחוד סודות (כנראה ריק) | completed (אין מה להעביר — סודות הטלגרם כבר בבית) | — |
+| 5 | פירוק הישן (כל מחיקה ב-✅ נפרד של Or) | in-progress (Railway org-reader נמחק; gcp-hands-control נמחק; factory-control-9piybr כבר היה inactive; נותר: ארכוב 2 הריפוז) | — |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
 

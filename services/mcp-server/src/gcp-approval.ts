@@ -88,7 +88,12 @@ export function recoverCommandFromText(text: string | undefined): string | null 
   const open = text.indexOf(CMD_OPEN);
   const close = text.indexOf(CMD_CLOSE);
   if (open < 0 || close < 0 || close <= open) return null;
-  const cmd = text.slice(open + CMD_OPEN.length, close).trim();
+  let cmd = text.slice(open + CMD_OPEN.length, close).trim();
+  // The card embeds the command for DISPLAY as "gcloud <command>", so strip a
+  // leading "gcloud " here — the workflow's execute step prepends gcloud itself
+  // (running `gcloud "${ARGS[@]}"`). Without this the command would double the
+  // prefix ("gcloud gcloud projects delete …").
+  cmd = cmd.replace(/^gcloud\s+/, '');
   if (!cmd || !COMMAND_RE.test(cmd)) return null;
   return cmd;
 }
