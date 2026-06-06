@@ -92,12 +92,23 @@ jobs:
           COMMAND: ${{ inputs.command }}
         run: |
           set -euo pipefail
-          OUT=$(bash scripts/gcp-classify.sh "$COMMAND")
-          echo "classifier: $OUT"
+          # The classifier matches the OPERATION SHAPE with exact token counts, so
+          # flag tokens (e.g. --project=foo) must be stripped before classifying —
+          # otherwise "secrets list --project=foo" (3 tokens) misses green
+          # "secrets list" (2 tokens) and falls through to red. The FULL command is
+          # preserved for execution (only the classification input is normalized).
+          set -f
+          read -ra toks <<< "$COMMAND"
+          norm=()
+          for t in "${toks[@]}"; do [[ "$t" == -* ]] || norm+=("$t"); done
+          set +f
+          NORM="${norm[*]}"
+          OUT=$(bash scripts/gcp-classify.sh "$NORM")
+          echo "classifier (normalized='$NORM'): $OUT"
           TIER=$(printf '%s' "$OUT" | sed -n 's/.*"tier":[[:space:]]*"\([^"]*\)".*/\1/p')
           [ -n "$TIER" ] || { echo "FAIL: classifier returned no tier" >&2; exit 1; }
           echo "tier=$TIER" >> "$GITHUB_OUTPUT"
-          echo "INFO: command tiered '$TIER'"
+          echo "INFO: command tiered '$TIER' (normalized: '$NORM')"
 
       - name: Authenticate to GCP via WIF
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093  # v3.0.0
