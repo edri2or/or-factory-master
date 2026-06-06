@@ -8,11 +8,11 @@ name: Copy Gmail OAuth secrets (factory-test-7 → control)
 # in the source —
 #   - gmail-oauth-client-id      → has a value, copied
 #   - gmail-oauth-client-secret  → has a value, copied
-#   - gmail-oauth-refresh-token  → EMPTY shell (0 versions) in the source; the
-#       live refresh token lives encrypted inside n8n, not in Secret Manager,
-#       so there is nothing to copy. Per the operator's decision we still
-#       create an empty shell of the same name in control, to be filled later
-#       by a fresh Google consent on the factory side.
+#   - gmail-oauth-refresh-token  → copied as a VALUE once the source has one.
+#       The live refresh token starts encrypted inside n8n (not in SM); the
+#       sibling workflow or-adhd-agent/extract-gmail-refresh-token.yml decrypts
+#       it and writes it to factory-test-7 SM. Before that runs this is a no-op
+#       empty shell in control; after it runs, re-running this copies the value.
 #
 # Auth: WIF as factory-master-broker. The broker holds roles/owner on
 # factory-test-7 (read source values) and manages secrets in
@@ -63,7 +63,9 @@ jobs:
           SRC_PROJECT="factory-test-7"
           DST_PROJECT="or-factory-master-control"
           VALUE_SECRETS=("gmail-oauth-client-id" "gmail-oauth-client-secret")
-          SHELL_ONLY=("gmail-oauth-refresh-token")
+          # Copied as a VALUE once the source has one (populated by or-adhd-agent's
+          # extract-gmail-refresh-token.yml); a no-op empty shell before then.
+          VALUE_WHEN_PRESENT=("gmail-oauth-refresh-token")
           LABELS="copied-from=factory-test-7,owner=factory-master,purpose=gmail-oauth"
 
           TMP_FILE="$(mktemp /tmp/gmail_secret_XXXXXX)"
@@ -113,10 +115,32 @@ jobs:
             : > "$TMP_FILE"
           done
 
-          for name in "${SHELL_ONLY[@]}"; do
-            echo "--- $name (shell only) ---"
+          for name in "${VALUE_WHEN_PRESENT[@]}"; do
+            echo "--- $name (value when present) ---"
             _ensure_shell "$name"
-            shells=$((shells + 1))
+
+            # Soft: if the source has no value yet, leave the shell and move on.
+            if ! gcloud secrets versions access latest --secret="$name" \
+                 --project="$SRC_PROJECT" > "$TMP_FILE" 2>/dev/null || [ ! -s "$TMP_FILE" ]; then
+              echo "INFO: $name has no value in $SRC_PROJECT yet — shell only, nothing to copy"
+              shells=$((shells + 1))
+              : > "$TMP_FILE"
+              continue
+            fi
+
+            if gcloud secrets versions access latest --secret="$name" \
+                 --project="$DST_PROJECT" >/dev/null 2>&1; then
+              echo "INFO: $name already has a version in $DST_PROJECT — skipping copy"
+              skipped=$((skipped + 1))
+            else
+              gcloud secrets versions add "$name" \
+                --project="$DST_PROJECT" \
+                --data-file="$TMP_FILE" \
+                --quiet
+              echo "PASS: copied value for $name into $DST_PROJECT"
+              copied=$((copied + 1))
+            fi
+            : > "$TMP_FILE"
           done
 
           {
@@ -126,7 +150,7 @@ jobs:
             echo ""
             echo "- values copied      : $copied"
             echo "- already had value  : $skipped"
-            echo "- empty shells made  : $shells (gmail-oauth-refresh-token — fill via a fresh Google consent on the factory side)"
+            echo "- empty shells made  : $shells (a shell with no value yet — e.g. gmail-oauth-refresh-token before extraction has run)"
           } >> "$GITHUB_STEP_SUMMARY"
 
           echo "DONE"
