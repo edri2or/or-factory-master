@@ -20,6 +20,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { Request } from 'express';
 import { dispatchRepositoryEvent } from './github-client.js';
 import { emitEvent, readSecretSoft, linearGql } from './observability-client.js';
+import { dispatchSystemRequest } from './system-request.js';
 
 const OWNER = 'edri2or';
 const REPO = 'or-factory-master';
@@ -145,6 +146,17 @@ export async function handleLinearWebhook(req: Request): Promise<WebhookResult> 
   }
 
   const otel = extractOtel(typeof data['description'] === 'string' ? (data['description'] as string) : null);
+
+  // System resource-request channel: a `system.request.*` ticket is not an OIL
+  // failure to investigate — it is a system asking the broker for a resource.
+  // Route it to its own bridge (which dispatches the fulfillment register phase),
+  // before the OIL triage rules. The system raises it with action_required=true
+  // (severity may be info), so it must be caught here ahead of the info-skip rule.
+  const eventName = otel ? String(otel['otel.event.name'] ?? '') : '';
+  if (eventName.startsWith('system.request.')) {
+    return dispatchSystemRequest(otel, identifier);
+  }
+
   const t = triage(otel);
 
   if (t.action === 'skip' || !identifier) {

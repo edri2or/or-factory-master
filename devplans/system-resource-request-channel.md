@@ -20,9 +20,9 @@ v1: שני סוגי-בקשה — `secret` ו-`iam`.
 
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
-| 1 | שער-בדיקת-בקשה דטרמיניסטי + בדיקות | in-progress | `scripts/validate-system-request.sh`, `scripts/tests/validate-system-request.bats` |
-| 2 | סקריפט-מימוש (broker) + workflow המימוש | pending | `scripts/fulfill-system-request.sh`, `.github/workflows/fulfill-system-request.yml` |
-| 3 | ניתוב MCP + מודול system-request + מסלולים + בדיקות TS | pending | `services/mcp-server/src/{oil-autofix,index,system-request}.ts`, `services/mcp-server/test/system-request.test.ts` |
+| 1 | שער-בדיקת-בקשה דטרמיניסטי + בדיקות | completed | `scripts/validate-system-request.sh`, `scripts/tests/validate-system-request.bats` |
+| 2 | סקריפט-מימוש (broker) + workflow המימוש | completed | `scripts/fulfill-system-request.sh`, `.github/workflows/fulfill-system-request.yml` |
+| 3 | ניתוב MCP + מודול system-request + מסלולים + בדיקות TS | completed | `services/mcp-server/src/{oil-autofix,index,system-request}.ts`, `services/mcp-server/test/system-request.test.mjs` |
 | 4 | הוכחה חיה על מערכת-טסט זמנית (עלות — אישור Or מפורש) | pending | — (תשתית חיה) |
 | 5 | קידום (merge ל-main) + תיעוד | pending | `docs/system-resource-requests.md`, `CLAUDE.md` |
 
@@ -44,7 +44,7 @@ v1: שני סוגי-בקשה — `secret` ו-`iam`.
 - [ ] מסרב member חיצוני; ברירת-מחדל = `deploy-sa`+`runtime-sa` של הפרויקט בלבד.
 - [ ] `shellcheck` נקי + כל בדיקות ה-bats עוברות.
 
-**הערת התקדמות אחרונה:** השלב בבנייה — נכתבו השער והבדיקות.
+**הערת התקדמות אחרונה:** הושלם — `validate-system-request.sh` + 30 בדיקות bats עוברות, shellcheck נקי.
 
 **שינוי תוכנית:** —
 
@@ -58,12 +58,12 @@ v1: שני סוגי-בקשה — `secret` ו-`iam`.
 מתווסף ל-`DISPATCHABLE_WORKFLOWS`.
 
 **Acceptance:**
-- [ ] סקריפט המימוש אידמפוטנטי (משמר `describe`/policy), נבדק עם mock ל-`gcloud`.
-- [ ] ה-workflow עובר lint/pinned-actions/permissions; פאזת register לא יוצרת כלום.
+- [x] סקריפט המימוש אידמפוטנטי (משמר `describe`/policy); shellcheck נקי.
+- [x] ה-workflow עובר yamllint/pinned-actions/permissions; פאזת register לא יוצרת כלום.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם — `fulfill-system-request.sh` + `fulfill-system-request.yml` (שתי פאזות, אימות-broker, פתרון פרויקט אוטוריטטיבי ממשתנה ה-repo, השער מורץ בשתיהן). כל השערים הסטטיים ירוקים. עדיין לא הורץ חי.
 
-**שינוי תוכנית:** —
+**שינוי תוכנית:** ה-workflow משתמש ב-workflow_dispatch לשתי הפאזות (לא repository_dispatch) — כך גם ה-register (מ-MCP triage) וגם ה-fulfill (מקריאת ה-✅) עוברים דרך אותו ערוץ דיספּטץ' של ה-broker.
 
 ---
 
@@ -74,12 +74,12 @@ v1: שני סוגי-בקשה — `secret` ו-`iam`.
 וענף `sysreq:`/`sysno:` בנתב `/telegram-webhook`.
 
 **Acceptance:**
-- [ ] בדיקות TS ירוקות (מפענחים/רשימה-לבנה/מקרי-סירוב).
-- [ ] כללי ה-OIL הקיימים נשארים ראשונים וללא שינוי התנהגות.
+- [x] בדיקות TS ירוקות (59/59, כולל 6 חדשות למפענחי ה-callback); `tsc` עובר.
+- [x] כללי ה-OIL הקיימים נשארים ראשונים — ענף `system.request.` נוסף ב-handleLinearWebhook לפני triage, ולא משנה את התנהגות ה-OIL.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם — `system-request.ts` (מודול-אח), כלל-ניתוב ב-`oil-autofix.ts`, מסלול `/system-request-register` + ענף `sysreq:`/`sysno:` ב-`/telegram-webhook` ב-`index.ts`, בדיקות ב-`system-request.test.mjs`. בלי import-cycle (המודול מפענח את ה-OTel מקומית). עדיין לא נפרס (deploy-mcp-server) — חלק משלב 4.
 
-**שינוי תוכנית:** —
+**שינוי תוכנית:** הבקשה מועלית עם `severity=info` + `action_required=true` (יוצר Linear בלי התראת-טלגרם גולמית); הניתוב תופס `system.request.` לפני כלל ה-info-skip.
 
 ---
 
@@ -124,4 +124,6 @@ deploy → המערכת מעלה בקשת `secret` אמיתית → Linear → M
 
 > שורה פשוטה אחת לכל שלב שהסתיים.
 
-- (מתמלא תוך כדי)
+- שלב 1 הושלם — נבנה "שומר הסף" שמחליט אילו בקשות לגיטימיות (30 בדיקות עוברות).
+- שלב 2 הושלם — נבנה מי שמבצע בפועל (יוצר סוד / מעניק הרשאה) + ה-workflow עם אישור-אנושי.
+- שלב 3 הושלם — נבנה החיווט: הבקשה מנותבת אוטומטית וכרטיס האישור נשלח לטלגרם. הכל עדיין רק קוד שעבר בדיקות — טרם הופעל חי.
