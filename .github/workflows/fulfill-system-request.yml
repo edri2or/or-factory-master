@@ -120,16 +120,25 @@ jobs:
           INSTALL_ID=$(gcloud secrets versions access latest --secret=factory-master-broker-app-installation-id --project="$CONTROL_PROJECT")
           gcloud secrets versions access latest --secret=factory-master-broker-app-private-key --project="$CONTROL_PROJECT" > /tmp/fsr-key.pem
           echo "::add-mask::$APP_ID"; echo "::add-mask::$INSTALL_ID"
-          TOKEN=$(bash scripts/generate-app-token.sh /tmp/fsr-key.pem "$APP_ID" "$INSTALL_ID" "" '{"variables":"read"}' "[\"$SYSTEM_NAME\"]")
+          # Mint the broker's full short-lived installation token (same call
+          # provision-system.yml uses to read/write these repo variables). A
+          # narrowly-scoped token tripped on the variables permission/scoping, so
+          # use the broker's standard token; it lives only in the masked job env.
+          TOKEN=$(bash scripts/generate-app-token.sh /tmp/fsr-key.pem "$APP_ID" "$INSTALL_ID")
           rm -f /tmp/fsr-key.pem
           echo "::add-mask::$TOKEN"
-          GCP_PROJECT=$(curl -sf \
+          # Capture the HTTP code explicitly so a lookup failure is diagnosable.
+          resp=$(curl -sS -m 20 -w $'\n%{http_code}' \
             -H "Authorization: Bearer ${TOKEN}" \
             -H "Accept: application/vnd.github+json" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
-            "https://api.github.com/repos/edri2or/${SYSTEM_NAME}/actions/variables/GCP_PROJECT_ID" \
-            | jq -r '.value // empty')
-          [ -n "$GCP_PROJECT" ] || { echo "FAIL: could not resolve GCP_PROJECT_ID for edri2or/${SYSTEM_NAME}" >&2; exit 1; }
+            "https://api.github.com/repos/edri2or/${SYSTEM_NAME}/actions/variables/GCP_PROJECT_ID")
+          http_code=$(printf '%s' "$resp" | tail -1)
+          GCP_PROJECT=$(printf '%s' "$resp" | sed '$d' | jq -r '.value // empty')
+          if [ "$http_code" != "200" ] || [ -z "$GCP_PROJECT" ]; then
+            echo "FAIL: could not resolve GCP_PROJECT_ID for edri2or/${SYSTEM_NAME} (HTTP ${http_code})" >&2
+            exit 1
+          fi
           echo "gcp_project=$GCP_PROJECT" >> "$GITHUB_OUTPUT"
           echo "INFO: resolved target project for $SYSTEM_NAME -> $GCP_PROJECT"
 

@@ -23,7 +23,7 @@ v1: שני סוגי-בקשה — `secret` ו-`iam`.
 | 1 | שער-בדיקת-בקשה דטרמיניסטי + בדיקות | completed | `scripts/validate-system-request.sh`, `scripts/tests/validate-system-request.bats` |
 | 2 | סקריפט-מימוש (broker) + workflow המימוש | completed | `scripts/fulfill-system-request.sh`, `.github/workflows/fulfill-system-request.yml` |
 | 3 | ניתוב MCP + מודול system-request + מסלולים + בדיקות TS | completed | `services/mcp-server/src/{oil-autofix,index,system-request}.ts`, `services/mcp-server/test/system-request.test.mjs` |
-| 4 | הוכחה חיה על מערכת-טסט זמנית (עלות — אישור Or מפורש) | pending | — (תשתית חיה) |
+| 4 | הוכחה חיה על מערכת-טסט זמנית (עלות — אישור Or מפורש) | in-progress | — (תשתית חיה) |
 | 5 | קידום (merge ל-main) + תיעוד | pending | `docs/system-resource-requests.md`, `CLAUDE.md` |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
@@ -94,9 +94,9 @@ deploy → המערכת מעלה בקשת `secret` אמיתית → Linear → M
 - [ ] סבב בקשה→אישור→מימוש→אימות מלא עבר חי לשני הסוגים.
 - [ ] הוכחת-סירוב עברה; המערכת-טסט פורקה ונרשמה ביומן.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** #318 מוזג ל-main; ה-MCP נפרס מ-main ואומת חי (המסלול `/system-request-register` מחזיר 403). ההוכחה החיה הורצה על `tokile` (פניית Linear OIL-39) — והשרשרת Linear→MCP→דיספּטץ' עבדה, אבל ה-workflow נפל בשלב פתרון-הפרויקט (token צר מדי). תוקן ב-fast-follow (token מלא של ה-broker). ממתין למיזוג התיקון ואז הרצה חוזרת + הוכחת-סירוב.
 
-**שינוי תוכנית:** —
+**שינוי תוכנית:** במקום להקים מערכת-טסט חדשה — ההוכחה רצה על `tokile` הקיימת (פרויקט אמיתי `factory-test-18`, לא `factory-test-25` שהשער חוסם), עם סוד-בדיקה זמני שיימחק. חוסך פריסה + לחיצות. הוכחת מסלול ה-secret על tokile; הוכחת סירוב על בקשה אסורה.
 
 ---
 
