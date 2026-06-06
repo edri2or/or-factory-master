@@ -192,6 +192,73 @@ export async function apiGetRepo(owner: string, repo: string, path: string): Pro
   return resp.json();
 }
 
+// ── Org-wide read helpers (consolidated from the retired org-reader MCP) ────────
+// The broker App is installed org-wide, so these read across every edri2or repo
+// using the SAME installationToken() the rest of this client uses — no separate
+// reader-App credentials (the org-reader MCP's distinct GitHub App is retired by
+// this consolidation). assertOrgOwner keeps the org-scoped App from being aimed
+// outside edri2or (every org-read tool's `owner` arg defaults to ORG).
+export const ORG = DEFAULT_OWNER;
+
+function assertOrgOwner(owner: string): void {
+  if (owner !== ORG) {
+    throw new Error(`owner must be '${ORG}' — this App is scoped org-wide to ${ORG} only`);
+  }
+}
+
+// GET https://api.github.com<path> under the broker installation token.
+async function ghApiGet(path: string): Promise<unknown> {
+  const token = await installationToken();
+  const resp = await fetch(`https://api.github.com${path}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/vnd.github+json',
+      'X-GitHub-Api-Version': '2022-11-28',
+    },
+  });
+  if (!resp.ok) throw new Error(`GitHub GET ${path} → ${resp.status}: ${await resp.text()}`);
+  return resp.json();
+}
+
+// Cross-repo GET, org-asserted. Mirrors the retired org-reader's repoGet — `path`
+// is appended after /repos/<owner>/<repo> (e.g. '' for the repo, '/pulls?...').
+export async function repoGet(owner: string, repo: string, path: string): Promise<unknown> {
+  assertOrgOwner(owner);
+  return ghApiGet(`/repos/${owner}/${repo}${path}`);
+}
+
+// GET /orgs/<ORG><path> — org repo list, org-level Actions variables.
+export async function orgGet(path: string): Promise<unknown> {
+  return ghApiGet(`/orgs/${ORG}${path}`);
+}
+
+// GET /search<path> — code / issue search across the org.
+export async function searchGet(path: string): Promise<unknown> {
+  return ghApiGet(`/search${path}`);
+}
+
+// Decoded UTF-8 contents of a file in any org repo (truncated at 50 KB). Distinct
+// from getRepoFile, which is hardwired to this repo; this takes owner/repo.
+export async function fetchFileContents(
+  owner: string,
+  repo: string,
+  filePath: string,
+  ref?: string,
+): Promise<string> {
+  assertOrgOwner(owner);
+  const q = ref ? `?ref=${encodeURIComponent(ref)}` : '';
+  const data = (await ghApiGet(`/repos/${owner}/${repo}/contents/${filePath}${q}`)) as {
+    content?: string;
+    encoding?: string;
+    type?: string;
+  };
+  if (data.type !== 'file') throw new Error(`Path is not a file (type=${data.type})`);
+  if (data.encoding !== 'base64' || !data.content) throw new Error(`Unexpected encoding: ${data.encoding}`);
+  const decoded = Buffer.from(data.content, 'base64').toString('utf-8');
+  const MAX = 50 * 1024;
+  return decoded.length > MAX ? `${decoded.slice(0, MAX)}\n[... truncated at 50 KB ...]` : decoded;
+}
+
 // Trigger a workflow_dispatch event. The broker App is installed org-wide with
 // actions:write, so this works on or-factory-master and any system repo. The
 // dispatch endpoint returns 204 with no body — callers use getLatestWorkflowRun

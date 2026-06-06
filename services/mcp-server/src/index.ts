@@ -5,6 +5,7 @@ import { createHash, randomBytes, timingSafeEqual } from 'crypto';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { registerTools } from './tools.js';
+import { registerOrgReadTools } from './org-read-tools.js';
 import { verifyGitHubOidc } from './oidc-verifier.js';
 import { signBearer, verifyBearer, revokeBearer } from './bearer.js';
 import { sendTelegramMessage } from './observability-client.js';
@@ -591,6 +592,7 @@ app.all('/mcp', async (req: Request, res: Response) => {
 
   const server = new McpServer({ name: 'factory-actions-mcp', version: '1.0.0' });
   registerTools(server);
+  registerOrgReadTools(server);
   const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
 
   try {
