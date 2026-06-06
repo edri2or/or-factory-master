@@ -39,6 +39,9 @@ templates/system/workflows/n8n/db-vacuum.json
 
 # Manual operator tools (workflow_dispatch only, no schedule to prove):
 .github/workflows/grant-secret-accessor.yml
+# Reachable only via the MCP triage + Telegram-approval path (dispatch-only, no
+# cadence to prove); the broker side of the system resource-request channel.
+.github/workflows/fulfill-system-request.yml
 .github/workflows/compile-changelog.yml
 .github/workflows/list-recoverable-projects.yml
 .github/workflows/set-factory-branch-protection.yml
