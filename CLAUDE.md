@@ -201,6 +201,7 @@ Pattern: retry only on the specific error class (`PERMISSION_DENIED`, `does not 
 | `scripts/render-system-golden.sh` / `scripts/check-system-golden.sh` | Render `templates/system/` to a byte-exact golden (`tests/golden/system/`) and compare (`--update` to refresh). Anti-drift static gate (template integrity), in **Playground tests**. |
 | `scripts/check-golden-sync.sh` | CI guard (in **Changelog gates**): a `templates/system/**` change must refresh the golden, and the envsubst allow-list stays byte-identical across renderer/provision/validator. |
 | `docs/live-test-loop.md` | The factory's standing method for validating provisioning-process changes — prove the change on a cheap, throwaway, LIVE test system, then promote and tear it down. Driven by `/dev-stage-factory`. |
+| `docs/system-resource-requests.md` | The system → broker **resource-request channel**: a human-gated twin of OIL that lets a provisioned system *ask* the broker (via `emit-event.sh` → Linear → MCP triage → `fulfill-system-request.yml` → Telegram ✅) to create a secret shell or grant an allowlisted IAM role it cannot do itself. Gate: `scripts/validate-system-request.sh`; fulfiller: `scripts/fulfill-system-request.sh`; MCP bridge: `services/mcp-server/src/system-request.ts`. `fulfill-system-request.yml` is NOT on the `dispatch_workflow` allowlist (approval-path only). |
 | `src/bootstrap-receiver/` | Receiver code used once to register the App. Reference, not active. |
 
 ### Skills audience (factory-only vs shared)

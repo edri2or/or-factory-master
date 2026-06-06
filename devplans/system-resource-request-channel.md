@@ -2,7 +2,7 @@
 dev_name: ערוץ בקשת-משאבים מהמערכת אל ה-broker
 slug: system-resource-request-channel
 opened: 2026-06-06
-status: active   # active בזמן פיתוח → completed בסיום (משחרר את שער ה-CI)
+status: completed   # active בזמן פיתוח → completed בסיום (משחרר את שער ה-CI)
 ---
 
 # תוכנית פיתוח — ערוץ בקשת-משאבים מהמערכת אל ה-broker
@@ -23,8 +23,8 @@ v1: שני סוגי-בקשה — `secret` ו-`iam`.
 | 1 | שער-בדיקת-בקשה דטרמיניסטי + בדיקות | completed | `scripts/validate-system-request.sh`, `scripts/tests/validate-system-request.bats` |
 | 2 | סקריפט-מימוש (broker) + workflow המימוש | completed | `scripts/fulfill-system-request.sh`, `.github/workflows/fulfill-system-request.yml` |
 | 3 | ניתוב MCP + מודול system-request + מסלולים + בדיקות TS | completed | `services/mcp-server/src/{oil-autofix,index,system-request}.ts`, `services/mcp-server/test/system-request.test.mjs` |
-| 4 | הוכחה חיה על מערכת-טסט זמנית (עלות — אישור Or מפורש) | in-progress | — (תשתית חיה) |
-| 5 | קידום (merge ל-main) + תיעוד | pending | `docs/system-resource-requests.md`, `CLAUDE.md` |
+| 4 | הוכחה חיה (על tokile הקיימת) — הצלחה + סירוב | completed | — (תשתית חיה) |
+| 5 | קידום (merge ל-main) + תיעוד | completed | `docs/system-resource-requests.md`, `CLAUDE.md` |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
 
@@ -94,7 +94,7 @@ deploy → המערכת מעלה בקשת `secret` אמיתית → Linear → M
 - [ ] סבב בקשה→אישור→מימוש→אימות מלא עבר חי לשני הסוגים.
 - [ ] הוכחת-סירוב עברה; המערכת-טסט פורקה ונרשמה ביומן.
 
-**הערת התקדמות אחרונה:** #318 מוזג ל-main; ה-MCP נפרס מ-main ואומת חי (המסלול `/system-request-register` מחזיר 403). ההוכחה החיה הורצה על `tokile` (פניית Linear OIL-39) — והשרשרת Linear→MCP→דיספּטץ' עבדה, אבל ה-workflow נפל בשלב פתרון-הפרויקט (token צר מדי). תוקן ב-fast-follow (token מלא של ה-broker). ממתין למיזוג התיקון ואז הרצה חוזרת + הוכחת-סירוב.
+**הערת התקדמות אחרונה:** הושלם. #318 מוזג; MCP נפרס+אומת (`/system-request-register`→403). באג ה-token שנתפס תוקן (#319). הרצה חוזרת על `tokile`: **הצלחה** (OIL-40 → ה-✅ של Or → הסוד `tokile-probe-key` נוצר חי ב-factory-test-18 עם label `requested:true`, מעטפת ריקה) ו**סירוב** (OIL-41 → `evil-master-key` → השער חסם בשלב 6, כרטיס דולג). פניות הבדיקה נסגרו. נותר סוד-בדיקה ריק `tokile-probe-key` (לא מזיק; אין כלי למחיקת-סוד-בודד).
 
 **שינוי תוכנית:** במקום להקים מערכת-טסט חדשה — ההוכחה רצה על `tokile` הקיימת (פרויקט אמיתי `factory-test-18`, לא `factory-test-25` שהשער חוסם), עם סוד-בדיקה זמני שיימחק. חוסך פריסה + לחיצות. הוכחת מסלול ה-secret על tokile; הוכחת סירוב על בקשה אסורה.
 
@@ -105,11 +105,11 @@ deploy → המערכת מעלה בקשת `secret` אמיתית → Linear → M
 `docs/system-resource-requests.md` חדש + מצביע ב-`CLAUDE.md`. סגירת הפיתוח.
 
 **Acceptance:**
-- [ ] תיעוד מלא; `status: completed`.
+- [x] תיעוד מלא (`docs/system-resource-requests.md` + מצביע ב-CLAUDE.md); `status: completed`.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם — נכתב `docs/system-resource-requests.md`, נוסף מצביע ב-CLAUDE.md (Key files), והפיתוח נסגר.
 
-**שינוי תוכנית:** —
+**שינוי תוכנית:** הקוד מוזג כבר בסוף שלב 3 (PR #318) כי broker/MCP רצים רק מ-main; ההוכחה החיה (שלב 4) נעשתה אחרי המיזוג — תבנית ה-OIL, לא live-test-loop של תבניות-מערכת.
 
 ---
 
@@ -127,3 +127,5 @@ deploy → המערכת מעלה בקשת `secret` אמיתית → Linear → M
 - שלב 1 הושלם — נבנה "שומר הסף" שמחליט אילו בקשות לגיטימיות (30 בדיקות עוברות).
 - שלב 2 הושלם — נבנה מי שמבצע בפועל (יוצר סוד / מעניק הרשאה) + ה-workflow עם אישור-אנושי.
 - שלב 3 הושלם — נבנה החיווט: הבקשה מנותבת אוטומטית וכרטיס האישור נשלח לטלגרם. הכל עדיין רק קוד שעבר בדיקות — טרם הופעל חי.
+- שלב 4 הושלם — הוכח חי על tokile: בקשה אמיתית → ✅ שלך → סוד נוצר בפועל; ובקשה אסורה נחסמה. באג אחד נתפס ותוקן.
+- שלב 5 הושלם — תועד ונסגר. הערוץ חי ועובד מקצה-לקצה. 🏁
