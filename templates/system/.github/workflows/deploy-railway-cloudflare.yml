@@ -2579,6 +2579,40 @@ jobs:
           SYSTEM_NAME: ${{ vars.SYSTEM_NAME }}
         run: bash scripts/emit-deploy.sh completed
 
+      - name: Telegram connector nudge (success)
+        if: success()
+        continue-on-error: true
+        env:
+          SYSTEM_NAME: ${{ vars.SYSTEM_NAME }}
+          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          # Stable Cloud Run Region URL of the central MCP gateway
+          # (factory-master-actions-mcp in or-factory-master-control, project
+          # number 140345952904, region me-west1). Fixed values → safe to hardcode.
+          GATEWAY_BASE: https://factory-master-actions-mcp-140345952904.me-west1.run.app
+        run: |
+          set -uo pipefail
+          # n8n-api-key was minted earlier in this job, so the system is now
+          # reachable through the gateway. Tell Or how to connect Claude to it.
+          # Read the Telegram secrets from the SYSTEM's own SM and mask each the
+          # instant it lands so it can never surface in a log. Missing secret = skip.
+          TG_TOKEN=$(gcloud secrets versions access latest --secret=telegram-bot-token --project="${GCP_PROJECT_ID}" 2>/dev/null || echo "")
+          [ -n "$TG_TOKEN" ] && echo "::add-mask::${TG_TOKEN}"
+          TG_CHAT=$(gcloud secrets versions access latest --secret=telegram-chat-id --project="${GCP_PROJECT_ID}" 2>/dev/null || echo "")
+          [ -n "$TG_CHAT" ] && echo "::add-mask::${TG_CHAT}"
+          if [ -z "$TG_TOKEN" ] || [ -z "$TG_CHAT" ]; then
+            echo "[connector-nudge] telegram='skipped' reason='no-secret'"; exit 0
+          fi
+          CONNECTOR_URL="${GATEWAY_BASE}/n8n/${SYSTEM_NAME}/mcp"
+          MSG="🔌 קלוד יכול עכשיו לשלוט ב-n8n של ${SYSTEM_NAME}!"$'\n\n'"ב-Claude.ai תוסיף custom connector עם הכתובת:"$'\n'"${CONNECTOR_URL}"$'\n\n'"ותתחבר עם \"Login with Google\" (אותו חשבון). בלי טוקן."
+          TG_HTTP=$(curl -sS -m 10 -o /dev/null -w '%{http_code}' -X POST \
+            "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${TG_CHAT}" \
+            --data-urlencode "text=${MSG}" 2>/dev/null) || TG_HTTP="000"
+          case "$TG_HTTP" in
+            2*) echo "[connector-nudge] telegram='ok'" ;;
+            *)  echo "[connector-nudge] telegram='failed' http='${TG_HTTP}'" ;;
+          esac
+
       - name: Emit deploy failed
         if: failure()
         continue-on-error: true
