@@ -16,6 +16,11 @@ import {
   handleSystemRequestCallback,
   isSystemRequestCallback,
 } from './system-request.js';
+import {
+  registerGcpApproval,
+  handleGcpApprovalCallback,
+  isGcpApprovalCallback,
+} from './gcp-approval.js';
 import { handleChatUpdate } from './telegram-chat.js';
 import { proxyToN8nMcp, n8nMcpEnabled, isAllowedN8nSystem } from './n8n-mcp-proxy.js';
 import { googleConfigured, googleAuthorizeUrl, exchangeGoogleCode, emailAllowed } from './google-oauth.js';
@@ -290,6 +295,25 @@ app.post('/system-request-register', async (req: Request, res: Response) => {
   res.status(r.status).json(r.body);
 });
 
+// GCP risk-gate — REGISTER. gcp-action.yml (red path) calls this (admin-gated,
+// X-Admin-Secret) for a command the classifier tiered RED. It sends Or one Telegram
+// card with ✅/❌ buttons; the command is embedded in the card text for stateless
+// recovery on ✅. Body: { command, correlation_id, reason? }.
+app.post('/gcp-approval-register', async (req: Request, res: Response) => {
+  const provided = (req.headers['x-admin-secret'] as string | undefined) ?? '';
+  if (!secretMatches(provided)) {
+    res.status(403).json({ error: 'unauthorized' });
+    return;
+  }
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const r = await registerGcpApproval({
+    command: String(body['command'] ?? ''),
+    correlation_id: String(body['correlation_id'] ?? ''),
+    reason: typeof body['reason'] === 'string' ? body['reason'] : undefined,
+  });
+  res.status(r.status).json(r.body);
+});
+
 // Unified Telegram bridge — INBOUND. The single factory bot's webhook posts here
 // for BOTH Or's free-form chat messages AND the OIL approval ✅/❌ button presses
 // (one bot, one webhook). Gated by the secret_token Telegram echoes in
@@ -315,11 +339,14 @@ app.post('/telegram-webhook', async (req: Request, res: Response) => {
     const data = cq && typeof cq['data'] === 'string' ? (cq['data'] as string) : '';
     const isOilCallback = data.startsWith('oilapprove:') || data.startsWith('oilreject:');
     const isSysReqCallback = isSystemRequestCallback(data);
+    const isGcpCallback = isGcpApprovalCallback(data);
     let r;
     if (isOilCallback) {
       r = await handleTelegramCallback(req);
     } else if (isSysReqCallback) {
       r = await handleSystemRequestCallback(req);
+    } else if (isGcpCallback) {
+      r = await handleGcpApprovalCallback(req);
     } else {
       r = await handleChatUpdate(req);
     }
