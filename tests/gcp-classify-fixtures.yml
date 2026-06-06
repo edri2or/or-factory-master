@@ -1,0 +1,21 @@
+# Self-test table for scripts/gcp-classify.sh, exercised by pipeline-tests.yml
+# on every PR. Each row: a command (gcloud args without "gcloud") and the tier
+# it must classify as. The last rows lock the "*" = exactly-one-token rule.
+- command: "secrets list"
+  expected_tier: green
+- command: "secrets describe my-secret"
+  expected_tier: green
+- command: "secrets versions add my-secret"
+  expected_tier: yellow
+- command: "secrets create new-secret"
+  expected_tier: red
+- command: "projects delete"
+  expected_tier: red
+- command: ""
+  expected_tier: red
+- command: "totally-unknown-action"
+  expected_tier: red
+- command: "secrets describe a b c"
+  expected_tier: red
+- command: "run services describe my-svc"
+  expected_tier: green

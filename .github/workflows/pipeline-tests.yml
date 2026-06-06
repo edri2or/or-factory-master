@@ -37,3 +37,9 @@ jobs:
         # Proves scripts/oil-verify.sh's verdicts (verified / failed / malformed /
         # missing / empty) with throwaway fixtures — no live OIL run needed.
         run: bash scripts/tests/oil-verify-selftest.sh
+
+      - name: GCP classifier self-test
+        # Proves scripts/gcp-classify.sh classifies every fixture row to its
+        # expected green/yellow/red tier (the risk gate's logic core) — pure
+        # bash, no live GCP. Consolidated from edri2or/gcp-hands.
+        run: bash scripts/test-gcp-classify.sh
