@@ -51,6 +51,8 @@ templates/system/.github/workflows/bootstrap-gmail-oauth.yml
 # GCP risk-gate: green/yellow run on demand, red's execute phase is reachable only
 # via the MCP Telegram-approval path (dispatch-only, no cadence to prove).
 .github/workflows/gcp-action.yml
+# One-shot: archives the two retired repos (gcp-hands, factory) after consolidation.
+.github/workflows/archive-old-repos.yml
 .github/workflows/compile-changelog.yml
 .github/workflows/list-recoverable-projects.yml
 .github/workflows/set-factory-branch-protection.yml
