@@ -18,7 +18,8 @@ status: active
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
 | 1 | copy-gmail-oauth-to-control מעתיק refresh-token כערך כשקיים | completed | `.github/workflows/copy-gmail-oauth-to-control.yml` |
-| 2 | תבנית מערכת: bootstrap-gmail-oauth שמחבר מהטוקן המשותף | in-progress | `templates/system/.github/workflows/bootstrap-gmail-oauth.yml`, `.github/workflows/provision-system.yml` |
+| 2 | תבנית מערכת: bootstrap-gmail-oauth שמחבר מהטוקן המשותף | completed | `templates/system/.github/workflows/bootstrap-gmail-oauth.yml`, `.github/workflows/provision-system.yml` |
+| 3 | ניקוי הודעה: ללא קישור consent במסלול האוטומטי | in-progress | `templates/system/.github/workflows/bootstrap-gmail-oauth.yml` |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
 

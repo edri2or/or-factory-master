@@ -154,18 +154,25 @@ jobs:
 
           # 6. Notify the operator. If the shared token validated, the credential is
           #    connected automatically; the link is only a just-in-case fallback.
+          # On the auto-connected path we send NO consent link: the credential is
+          # already authorized from the shared token, and the per-system consent URL
+          # would only 400 with redirect_uri_mismatch (each system has its own
+          # n8n-<system>.or-infra.com callback, which isn't registered on the shared
+          # Google client). The link belongs ONLY to the genuine fallback path.
           if [ "$TOKEN_OK" = "1" ]; then
-            MSG="🔐 Gmail + יומן מחוברים אוטומטית למערכת הזו ✅ (מפתח משותף). אם בכל זאת משהו לא עובד, אפשר לחבר ידנית: ${AUTH_URL}"
+            MSG="🔐 Gmail + יומן מחוברים אוטומטית למערכת הזו ✅ (מפתח משותף, ללא צורך בקליק)."
             HEAD="## ✅ Gmail + Calendar מחוברים אוטומטית (מפתח משותף)"
+            SUMMARY_EXTRA="הקרדנציאל טעון במפתח המשותף — אין צורך בשום פעולה."
           else
             MSG="🔐 לחיבור Gmail + יומן למערכת הזו — לחץ Allow פעם אחת: ${AUTH_URL}"
             HEAD="## 🔐 Gmail + Calendar — דרוש קליק אחד"
+            SUMMARY_EXTRA="[חיבור ידני — לחץ Allow](${AUTH_URL})"
           fi
           if [ -n "$TG_BOT_TOKEN" ] && [ -n "$TG_CHAT_ID" ]; then
             curl -sS -o /dev/null --max-time 15 "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage" \
               --data-urlencode "chat_id=${TG_CHAT_ID}" --data-urlencode "text=${MSG}" || echo "WARN: Telegram send failed."
           fi
 
-          { echo "$HEAD"; echo ""; echo "credential id: \`${CRED_ID}\`"; echo ""; echo "[חיבור ידני (גיבוי)](${AUTH_URL})"; } >> "$GITHUB_STEP_SUMMARY"
+          { echo "$HEAD"; echo ""; echo "credential id: \`${CRED_ID}\`"; echo ""; echo "$SUMMARY_EXTRA"; } >> "$GITHUB_STEP_SUMMARY"
           curl -sS -o /dev/null -b "$COOKIE_JAR" -X POST "$BASE/rest/logout" 2>/dev/null || true
           echo "DONE"
