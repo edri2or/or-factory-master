@@ -35,7 +35,18 @@ confirmation, in plain Hebrew. Do not touch any code yet. Wait for his OK on the
 - Always create the plan at `devplans/<slug>.md` (slug derived from dev_name).
   Never use the root `DEVPLAN.md` for new developments.
 - Fill in: `dev_name`, `slug`, `opened` (today), `status: active`, the מטרה, the
-  stages table, and per-stage acceptance checklists.
+  stages table, per-stage acceptance checklists, and each stage's
+  **"הוכחה תפקודית (באותו שלב)"** field — what real input proves that stage's
+  brick, and the expected output. A stage with no functional proof and no
+  "content only" note is not ready to be planned.
+- **Order the stages bottom-up.** Sequence so each stage builds and *proves* one
+  brick on real input before the next stage stacks on it. Build the parts you can
+  prove early; do **not** push the live / integration / external-connection work
+  into a single final stage. A plan that defers proof to one late "big-bang" stage
+  is forbidden — that is the documented anti-pattern this command exists to
+  prevent (you cannot tell which brick broke). The external/live endpoint (the
+  orchestrator, the email, the webhook) is the **last** brick to wire, never the
+  first thing you test through.
 - Then STOP and present the stage breakdown to Or for approval, like plan mode — do
   NOT start implementing until he approves the plan. Report in plain Hebrew: how many
   stages, what each does in one line.
@@ -43,13 +54,28 @@ confirmation, in plain Hebrew. Do not touch any code yet. Wait for his OK on the
 ### Step 3: Execution Loop (one stage at a time)
 For each stage, in order:
 - **(a) Implement** the stage.
-- **(a.1) Verify via Playground** — The stage's code and its bookkeeping (b)
+- **(a.1) Prove the brick actually works — in THIS stage, on real input.**
+  This is what "verify each step" means. CI-green is **necessary but not
+  sufficient**: it proves the code is well-formed and wired, not that the brick
+  *does its job*. Before a stage may close, produce an **observable functional
+  proof in the same stage** — feed the brick a real (or realistically-pinned)
+  input and show the actual output is correct (the VLM read the form right, the
+  poll caught the mail, the fill was correct, the send went out). Pin the input as
+  a fixture and record the expected output, so the proof is repeatable — not a
+  one-off you eyeballed once. Prefer a proof that does **not** depend on the flaky
+  n8n MCP: read the result through the n8n Public API or a dedicated verification
+  workflow (see `docs/agent-isolation-testing.md`). The ONLY stage that may close
+  without a functional proof is a genuinely non-runnable one (pure docs/text) —
+  and only if you say so explicitly in the progress note ("content only — no
+  runnable behavior"). **Never** write "☐ proof in a later stage".
+- **(a.2) Verify via Playground (CI).** The stage's code and its bookkeeping (b)
   ride in one commit; push it to the PR branch and wait for CI. Check that the
   "Playground tests" status check passes. If it fails, read the failure output,
   fix the issue, and push again. Do NOT report the stage done (c) or move to the
-  next stage (d) until the Playground check is green. If Playground is not
-  relevant to the current stage's changes (e.g., a docs-only change), note
-  "Playground: N/A — no testable changes" in the progress note and proceed.
+  next stage (d) until **both** the functional proof (a.1) and the Playground
+  check are green. If Playground is not relevant to the current stage's changes
+  (e.g., a docs-only change), note "Playground: N/A — no testable changes" in the
+  progress note and proceed.
 - **(b) Update the bookkeeping** in the same change as the stage's code, so the CI gates
   stay green:
   - **Plan file**: set the stage's status (`in-progress` → `completed`) in the stages
@@ -88,9 +114,16 @@ releases the CI devplan gate), give Or a short closing summary in Hebrew, and st
 5. **Never make a large / costly / irreversible move** (real provision/deploy/teardown,
    or anything with a cost) without Or's explicit approval first.
 6. **Do not** build hooks or a `/status` command here — that is a separate later phase.
-7. **Never close a stage or move to the next with a red Playground check** on
-   the PR, unless the stage contains only documentation or non-testable changes.
-   If Playground fails, read the output and fix before continuing.
+7. **Never close a stage without BOTH its functional proof (Step 3 a.1) and a
+   green Playground check.** CI-green alone is not "done" — it proves the brick is
+   wired, not that it works. The only exception is a pure-docs / non-runnable
+   stage, explicitly noted as "content only". If Playground fails, read the output
+   and fix before continuing.
+8. **Never defer proof to a late "big-bang" stage**, and never write "☐ proof in
+   stage N". Order stages bottom-up so every brick is proven on real input in its
+   own stage; the live / external endpoint is the last brick, not the first test.
+   Prefer an MCP-independent proof (n8n Public API / a verification workflow) so a
+   flaky MCP session can never block a stage's proof.
 
 ## Examples
 
