@@ -32,3 +32,10 @@ jobs:
 
       - name: yamllint
         run: yamllint .github/workflows/
+
+      - name: Single-voice agent gate
+        # Every specialist agent (workflows/n8n/*-agent.json) must return {reply}
+        # to the orchestrator via an Execute-Workflow trigger and never own an
+        # operator-facing Telegram send. The script is shipped into this repo by
+        # the factory's provision step (scripts/check-agent-single-voice.sh).
+        run: bash scripts/check-agent-single-voice.sh
