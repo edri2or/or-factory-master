@@ -2,7 +2,7 @@
 dev_name: שמירת היסטוריית הרצות ב-n8n (תבנית מערכת)
 slug: n8n-run-data-persistence
 opened: 2026-06-07
-status: active   # active בזמן פיתוח → completed אחרי הבדיקה החיה
+status: completed   # מוזג ל-main (#346) ואומת חי דרך or-tok ב-2026-06-07
 ---
 
 # תוכנית פיתוח — שמירת היסטוריית הרצות ב-n8n (תבנית מערכת)
