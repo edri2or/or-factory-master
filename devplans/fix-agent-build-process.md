@@ -31,7 +31,7 @@ status: active
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
 | 1 | תיקון `dev-stage` + תבנית-התוכנית (השיניים) | completed | .claude/commands/dev-stage.md, templates/devplan/DEVPLAN.template.md, templates/system/.claude/commands/dev-stage.md, tests/golden/system/MANIFEST.sha256 |
-| 2 | שכבת תיעוד: מחקר-פירוק + design-spec + מדריך בדיקה-בבידוד | pending | docs/research/agent-role-decomposition-planning.md, templates/agent-design-spec.md, docs/agent-isolation-testing.md |
+| 2 | שכבת תיעוד: מחקר-פירוק + design-spec + מדריך בדיקה-בבידוד | completed | docs/research/agent-role-decomposition-planning.md, templates/agent-design-spec.md, docs/agent-isolation-testing.md |
 | 3 | תפשטות + שערים + PR | pending | templates/system/.claude/commands/dev-stage.md (מראה), changelog.d/, devplan |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
@@ -80,9 +80,16 @@ golden רוענן (check-system-golden --update). כל השערים מקומית
 - [ ] `docs/agent-isolation-testing.md` — מדריך מעשי: Pin data, בדיקת sub-workflow
       לבד, אימות דרך n8n Public API (בלי MCP) בדגם set-workflow-active, golden fixtures.
 
-**הוכחה תפקודית (באותו שלב):** קלט = יכולת "VLM קורא טופס" מסוכן-הטפסים. פלט מצופה =
-ה-design-spec החדש מאלץ לרשום עבורה fixture (טופס-דוגמה) + JSON מצופה + שיטת-בדיקה
-*לפני* בנייה. אצפה: אמלא את השורה הזו בדוגמה אמיתית ואראה שהיא קונקרטית ובת-הרצה.
+**הוכחה תפקודית (באותו שלב):** נצפתה ✅. במקום "תוכן בלבד" הוכחתי שהמתכון המרכזי
+במדריך *באמת רץ*: הרצתי את ביטוי ה-`jq -e` מ-`agent-isolation-testing.md` §7 (הבדיקה
+דרך n8n Public API, בלי MCP) על דוגמת-הפלט של "קריאת טופס" — על פלט תקין החזיר PASS
+(rc=0), ועל פלט שבור (כותרת שגויה) החזיר FAIL (rc=1). כלומר השער הבינארי שתיעדתי תופס
+תקלה אמיתית. בנוסף, ה-design-spec החדש מאלץ עמודת fixture→פלט-מצופה→שיטה לכל רכיב,
+מודגם בשורת הטופס הקונקרטית.
+
+**הערת התקדמות אחרונה:** הושלם. 3 מסמכים (מחקר-פירוק מוכלל + 4 פאזות/3 שערים;
+design-spec עם עמודת הוכחה-לבד; מדריך בדיקה-בבידוד עם דוגמה רצה). מתכון ה-API אומת חי
+(jq pass/fail). אין נגיעה ב-templates/system → אין שינוי mirror/golden.
 
 **שינוי תוכנית:** —
 
@@ -112,3 +119,8 @@ golden רוענן (check-system-golden --update). כל השערים מקומית
   שהוכחנו שהחלק *באמת עובד* על דוגמה אמיתית, באותו שלב — "CI ירוק" כבר לא מספיק.
   הוספנו גם כלל שאוסר לדחות את כל הבדיקה לסוף (בדיוק מה שקרה בסוכן-הטפסים), וחובה
   לבנות מלמטה-למעלה. כל מערכת חדשה תקבל את הכלל הזה אוטומטית.
+- שלב 2 הושלם — כתבנו את ה"ספר הוראות": (1) איך מפרקים תפקיד-סוכן נכון, (2) תבנית
+  שמכריחה להגדיר לכל חלק "איך מוכיחים שהוא עובד לבד" *לפני* שבונים, ו-(3) מדריך מעשי
+  איך מוכיחים חלק לבד ב-n8n ואיך רואים תוצאה **בלי הכלי השביר (MCP)** — דרך ה-API
+  הישיר. ואימתתי שזה לא סתם טקסט: הרצתי את בדיקת-ה-API על דוגמה — היא נתנה "עבר" על
+  פלט תקין ו"נכשל" על פלט שבור, בדיוק כמו שצריך.
