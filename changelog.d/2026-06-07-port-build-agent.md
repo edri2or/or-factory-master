@@ -1,0 +1,5 @@
+## feat: port the build-agent capability into the factory (Scope A — scaffolding + gate + skill)
+
+| Type | Summary |
+|---|---|
+| feat | Began porting the `/build-agent` capability from the or-tok system into the factory so every provisioned system can build new n8n sub-agents the right way (generalized off the or-tok originals; "Nuriel" → the generic orchestrator/Agent Router). Stage 1: added the inert build-time scaffolding under `templates/system/` — `templates/n8n/subagent.template.json` (a conformant-by-construction sub-agent blueprint), `templates/n8n/subagent.contract.md` (the input/`{reply}`-output contract + registration steps), and `workflows/n8n/agents.manifest.json` (the source-of-truth registry of the 5 shipped agents: ops/code/research/infra/unknown). Cross-checked: every manifest `file` exists and the intent set is byte-equal to the hard-coded upsert loop in `configure-agent-router.yml`. System golden refreshed. Build-time only — no runtime/deploy change. The live-test-system dogfood (actually building an agent on a throwaway system) is a deliberate follow-up. |
