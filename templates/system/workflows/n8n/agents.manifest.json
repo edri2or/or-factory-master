@@ -1,0 +1,48 @@
+{
+  "_comment": "Source-of-truth registry of the orchestrator's specialist agents. The /build-agent skill keeps this in sync with agent-router.json, configure-agent-router.yml, and AGENTS.md. The orchestrator (the Agent Router) only dispatches to intents listed here. See templates/n8n/subagent.contract.md.",
+  "orchestrator": {
+    "name": "Agent Router",
+    "router": "workflows/n8n/agent-router.json",
+    "voice": "workflows/n8n/tg-inbound.json",
+    "invariant": "Only the orchestrator's voice (Send Reply in tg-inbound.json) messages the operator; every agent below returns {reply} to the orchestrator and never addresses the operator directly."
+  },
+  "contract": {
+    "input": ["sanitized", "intent", "confidence", "entity_mention", "source"],
+    "output": ["reply"],
+    "trigger": "n8n-nodes-base.executeWorkflowTrigger",
+    "forbidden": ["n8n-nodes-base.telegram", "n8n-nodes-base.webhook", "telegramTrigger"]
+  },
+  "agents": [
+    {
+      "intent": "ops",
+      "file": "workflows/n8n/ops-agent.json",
+      "confidence_threshold": 0.7,
+      "description": "Operations, monitoring, status, deployments, CI, commits, PRs, execution history; carries read-only system tools + approved write requests."
+    },
+    {
+      "intent": "code",
+      "file": "workflows/n8n/code-agent.json",
+      "confidence_threshold": 0.7,
+      "description": "Writing, editing, reviewing code (minimal LLM, no tools)."
+    },
+    {
+      "intent": "research",
+      "file": "workflows/n8n/research-agent.json",
+      "confidence_threshold": 0.7,
+      "description": "Open-ended questions, information lookup, web search."
+    },
+    {
+      "intent": "infra",
+      "file": "workflows/n8n/infra-agent.json",
+      "confidence_threshold": 0.7,
+      "description": "Advisory-only infrastructure guidance — DNS, secrets, cloud resources, deployments, networking (no tools, no changes)."
+    },
+    {
+      "intent": "unknown",
+      "file": "workflows/n8n/unknown-agent.json",
+      "confidence_threshold": 0.0,
+      "fallback": true,
+      "description": "General conversation + system awareness; the default fallback for unclassified messages. Carries the full read-only system toolset and approved write requests."
+    }
+  ]
+}
