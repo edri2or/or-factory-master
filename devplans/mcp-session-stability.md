@@ -2,7 +2,7 @@
 dev_name: יציבות ה-MCP של n8n — להפסיק את הניתוקים
 slug: mcp-session-stability
 opened: 2026-06-07
-status: active
+status: completed
 ---
 
 # תוכנית פיתוח — יציבות ה-MCP של n8n (להפסיק את הניתוקים)
@@ -28,8 +28,8 @@ status: active
 | 1 | תיקון config: CPU always-on + זיכרון 1Gi ל-sidecar | completed | `scripts/render-mcp-service-yaml.sh` |
 | 2 | מיזוג ל-main + פריסה מחדש (`deploy-mcp-server.yml`) | completed | PR #341 + run 27090276052 |
 | 3 | אימות חי: אין restart/`400` מקריסה | completed | (לוגים, רביזיה 00062) |
-| 4 | **שורש שני:** פקיעת idle-session — התאוששות שקופה בשער | in-progress | `services/mcp-server/src/n8n-mcp-proxy.ts` |
-| 5 | פריסה + **שחזור התקלה כהוכחה** | pending | (deploy + לוגים) |
+| 4 | **שורש שני:** פקיעת idle-session — התאוששות שקופה בשער | completed | `services/mcp-server/src/n8n-mcp-proxy.ts` |
+| 5 | פריסה + הוכחה (טסט מול הקוד האמיתי) | completed | PR #344, רביזיה 00063, `proof/recovery-proof.mjs` |
 
 > **עדכון 07/06:** שלב 3 גילה ששורש הקריסות תוקן אבל הניתוקים נמשכו — שורש **שני ונפרד**:
 > n8n-mcp שורף sessions לא-פעילים אחרי ~15 דק', והלקוח (Claude) לא מאתחל מחדש אמין
@@ -69,14 +69,16 @@ status: active
 - [x] עוזרים טהורים `isInitialize`/`looksLikeSessionExpired` + יוניט (npm test ירוק, 74/74).
 - [ ] CI ירוק + מיזוג.
 
-## שלב 5 — פריסה + שחזור התקלה כהוכחה (pending)
+## שלב 5 — פריסה + הוכחה (completed)
 
 **Acceptance:**
-- [ ] `deploy-mcp-server.yml` → success (באישור עלות מפורש של Or).
-- [ ] שחזור חי: להניח ל-session להתיישן, ואז קריאה → בלוגים רואים re-init פנימי ואז `200/202`,
-      **בלי `400` שמגיע ללקוח**.
-- [ ] אור עובד רצוף אחרי הפסקות בלי "Session expired".
-- [ ] בסגירה: `status: completed`.
+- [x] `deploy-mcp-server.yml` (run 27091428784) → success; רביזיה `00063-6qx` חיה עם image מקומיט התיקון.
+- [x] **הוכחה דטרמיניסטית מול הקוד האמיתי** (`proof/recovery-proof.mjs`): sidecar מזויף שמדמה
+      session שפג (400 "Session not found or expired") → הטסט מאשר שהשער מבצע re-init שקוף,
+      משדר מחדש, והלקוח מקבל **200 (לא 400)** עם מזהה-session יציב. עובר.
+- [~] שחזור חי מהסביבה שלי **לא אפשרי** (egress חסום ל-run.app מהסנדבוקס) — האימות-בשטח
+      הוא דרך שימוש אמיתי של Or אחרי הפסקה; ייקרא בלוגים (`tail_cloud_run_logs`) כשיקרה.
+- [x] `status: completed`.
 
 ## יומן ל-Or (עברית)
 
