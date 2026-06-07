@@ -1,0 +1,88 @@
+name: Propose repo deletion (Telegram-gated)
+
+# PROPOSAL ONLY — this workflow can NOT delete anything. It asks the MCP to send
+# Or a Telegram ✅/❌ card listing the repos. The deletion runs ONLY inside the
+# MCP's verified Telegram-✅ callback (services/mcp-server/src/repo-approval.ts) —
+# never here, never agent-triggerable. Same AI-proposes / human-approves invariant
+# as the GCP gate. or-factory-master is refused at register time.
+#
+# Auth: WIF as the broker SA solely to read mcp-server-admin-secret from SM, then
+# POST /repo-delete-register. NOT on the dispatch_workflow allowlist.
+
+on:
+  workflow_dispatch:
+    inputs:
+      repos:
+        description: "Comma/space-separated repo NAMES to delete (e.g. 'svc-demo or-test-9'). or-factory-master is refused."
+        required: true
+        type: string
+      correlation_id:
+        description: "Short id for the approval card (optional)."
+        required: false
+        type: string
+        default: ""
+
+permissions: {}
+
+jobs:
+  propose:
+    name: Send repo-deletion approval card
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      id-token: write   # WIF OIDC token
+
+    env:
+      CONTROL_PROJECT: or-factory-master-control
+      MCP_URL: https://factory-master-actions-mcp-140345952904.me-west1.run.app
+
+    steps:
+      - name: Validate inputs
+        env:
+          REPOS: ${{ inputs.repos }}
+          CORR: ${{ inputs.correlation_id }}
+        run: |
+          set -euo pipefail
+          if [ -z "${REPOS//[[:space:]]/}" ]; then
+            echo "FAIL: repos is empty" >&2; exit 1
+          fi
+          # Charset guard: repo names + separators only (no shell metacharacters).
+          if ! printf '%s' "$REPOS" | grep -Eq '^[A-Za-z0-9 ,._-]+$'; then
+            echo "FAIL: repos contains disallowed characters" >&2; exit 1
+          fi
+          if [ -n "$CORR" ] && ! printf '%s' "$CORR" | grep -Eq '^[A-Za-z0-9-]{1,40}$'; then
+            echo "FAIL: correlation_id has a bad shape" >&2; exit 1
+          fi
+
+      - name: Authenticate to GCP via WIF
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093  # v3.0.0
+        with:
+          workload_identity_provider: "projects/140345952904/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
+          service_account: "factory-master-broker@or-factory-master-control.iam.gserviceaccount.com"
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db  # v3.0.1
+
+      - name: Send approval card (via MCP)
+        env:
+          REPOS: ${{ inputs.repos }}
+          CORR: ${{ inputs.correlation_id }}
+        run: |
+          set -euo pipefail
+          CORR_VAL="${CORR:-run-${GITHUB_RUN_ID}}"
+          MCP_ADMIN=$(gcloud secrets versions access latest --secret=mcp-server-admin-secret --project="$CONTROL_PROJECT" | tr -d '\r\n')
+          echo "::add-mask::$MCP_ADMIN"
+          REQ=$(jq -cn --arg repos "$REPOS" --arg corr "$CORR_VAL" '{repos:$repos, correlation_id:$corr}')
+          CODE=$(curl -sS -m 30 -o /tmp/rm-reg.body -w '%{http_code}' \
+            -X POST "${MCP_URL}/repo-delete-register" \
+            -H "X-Admin-Secret: ${MCP_ADMIN}" \
+            -H "Content-Type: application/json" \
+            --data "$REQ" || echo "000")
+          echo "POST /repo-delete-register -> HTTP ${CODE}"
+          if [ "$CODE" != "200" ]; then
+            echo "FAIL: could not send approval card (HTTP ${CODE}): $(jq -r '.error // empty' /tmp/rm-reg.body 2>/dev/null || true)" >&2
+            rm -f /tmp/rm-reg.body; exit 1
+          fi
+          rm -f /tmp/rm-reg.body
+          echo "PASS: approval card sent to Telegram (awaiting Or's ✅). Nothing deleted here."
