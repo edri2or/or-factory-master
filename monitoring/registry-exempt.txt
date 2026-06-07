@@ -68,3 +68,5 @@ templates/system/.github/workflows/bootstrap-gmail-oauth.yml
 .github/workflows/n8n-mcp-smoke.yml
 # One-shot: bulk-delete unused org repos (keep-list; dry-run gated).
 .github/workflows/bulk-delete-repos.yml
+# Proposal-only: sends the Telegram repo-delete card; cannot delete (deletion is in the MCP callback).
+.github/workflows/propose-repo-delete.yml

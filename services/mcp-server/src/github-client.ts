@@ -259,6 +259,38 @@ export async function fetchFileContents(
   return decoded.length > MAX ? `${decoded.slice(0, MAX)}\n[... truncated at 50 KB ...]` : decoded;
 }
 
+// Delete a repository as the broker App (DELETE /repos/edri2or/<repo>). Uses the
+// broker's administration:write (already granted org-wide — it archived repos).
+// HARD guards: owner is always edri2or; refuse or-factory-master + the ALWAYS_KEEP
+// set so a crafted/buggy caller can never remove the survivor or a protected repo.
+// Reached ONLY from the verified Telegram-✅ callback (repo-approval.ts) — never
+// agent-triggerable. Structured, never-throws (like mergePullRequestAsApprover).
+const ALWAYS_KEEP_REPOS = new Set<string>(['or-factory-master']);
+
+export interface RepoDeleteResult {
+  repo: string;
+  deleted: boolean;
+  status: number;
+  message?: string;
+}
+
+export async function deleteRepoAsBroker(repo: string): Promise<RepoDeleteResult> {
+  if (!/^[a-z0-9][a-z0-9._-]{0,99}$/i.test(repo)) {
+    return { repo, deleted: false, status: 400, message: 'invalid repo name' };
+  }
+  if (ALWAYS_KEEP_REPOS.has(repo)) {
+    return { repo, deleted: false, status: 403, message: 'refused: protected repo' };
+  }
+  try {
+    const resp = await ghFetchRepo(DEFAULT_OWNER, repo, '', { method: 'DELETE' });
+    if (resp.status === 204) return { repo, deleted: true, status: 204 };
+    const txt = await resp.text().catch(() => '');
+    return { repo, deleted: false, status: resp.status, message: txt.slice(0, 160) };
+  } catch (e) {
+    return { repo, deleted: false, status: 0, message: String(e).slice(0, 160) };
+  }
+}
+
 // Trigger a workflow_dispatch event. The broker App is installed org-wide with
 // actions:write, so this works on or-factory-master and any system repo. The
 // dispatch endpoint returns 204 with no body — callers use getLatestWorkflowRun

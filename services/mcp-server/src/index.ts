@@ -21,6 +21,11 @@ import {
   handleGcpApprovalCallback,
   isGcpApprovalCallback,
 } from './gcp-approval.js';
+import {
+  registerRepoDelete,
+  handleRepoApprovalCallback,
+  isRepoApprovalCallback,
+} from './repo-approval.js';
 import { handleChatUpdate } from './telegram-chat.js';
 import { proxyToN8nMcp, n8nMcpEnabled, isAllowedN8nSystem } from './n8n-mcp-proxy.js';
 import { googleConfigured, googleAuthorizeUrl, exchangeGoogleCode, emailAllowed } from './google-oauth.js';
@@ -314,6 +319,28 @@ app.post('/gcp-approval-register', async (req: Request, res: Response) => {
   res.status(r.status).json(r.body);
 });
 
+// Repo-deletion gate — REGISTER. propose-repo-delete.yml calls this (admin-gated,
+// X-Admin-Secret) to send Or one ✅/❌ card listing repos to delete. The deletion
+// runs ONLY in the Telegram callback (handleRepoApprovalCallback) — never here.
+// Body: { repos: string[], correlation_id }.
+app.post('/repo-delete-register', async (req: Request, res: Response) => {
+  const provided = (req.headers['x-admin-secret'] as string | undefined) ?? '';
+  if (!secretMatches(provided)) {
+    res.status(403).json({ error: 'unauthorized' });
+    return;
+  }
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const reposRaw = body['repos'];
+  const repos = Array.isArray(reposRaw)
+    ? reposRaw.map((r) => String(r))
+    : String(reposRaw ?? '').split(/[\s,]+/).filter(Boolean);
+  const r = await registerRepoDelete({
+    repos,
+    correlation_id: String(body['correlation_id'] ?? ''),
+  });
+  res.status(r.status).json(r.body);
+});
+
 // Unified Telegram bridge — INBOUND. The single factory bot's webhook posts here
 // for BOTH Or's free-form chat messages AND the OIL approval ✅/❌ button presses
 // (one bot, one webhook). Gated by the secret_token Telegram echoes in
@@ -340,6 +367,7 @@ app.post('/telegram-webhook', async (req: Request, res: Response) => {
     const isOilCallback = data.startsWith('oilapprove:') || data.startsWith('oilreject:');
     const isSysReqCallback = isSystemRequestCallback(data);
     const isGcpCallback = isGcpApprovalCallback(data);
+    const isRepoCallback = isRepoApprovalCallback(data);
     let r;
     if (isOilCallback) {
       r = await handleTelegramCallback(req);
@@ -347,6 +375,8 @@ app.post('/telegram-webhook', async (req: Request, res: Response) => {
       r = await handleSystemRequestCallback(req);
     } else if (isGcpCallback) {
       r = await handleGcpApprovalCallback(req);
+    } else if (isRepoCallback) {
+      r = await handleRepoApprovalCallback(req);
     } else {
       r = await handleChatUpdate(req);
     }
