@@ -693,11 +693,15 @@ jobs:
               N8N_ENCRYPTION_KEY: $key,
               N8N_RUNNERS_ENABLED: "true",
               N8N_PROXY_HOPS: "1",
+              EXECUTIONS_DATA_SAVE_ON_SUCCESS: "all",
+              EXECUTIONS_DATA_SAVE_ON_ERROR: "all",
+              EXECUTIONS_DATA_SAVE_MANUAL_EXECUTIONS: "true",
+              EXECUTIONS_DATA_SAVE_ON_PROGRESS: "true",
               EXECUTIONS_DATA_PRUNE: "true",
-              EXECUTIONS_DATA_MAX_AGE: "48",
-              EXECUTIONS_DATA_PRUNE_MAX_COUNT: "1000"
+              EXECUTIONS_DATA_MAX_AGE: "8760",
+              EXECUTIONS_DATA_PRUNE_MAX_COUNT: "25000"
             } + $extra')"
-          echo "PASS: n8n env vars set (18 base vars + queue extras when QM=true; one upsert → single redeploy)."
+          echo "PASS: n8n env vars set (22 base vars + queue extras when QM=true; one upsert → single redeploy)."
 
           # ===== (queue mode) n8n worker service: SM-first, find, then create =====
           # Second n8n process that pulls jobs from Redis and runs them — created
