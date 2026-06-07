@@ -13,7 +13,7 @@ process.env.GITHUB_APP_ID ??= 'test-app-id';
 process.env.GITHUB_APP_INSTALLATION_ID ??= 'test-install-id';
 process.env.GITHUB_APP_PRIVATE_KEY ??= 'test-key';
 
-const { devNameViolation, isAllowedN8nSystem } = await import('../dist/n8n-mcp-proxy.js');
+const { devNameViolation, isAllowedN8nSystem, isInitialize, looksLikeSessionExpired } = await import('../dist/n8n-mcp-proxy.js');
 
 function call(toolName, args) {
   return { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: toolName, arguments: args } };
@@ -51,4 +51,23 @@ test('devNameViolation: tolerates non tools/call messages and batches', () => {
 test('isAllowedN8nSystem: default allowlist contains or-adhd-agent only', () => {
   assert.equal(isAllowedN8nSystem('or-adhd-agent'), true);
   assert.equal(isAllowedN8nSystem('some-other-system'), false);
+});
+
+test('isInitialize: detects an initialize request (single + batch), ignores others', () => {
+  assert.equal(isInitialize({ jsonrpc: '2.0', id: 0, method: 'initialize', params: {} }), true);
+  assert.equal(isInitialize([{ jsonrpc: '2.0', method: 'notifications/initialized' }, { jsonrpc: '2.0', id: 1, method: 'initialize' }]), true);
+  assert.equal(isInitialize(call('n8n_list_workflows', {})), false);
+  assert.equal(isInitialize({ jsonrpc: '2.0', id: 1, method: 'tools/list' }), false);
+  assert.equal(isInitialize(null), false);
+});
+
+test('looksLikeSessionExpired: matches n8n-mcp expired-session errors only', () => {
+  // The real n8n-mcp message + the JSON-RPC session error code.
+  assert.equal(looksLikeSessionExpired(400, 'application/json', '{"error":{"code":-32001,"message":"Session not found or expired"}}'), true);
+  assert.equal(looksLikeSessionExpired(404, 'application/json', 'No valid session id for this request'), true);
+  // A genuine non-session bad request must NOT be treated as expiry.
+  assert.equal(looksLikeSessionExpired(400, 'application/json', '{"error":"invalid params: missing field"}'), false);
+  // Success codes and SSE streams are never recovery candidates.
+  assert.equal(looksLikeSessionExpired(200, 'application/json', 'session not found'), false);
+  assert.equal(looksLikeSessionExpired(400, 'text/event-stream', 'session expired'), false);
 });
