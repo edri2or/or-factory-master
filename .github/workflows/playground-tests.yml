@@ -79,6 +79,14 @@ jobs:
         # changes. Stays in THIS job so no new required status context is added.
         run: bash scripts/check-system-golden.sh
 
+      - name: Single-voice agent gate (mould)
+        # Validates the shipped sub-agent templates (templates/system/workflows/n8n/
+        # *-agent.json): every specialist agent returns {reply} to the orchestrator
+        # via an Execute-Workflow trigger and never owns an operator-facing Telegram
+        # send. The same script (scripts/check-agent-single-voice.sh) is shipped into
+        # each system by provision-system.yml and runs there over workflows/n8n.
+        run: AGENT_DIR=templates/system/workflows/n8n bash scripts/check-agent-single-voice.sh
+
       - name: MCP server build + unit tests
         # Compile-check the mcp-server TypeScript and run its pure unit tests
         # (tsc + node --test). Until now NO PR-time gate compiled this code —
