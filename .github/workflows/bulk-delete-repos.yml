@@ -1,0 +1,139 @@
+name: Bulk-delete unused repos (operator token, keep-list)
+
+# DANGEROUS, one-time cleanup: deletes EVERY repo in the edri2or org EXCEPT those
+# in `keep_repos` (plus or-factory-master, ALWAYS kept). GitHub repo deletion is
+# PERMANENT. Defaults to dry-run.
+#
+# By design this uses the OPERATOR's OWN temporary token — NOT the broker App —
+# matching the "scoped token, used briefly, then removed" request. The token is
+# read from the repo secret BULK_DELETE_TOKEN (a fine-grained PAT with
+# Administration: read+write / delete, or a classic PAT with delete_repo). If the
+# secret is absent the run fails closed. Remove the secret after the cleanup.
+#
+# Safety gates:
+#   * dry_run defaults true; a real delete requires dry_run=false AND confirm=DELETE.
+#   * keep_repos must be non-empty; or-factory-master is force-kept.
+#   * stale-keep-list guard: ≥3 keep names must match a live repo, else abort.
+#   * per-repo failures collected + reported; the run continues.
+# NOT on the dispatch_workflow allowlist.
+
+on:
+  workflow_dispatch:
+    inputs:
+      keep_repos:
+        description: "Comma/space-separated repo NAMES to KEEP. Everything else is deleted. (or-factory-master always kept.)"
+        required: true
+        type: string
+        default: "or-tok or-factory-master or-adhd-agent tokile project-life-130 ripo-skills-main"
+      dry_run:
+        description: "List the KEEP/DELETE plan only; delete nothing. Run this first."
+        required: false
+        type: boolean
+        default: true
+      confirm:
+        description: "Type DELETE to arm real deletion (only honored when dry_run is false)."
+        required: false
+        type: string
+        default: ""
+
+permissions: {}
+
+jobs:
+  bulk-delete:
+    name: Bulk-delete unused repos (operator token)
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+
+    env:
+      ALWAYS_KEEP: or-factory-master
+      OPERATOR_TOKEN: ${{ secrets.BULK_DELETE_TOKEN }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
+
+      - name: Validate inputs + token presence (safety gate)
+        env:
+          KEEP_REPOS: ${{ inputs.keep_repos }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          set -euo pipefail
+          if [ -z "${OPERATOR_TOKEN:-}" ]; then
+            echo "FAIL: repo secret BULK_DELETE_TOKEN is not set — add the operator's temporary token first." >&2; exit 1
+          fi
+          printf '%s' "$KEEP_REPOS" | tr -c 'a-zA-Z0-9._-' '\n' | sed '/^$/d' | sort -u > /tmp/keep.txt
+          echo "$ALWAYS_KEEP" >> /tmp/keep.txt
+          sort -u /tmp/keep.txt -o /tmp/keep.txt
+          [ "$(wc -l < /tmp/keep.txt | tr -d ' ')" -gt 0 ] || { echo "FAIL: keep_repos empty." >&2; exit 1; }
+          if [ "${DRY_RUN}" != "true" ] && [ "${CONFIRM}" != "DELETE" ]; then
+            echo "FAIL: real deletion requires confirm=DELETE (dry_run=${DRY_RUN}, confirm='${CONFIRM}')." >&2; exit 1
+          fi
+          echo "PASS: keep names:"; sed 's/^/  - /' /tmp/keep.txt
+
+      - name: Enumerate all org repos and compute plan
+        id: plan
+        run: |
+          set -euo pipefail
+          : > /tmp/all_repos.txt
+          page=1
+          while :; do
+            resp=$(curl -sS -m 30 \
+              -H "Authorization: Bearer ${OPERATOR_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/orgs/edri2or/repos?per_page=100&page=${page}&type=all")
+            names=$(printf '%s' "$resp" | jq -r '.[].name // empty' 2>/dev/null || true)
+            [ -n "$names" ] || break
+            printf '%s\n' "$names" >> /tmp/all_repos.txt
+            cnt=$(printf '%s\n' "$names" | sed '/^$/d' | wc -l | tr -d ' ')
+            [ "$cnt" -eq 100 ] || break
+            page=$((page + 1))
+          done
+          sort -u /tmp/all_repos.txt -o /tmp/all_repos.txt
+          TOTAL=$(wc -l < /tmp/all_repos.txt | tr -d ' ')
+          [ "$TOTAL" -gt 0 ] || { echo "FAIL: enumerated 0 repos (token scope?)." >&2; exit 1; }
+          : > /tmp/delete.txt; KEEP_MATCHED=0
+          { echo "## Repo cleanup plan"; echo ""; echo "| Action | Repo |"; echo "|---|---|"; } >> "$GITHUB_STEP_SUMMARY"
+          while read -r name; do
+            [ -n "$name" ] || continue
+            if grep -qxF "$name" /tmp/keep.txt; then
+              KEEP_MATCHED=$((KEEP_MATCHED + 1)); echo "KEEP    $name"
+              printf '| KEEP | %s |\n' "$name" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "$name" >> /tmp/delete.txt; echo "DELETE  $name"
+              printf '| DELETE | `%s` |\n' "$name" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done < /tmp/all_repos.txt
+          DELETE_COUNT=$(wc -l < /tmp/delete.txt | tr -d ' ')
+          echo ""; echo "TOTAL=${TOTAL}  KEEP_MATCHED=${KEEP_MATCHED}  DELETE_COUNT=${DELETE_COUNT}"
+          [ "$KEEP_MATCHED" -ge 3 ] || { echo "FAIL: only ${KEEP_MATCHED} keepers matched a live repo — refusing (stale keep-list)." >&2; exit 1; }
+          { echo "delete_count=${DELETE_COUNT}"; echo "keep_matched=${KEEP_MATCHED}"; echo "total=${TOTAL}"; } >> "$GITHUB_OUTPUT"
+
+      - name: Delete repos (real run only)
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          set -euo pipefail
+          if [ "${DRY_RUN}" = "true" ] || [ "${CONFIRM}" != "DELETE" ]; then
+            echo "DRY RUN — ${{ steps.plan.outputs.delete_count }} repo(s) would be deleted, ${{ steps.plan.outputs.keep_matched }} kept. Nothing deleted."
+            echo "Re-run with dry_run=false and confirm=DELETE to execute."
+            exit 0
+          fi
+          DELETED=0; FAILED=0
+          while read -r name; do
+            [ -n "$name" ] || continue
+            if [ "$name" = "$ALWAYS_KEEP" ]; then echo "SKIP (always-keep): $name"; continue; fi
+            code=$(curl -sS -m 30 -o /dev/null -w '%{http_code}' \
+              -X DELETE "https://api.github.com/repos/edri2or/${name}" \
+              -H "Authorization: Bearer ${OPERATOR_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" || echo "000")
+            if [ "$code" = "204" ]; then echo "PASS: deleted ${name}"; DELETED=$((DELETED + 1))
+            else echo "FAIL: delete ${name} -> HTTP ${code}" >&2; FAILED=$((FAILED + 1)); fi
+          done < /tmp/delete.txt
+          echo "Deleted ${DELETED}, failed ${FAILED}."
+          [ "$FAILED" -eq 0 ] || { echo "::error::${FAILED} repo(s) failed to delete" >&2; exit 1; }
