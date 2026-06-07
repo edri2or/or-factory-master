@@ -72,9 +72,17 @@ printf '      annotations:\n'
 # loses the session → "Session not found or expired" on the next call. One warm
 # instance keeps every gateway+sidecar request on the same pod. sessionAffinity
 # is belt-and-suspenders (cookie-based, best-effort) if maxScale is ever raised.
+#
+# cpu-throttling "false" = CPU is ALWAYS allocated to the warm instance (not
+# throttled to ~zero between requests). This is the other half of session
+# stability: with default throttling, the pinned min-instance is still liable to
+# mid-session reclaim/replacement, which silently wipes the in-RAM sessions and
+# disconnects every connected client. Always-on CPU keeps the one pod genuinely
+# alive between calls so sessions survive (it pairs with minScale "1").
 printf '        autoscaling.knative.dev/minScale: "1"\n'
 printf '        autoscaling.knative.dev/maxScale: "1"\n'
 printf '        run.googleapis.com/sessionAffinity: "true"\n'
+printf '        run.googleapis.com/cpu-throttling: "false"\n'
 printf '    spec:\n'
 printf '      serviceAccountName: %s\n' "${RUNTIME_SA_EMAIL}"
 printf '      timeoutSeconds: 300\n'
@@ -100,12 +108,17 @@ for pair in "${GATEWAY_SECRETS[@]}"; do
 done
 
 # ── Sidecar container: n8nmcp (no port → localhost-only) ──
+# 1Gi (not 512Mi): n8n-mcp loads its full nodes.db node-reference DB + the MCP
+# SDK transport map into RAM. 512Mi was tight enough to OOM-kill the container
+# mid-day (observed: a fresh "Database initialized" restart 44 min into a
+# revision's life), and every OOM restart wipes the in-RAM sessions → every
+# connected client disconnects. The extra headroom stops the OOM-driven churn.
 printf '      - name: n8nmcp\n'
 printf '        image: %s\n' "${N8N_MCP_IMAGE}"
 printf '        resources:\n'
 printf '          limits:\n'
 printf '            cpu: "1"\n'
-printf '            memory: 512Mi\n'
+printf '            memory: 1Gi\n'
 printf '        env:\n'
 emit_env MCP_MODE "http"
 emit_env ENABLE_MULTI_TENANT "true"
