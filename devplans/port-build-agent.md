@@ -6,8 +6,7 @@
 dev_name: העברת build-agent לפקטורי (Scope A)
 slug: port-build-agent
 opened: 2026-06-07
-status: active   # → completed post-merge (the devplan gate requires this plan to stay
-                 # active while the PR carries code changes + other plans are active)
+status: completed
 ---
 
 # תוכנית פיתוח — העברת build-agent לפקטורי (פורט + הוכחה סטטית)
@@ -115,6 +114,5 @@ PASS על סוכן שנולד חי מ-`subagent.template.json`; FAIL (rc=1) על
   מערכת חדשה תקבל גם את המתכון וגם את כל חומרי-העזר שהוא צריך. בדקתי שאין במתכון שום הפניה
   לקובץ שלא קיים.
 - שלב 4 הושלם — ה-CI על ה-PR ירוק לגמרי, והפיתוח מוכן. מעכשיו כל מערכת חדשה נולדת עם
-  היכולת לבנות סוכנים נכון (מלמטה-למעלה, הוכחה לכל חלק). התוכנית נשארת `active` עד המיזוג
-  (כלל-CI: תוכנית חייבת לכסות את שינויי-הקוד), ותיסגר ל-`completed` מיד אחרי שתמזג. נשאר
-  רק שתאשר ותמזג.
+  היכולת לבנות סוכנים נכון (מלמטה-למעלה, הוכחה לכל חלק).
+- ✅ PR #340 מוזג ל-main; התוכנית נסגרה (`status: completed`). Scope A הושלם במלואו.
