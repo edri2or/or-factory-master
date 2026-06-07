@@ -80,3 +80,5 @@ workflow כניסה אחד שרץ ירוק/צהוב לבד דרך ה-broker SA, 
 
 **Acceptance:**
 - [ ] בית יחיד נשאר; `verify_*` ירוק מקצה-לקצה; OIL + n8n עדיין עובדים.
+
+> נספח 2: יכולת מחיקת-ריפו קבועה נעולת-טלגרם (AI מציע, Or מאשר ב-✅) נוספה ב-`repo-approval.ts` + `propose-repo-delete.yml` + סקיל `delete-repos`.
