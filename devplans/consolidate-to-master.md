@@ -29,6 +29,8 @@ status: active   # active בזמן פיתוח → completed בשלב 5 (משחר
 | 5 | פירוק הישן (כל מחיקה ב-✅ נפרד של Or) | completed (Railway org-reader נמחק; gcp-hands-control נמחק; factory-control-9piybr כבר היה inactive; 2 הריפוז מאורכבים ע"י archive-old-repos.yml) | `.github/workflows/archive-old-repos.yml` |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
+>
+> נספח: ניקוי חד-פעמי של 200+ ריפו-זבל ישנים בארגון נעשה ב-`bulk-delete-repos.yml` (keep-list + dry-run, מחוץ ל-5 השלבים).
 
 ---
 
