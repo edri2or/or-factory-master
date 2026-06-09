@@ -1095,6 +1095,7 @@ jobs:
       - name: Pre-create runtime secret shells
         env:
           GCP_PROJECT: ${{ steps.validate.outputs.gcp_project }}
+          SYSTEM_NAME: ${{ steps.validate.outputs.system_name }}
           REUSE: ${{ steps.validate.outputs.reuse }}
         run: |
           set -euo pipefail
@@ -1135,6 +1136,7 @@ jobs:
             railway-redis-volume-id
             railway-worker-service-id
             redis-password
+            workspace-mcp-bearer
           )
           RUNTIME_SA="runtime-sa@${GCP_PROJECT}.iam.gserviceaccount.com"
           DEPLOY_SA="deploy-sa@${GCP_PROJECT}.iam.gserviceaccount.com"
@@ -1176,6 +1178,39 @@ jobs:
             --member="serviceAccount:factory-master-broker@or-factory-master-control.iam.gserviceaccount.com" \
             --quiet >/dev/null 2>&1 || true
           echo "PASS: all ${#RUNTIME_SHELLS[@]} runtime secret shells ready (+ broker grant on n8n-api-key)."
+
+          # Stage 1 of the MCP-consumer platform: mint this system's long-lived,
+          # system-scoped bearer for the central Google Workspace MCP gateway
+          # (/workspace/<system>/mcp) and store it in workspace-mcp-bearer. The minter
+          # endpoint needs mcp-server-admin-secret, which lives ONLY in the control
+          # project's SM — so the BROKER mints it HERE (this provision runs as the broker,
+          # which can read control SM). The admin secret never leaves control; only the
+          # resulting per-system JWT is written to this system's SM. configure-agent-
+          # router.yml later turns it into an httpBearerAuth credential for the ops-agent's
+          # google_workspace tool. Soft: any miss leaves the shell empty → the tool is
+          # simply stripped at router-config time (graceful degradation).
+          GATEWAY_URL="https://factory-master-actions-mcp-140345952904.me-west1.run.app"
+          WS_ADMIN=$(gcloud secrets versions access latest \
+            --secret="mcp-server-admin-secret" \
+            --project="or-factory-master-control" 2>/dev/null | tr -d '\r\n' || echo "")
+          if [ -z "$WS_ADMIN" ]; then
+            echo "WARN: could not read mcp-server-admin-secret from control SM — workspace-mcp-bearer left empty (google_workspace will be stripped)."
+          else
+            echo "::add-mask::${WS_ADMIN}"
+            WS_HTTP=$(curl -sS -o /tmp/ws-token.json -w '%{http_code}' --max-time 30 \
+              -X POST "${GATEWAY_URL}/workspace/${SYSTEM_NAME}/token" \
+              -H "X-Admin-Secret: ${WS_ADMIN}" 2>/dev/null || echo "000")
+            WS_TOKEN=$(jq -r '.access_token // empty' /tmp/ws-token.json 2>/dev/null || echo "")
+            rm -f /tmp/ws-token.json
+            if [ "$WS_HTTP" = "200" ] && [ -n "$WS_TOKEN" ]; then
+              echo "::add-mask::${WS_TOKEN}"
+              printf '%s' "$WS_TOKEN" | gcloud secrets versions add "workspace-mcp-bearer" \
+                --project="$GCP_PROJECT" --data-file=-
+              echo "PASS: minted + stored workspace-mcp-bearer for ${SYSTEM_NAME}."
+            else
+              echo "WARN: mint /workspace/${SYSTEM_NAME}/token returned HTTP ${WS_HTTP} (no token) — workspace-mcp-bearer left empty (google_workspace will be stripped)."
+            fi
+          fi
 
           # Seed n8n-telegram-chat-id from the factory-admin telegram-chat-id. The
           # per-system n8n bot is a DIFFERENT bot (its token is filled in manually)

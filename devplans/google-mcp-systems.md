@@ -23,8 +23,8 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
 | 0a | ספייק de-risk: הוכחת מנגנון headless mode-C | completed | (ספייק מבודד ב-/tmp, ללא קוד מאגר) |
-| 0b | אירוח Google Workspace MCP כ-sidecar מרכזי ב-gateway | in-progress | `services/workspace-mcp/*`, `scripts/render-mcp-service-yaml.sh`, `.github/workflows/deploy-mcp-server.yml`, `services/mcp-server/src/workspace-mcp-proxy.ts`, `services/mcp-server/src/index.ts`, `services/mcp-server/src/bearer.ts`, `.github/workflows/google-mcp-smoke.yml`, `scripts/google-mcp-smoke.py` |
-| 1 | תבנית מערכת: bootstrap-google-mcp + חיווט הסוכן | pending | `templates/system/.github/workflows/bootstrap-google-mcp.yml`, `templates/system/workflows/n8n/ops-agent.json`, `.github/workflows/provision-system.yml`, golden + registry-exempt |
+| 0b | אירוח Google Workspace MCP כ-sidecar מרכזי ב-gateway | completed | `services/workspace-mcp/*`, `scripts/render-mcp-service-yaml.sh`, `.github/workflows/deploy-mcp-server.yml`, `services/mcp-server/src/*`, `.github/workflows/google-mcp-smoke.yml`, `scripts/google-mcp-smoke.py` |
+| 1 | תבנית מערכת: חיווט נוד MCP Client Tool לסוכן | in-progress | `templates/system/workflows/n8n/ops-agent.json`, `templates/system/.github/workflows/configure-agent-router.yml`, `.github/workflows/provision-system.yml`, `tests/golden/system/MANIFEST.sha256` |
 | 2 | הוכחה חיה על מערכת בדיקה זמנית | pending | (ריצה חיה, ללא שינוי קוד) |
 | 3 | קידום ל-main + פירוק מערכת הבדיקה | pending | merge + `decommission-test-system.yml` |
 
@@ -78,26 +78,29 @@ scopes[], expiry:null}; הכלים דורשים ארגומנט `user_google_emai
 
 ---
 
-### שלב 1 — תבנית מערכת: bootstrap + חיווט הסוכן
+### שלב 1 — תבנית מערכת: חיווט נוד MCP Client Tool לסוכן
 
 **Acceptance:**
-- [ ] `bootstrap-google-mcp.yml` (תאום של bootstrap-gmail-oauth) יוצר קרדנציאל MCP Client Tool ב-n8n.
-- [ ] נוד MCP Client Tool מחובר ל-`ops-agent` (ai_tool).
-- [ ] `provision-system.yml` מעתיק את ה-bootstrap + יוצר מעטפת `workspace-mcp-bearer`.
-- [ ] golden מסונכרן, registry-exempt מעודכן, שערי CI ירוקים.
+- [x] נוד MCP Client Tool (`@n8n/n8n-nodes-langchain.mcpClientTool`) נוסף ל-`ops-agent` ומחובר ב-ai_tool.
+- [x] `configure-agent-router.yml` יוצר קרדנציאל `httpBearerAuth` "Google Workspace MCP" + substitution + strip-if-empty.
+- [x] `provision-system.yml`: מעטפת `workspace-mcp-bearer` + שלב mint (broker → /workspace/<system>/token).
+- [x] golden מסונכרן, שערי CI ירוקים.
 
-**הוכחה תפקודית (באותו שלב):** שערי CI הסטטיים (golden sync/gate, changelog, skills-mirror,
-shellcheck/yamllint) ירוקים על ה-PR.
+**הוכחה תפקודית (באותו שלב):** שערי CI הסטטיים (golden sync/gate, changelog, shellcheck/yamllint)
+ירוקים על ה-PR. ה-JSON של הנוד עצמו (typeVersion/transport/auth) מאומת חי בשלב 2 (import אמיתי).
 
-**הערת התקדמות אחרונה (0b, 2026-06-09):** **קוד 0b הושלם.** נוספו: `services/workspace-mcp/`
-(Dockerfile + boot-shim שמזריק את הקרדנציאל המשותף), `workspace-mcp-proxy.ts`, route
-‎`/workspace/:system/{token,mcp}` ב-`index.ts`, bearer kind חדש `workspace-runtime`, קונטיינר
-שלישי ב-`render-mcp-service-yaml.sh`, בנייה+פריסה ב-`deploy-mcp-server.yml`, וסמוק
-‎`google-mcp-smoke.{yml,py}`. שערים מקומיים ירוקים: tsc נקי, 74/74 טסטים, shellcheck/yamllint
-נקיים, render מפיק 3 קונטיינרים תקינים. **נותר: פריסה Or-gated** ואז הסמוק מוכיח חי
-(handshake → list_calendars מחזיר אמת). golden לא נגעתי (זה שלב 1).
+**הערת התקדמות אחרונה (שלב 1, 2026-06-09):** **0b הושלם ואומת חי — סמוק 4/4** (bearer →
+handshake → 22 כלים → `list_gmail_labels` החזיר דאטה אמיתי). **קוד שלב 1 הושלם:** נוד
+`google_workspace` (MCP Client Tool, HTTP Streamable, bearer) ב-`ops-agent.json` + הנחיה
+ב-systemMessage להעביר `user_google_email=shared-google@or-infra.com` ולנתב כתיבה ל-HITL;
+קרדנציאל + substitution + strip ב-`configure-agent-router.yml`; מעטפת + mint ב-`provision-system.yml`;
+golden רוענן. שערים מקומיים: ops-agent.json JSON תקין, yamllint נקי, golden עובר.
 
-**שינוי תוכנית:** —
+**שינוי תוכנית:** ויתור על `bootstrap-google-mcp.yml` נפרד — הנוד מחובר לסוכן, אז הקרדנציאל
+חייב להיווצר ב-`configure-agent-router` (שעושה create+substitute+import באותו ריצה). ה-bearer
+ממונט ב-provision ע"י ה-broker (admin secret לא יוצא מ-control). שימוש בנוד MCP **native** של n8n
+1.121 (לא wrapper). **פתוח לשלב 2/3:** שער-כתיבה קשיח (היום ה-node חושף את כל 22 הכלים +
+הנחיית prompt לנתב כתיבה ל-HITL; לפני קידום נחליט על הגבלת-כלים קשיחה / טוקן read-only).
 
 ---
 
@@ -138,3 +141,7 @@ shellcheck/yamllint) ירוקים על ה-PR.
 
 - שלב 0a הושלם — הוכחתי בקטן (בלי עלות, בלי לגעת בחשבון האמיתי) ששרת ה-Google MCP
   עולה לבד עם מפתח משותף ומגיע עד גוגל. הדרך לבנות עליה — בטוחה.
+- שלב 0b הושלם ואומת חי — ה-Google MCP המרכזי עומד בענן, וסמוק קרא תוויות Gmail אמיתיות
+  דרך כל השרשרת (4/4). התשתית המרכזית עובדת.
+- שלב 1 (קוד) הושלם — כל מערכת חדשה שתיווצר תקבל את הסוכן שלה עם כלי גוגל מובנה. נשאר
+  להוכיח חי על מערכת בדיקה זמנית (שלב 2).
