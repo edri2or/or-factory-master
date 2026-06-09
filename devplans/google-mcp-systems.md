@@ -6,7 +6,7 @@
 dev_name: Google MCP מובנה לכל מערכת
 slug: google-mcp-systems
 opened: 2026-06-09
-status: active   # active בזמן פיתוח → completed בסיום (משחרר את שער ה-CI)
+status: completed   # active בזמן פיתוח → completed בסיום (משחרר את שער ה-CI)
 ---
 
 # תוכנית פיתוח — Google MCP מובנה לכל מערכת
@@ -26,7 +26,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 | 0b | אירוח Google Workspace MCP כ-sidecar מרכזי ב-gateway | completed | `services/workspace-mcp/*`, `scripts/render-mcp-service-yaml.sh`, `.github/workflows/deploy-mcp-server.yml`, `services/mcp-server/src/*`, `.github/workflows/google-mcp-smoke.yml`, `scripts/google-mcp-smoke.py` |
 | 1 | תבנית מערכת: חיווט נוד MCP Client Tool לסוכן | completed | `templates/system/workflows/n8n/ops-agent.json`, `templates/system/.github/workflows/configure-agent-router.yml`, `.github/workflows/provision-system.yml`, `tests/golden/system/MANIFEST.sha256` |
 | 2 | הוכחה חיה על מערכת בדיקה זמנית | completed | (ריצה חיה, ללא שינוי קוד) |
-| 3 | סגירה: תיעוד + פירוק מערכות הבדיקה | in-progress | תיעוד + `decommission-test-system.yml` |
+| 3 | סגירה: תיעוד + פירוק מערכות הבדיקה | completed | תיעוד + `decommission-test-system.yml` |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
 >
@@ -129,7 +129,7 @@ golden רוענן. שערים מקומיים: ops-agent.json JSON תקין, yaml
 **Acceptance:**
 - [x] קידום (merge ל-main) כבר קרה בשלב 1 (Or בחר אפשרות א' — מיזוג לפני הבדיקה, fix-forward).
 - [x] תיעוד: devplan + changelog + journal מעודכנים.
-- [ ] פירוק `factory-test-045` + `gmcp-test-01` (`decommission-test-system.yml`) — Or-gated, user-triggered.
+- [x] פירוק `factory-test-045` + `gmcp-test-01` (`decommission-test-system.yml`) — בוצע, שתיהן success.
 - [ ] **follow-up מתועד:** שער-כתיבה קשיח לפני שמערכות אמיתיות יסתמכו על כתיבה בגוגל
   (הגבלת הכלים שהנוד חושף, או טוקן read-only ייעודי). היום: כל 22 הכלים + הנחיית prompt ל-HITL.
 
