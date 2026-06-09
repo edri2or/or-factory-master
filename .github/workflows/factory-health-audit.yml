@@ -9,7 +9,7 @@ name: Factory Health Audit
 
 on:
   schedule:
-    - cron: "0 */6 * * *"   # every 6h at :00 (00/06/12/18 UTC)
+    - cron: "0 6 * * *"   # daily at 06:00 UTC (widened from every-6h to cut Actions minutes; downtime is caught sub-minute by Better Stack + bs-incidents)
   workflow_dispatch:
 
 permissions: {}

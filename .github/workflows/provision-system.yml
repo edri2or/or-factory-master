@@ -38,6 +38,7 @@ jobs:
   provision:
     name: Provision System
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     environment: production
     # Broker WIF CEL pins ref=refs/heads/main; running off other branches will fail to auth.
     if: github.ref == 'refs/heads/main'

@@ -48,6 +48,7 @@ jobs:
   deploy:
     name: Deploy n8n
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     # WIF CEL pins ref=refs/heads/main; running off other branches will fail to auth.
     if: github.ref == 'refs/heads/main'
     permissions:
@@ -64,6 +65,28 @@ jobs:
         with:
           workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
           service_account: ${{ vars.GCP_DEPLOY_SA }}
+
+      - name: Detect throwaway test system (skip HMAC edge)
+        env:
+          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          # Cost guard: a reuse/test system (its GCP backend is a shared test
+          # project, e.g. factory-test-25) is throwaway and does NOT need the HMAC
+          # Caddy edge. Skipping the Caddy provision + Docker build + smoke tests +
+          # the n8n->Caddy domain swap is the single biggest deploy-minute saving,
+          # and leaves n8n owning the public domain (so /healthz stays reachable).
+          # The signal mirrors provision-system.yml's reuse-mode validation
+          # (^(factory-test-|v2-test-|or-test-)) exactly — a REAL system's
+          # GCP_PROJECT_ID is its SYSTEM_NAME or an adopted id (never that prefix;
+          # adopt mode hard-refuses factory-test-25), so real deploys stay
+          # byte-identical in behavior.
+          SKIP_EDGE=false
+          case "${GCP_PROJECT_ID:-}" in
+            factory-test-*|v2-test-*|or-test-*) SKIP_EDGE=true ;;
+          esac
+          echo "INFO: GCP_PROJECT_ID='${GCP_PROJECT_ID:-<unset>}' -> SKIP_EDGE=${SKIP_EDGE} (test system skips the Caddy edge + domain swap)."
+          echo "SKIP_EDGE=${SKIP_EDGE}" >> "$GITHUB_ENV"
 
       - name: Read API tokens from system SM
         env:
@@ -617,15 +640,15 @@ jobs:
             # the redis service's latest deployment until SUCCESS (~3 min cap).
             echo "=== Railway: waiting for redis to be ready (queue mode) ==="
             rstat=""
-            for i in $(seq 1 18); do
+            for i in $(seq 1 9); do
               rstat=$(_gql 'query($id: String!) { service(id: $id) { deployments(first: 1) { edges { node { status } } } } }' \
                 "$(jq -cn --arg id "$REDIS_ID" '{id: $id}')" 2>/dev/null \
                 | jq -r '(.data.service.deployments.edges // []) | .[0].node.status // ""' 2>/dev/null || echo "")
-              echo "[redis ready ${i}/18] status=${rstat:-<none>}"
+              echo "[redis ready ${i}/9] status=${rstat:-<none>}"
               [ "$rstat" = "SUCCESS" ] && break
               sleep 10
             done
-            [ "$rstat" = "SUCCESS" ] || echo "WARN: redis not SUCCESS after ~3min (status=${rstat:-<none>}); continuing — n8n will retry the queue connection." >&2
+            [ "$rstat" = "SUCCESS" ] || echo "WARN: redis not SUCCESS after ~90s (status=${rstat:-<none>}); continuing — n8n will retry the queue connection." >&2
             # SUCCESS slightly precedes the process accepting connections; small settle.
             [ "$REDIS_REDEPLOYED" = "true" ] && sleep 5
           else
@@ -719,7 +742,7 @@ jobs:
           # flag. WORKER_FIRST_TIME guards the env upsert to a single write
           # (Railway-throttle caution, same as Caddy/Redis). When QM=false the whole
           # block is skipped (byte-identical deploy).
-          if [ "$QM" = "true" ]; then
+          if [ "$QM" = "true" ] && [ "${SKIP_EDGE:-false}" != "true" ]; then
             echo "=== Railway: n8n worker service (queue mode; SM-first lookup) ==="
             WORKER_FIRST_TIME=false
             WORKER_ID=$(gcloud secrets versions access latest \
@@ -1393,14 +1416,14 @@ jobs:
           # dispatch passed. Still fails fast after the cap so a genuinely
           # crash-looping n8n is not masked.
           HTTP=000
-          for i in $(seq 1 36); do
+          for i in $(seq 1 24); do
             HTTP=$(curl -sS -o /tmp/n8n-settings.json -w '%{http_code}' --max-time 10 "$BASE/rest/settings" || echo "000")
             if [ "$HTTP" = "200" ]; then break; fi
-            echo "[readiness ${i}/36] GET $BASE/rest/settings -> HTTP $HTTP; n8n not ready, sleeping 10s..."
+            echo "[readiness ${i}/24] GET $BASE/rest/settings -> HTTP $HTTP; n8n not ready, sleeping 10s..."
             sleep 10
           done
           if [ "$HTTP" != "200" ]; then
-            echo "FAIL: GET $BASE/rest/settings still HTTP $HTTP after ~6 min — n8n not reachable" >&2
+            echo "FAIL: GET $BASE/rest/settings still HTTP $HTTP after ~4 min — n8n not reachable" >&2
             head -c 400 /tmp/n8n-settings.json 2>/dev/null >&2 || true; echo >&2
             exit 1
           fi
@@ -1434,6 +1457,7 @@ jobs:
       # public domain (the domain swap is PR 3); Caddy is verified in isolation
       # on a Railway-provided *.up.railway.app subdomain.
       - name: Generate or read webhook HMAC secret
+        if: env.SKIP_EDGE != 'true'
         env:
           PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
         run: |
@@ -1459,6 +1483,7 @@ jobs:
           echo "HMAC_SECRET=${HMAC_SECRET}" >> "$GITHUB_ENV"
 
       - name: Provision Caddy gateway service on Railway
+        if: env.SKIP_EDGE != 'true'
         env:
           PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
           SYSTEM_NAME: ${{ vars.SYSTEM_NAME }}
@@ -1623,6 +1648,7 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Caddy gateway smoke tests
+        if: env.SKIP_EDGE != 'true'
         env:
           SYSTEM_NAME: ${{ vars.SYSTEM_NAME }}
         run: |
@@ -1652,15 +1678,15 @@ jobs:
           #    non-401 after the cap is a real failure. (factory-test-83: /health=200
           #    one poll before /webhook still 404 -> false failure on a single shot.)
           H2=000
-          for i in $(seq 1 18); do
+          for i in $(seq 1 12); do
             H2=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 \
               -X POST "https://${CADDY_URL}/webhook/agent-router" \
               -H "Content-Type: application/json" --data '{"text":"smoke test"}' || echo "000")
             [ "$H2" = "401" ] && break
-            echo "[caddy /webhook no-hmac ${i}/18] HTTP ${H2}; route warming, sleeping 10s..."
+            echo "[caddy /webhook no-hmac ${i}/12] HTTP ${H2}; route warming, sleeping 10s..."
             sleep 10
           done
-          [ "$H2" = "401" ] || { echo "FAIL: Caddy /webhook without HMAC expected 401, got $H2 after ~3 min" >&2; exit 1; }
+          [ "$H2" = "401" ] || { echo "FAIL: Caddy /webhook without HMAC expected 401, got $H2 after ~2 min" >&2; exit 1; }
           echo "PASS: Caddy /webhook without HMAC -> 401."
 
           # 3. /webhook/* with a valid HMAC -> passes Caddy and reaches n8n
@@ -1671,14 +1697,14 @@ jobs:
           PAYLOAD='{"text":"smoke test"}'
           SIG=$(printf '%s' "$PAYLOAD" | openssl dgst -sha256 -hmac "$HMAC_SECRET" | awk '{print $NF}')
           H3=000
-          for i in $(seq 1 18); do
+          for i in $(seq 1 12); do
             H3=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 \
               -X POST "https://${CADDY_URL}/webhook/agent-router" \
               -H "Content-Type: application/json" \
               -H "X-Hub-Signature-256: sha256=${SIG}" \
               --data "$PAYLOAD" || echo "000")
             if [ "$H3" != "000" ] && [ "$H3" -lt 500 ]; then break; fi
-            echo "[caddy hmac->n8n ${i}/18] HTTP ${H3}; private-net warmup, sleeping 10s..."
+            echo "[caddy hmac->n8n ${i}/12] HTTP ${H3}; private-net warmup, sleeping 10s..."
             sleep 10
           done
           if [ "$H3" = "000" ] || [ "$H3" -ge 500 ]; then
@@ -2347,6 +2373,7 @@ jobs:
           echo "PASS: n8n Public API key minted + stored in ${PROJECT_ID} SM."
 
       - name: Migrate public domain to Caddy (Phase D PR 3)
+        if: env.SKIP_EDGE != 'true'
         env:
           SYSTEM_NAME: ${{ vars.SYSTEM_NAME }}
         run: |
@@ -2486,6 +2513,7 @@ jobs:
           [ "$ok" = "true" ] || { echo "FAIL: ${DOMAIN} cert not issued on Caddy after ~10 min." >&2; exit 1; }
 
       - name: Verify gateway end-to-end + summary (Phase D PR 3)
+        if: env.SKIP_EDGE != 'true'
         env:
           SYSTEM_NAME: ${{ vars.SYSTEM_NAME }}
         run: |
@@ -2556,6 +2584,13 @@ jobs:
           SYSTEM_NAME: ${{ vars.SYSTEM_NAME }}
         run: |
           set -euo pipefail
+          # On a throwaway test system the Caddy edge steps are skipped, so CADDY_ID /
+          # CADDY_URL are never set — default them and gate the Caddy-specific lines so
+          # `set -u` doesn't abort the deploy on the very last (cosmetic) step. Real
+          # systems (SKIP_EDGE=false) print exactly the same lines as before.
+          SKIP_EDGE="${SKIP_EDGE:-false}"
+          CADDY_ID="${CADDY_ID:-}"
+          CADDY_URL="${CADDY_URL:-}"
           {
             echo "## Deployed: \`${SYSTEM_NAME}\`"
             echo ""
@@ -2566,14 +2601,20 @@ jobs:
             echo "| Postgres service | \`${PG_ID}\` |"
             echo "| n8n service | \`${N8N_ID}\` |"
             echo "| n8n image | \`${N8N_IMAGE}\` |"
-            echo "| Caddy gateway service | \`${CADDY_ID}\` |"
-            echo "| Caddy temp URL (Phase D PR 2) | https://${CADDY_URL} |"
+            if [ "$SKIP_EDGE" != "true" ]; then
+              echo "| Caddy gateway service | \`${CADDY_ID}\` |"
+              echo "| Caddy temp URL (Phase D PR 2) | https://${CADDY_URL} |"
+            fi
             echo "| Custom domain | \`${DOMAIN}\` |"
             echo "| CNAME target | \`${CNAME_TARGET}\` |"
             echo ""
             echo "**DEPLOY COMPLETE.** Visit https://${DOMAIN} — first load opens n8n owner-account setup. Allow 1-3 min after first run for Let's Encrypt cert."
             echo ""
-            echo "Phase D: \`${DOMAIN}\` is served through the **Caddy gateway** — HMAC + per-IP rate limit on \`/webhook/*\`, n8n's own auth on everything else; n8n has no public domain (reachable only via Caddy over the private network). Caddy temp URL (for ops): https://${CADDY_URL}."
+            if [ "$SKIP_EDGE" != "true" ]; then
+              echo "Phase D: \`${DOMAIN}\` is served through the **Caddy gateway** — HMAC + per-IP rate limit on \`/webhook/*\`, n8n's own auth on everything else; n8n has no public domain (reachable only via Caddy over the private network). Caddy temp URL (for ops): https://${CADDY_URL}."
+            else
+              echo "Throwaway test system (SKIP_EDGE): the Caddy HMAC edge + domain swap were skipped — \`${DOMAIN}\` is served directly by n8n (n8n's own login/API-key auth). Not for production webhook exposure."
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Emit deploy completed
