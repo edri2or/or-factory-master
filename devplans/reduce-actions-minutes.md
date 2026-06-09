@@ -72,9 +72,9 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 
 **הוכחה תפקודית (באותו שלב):** הוכחה חיה — דיפלוי אמיתי על מערכת-טסט חיה שעולה תקין בזמן מקוצר; אימות בלתי-תלוי דרך `probe_endpoint`/Telegram.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** בתהליך (2026-06-09). הוקמה `factory-test-actmin` (reuse, success), נרשמה ה-App (2 הקלקות של Or, success). הרצת `prove-on-test-system` הראשונה נכשלה: הטוקן חסר `workflows:write` כדי לדחוף קובץ `.github/workflows/*`. תוקן בענף (`prove-on-test-system.yml` עכשיו מבקש `workflows:write`). מריץ שוב.
 
-**שינוי תוכנית:** —
+**שינוי תוכנית:** נדרש תיקון-אגב ל-`prove-on-test-system.yml` (הוספת `workflows:write` לבקשת הטוקן) כדי שאפשר יהיה בכלל להוכיח שינוי בקובץ workflow — נכלל באותו PR.
 
 ---
 
