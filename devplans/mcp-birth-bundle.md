@@ -24,7 +24,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
-| 1 | Gateway: מסלול `/factory/:system/mcp` נעול-דייר + bearer חדש + smoke | in-progress | `services/mcp-server/src/{bearer,index,factory-scope}.ts`, `scripts/render-mcp-service-yaml.sh`, `.github/workflows/{deploy-mcp-server,factory-mcp-smoke}.yml`, `scripts/factory-mcp-smoke.py`, `monitoring/registry-exempt.txt` |
+| 1 | Gateway: מסלול `/factory/:system/mcp` נעול-דייר + bearer חדש + smoke | completed | `services/mcp-server/src/{bearer,index,factory-scope}.ts`, `scripts/render-mcp-service-yaml.sh`, `.github/workflows/{deploy-mcp-server,factory-mcp-smoke}.yml`, `scripts/factory-mcp-smoke.py`, `monitoring/registry-exempt.txt` |
 | 2 | תבנית: `factory_tools` על ops-agent + הקמת מערכת-טסט חיה | pending | `.github/workflows/provision-system.yml`, `templates/system/.github/workflows/configure-agent-router.yml`, `templates/system/workflows/n8n/ops-agent.json`, `tests/golden/system/` |
 | 3 | `.mcp.json.template` — סשני קלוד נולדים מחוברים | pending | `templates/system/.mcp.json.template`, `templates/system/CLAUDE.md.template`, `tests/golden/system/` |
 | 4 | Google sidecar: Drive+Docs (קליק consent אחד של Or) | pending | `services/workspace-mcp/entrypoint.sh`, `scripts/render-mcp-service-yaml.sh`, `.github/workflows/{copy-gmail-oauth-to-control,request-workspace-scopes-consent}.yml`, `scripts/google-mcp-smoke.py`, `templates/system/.github/workflows/bootstrap-gmail-oauth.yml`, `templates/system/workflows/n8n/ops-agent.json`, `tests/golden/system/` |
@@ -51,20 +51,25 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 אם אין paths-trigger — dispatch מהמסלול המאושר) והרצת smoke חדש.
 
 **Acceptance:**
-- [ ] `factory-mcp-smoke.yml` ירוק 7/7 מול or-adhd-agent: mint → initialize → tools/list
+- [x] `factory-mcp-smoke.yml` ירוק 7/7 מול or-adhd-agent: mint → initialize → tools/list
       בדיוק 8 שמות → קריאת `list_n8n_workflows` אמיתית → probe למערכת אחרת = `tenant_blocked`
       → טוקן על path של מערכת אחרת = 403 → בלי טוקן = 401.
-- [ ] רגרסיה: `n8n-mcp-smoke.yml` + `google-mcp-smoke.yml` ירוקים אחרי הפריסה.
+- [x] רגרסיה: `n8n-mcp-smoke.yml` + `google-mcp-smoke.yml` ירוקים אחרי הפריסה.
 
 **הוכחה תפקודית (באותו שלב):** ריצת ה-smoke מול מערכת חיה אמיתית (or-adhd-agent) —
 הפלט: רשימת הוורקפלואים האמיתית שלה דרך המסלול החדש + שתי חסימות-דייר נצפות בלוג הריצה.
 
-**הערת התקדמות אחרונה:** הקוד המלא של השלב כתוב ועל הענף (facade 8 הכלים +
-`factory-runtime` bearer + שני המסלולים + kill-switch + smoke 7-שלבי + 6 בדיקות
-יחידה ירוקות מקומית). בונוס אבטחה שעלה תוך כדי: helper אחיד `systemRouteAllows`
-שסוגר דליפה צולבת בין שלושת המסלולים הסקופיים (טוקן workspace-runtime כבר לא
-עובר ב-/n8n). נותר: מיזוג → פריסה אוטומטית (paths-trigger של deploy-mcp-server)
-→ הרצת factory-mcp-smoke 7/7 + רגרסיות n8n/google.
+**הערת התקדמות אחרונה:** ✅ הושלם והוכח חי (2026-06-09). PR ‎#355 מוזג (squash
+`db14fd2`) → ‎deploy-mcp-server רץ אוטומטית מה-paths-trigger (run 27239782270,
+ירוק, 2.5 דק') → `factory-mcp-smoke` run 27239960406 — **PASS 7/7**: bearer
+סקופי ל-or-adhd-agent → initialize (`factory-telemetry-mcp`) → בדיוק 8 כלים →
+`list_n8n_workflows` החזיר **45 וורקפלואים אמיתיים** (הזהות הוזרקה מה-claim) →
+probe ל-`n8n-other-system-smoke.or-infra.com` = `tenant_blocked` → הטוקן על
+`/factory/other-system-smoke/mcp` = 403 → בלי טוקן = 401. רגרסיות:
+n8n-mcp-smoke (run 27240027072) + google-mcp-smoke (run 27240028167) ירוקים —
+הידוק `systemRouteAllows` לא שבר את המסלולים הקיימים. בונוס אבטחה שנכנס באותו
+PR: סגירת דליפה צולבת בין שלושת המסלולים הסקופיים (טוקן workspace-runtime כבר
+לא יכול להניע את /n8n).
 
 **שינוי תוכנית:** —
 
@@ -205,4 +210,7 @@ status ל-completed. פירוק מערכת-הטסט — רק בהוראת Or (`d
 
 > שורה פשוטה אחת לכל שלב שהסתיים — בשפה ש-Or מבין, בלי ז'רגון.
 
-- (נפתח — טרם הושלם שלב.)
+- **שלב 1 (2026-06-09):** המרכזיה קיבלה דלת חדשה לכל מערכת — כל מערכת תוכל לראות
+  את עצמה (ולעולם לא את אחותה): נבדק חי מול or-adhd-agent — קיבלה את 45
+  הוורקפלואים שלה, ושני ניסיונות "להציץ לשכנה" נחסמו. בונוס: נסגר חור קטן שבו
+  מפתח של דלת אחת יכל לפתוח דלת אחרת.
