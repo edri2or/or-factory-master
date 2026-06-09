@@ -2584,6 +2584,13 @@ jobs:
           SYSTEM_NAME: ${{ vars.SYSTEM_NAME }}
         run: |
           set -euo pipefail
+          # On a throwaway test system the Caddy edge steps are skipped, so CADDY_ID /
+          # CADDY_URL are never set — default them and gate the Caddy-specific lines so
+          # `set -u` doesn't abort the deploy on the very last (cosmetic) step. Real
+          # systems (SKIP_EDGE=false) print exactly the same lines as before.
+          SKIP_EDGE="${SKIP_EDGE:-false}"
+          CADDY_ID="${CADDY_ID:-}"
+          CADDY_URL="${CADDY_URL:-}"
           {
             echo "## Deployed: \`${SYSTEM_NAME}\`"
             echo ""
@@ -2594,14 +2601,20 @@ jobs:
             echo "| Postgres service | \`${PG_ID}\` |"
             echo "| n8n service | \`${N8N_ID}\` |"
             echo "| n8n image | \`${N8N_IMAGE}\` |"
-            echo "| Caddy gateway service | \`${CADDY_ID}\` |"
-            echo "| Caddy temp URL (Phase D PR 2) | https://${CADDY_URL} |"
+            if [ "$SKIP_EDGE" != "true" ]; then
+              echo "| Caddy gateway service | \`${CADDY_ID}\` |"
+              echo "| Caddy temp URL (Phase D PR 2) | https://${CADDY_URL} |"
+            fi
             echo "| Custom domain | \`${DOMAIN}\` |"
             echo "| CNAME target | \`${CNAME_TARGET}\` |"
             echo ""
             echo "**DEPLOY COMPLETE.** Visit https://${DOMAIN} — first load opens n8n owner-account setup. Allow 1-3 min after first run for Let's Encrypt cert."
             echo ""
-            echo "Phase D: \`${DOMAIN}\` is served through the **Caddy gateway** — HMAC + per-IP rate limit on \`/webhook/*\`, n8n's own auth on everything else; n8n has no public domain (reachable only via Caddy over the private network). Caddy temp URL (for ops): https://${CADDY_URL}."
+            if [ "$SKIP_EDGE" != "true" ]; then
+              echo "Phase D: \`${DOMAIN}\` is served through the **Caddy gateway** — HMAC + per-IP rate limit on \`/webhook/*\`, n8n's own auth on everything else; n8n has no public domain (reachable only via Caddy over the private network). Caddy temp URL (for ops): https://${CADDY_URL}."
+            else
+              echo "Throwaway test system (SKIP_EDGE): the Caddy HMAC edge + domain swap were skipped — \`${DOMAIN}\` is served directly by n8n (n8n's own login/API-key auth). Not for production webhook exposure."
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Emit deploy completed
