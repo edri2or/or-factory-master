@@ -23,7 +23,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
 | 0a | ספייק de-risk: הוכחת מנגנון headless mode-C | completed | (ספייק מבודד ב-/tmp, ללא קוד מאגר) |
-| 0b | אירוח Google Workspace MCP כ-sidecar מרכזי ב-gateway | pending | `scripts/render-mcp-service-yaml.sh`, `.github/workflows/deploy-mcp-server.yml`, `services/mcp-server/src/workspace-mcp-proxy.ts`, `services/mcp-server/src/index.ts`, `.github/workflows/google-mcp-smoke.yml`, `scripts/google-mcp-smoke.py` |
+| 0b | אירוח Google Workspace MCP כ-sidecar מרכזי ב-gateway | in-progress | `services/workspace-mcp/*`, `scripts/render-mcp-service-yaml.sh`, `.github/workflows/deploy-mcp-server.yml`, `services/mcp-server/src/workspace-mcp-proxy.ts`, `services/mcp-server/src/index.ts`, `services/mcp-server/src/bearer.ts`, `.github/workflows/google-mcp-smoke.yml`, `scripts/google-mcp-smoke.py` |
 | 1 | תבנית מערכת: bootstrap-google-mcp + חיווט הסוכן | pending | `templates/system/.github/workflows/bootstrap-google-mcp.yml`, `templates/system/workflows/n8n/ops-agent.json`, `.github/workflows/provision-system.yml`, golden + registry-exempt |
 | 2 | הוכחה חיה על מערכת בדיקה זמנית | pending | (ריצה חיה, ללא שינוי קוד) |
 | 3 | קידום ל-main + פירוק מערכת הבדיקה | pending | merge + `decommission-test-system.yml` |
@@ -81,7 +81,13 @@ scopes[], expiry:null}; הכלים דורשים ארגומנט `user_google_emai
 **הוכחה תפקודית (באותו שלב):** שערי CI הסטטיים (golden sync/gate, changelog, skills-mirror,
 shellcheck/yamllint) ירוקים על ה-PR.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה (0b, 2026-06-09):** **קוד 0b הושלם.** נוספו: `services/workspace-mcp/`
+(Dockerfile + boot-shim שמזריק את הקרדנציאל המשותף), `workspace-mcp-proxy.ts`, route
+‎`/workspace/:system/{token,mcp}` ב-`index.ts`, bearer kind חדש `workspace-runtime`, קונטיינר
+שלישי ב-`render-mcp-service-yaml.sh`, בנייה+פריסה ב-`deploy-mcp-server.yml`, וסמוק
+‎`google-mcp-smoke.{yml,py}`. שערים מקומיים ירוקים: tsc נקי, 74/74 טסטים, shellcheck/yamllint
+נקיים, render מפיק 3 קונטיינרים תקינים. **נותר: פריסה Or-gated** ואז הסמוק מוכיח חי
+(handshake → list_calendars מחזיר אמת). golden לא נגעתי (זה שלב 1).
 
 **שינוי תוכנית:** —
 

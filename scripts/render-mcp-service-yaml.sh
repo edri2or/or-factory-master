@@ -13,13 +13,18 @@
 # dedent inside the workflow. Secret values are NEVER touched — only secret
 # NAMES are referenced via valueFrom.secretKeyRef.
 #
-# Required env: SERVICE, GATEWAY_IMAGE, N8N_MCP_IMAGE, RUNTIME_SA_EMAIL,
-#               PUBLIC_BASE_URL, N8N_DEV_ALLOWED_SYSTEMS
+# Required env: SERVICE, GATEWAY_IMAGE, N8N_MCP_IMAGE, WORKSPACE_MCP_IMAGE,
+#               RUNTIME_SA_EMAIL, PUBLIC_BASE_URL, N8N_DEV_ALLOWED_SYSTEMS
 set -euo pipefail
 
-: "${SERVICE:?}"; : "${GATEWAY_IMAGE:?}"; : "${N8N_MCP_IMAGE:?}"
+: "${SERVICE:?}"; : "${GATEWAY_IMAGE:?}"; : "${N8N_MCP_IMAGE:?}"; : "${WORKSPACE_MCP_IMAGE:?}"
 : "${RUNTIME_SA_EMAIL:?}"; : "${PUBLIC_BASE_URL:?}"; : "${N8N_DEV_ALLOWED_SYSTEMS:?}"
 OAUTH_ALLOWED_EMAILS="${OAUTH_ALLOWED_EMAILS:-}"   # Google-login email allowlist (may be empty)
+# Which systems may reach the shared Google Workspace MCP ("*" = any valid name).
+WORKSPACE_ALLOWED_SYSTEMS="${WORKSPACE_ALLOWED_SYSTEMS:-*}"
+# Stable local key the sidecar files the shared credential under; the n8n agent
+# passes this exact string as user_google_email (Google auths by the token).
+WORKSPACE_GOOGLE_ACCOUNT_LABEL="${WORKSPACE_GOOGLE_ACCOUNT_LABEL:-shared-google@or-infra.com}"
 
 # Gateway env vars sourced from Secret Manager (ENV_NAME=secret-name). The
 # gateway already shipped these 19; N8N_MCP_AUTH_TOKEN is the only addition.
@@ -103,6 +108,10 @@ emit_env FACTORY_TG_CHAT_MODEL "anthropic/claude-haiku-4.5"
 emit_env N8N_MCP_URL "http://localhost:3001/mcp"
 emit_env N8N_DEV_ALLOWED_SYSTEMS "${N8N_DEV_ALLOWED_SYSTEMS}"
 emit_env OAUTH_ALLOWED_EMAILS "${OAUTH_ALLOWED_EMAILS}"
+# Google Workspace MCP sidecar endpoint (trailing slash: FastMCP 307-redirects
+# the slashless form) + which systems may reach it.
+emit_env WORKSPACE_MCP_URL "http://localhost:3002/mcp/"
+emit_env WORKSPACE_ALLOWED_SYSTEMS "${WORKSPACE_ALLOWED_SYSTEMS}"
 for pair in "${GATEWAY_SECRETS[@]}"; do
   emit_secret "${pair%%=*}" "${pair#*=}"
 done
@@ -128,6 +137,35 @@ emit_env TRUST_PROXY "1"
 emit_env LOG_LEVEL "info"
 emit_secret AUTH_TOKEN n8n-mcp-internal-auth-token
 emit_secret MCP_AUTH_TOKEN n8n-mcp-internal-auth-token
+
+# ── Sidecar container: workspacemcp (Google Workspace MCP; no port → localhost) ──
+# Single-user, read-only (v1), shared Google identity. The boot shim (entrypoint.sh)
+# pre-seeds the credential from the gmail-oauth-* secrets, then launches
+# workspace-mcp in streamable-http on :3002. Legacy single-user mode has no
+# transport auth of its own, so localhost-only containment is the boundary (same
+# posture as n8nmcp); the PUBLIC gate is the gateway's per-system bearer. 512Mi:
+# the tool registry is light (no nodes.db like n8n-mcp).
+printf '      - name: workspacemcp\n'
+printf '        image: %s\n' "${WORKSPACE_MCP_IMAGE}"
+printf '        resources:\n'
+printf '          limits:\n'
+printf '            cpu: "1"\n'
+printf '            memory: 512Mi\n'
+printf '        env:\n'
+emit_env WORKSPACE_MCP_TRANSPORT "streamable-http"
+emit_env WORKSPACE_MCP_HOST "0.0.0.0"
+emit_env WORKSPACE_MCP_PORT "3002"
+emit_env WORKSPACE_MCP_CREDENTIALS_DIR "/creds"
+emit_env MCP_SINGLE_USER_MODE "1"
+emit_env OAUTHLIB_INSECURE_TRANSPORT "1"
+emit_env WORKSPACE_MCP_TOOLS "calendar gmail"
+emit_env WORKSPACE_MCP_READ_ONLY "1"
+emit_env WORKSPACE_GOOGLE_ACCOUNT_LABEL "${WORKSPACE_GOOGLE_ACCOUNT_LABEL}"
+# Shared Google identity (the gmail-oauth-* app + refresh token already in control
+# SM). The boot shim reads these and writes the single-user credential file.
+emit_secret GOOGLE_OAUTH_CLIENT_ID gmail-oauth-client-id
+emit_secret GOOGLE_OAUTH_CLIENT_SECRET gmail-oauth-client-secret
+emit_secret GMAIL_OAUTH_REFRESH_TOKEN gmail-oauth-refresh-token
 
 printf '  traffic:\n'
 printf '  - latestRevision: true\n'
