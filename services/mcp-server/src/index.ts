@@ -28,6 +28,7 @@ import {
 } from './repo-approval.js';
 import { handleChatUpdate } from './telegram-chat.js';
 import { proxyToN8nMcp, n8nMcpEnabled, isAllowedN8nSystem } from './n8n-mcp-proxy.js';
+import { proxyToWorkspaceMcp, workspaceMcpEnabled, isAllowedWorkspaceSystem } from './workspace-mcp-proxy.js';
 import { googleConfigured, googleAuthorizeUrl, exchangeGoogleCode, emailAllowed } from './google-oauth.js';
 
 const PORT = Number(process.env.PORT ?? 3000);
@@ -76,6 +77,11 @@ const TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;  // 30 days; Claude re-authorizes
 const TOKEN_TTL_SEC = Math.floor(TOKEN_TTL_MS / 1000);
 const AUTH_CODE_TTL_MS = 10 * 60 * 1000;
 const OIDC_BEARER_TTL_MS = 60 * 60 * 1000;  // 1 hour — NIST SP 800-63C for ephemeral CI bearers
+// Long-lived: this bearer is stored inside an n8n MCP Client Tool credential and
+// must keep working unattended. Refreshed idempotently by each system's
+// bootstrap-google-mcp.yml re-run.
+const WORKSPACE_RUNTIME_TTL_MS = 365 * 24 * 60 * 60 * 1000;  // 1 year
+const WORKSPACE_RUNTIME_TTL_SEC = Math.floor(WORKSPACE_RUNTIME_TTL_MS / 1000);
 
 interface PendingCode {
   redirectUri: string;
@@ -716,6 +722,66 @@ app.all('/n8n/:system/mcp', async (req: Request, res: Response) => {
     return;
   }
   await proxyToN8nMcp(req, res, system);
+});
+
+// ── Google Workspace MCP — shared identity, per-system bearer ───────────────────
+//
+// /workspace/<system>/mcp reverse-proxies the MCP protocol to the internal
+// Google Workspace MCP sidecar. Every system shares ONE Google identity (the
+// shared gmail-oauth-* token pre-seeded into the sidecar), so — unlike the n8n
+// path — there is no per-tenant credential injection; the proxy is a thin,
+// bearer-gated pass-through. The system identity is the URL path AND the signed
+// `system` claim on the long-lived 'workspace-runtime' bearer, so a token minted
+// for one system is a hard 403 on any other path.
+
+// Mint a system-scoped, long-lived Workspace MCP bearer (admin-gated). Each
+// system's bootstrap-google-mcp.yml exchanges mcp-server-admin-secret (read from
+// SM via WIF) for a token bound to exactly one system, then stores it in that
+// system's n8n MCP Client Tool credential.
+app.post('/workspace/:system/token', (req: Request, res: Response) => {
+  const provided = (req.headers['x-admin-secret'] as string | undefined) ?? '';
+  if (!secretMatches(provided)) {
+    res.status(403).json({ error: 'unauthorized' });
+    return;
+  }
+  const system = req.params.system;
+  if (!isAllowedWorkspaceSystem(system)) {
+    res.status(404).json({ error: 'unknown_system' });
+    return;
+  }
+  const token = signBearer(WORKSPACE_RUNTIME_TTL_MS, 'workspace-runtime', { system });
+  res.json({ access_token: token, token_type: 'Bearer', expires_in: WORKSPACE_RUNTIME_TTL_SEC });
+});
+
+app.all('/workspace/:system/mcp', async (req: Request, res: Response) => {
+  const system = req.params.system;
+  if (!workspaceMcpEnabled()) {
+    res.status(503).json({ error: 'workspace_mcp_disabled' });
+    return;
+  }
+  if (!isAllowedWorkspaceSystem(system)) {
+    res.status(404).json({ error: 'unknown_system' });
+    return;
+  }
+  const authHeader = req.headers['authorization'] ?? '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
+  const payload = token ? verifyBearer(token) : null;
+  if (!token || payload === null) {
+    res
+      .status(401)
+      .set(
+        'WWW-Authenticate',
+        `Bearer realm="${BASE_URL}", resource_metadata="${BASE_URL}/.well-known/oauth-protected-resource"`,
+      )
+      .json({ error: 'unauthorized' });
+    return;
+  }
+  // Hard tenant isolation: a system-scoped token may reach only its own path.
+  if (payload.kind === 'workspace-runtime' && payload.system !== system) {
+    res.status(403).json({ error: 'system_mismatch' });
+    return;
+  }
+  await proxyToWorkspaceMcp(req, res);
 });
 
 // Must be registered after all routes so it sees errors thrown by handlers.

@@ -19,6 +19,8 @@ on:
     branches: [main]
     paths:
       - 'services/mcp-server/**'
+      - 'services/workspace-mcp/**'
+      - 'scripts/render-mcp-service-yaml.sh'
       - '.github/workflows/deploy-mcp-server.yml'
   workflow_dispatch:
     inputs:
@@ -61,6 +63,10 @@ jobs:
       # gated by resolveN8nTarget needing a real GCP project + n8n-api-key).
       # Set to a CSV instead to pin to specific systems.
       N8N_DEV_ALLOWED_SYSTEMS: "*"
+      # Which systems may reach the shared Google Workspace MCP sidecar ("*" =
+      # any valid system name; the Google identity is shared, so there is no
+      # per-system reachability gate — the per-system bearer is the boundary).
+      WORKSPACE_ALLOWED_SYSTEMS: "*"
       # Google-login email allowlist for the operator OAuth flow (gateway-native
       # Google IdP). Only these emails may authenticate interactively.
       OAUTH_ALLOWED_EMAILS: "edri2or@gmail.com"
@@ -588,6 +594,21 @@ jobs:
           echo "image=${DEST}" >> "$GITHUB_OUTPUT"
           echo "INFO: mirrored ${N8N_MCP_UPSTREAM_IMAGE} -> ${DEST}"
 
+      - name: Build and push Google Workspace MCP sidecar image
+        id: workspacemcp-image
+        run: |
+          set -euo pipefail
+          # Our own image: python base + workspace-mcp + the boot shim that
+          # pre-seeds the shared single-user credential (services/workspace-mcp/).
+          # Built + pushed to AR like the gateway image; deployed as the third
+          # container (localhost:3002) by render-mcp-service-yaml.sh.
+          IMAGE="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT}/${AR_REPO}/workspace-mcp:${GITHUB_SHA}"
+          gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
+          docker build -t "${IMAGE}" services/workspace-mcp/
+          docker push "${IMAGE}"
+          echo "image=${IMAGE}" >> "$GITHUB_OUTPUT"
+          echo "INFO: built + pushed ${IMAGE}"
+
       - name: Deploy to Cloud Run
         id: deploy
         run: |
@@ -620,10 +641,12 @@ jobs:
             SERVICE="${SERVICE}" \
             GATEWAY_IMAGE="${{ steps.image.outputs.image }}" \
             N8N_MCP_IMAGE="${{ steps.n8nmcp-image.outputs.image }}" \
+            WORKSPACE_MCP_IMAGE="${{ steps.workspacemcp-image.outputs.image }}" \
             RUNTIME_SA_EMAIL="${RUNTIME_SA_EMAIL}" \
             PUBLIC_BASE_URL="${PUBLIC_BASE_URL}" \
             N8N_DEV_ALLOWED_SYSTEMS="${N8N_DEV_ALLOWED_SYSTEMS}" \
             OAUTH_ALLOWED_EMAILS="${OAUTH_ALLOWED_EMAILS}" \
+            WORKSPACE_ALLOWED_SYSTEMS="${WORKSPACE_ALLOWED_SYSTEMS}" \
             bash scripts/render-mcp-service-yaml.sh > /tmp/mcp-service.yaml || return 1
             gcloud run services replace /tmp/mcp-service.yaml \
               --region="${GCP_REGION}" \

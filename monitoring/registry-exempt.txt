@@ -69,6 +69,9 @@ templates/system/.github/workflows/bootstrap-gmail-oauth.yml
 .github/workflows/prove-on-test-system.yml
 .github/workflows/cleanup-orphan-linear-webhooks.yml
 .github/workflows/n8n-mcp-smoke.yml
+# Manual smoke: proves the central Google Workspace MCP gateway live (mint bearer
+# -> handshake -> shared Google read). workflow_dispatch only; no cadence to prove.
+.github/workflows/google-mcp-smoke.yml
 # One-shot: bulk-delete unused org repos (keep-list; dry-run gated).
 .github/workflows/bulk-delete-repos.yml
 # Proposal-only: sends the Telegram repo-delete card; cannot delete (deletion is in the MCP callback).
