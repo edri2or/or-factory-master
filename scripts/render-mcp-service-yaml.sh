@@ -22,6 +22,10 @@ set -euo pipefail
 OAUTH_ALLOWED_EMAILS="${OAUTH_ALLOWED_EMAILS:-}"   # Google-login email allowlist (may be empty)
 # Which systems may reach the shared Google Workspace MCP ("*" = any valid name).
 WORKSPACE_ALLOWED_SYSTEMS="${WORKSPACE_ALLOWED_SYSTEMS:-*}"
+# Which systems' agents may use the tenant-locked factory telemetry subset at
+# /factory/<system>/mcp ("*" = any valid system name — each bearer is already
+# hard-bound to one system). Set empty to kill-switch the surface (all 404).
+FACTORY_TOOLS_ALLOWED_SYSTEMS="${FACTORY_TOOLS_ALLOWED_SYSTEMS:-*}"
 # Stable local key the sidecar files the shared credential under; the n8n agent
 # passes this exact string as user_google_email (Google auths by the token).
 WORKSPACE_GOOGLE_ACCOUNT_LABEL="${WORKSPACE_GOOGLE_ACCOUNT_LABEL:-shared-google@or-infra.com}"
@@ -112,6 +116,7 @@ emit_env OAUTH_ALLOWED_EMAILS "${OAUTH_ALLOWED_EMAILS}"
 # the slashless form) + which systems may reach it.
 emit_env WORKSPACE_MCP_URL "http://localhost:3002/mcp/"
 emit_env WORKSPACE_ALLOWED_SYSTEMS "${WORKSPACE_ALLOWED_SYSTEMS}"
+emit_env FACTORY_TOOLS_ALLOWED_SYSTEMS "${FACTORY_TOOLS_ALLOWED_SYSTEMS}"
 for pair in "${GATEWAY_SECRETS[@]}"; do
   emit_secret "${pair%%=*}" "${pair#*=}"
 done

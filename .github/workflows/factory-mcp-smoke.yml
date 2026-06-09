@@ -1,0 +1,67 @@
+name: factory MCP tenant smoke
+
+# Proves the tenant-locked factory telemetry MCP end to end: mint a
+# system-scoped factory-runtime bearer, run the MCP handshake through
+# /factory/<system>/mcp, list EXACTLY the 8 scoped tools, read the system's
+# real n8n workflow list, and verify both cross-tenant walls (a probe to
+# another system's host -> tenant_blocked; the token on another system's
+# path -> 403; no token -> 401). The admin secret is read from Secret Manager
+# via WIF inside the run step (masked, never persisted) — it never enters a
+# Claude session. Manual only.
+
+on:
+  workflow_dispatch:
+    inputs:
+      system:
+        description: "System to smoke-test (must be on the gateway allowlist)"
+        required: false
+        default: "or-adhd-agent"
+        type: string
+
+concurrency:
+  group: factory-mcp-smoke
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  smoke:
+    name: Prove the tenant-locked telemetry surface
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT: "or-factory-master-control"
+      GCP_REGION: "me-west1"
+      SERVICE: "factory-master-actions-mcp"
+      BROKER_SA: "factory-master-broker@or-factory-master-control.iam.gserviceaccount.com"
+      WIF_PROVIDER: "projects/140345952904/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
+
+      - name: Authenticate to GCP via WIF
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093  # v3.0.0
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.BROKER_SA }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db  # v3.0.1
+
+      - name: Run the tenant smoke
+        env:
+          SMOKE_SYSTEM: ${{ inputs.system }}
+        run: |
+          set -euo pipefail
+          # Resolve the live gateway URL and read the admin secret IN-STEP so the
+          # secret stays in this shell only (masked, never written to GITHUB_ENV).
+          GATEWAY_URL=$(gcloud run services describe "${SERVICE}" \
+            --region="${GCP_REGION}" --project="${GCP_PROJECT}" \
+            --format='value(status.url)')
+          ADMIN_SECRET=$(gcloud secrets versions access latest \
+            --secret="mcp-server-admin-secret" --project="${GCP_PROJECT}" | tr -d '\r\n')
+          echo "::add-mask::${ADMIN_SECRET}"
+          export GATEWAY_URL ADMIN_SECRET
+          python3 scripts/factory-mcp-smoke.py

@@ -72,6 +72,10 @@ templates/system/.github/workflows/bootstrap-gmail-oauth.yml
 # Manual smoke: proves the central Google Workspace MCP gateway live (mint bearer
 # -> handshake -> shared Google read). workflow_dispatch only; no cadence to prove.
 .github/workflows/google-mcp-smoke.yml
+# Manual smoke: proves the tenant-locked factory telemetry MCP live (mint scoped
+# bearer -> handshake -> exact 8-tool list -> real n8n read + two cross-tenant
+# blocks). workflow_dispatch only; no cadence to prove.
+.github/workflows/factory-mcp-smoke.yml
 # One-shot: bulk-delete unused org repos (keep-list; dry-run gated).
 .github/workflows/bulk-delete-repos.yml
 # Proposal-only: sends the Telegram repo-delete card; cannot delete (deletion is in the MCP callback).

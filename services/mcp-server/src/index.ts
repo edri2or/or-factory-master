@@ -7,7 +7,8 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { registerTools } from './tools.js';
 import { registerOrgReadTools } from './org-read-tools.js';
 import { verifyGitHubOidc } from './oidc-verifier.js';
-import { signBearer, verifyBearer, revokeBearer } from './bearer.js';
+import { signBearer, verifyBearer, revokeBearer, type BearerPayload, type BearerKind } from './bearer.js';
+import { registerFactoryScopedTools, isAllowedFactorySystem } from './factory-scope.js';
 import { sendTelegramMessage } from './observability-client.js';
 import { handleLinearWebhook, registerLinearWebhook } from './oil-autofix.js';
 import { registerApproval, handleTelegramCallback } from './oil-approval.js';
@@ -82,6 +83,23 @@ const OIDC_BEARER_TTL_MS = 60 * 60 * 1000;  // 1 hour — NIST SP 800-63C for ep
 // bootstrap-google-mcp.yml re-run.
 const WORKSPACE_RUNTIME_TTL_MS = 365 * 24 * 60 * 60 * 1000;  // 1 year
 const WORKSPACE_RUNTIME_TTL_SEC = Math.floor(WORKSPACE_RUNTIME_TTL_MS / 1000);
+// Same posture as the workspace bearer: long-lived because it is stored inside
+// an n8n MCP Client Tool credential at provision time and must keep working
+// unattended; refreshed idempotently by a re-provision.
+const FACTORY_RUNTIME_TTL_MS = 365 * 24 * 60 * 60 * 1000;  // 1 year
+const FACTORY_RUNTIME_TTL_SEC = Math.floor(FACTORY_RUNTIME_TTL_MS / 1000);
+
+// A system-scoped route accepts exactly ONE system-scoped bearer kind — bound
+// to the path's system — plus the operator-grade kinds ('oauth' = claude.ai /
+// Google login, 'admin' = the CI admin-secret exchange; both already reach the
+// full /mcp surface, so allowing them here grants nothing extra). Every OTHER
+// kind is refused, including a DIFFERENT route's system-scoped bearer: a
+// long-lived runtime token stored in one surface's credential (e.g. a
+// workspace-runtime bearer inside an n8n node) can never drive another surface.
+function systemRouteAllows(payload: BearerPayload, scopedKind: BearerKind, system: string): boolean {
+  if (payload.kind === scopedKind) return payload.system === system;
+  return payload.kind === 'oauth' || payload.kind === 'admin';
+}
 
 interface PendingCode {
   redirectUri: string;
@@ -716,8 +734,9 @@ app.all('/n8n/:system/mcp', async (req: Request, res: Response) => {
       .json({ error: 'unauthorized' });
     return;
   }
-  // Hard tenant isolation: a system-scoped token may drive only its own system.
-  if (payload.kind === 'n8n-dev' && payload.system !== system) {
+  // Hard tenant isolation: only an n8n-dev bearer for THIS system (or an
+  // operator-grade bearer) may drive the live-write proxy.
+  if (!systemRouteAllows(payload, 'n8n-dev', system)) {
     res.status(403).json({ error: 'system_mismatch' });
     return;
   }
@@ -776,12 +795,80 @@ app.all('/workspace/:system/mcp', async (req: Request, res: Response) => {
       .json({ error: 'unauthorized' });
     return;
   }
-  // Hard tenant isolation: a system-scoped token may reach only its own path.
-  if (payload.kind === 'workspace-runtime' && payload.system !== system) {
+  // Hard tenant isolation: only a workspace-runtime bearer for THIS system
+  // (or an operator-grade bearer) may reach the shared Workspace sidecar.
+  if (!systemRouteAllows(payload, 'workspace-runtime', system)) {
     res.status(403).json({ error: 'system_mismatch' });
     return;
   }
   await proxyToWorkspaceMcp(req, res);
+});
+
+// ── Factory telemetry MCP — tenant-locked subset of the factory's own tools ────
+//
+// /factory/<system>/mcp serves an IN-PROCESS per-request McpServer (same
+// stateless pattern as /mcp) that registers ONLY the hardened 8-tool subset
+// from factory-scope.ts, with the system identity injected server-side from the
+// signed bearer claim. A system's agent gets read-only telemetry over ITSELF —
+// its n8n, its Railway services, its repo's CI runs, its one public host — and
+// nothing else: no org-read tools, no dispatch_workflow, no GCP/Cloudflare.
+
+// Mint a system-scoped, long-lived factory-runtime bearer (admin-gated).
+// Stage 2 of mcp-birth-bundle: provision-system.yml exchanges
+// mcp-server-admin-secret (read from control SM via WIF) for a token bound to
+// exactly one system, then stores it in that system's SM (factory-mcp-bearer)
+// for the n8n "Factory MCP" credential.
+app.post('/factory/:system/token', (req: Request, res: Response) => {
+  const provided = (req.headers['x-admin-secret'] as string | undefined) ?? '';
+  if (!secretMatches(provided)) {
+    res.status(403).json({ error: 'unauthorized' });
+    return;
+  }
+  const system = req.params.system;
+  if (!isAllowedFactorySystem(system)) {
+    res.status(404).json({ error: 'unknown_system' });
+    return;
+  }
+  const token = signBearer(FACTORY_RUNTIME_TTL_MS, 'factory-runtime', { system });
+  res.json({ access_token: token, token_type: 'Bearer', expires_in: FACTORY_RUNTIME_TTL_SEC });
+});
+
+app.all('/factory/:system/mcp', async (req: Request, res: Response) => {
+  const system = req.params.system;
+  if (!isAllowedFactorySystem(system)) {
+    res.status(404).json({ error: 'unknown_system' });
+    return;
+  }
+  const authHeader = req.headers['authorization'] ?? '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
+  const payload = token ? verifyBearer(token) : null;
+  if (!token || payload === null) {
+    res
+      .status(401)
+      .set(
+        'WWW-Authenticate',
+        `Bearer realm="${BASE_URL}", resource_metadata="${BASE_URL}/.well-known/oauth-protected-resource"`,
+      )
+      .json({ error: 'unauthorized' });
+    return;
+  }
+  // Hard tenant isolation: only a factory-runtime bearer for THIS system (or
+  // an operator-grade bearer) may reach the scoped telemetry subset.
+  if (!systemRouteAllows(payload, 'factory-runtime', system)) {
+    res.status(403).json({ error: 'system_mismatch' });
+    return;
+  }
+
+  const server = new McpServer({ name: 'factory-telemetry-mcp', version: '1.0.0' });
+  registerFactoryScopedTools(server, system);
+  const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+
+  try {
+    await server.connect(transport);
+    await transport.handleRequest(req, res, req.body);
+  } finally {
+    await server.close().catch(() => undefined);
+  }
 });
 
 // Must be registered after all routes so it sees errors thrown by handlers.
