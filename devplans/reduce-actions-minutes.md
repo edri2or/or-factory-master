@@ -19,7 +19,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
 | 1 | מעקות בטיחות זולים (timeout + concurrency + תדירות audits) | completed | `.github/workflows/*.yml`, `templates/system/.github/workflows/*.yml`, golden |
-| 2 | ייעול דיפלוי לבדיקות (דילוג Caddy/worker + קיצור המתנת SSL ב-reuse) | pending | `templates/system/.github/workflows/deploy-railway-cloudflare.yml`, golden |
+| 2 | ייעול דיפלוי לבדיקות (דילוג Caddy/worker + קיצור המתנת SSL ב-reuse) | completed | `templates/system/.github/workflows/deploy-railway-cloudflare.yml`, golden |
 | 3 | הוכחה חיה + קידום + פירוק | pending | מערכת-טסט חיה (reuse mode) |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
@@ -55,7 +55,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 
 **הוכחה תפקודית (באותו שלב):** תצורה — נבדק ע"י השערים הסטטיים + רינדור הזהב שמראה את הדגל וההתניה. ההוכחה ההתנהגותית (דיפלוי-בדיקה רץ מהר יותר ועדיין עולה תקין) בשלב 3.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם (2026-06-09). נוסף שלב `Detect throwaway test system` שמחשב `SKIP_EDGE=true` כש-`GCP_PROJECT_ID` מתחיל ב-`factory-test-/v2-test-/or-test-` (מערכות אמיתיות לא נוגעות). 5 שלבי ה-Caddy + בניית ה-worker מדולגים במערכת-בדיקה (n8n שומר את הדומיין, `/healthz` עובד). בנוסף קוצרו שתי לולאות readiness לכל המערכות; כל לולאות התעודה/בנייה נשארו רחבות. הזהב רוענן (רק hash של deploy השתנה); yamllint+shellcheck נקיים. ממתין ל-CI ולהוכחה החיה בשלב 3.
 
 **שינוי תוכנית:** —
 
@@ -89,3 +89,4 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 > שורה פשוטה אחת לכל שלב שהסתיים — בשפה ש-Or מבין, בלי ז'רגון.
 
 - שלב 1 הושלם — שמנו "תקרת זמן" קשיחה לכל ריצת הקמה/דיפלוי (שלא תרוץ שעות בטעות), ביטלנו ריצות-CI כפולות, והורדנו את הבדיקות האוטומטיות מ-4-פעמים-ביום ל-פעם-ביום. זה לבד מבטיח שהפיצוץ של מאי לא יחזור.
+- שלב 2 הושלם — מערכות-בדיקה זרוקות ידלגו עכשיו על הבנייה הארוכה (Caddy) ועל המתנות מיותרות, כך שכל סבב בדיקה יהיה הרבה יותר זול בדקות. מערכות אמיתיות לא מושפעות בכלל. (עדיין צריך להוכיח את זה חי — שלב 3).
