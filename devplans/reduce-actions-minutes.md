@@ -18,7 +18,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
-| 1 | מעקות בטיחות זולים (timeout + concurrency + תדירות audits) | pending | `.github/workflows/*.yml`, `templates/system/.github/workflows/*.yml`, golden |
+| 1 | מעקות בטיחות זולים (timeout + concurrency + תדירות audits) | completed | `.github/workflows/*.yml`, `templates/system/.github/workflows/*.yml`, golden |
 | 2 | ייעול דיפלוי לבדיקות (דילוג Caddy/worker + קיצור המתנת SSL ב-reuse) | pending | `templates/system/.github/workflows/deploy-railway-cloudflare.yml`, golden |
 | 3 | הוכחה חיה + קידום + פירוק | pending | מערכת-טסט חיה (reuse mode) |
 
@@ -39,7 +39,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 
 **הוכחה תפקודית (באותו שלב):** תצורה — נבדק ע"י השערים הסטטיים (Playground tests + Changelog gates incl. golden-in-sync) ורינדור הזהב שמראה שה-`timeout-minutes`/`concurrency` נוכחים בתבנית. ההוכחה ההתנהגותית בשלב 3.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם (2026-06-09). נוספו `timeout-minutes` (provision=30, deploy=45), `concurrency: cancel-in-progress` ל-9 וורקפלואי CI (5 פקטורי + 4 תבנית), והרחבת שני ה-audits ל-יומי. הזהב רוענן (MANIFEST עודכן ל-5 קבצי תבנית); אומת מקומית `check-system-golden.sh` ללא drift. ממתין לאישור שערי ה-CI על PR #348.
 
 **שינוי תוכנית:** —
 
@@ -88,4 +88,4 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 
 > שורה פשוטה אחת לכל שלב שהסתיים — בשפה ש-Or מבין, בלי ז'רגון.
 
-- <מתמלא תוך כדי>
+- שלב 1 הושלם — שמנו "תקרת זמן" קשיחה לכל ריצת הקמה/דיפלוי (שלא תרוץ שעות בטעות), ביטלנו ריצות-CI כפולות, והורדנו את הבדיקות האוטומטיות מ-4-פעמים-ביום ל-פעם-ביום. זה לבד מבטיח שהפיצוץ של מאי לא יחזור.

@@ -48,6 +48,7 @@ jobs:
   deploy:
     name: Deploy n8n
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     # WIF CEL pins ref=refs/heads/main; running off other branches will fail to auth.
     if: github.ref == 'refs/heads/main'
     permissions:
