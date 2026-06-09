@@ -118,9 +118,13 @@ jobs:
           echo "::add-mask::$APP_ID"; echo "::add-mask::$INSTALL_ID"
           gcloud secrets versions access latest --secret=github-app-private-key --project="$SANDBOX_PROJECT" > /tmp/test-app-key.pem 2>/dev/null || true
           TOKEN=""
+          # workflows:write is required to push a change to a .github/workflows/* file
+          # (GitHub refuses an App push that touches a workflow file without it) — needed
+          # to prove changes to the system's own deploy/CI workflows, not just n8n JSONs.
+          # The per-system App already holds workflows:write on this one repo (register-system-app).
           if [ -s /tmp/test-app-key.pem ] && [ -n "$APP_ID" ] && [ -n "$INSTALL_ID" ]; then
             TOKEN=$(bash scripts/generate-app-token.sh /tmp/test-app-key.pem "$APP_ID" "$INSTALL_ID" "" \
-              '{"contents":"write","pull_requests":"write","actions":"write"}' "[\"$SYSTEM_NAME\"]" 2>/dev/null || true)
+              '{"contents":"write","pull_requests":"write","actions":"write","workflows":"write"}' "[\"$SYSTEM_NAME\"]" 2>/dev/null || true)
           fi
           shred -u /tmp/test-app-key.pem 2>/dev/null || rm -f /tmp/test-app-key.pem
           [ -n "$TOKEN" ] || { echo "FAIL: could not mint a test-repo token — are github-app-* present in ${SANDBOX_PROJECT} and is the App installed on edri2or/${SYSTEM_NAME}?" >&2; exit 1; }

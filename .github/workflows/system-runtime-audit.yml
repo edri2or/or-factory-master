@@ -14,7 +14,7 @@ name: System Runtime Audit
 
 on:
   schedule:
-    - cron: "15 */6 * * *"   # every 6h at :15 (staggered off factory-health-audit's :00)
+    - cron: "15 6 * * *"   # daily at 06:15 UTC (staggered off factory-health-audit's :00; widened from every-6h to cut Actions minutes — downtime is caught sub-minute by Better Stack + bs-incidents)
   workflow_dispatch:
 
 permissions: {}
