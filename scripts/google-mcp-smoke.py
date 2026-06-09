@@ -10,10 +10,12 @@ Steps (each asserted):
   1. mint a system-scoped 'workspace-runtime' bearer
      (POST /workspace/<system>/token, X-Admin-Secret)
   2. MCP initialize  (capture mcp-session-id; tolerate SSE or JSON)
-  3. tools/list  -> must include Google tools (e.g. list_calendars)
-  4. tools/call list_calendars(user_google_email=<label>)  -> must return real
-     calendar data, NOT an "authentication needed" prompt (proves the pre-seeded
-     shared token refreshed against Google and the read reached the live account)
+  3. tools/list  -> must include Google tools (e.g. list_gmail_labels)
+  4. tools/call list_gmail_labels(user_google_email=<label>)  -> must return real
+     Gmail data, NOT an "authentication needed" prompt (proves the pre-seeded
+     shared token refreshed against Google and the read reached the live account).
+     We read GMAIL labels (covered by the token's gmail.modify scope); list_calendars
+     would need calendar.readonly, which this write-scoped token deliberately lacks.
 
 Env: GATEWAY_URL, ADMIN_SECRET, SMOKE_SYSTEM (default or-adhd-agent),
      GOOGLE_ACCOUNT_LABEL (default shared-google@or-infra.com).
@@ -138,20 +140,20 @@ mcp("notifications/initialized", notify=True)
 # ── 3. tools/list ──
 _, tl = mcp("tools/list")
 names = [t.get("name", "") for t in tl.get("result", {}).get("tools", [])]
-if "list_calendars" not in names:
-    _fail("tools/list did not include list_calendars", json.dumps(names)[:600])
+if "list_gmail_labels" not in names:
+    _fail("tools/list did not include list_gmail_labels", json.dumps(names)[:600])
 print(f"PASS [3/4] tools/list: {len(names)} Google tools "
-      f"(incl. list_calendars; gateway->sidecar reachable)")
+      f"(incl. list_gmail_labels; gateway->sidecar reachable)")
 
 # ── 4. real read against the shared Google account ──
-ok, text = tool_call("list_calendars", {"user_google_email": LABEL})
+ok, text = tool_call("list_gmail_labels", {"user_google_email": LABEL})
 needs_auth = ("ACTION REQUIRED" in text) or ("Authentication Needed" in text) \
     or ("authorize" in text.lower() and "oauth" in text.lower())
 if not ok or needs_auth:
-    _fail("list_calendars did not return real data — the shared token did not "
+    _fail("list_gmail_labels did not return real data — the shared token did not "
           "refresh against Google (check gmail-oauth-* secrets are real, not "
           "placeholders)", text)
-print(f"PASS [4/4] list_calendars returned real calendar data for the shared "
+print(f"PASS [4/4] list_gmail_labels returned real Gmail data for the shared "
       f"account ({len(text)} bytes)")
 
 print("\nSMOKE PASS: full loop proven (gateway bearer -> Workspace MCP sidecar -> "

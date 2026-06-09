@@ -37,15 +37,17 @@ data = {
     "token_uri": "https://oauth2.googleapis.com/token",
     "client_id": os.environ.get("GOOGLE_OAUTH_CLIENT_ID", ""),
     "client_secret": os.environ.get("GOOGLE_OAUTH_CLIENT_SECRET", ""),
-    # The scopes the shared token was consented for (bootstrap-gmail-oauth.yml).
+    # EXACTLY the scopes the shared token was consented for (the SCOPE string in
+    # bootstrap-gmail-oauth.yml). Must match the grant precisely: a superset (e.g.
+    # adding openid/email/profile) makes google-auth raise "Scope has changed" on
+    # refresh. These are write-capable scopes — the server runs full mode (not
+    # --read-only), since read-only mode would demand readonly scopes this token
+    # lacks. Per-action write safety is the system's HITL gate (Stage 1).
     "scopes": [
         "https://www.googleapis.com/auth/gmail.modify",
         "https://www.googleapis.com/auth/calendar.events",
         "https://www.googleapis.com/auth/gmail.settings.basic",
         "https://www.googleapis.com/auth/gmail.settings.sharing",
-        "openid",
-        "https://www.googleapis.com/auth/userinfo.email",
-        "https://www.googleapis.com/auth/userinfo.profile",
     ],
     "expiry": None,
 }
@@ -57,10 +59,12 @@ sys.stderr.write(f"INFO: seeded single-user credential at {path}\n")
 PY
 
 ARGS=(--single-user --transport streamable-http --tools "${TOOLS_ARR[@]}")
-# Read-only by default (smallest blast radius for v1; flip WORKSPACE_MCP_READ_ONLY
-# to "0" + widen scopes to enable Gmail send / Calendar writes behind the system's
-# own HITL gate). See the security note in devplans/google-mcp-systems.md.
-if [ "${WORKSPACE_MCP_READ_ONLY:-1}" = "1" ]; then
+# Full mode by default: the shared token is WRITE-scoped (gmail.modify +
+# calendar.events), so --read-only would demand readonly scopes the token lacks
+# (Google then refuses every call). Per-action write safety is the system's own
+# HITL ✅ gate (Stage 1), not this flag. A true-read-only follow-up needs a
+# readonly-scoped shared token. Set WORKSPACE_MCP_READ_ONLY=1 only with such a token.
+if [ "${WORKSPACE_MCP_READ_ONLY:-0}" = "1" ]; then
   ARGS+=(--read-only)
 fi
 echo "INFO: launching workspace-mcp on :${PORT} tools=[${TOOLS_ARR[*]}] read_only=${WORKSPACE_MCP_READ_ONLY:-1}"
