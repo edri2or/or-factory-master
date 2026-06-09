@@ -3,24 +3,27 @@ import jwt from 'jsonwebtoken';
 const SIGNING_KEY = process.env.BEARER_SIGNING_KEY;
 if (!SIGNING_KEY) throw new Error('BEARER_SIGNING_KEY env var is required');
 
-export type BearerKind = 'oauth' | 'oidc' | 'admin' | 'n8n-dev' | 'workspace-runtime';
+export type BearerKind = 'oauth' | 'oidc' | 'admin' | 'n8n-dev' | 'workspace-runtime' | 'factory-runtime';
 
 export interface BearerPayload {
   exp: number;
   iat: number;
   kind: BearerKind;
-  // Present only on system-scoped tokens (kinds 'n8n-dev' and 'workspace-runtime'):
-  // the single system this bearer is bound to. The /n8n/<system>/mcp and
-  // /workspace/<system>/mcp handlers assert payload.system === <system-from-path>
-  // and 403 on mismatch, so a token minted for one system can never reach
-  // another's. ('workspace-runtime' is the long-lived bearer an n8n MCP Client
-  // Tool credential carries to reach the shared Google Workspace MCP.)
+  // Present only on system-scoped tokens (kinds 'n8n-dev', 'workspace-runtime'
+  // and 'factory-runtime'): the single system this bearer is bound to. The
+  // /n8n/<system>/mcp, /workspace/<system>/mcp and /factory/<system>/mcp
+  // handlers assert payload.system === <system-from-path> and 403 on mismatch,
+  // so a token minted for one system can never reach another's.
+  // ('workspace-runtime' is the long-lived bearer an n8n MCP Client Tool
+  // credential carries to reach the shared Google Workspace MCP;
+  // 'factory-runtime' is its twin for the tenant-locked factory telemetry
+  // subset at /factory/<system>/mcp.)
   system?: string;
 }
 
 // `extra` carries optional claims — currently only `system`, bound into
-// system-scoped bearers ('n8n-dev', 'workspace-runtime') so cross-tenant access
-// is a hard 403, not a convention.
+// system-scoped bearers ('n8n-dev', 'workspace-runtime', 'factory-runtime') so
+// cross-tenant access is a hard 403, not a convention.
 export function signBearer(
   ttlMs: number,
   kind: BearerKind,

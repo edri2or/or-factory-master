@@ -67,6 +67,10 @@ jobs:
       # any valid system name; the Google identity is shared, so there is no
       # per-system reachability gate — the per-system bearer is the boundary).
       WORKSPACE_ALLOWED_SYSTEMS: "*"
+      # Which systems' factory-runtime bearers may use the tenant-locked
+      # factory telemetry subset at /factory/<system>/mcp ("*" = any valid
+      # system name; each bearer is hard-bound to one system). Empty = off.
+      FACTORY_TOOLS_ALLOWED_SYSTEMS: "*"
       # Google-login email allowlist for the operator OAuth flow (gateway-native
       # Google IdP). Only these emails may authenticate interactively.
       OAUTH_ALLOWED_EMAILS: "edri2or@gmail.com"
@@ -647,6 +651,7 @@ jobs:
             N8N_DEV_ALLOWED_SYSTEMS="${N8N_DEV_ALLOWED_SYSTEMS}" \
             OAUTH_ALLOWED_EMAILS="${OAUTH_ALLOWED_EMAILS}" \
             WORKSPACE_ALLOWED_SYSTEMS="${WORKSPACE_ALLOWED_SYSTEMS}" \
+            FACTORY_TOOLS_ALLOWED_SYSTEMS="${FACTORY_TOOLS_ALLOWED_SYSTEMS}" \
             bash scripts/render-mcp-service-yaml.sh > /tmp/mcp-service.yaml || return 1
             gcloud run services replace /tmp/mcp-service.yaml \
               --region="${GCP_REGION}" \
