@@ -159,7 +159,9 @@ emit_env WORKSPACE_MCP_CREDENTIALS_DIR "/creds"
 emit_env MCP_SINGLE_USER_MODE "1"
 emit_env OAUTHLIB_INSECURE_TRANSPORT "1"
 emit_env WORKSPACE_MCP_TOOLS "calendar gmail"
-emit_env WORKSPACE_MCP_READ_ONLY "1"
+# Full mode: the shared token is write-scoped, so --read-only would demand
+# readonly scopes it lacks. Write safety is the system's HITL gate (Stage 1).
+emit_env WORKSPACE_MCP_READ_ONLY "0"
 emit_env WORKSPACE_GOOGLE_ACCOUNT_LABEL "${WORKSPACE_GOOGLE_ACCOUNT_LABEL}"
 # Shared Google identity (the gmail-oauth-* app + refresh token already in control
 # SM). The boot shim reads these and writes the single-user credential file.
