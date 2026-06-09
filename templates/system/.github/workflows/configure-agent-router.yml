@@ -297,6 +297,32 @@ jobs:
             echo "WARN: tavily-api-key missing in SM — research web-search tools skipped" >&2
           fi
 
+          # Google Workspace MCP (Stage 1 of the MCP-consumer platform): the ops-agent's
+          # google_workspace MCP Client Tool node reaches the central gateway's
+          # /workspace/<system>/mcp (shared Google identity) with a long-lived,
+          # system-scoped bearer minted by the broker at provision and stored in this
+          # system's SM as workspace-mcp-bearer. Build an httpBearerAuth credential from it
+          # so the bearer never lands in the workflow JSON. Additive + soft: a miss only
+          # strips the google_workspace tool (the router still configures).
+          WS_BEARER=$(_sm_read "workspace-mcp-bearer" || echo "")
+          [ -n "$WS_BEARER" ] && echo "::add-mask::${WS_BEARER}" || true
+          CRED_GOOGLE_MCP_ID=""
+          if [ -n "$WS_BEARER" ] && [ "$WS_BEARER" != "__NOT_CONFIGURED__" ]; then
+            WS_CRED_NAME="Google Workspace MCP"
+            CRED_GOOGLE_MCP_ID=$(jq -r --arg n "$WS_CRED_NAME" '[(.data // .) | .[]? | select(.name==$n)][0].id // empty' /tmp/ar-creds.json || echo "")
+            if [ -z "$CRED_GOOGLE_MCP_ID" ]; then
+              WS_CRED_BODY=$(jq -cn --arg n "$WS_CRED_NAME" --arg t "$WS_BEARER" '{name:$n, type:"httpBearerAuth", data:{token:$t}}')
+              HTTP=$(_napi POST "$BASE/rest/credentials" /tmp/ar-cred-ws.json "$WS_CRED_BODY")
+              { [ "$HTTP" = "200" ] || [ "$HTTP" = "201" ]; } || { head -c 300 /tmp/ar-cred-ws.json >&2 || true; echo "WARN: POST /rest/credentials (Google Workspace MCP) HTTP $HTTP — google_workspace skipped" >&2; }
+              CRED_GOOGLE_MCP_ID=$(jq -r '.data.id // .id // empty' /tmp/ar-cred-ws.json || echo "")
+            fi
+            { [ -n "$CRED_GOOGLE_MCP_ID" ] && [ "$CRED_GOOGLE_MCP_ID" != "null" ]; } \
+              && echo "INFO: Google Workspace MCP credential id=${CRED_GOOGLE_MCP_ID}" \
+              || { echo "WARN: no Google Workspace MCP credential id — google_workspace skipped" >&2; CRED_GOOGLE_MCP_ID=""; }
+          else
+            echo "WARN: workspace-mcp-bearer missing/placeholder in SM — google_workspace tool skipped" >&2
+          fi
+
           # (b2) Deepgram STT: Hebrew voice-to-text. Uses httpHeaderAuth with
           #      "Authorization: Token <key>". Graceful: absent → voice branch stripped
           #      from tg-inbound later. deepgram-api-key is copied from factory SM by
@@ -617,6 +643,7 @@ jobs:
                 -e "s#@@CRED_N8N_API_ID@@#${CRED_N8N_API_ID}#g" \
                 -e "s#@@CRED_POSTGRES_ID@@#${CRED_POSTGRES_ID}#g" \
                 -e "s#@@CRED_TAVILY_ID@@#${CRED_TAVILY_ID}#g" \
+                -e "s#@@CRED_GOOGLE_MCP_ID@@#${CRED_GOOGLE_MCP_ID}#g" \
                 -e "s#@@N8N_DOMAIN@@#${N8N_DOMAIN}#g" \
                 -e "s#@@CHAT_ID@@#${CHAT_ID}#g" \
                 -e "s#@@SYSTEM_NAME@@#${SYSTEM_NAME}#g" \
@@ -723,6 +750,18 @@ jobs:
                 && mv "/tmp/ar-prep-${file}.tmp" "/tmp/ar-prep-${file}" \
                 || echo "WARN: ${file} web-search strip failed — placeholder may remain" >&2
               echo "INFO: ${file} web_search_quick/web_search_extended → stripped (no Tavily credential)"
+            fi
+            # Google Workspace MCP (Stage 1): if no bearer credential was wired, strip the
+            # google_workspace MCP Client Tool node + its ai_tool connection from ops-agent so
+            # it never references an empty credential. Same jq pattern as the strips above.
+            if [ "$file" = "ops-agent.json" ] \
+               && { [ -z "$CRED_GOOGLE_MCP_ID" ] || [ "$CRED_GOOGLE_MCP_ID" = "null" ]; }; then
+              jq '(.nodes |= map(select(.name != "google_workspace")))
+                  | del(.connections."google_workspace")' \
+                "/tmp/ar-prep-${file}" > "/tmp/ar-prep-${file}.tmp" \
+                && mv "/tmp/ar-prep-${file}.tmp" "/tmp/ar-prep-${file}" \
+                || echo "WARN: ${file} google_workspace strip failed — placeholder may remain" >&2
+              echo "INFO: ${file} google_workspace → stripped (no Google Workspace MCP credential)"
             fi
             # Phase F follow-up (Stage 105): all 5 sub-agents now read style_profile from
             # Postgres and inject it into their system prompt. If no Postgres credential
