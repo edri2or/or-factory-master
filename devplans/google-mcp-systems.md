@@ -24,9 +24,9 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 |---|---|---|---|
 | 0a | ספייק de-risk: הוכחת מנגנון headless mode-C | completed | (ספייק מבודד ב-/tmp, ללא קוד מאגר) |
 | 0b | אירוח Google Workspace MCP כ-sidecar מרכזי ב-gateway | completed | `services/workspace-mcp/*`, `scripts/render-mcp-service-yaml.sh`, `.github/workflows/deploy-mcp-server.yml`, `services/mcp-server/src/*`, `.github/workflows/google-mcp-smoke.yml`, `scripts/google-mcp-smoke.py` |
-| 1 | תבנית מערכת: חיווט נוד MCP Client Tool לסוכן | in-progress | `templates/system/workflows/n8n/ops-agent.json`, `templates/system/.github/workflows/configure-agent-router.yml`, `.github/workflows/provision-system.yml`, `tests/golden/system/MANIFEST.sha256` |
-| 2 | הוכחה חיה על מערכת בדיקה זמנית | pending | (ריצה חיה, ללא שינוי קוד) |
-| 3 | קידום ל-main + פירוק מערכת הבדיקה | pending | merge + `decommission-test-system.yml` |
+| 1 | תבנית מערכת: חיווט נוד MCP Client Tool לסוכן | completed | `templates/system/workflows/n8n/ops-agent.json`, `templates/system/.github/workflows/configure-agent-router.yml`, `.github/workflows/provision-system.yml`, `tests/golden/system/MANIFEST.sha256` |
+| 2 | הוכחה חיה על מערכת בדיקה זמנית | completed | (ריצה חיה, ללא שינוי קוד) |
+| 3 | סגירה: תיעוד + פירוק מערכות הבדיקה | in-progress | תיעוד + `decommission-test-system.yml` |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
 >
@@ -107,29 +107,33 @@ golden רוענן. שערים מקומיים: ops-agent.json JSON תקין, yaml
 ### שלב 2 — הוכחה חיה על מערכת בדיקה זמנית
 
 **Acceptance:**
-- [ ] מערכת בדיקה זמנית (reuse, factory-test-25, 0 מכסה) עומדת — Or-gated.
-- [ ] השינוי הוחל חי + bootstrap-google-mcp רץ + סוכנים יובאו מחדש.
-- [ ] הסוכן עונה על שאלת Google אמיתית עם דאטה אמיתי דרך נתיב ה-MCP.
+- [x] מערכת בדיקה זמנית (`factory-test-045`, reuse על factory-test-25, 0 מכסה) עומדת.
+- [x] provision הזריק bearer → deploy → configure-agent-router יצר קרדנציאל + ייבא את הסוכן עם הנוד.
+- [x] הסוכן ענה על שאלת Google אמיתית עם דאטה אמיתי דרך נתיב ה-MCP.
 
-**הוכחה תפקודית (באותו שלב):** שאלה חיה ("מה ביומן מחר?") → תשובה עם דאטה אמיתי,
-מאומת דרך `inspect_n8n_execution` + Telegram. זה השער שתופס מה ש-CI לא תופס.
+**הוכחה תפקודית (הושגה 2026-06-09):** POST ל-`/webhook/agent-router` (דרך `probe_endpoint`,
+כי egress של הסביבה חוסם or-infra.com) עם משימת ops שדורשת גוגל → HTTP 200, הסוכן החזיר
+**38 תוויות Gmail אמיתיות** של החשבון המשותף (כולל "כספים" בעברית, "AI/Research") ב-18 שניות.
+אומת דרך המנוע: ריצת ops-agent (id=11) status=success — והדרך היחידה שלו לתוויות Gmail היא
+כלי `google_workspace`. הנוד native של n8n 1.121 התחבר ל-gateway ב-streamable-http (אין באג SSE).
 
-**הערת התקדמות אחרונה:** —
-
-**שינוי תוכנית:** —
+**שינוי תוכנית:** 3 תקלות תשתית תוקנו תוך כדי (לא קשורות לפיצ'ר): (1) שם reuse חייב
+`factory-test-` (gmcp-test-01 נדחה ב-WIF); (2) Railway edge הפיל זמנית את הדומיין → redeploy;
+(3) חשבון OpenRouter ללא יתרת קרדיט → Or טען. ההוכחה רצה דרך ה-webhook (לא Telegram, כי לבוט
+של מערכת בדיקה אין טוקן אמיתי).
 
 ---
 
-### שלב 3 — קידום + פירוק
+### שלב 3 — סגירה: תיעוד + פירוק
 
 **Acceptance:**
-- [ ] merge ל-main (התבנית מעתה שולחת Google MCP לכל provision חדש).
-- [ ] provision חדש מאמת שהקבצים נשלחים (golden משקף).
-- [ ] מערכת הבדיקה הזמנית פורקה — Or-gated, user-triggered.
+- [x] קידום (merge ל-main) כבר קרה בשלב 1 (Or בחר אפשרות א' — מיזוג לפני הבדיקה, fix-forward).
+- [x] תיעוד: devplan + changelog + journal מעודכנים.
+- [ ] פירוק `factory-test-045` + `gmcp-test-01` (`decommission-test-system.yml`) — Or-gated, user-triggered.
+- [ ] **follow-up מתועד:** שער-כתיבה קשיח לפני שמערכות אמיתיות יסתמכו על כתיבה בגוגל
+  (הגבלת הכלים שהנוד חושף, או טוקן read-only ייעודי). היום: כל 22 הכלים + הנחיית prompt ל-HITL.
 
-**הוכחה תפקודית (באותו שלב):** PR ממוזג + provision מאוחר שמראה את ה-bootstrap+node החדשים.
-
-**הערת התקדמות אחרונה:** —
+**הוכחה תפקודית (באותו שלב):** תיעוד בלבד + teardown מאומת (הריפואים מאורכבים).
 
 **שינוי תוכנית:** —
 
@@ -145,3 +149,5 @@ golden רוענן. שערים מקומיים: ops-agent.json JSON תקין, yaml
   דרך כל השרשרת (4/4). התשתית המרכזית עובדת.
 - שלב 1 (קוד) הושלם — כל מערכת חדשה שתיווצר תקבל את הסוכן שלה עם כלי גוגל מובנה. נשאר
   להוכיח חי על מערכת בדיקה זמנית (שלב 2).
+- שלב 2 הוכח חי — סוכן של מערכת בדיקה השתמש לבד בכלי גוגל וקרא 38 תוויות Gmail אמיתיות
+  (כולל "כספים"). החזון עובד מקצה לקצה. נשאר: לפרק את מערכות הבדיקה ולסגור תיעוד.
