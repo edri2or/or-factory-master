@@ -29,6 +29,11 @@ on:
         description: 'Type "copy" to confirm copying the Gmail OAuth secrets into control.'
         required: true
         type: string
+      rotate:
+        description: 'Also add a NEW version of gmail-oauth-refresh-token when control already has one (scope rotation). The previous version stays in SM history as the rollback. No-op when the source value equals the current control value.'
+        required: false
+        default: false
+        type: boolean
 
 permissions: {}
 
@@ -57,6 +62,8 @@ jobs:
           service_account: "factory-master-broker@or-factory-master-control.iam.gserviceaccount.com"
 
       - name: Copy secrets
+        env:
+          ROTATE: ${{ inputs.rotate }}
         run: |
           set -euo pipefail
 
@@ -130,8 +137,29 @@ jobs:
 
             if gcloud secrets versions access latest --secret="$name" \
                  --project="$DST_PROJECT" >/dev/null 2>&1; then
-              echo "INFO: $name already has a version in $DST_PROJECT — skipping copy"
-              skipped=$((skipped + 1))
+              if [ "$ROTATE" = "true" ]; then
+                # Rotation: add the new source value ON TOP of the existing one
+                # (old version stays in SM history = the documented rollback) —
+                # unless the value is unchanged, then adding a version is noise.
+                DST_TMP="$(mktemp /tmp/gmail_dst_XXXXXX)"
+                gcloud secrets versions access latest --secret="$name" \
+                  --project="$DST_PROJECT" > "$DST_TMP" 2>/dev/null || true
+                if cmp -s "$TMP_FILE" "$DST_TMP"; then
+                  echo "INFO: $name source value equals control's current — rotation is a no-op"
+                  skipped=$((skipped + 1))
+                else
+                  gcloud secrets versions add "$name" \
+                    --project="$DST_PROJECT" \
+                    --data-file="$TMP_FILE" \
+                    --quiet
+                  echo "PASS: ROTATED $name in $DST_PROJECT (previous version kept as rollback)"
+                  copied=$((copied + 1))
+                fi
+                shred -u "$DST_TMP" 2>/dev/null || rm -f "$DST_TMP"
+              else
+                echo "INFO: $name already has a version in $DST_PROJECT — skipping copy (pass rotate=true to add a new version)"
+                skipped=$((skipped + 1))
+              fi
             else
               gcloud secrets versions add "$name" \
                 --project="$DST_PROJECT" \
