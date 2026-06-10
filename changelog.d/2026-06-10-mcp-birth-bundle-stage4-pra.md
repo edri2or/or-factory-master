@@ -45,3 +45,14 @@ n8n login needed on the operator side; n8n's oauth callback is session-exempt
 and validated by the embedded state token. (The template bootstrap's fallback
 link has the same latent flaw — recorded as a follow-up; its primary path is
 the no-click preloaded token.)
+
+**Bridge (same stage):** `rotate-shared-gmail-token.yml` (new, one-shot,
+confirm-gated, registry-exempted) — after Or's click, no interactive path may
+dispatch a workflow on a system repo (the session GitHub MCP is
+factory-scoped; the factory MCP allowlist deliberately excludes ad-hoc system
+workflows). This narrow bridge dispatches or-adhd-agent's own
+`extract-gmail-refresh-token.yml` (inputs.confirm=extract) as the broker App —
+token scoped to that ONE repo with actions:write only — and follows the run
+to a terminal state. Target repo/workflow/inputs are hardcoded (not a generic
+dispatcher); the next chain step (copy with rotate=true) stays agent-driven
+after verification.
