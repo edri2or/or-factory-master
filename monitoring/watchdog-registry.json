@@ -7,7 +7,7 @@
       "type": "cron-workflow",
       "layer": "factory",
       "proof_method": "gh-run-freshness",
-      "cadence": { "cron": "0 */6 * * *", "tolerance_hours": 9 },
+      "cadence": { "cron": "0 6 * * *", "tolerance_hours": 30 },
       "evidence": { "repo": "edri2or/or-factory-master", "workflow_file": "factory-health-audit.yml" },
       "stage": 1,
       "enabled": true
@@ -18,7 +18,7 @@
       "type": "cron-workflow",
       "layer": "factory",
       "proof_method": "gh-run-freshness",
-      "cadence": { "cron": "15 */6 * * *", "tolerance_hours": 9 },
+      "cadence": { "cron": "15 6 * * *", "tolerance_hours": 30 },
       "evidence": { "repo": "edri2or/or-factory-master", "workflow_file": "system-runtime-audit.yml" },
       "stage": 1,
       "enabled": true
