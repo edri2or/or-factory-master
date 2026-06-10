@@ -29,7 +29,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 |---|---|---|---|
 | 1 | שלד + מנגנון אסינכרוני (כל הקוד + golden + שערים סטטיים) | completed | `templates/system/workflows/n8n/deep-research.json` (חדש), `agent-router.json`, `agents.manifest.json`, `templates/system/.github/workflows/configure-agent-router.yml`, `tests/golden/system/**` |
 | 2 | אימות חי על מערכת-טסט (costed, Or-gated) | completed | — (dispatch בלבד) |
-| 3 | קידום (מיזוג ל-main) + תיעוד + סגירה | pending | `docs/telegram-chat-bot.md`, `docs/roadmap.md` |
+| 3 | קידום (מיזוג ל-main) + תיעוד + סגירה | in-progress | `docs/telegram-chat-bot.md`, `docs/roadmap.md` |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
 >
