@@ -246,6 +246,24 @@ To act on GitHub **as this App**:
 - [Cloud Build history](https://console.cloud.google.com/cloud-build/builds?project=${GCP_PROJECT})
 - [IAM bindings](https://console.cloud.google.com/iam-admin/iam?project=${GCP_PROJECT})
 
+## Built-in MCP connections (Claude Code sessions)
+
+This repo ships a committed `.mcp.json`, so every Claude Code session opened on it is
+born connected to two MCP servers — zero setup, zero secrets in the repo (authentication
+is the central gateway's own browser login, prompted on first use):
+
+- **`factory`** → the factory gateway's main surface (`/mcp`): read-only verify/inspect
+  tools over this system's GCP, Railway, Cloudflare, n8n and CI, plus the allowlisted
+  `dispatch_workflow`. The same toolset the factory operator works with.
+- **`n8n-live`** → the live n8n development gateway for THIS system
+  (`/n8n/${SYSTEM_NAME}/mcp`): browse, validate, and develop workflows against the
+  system's own live n8n. Live writes are scratch-only (`dev-*` workflow names) — git
+  stays the source of truth.
+
+The per-system telemetry route (`/factory/<system>/mcp`) is deliberately NOT listed
+here — that surface is for the n8n agent's bearer-bound `factory_tools` node;
+interactive sessions get the richer `factory` server above.
+
 ## Forbidden Actions
 
 - **Never echo, print, or log values from Secret Manager.** Reference by name only.
