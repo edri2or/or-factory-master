@@ -15,7 +15,7 @@ CREDS_DIR="${WORKSPACE_MCP_CREDENTIALS_DIR:-/creds}"
 # a fake address). The n8n agent must pass this exact string as user_google_email.
 LABEL="${WORKSPACE_GOOGLE_ACCOUNT_LABEL:-shared-google@or-infra.com}"
 PORT="${WORKSPACE_MCP_PORT:-3002}"
-read -r -a TOOLS_ARR <<< "${WORKSPACE_MCP_TOOLS:-calendar gmail}"
+read -r -a TOOLS_ARR <<< "${WORKSPACE_MCP_TOOLS:-calendar gmail drive docs}"
 
 mkdir -p "${CREDS_DIR}"
 chmod 700 "${CREDS_DIR}" || true
@@ -31,24 +31,30 @@ if not refresh or refresh == "__NOT_CONFIGURED__":
     sys.stderr.write("WARN: GMAIL_OAUTH_REFRESH_TOKEN absent/placeholder; seeding DORMANT credential "
                      "(Google calls fail until a real token is mounted)\n")
     refresh = "DORMANT-NOT-CONFIGURED"
+# EXACTLY the scopes the shared token was consented for (the SCOPE string in
+# bootstrap-gmail-oauth.yml / request-workspace-scopes-consent.yml). Must match
+# the grant precisely: any superset/subset makes google-auth raise "Scope has
+# changed" on refresh. Env-driven (space-separated WORKSPACE_MCP_SCOPES) so a
+# scope rotation is a deploy-time change; the default is the 6-scope grant of
+# 2026-06-10 (the original 4 + Drive + Docs). These are write-capable scopes —
+# the server runs full mode (not --read-only); per-action write safety is the
+# system's HITL gate.
+default_scopes = (
+    "https://www.googleapis.com/auth/gmail.modify "
+    "https://www.googleapis.com/auth/calendar.events "
+    "https://www.googleapis.com/auth/gmail.settings.basic "
+    "https://www.googleapis.com/auth/gmail.settings.sharing "
+    "https://www.googleapis.com/auth/drive "
+    "https://www.googleapis.com/auth/documents"
+)
+scopes = os.environ.get("WORKSPACE_MCP_SCOPES", "").split() or default_scopes.split()
 data = {
     "token": None,
     "refresh_token": refresh,
     "token_uri": "https://oauth2.googleapis.com/token",
     "client_id": os.environ.get("GOOGLE_OAUTH_CLIENT_ID", ""),
     "client_secret": os.environ.get("GOOGLE_OAUTH_CLIENT_SECRET", ""),
-    # EXACTLY the scopes the shared token was consented for (the SCOPE string in
-    # bootstrap-gmail-oauth.yml). Must match the grant precisely: a superset (e.g.
-    # adding openid/email/profile) makes google-auth raise "Scope has changed" on
-    # refresh. These are write-capable scopes — the server runs full mode (not
-    # --read-only), since read-only mode would demand readonly scopes this token
-    # lacks. Per-action write safety is the system's HITL gate (Stage 1).
-    "scopes": [
-        "https://www.googleapis.com/auth/gmail.modify",
-        "https://www.googleapis.com/auth/calendar.events",
-        "https://www.googleapis.com/auth/gmail.settings.basic",
-        "https://www.googleapis.com/auth/gmail.settings.sharing",
-    ],
+    "scopes": scopes,
     "expiry": None,
 }
 path = os.environ["CRED_PATH"]

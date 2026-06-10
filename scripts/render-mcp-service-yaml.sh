@@ -29,6 +29,12 @@ FACTORY_TOOLS_ALLOWED_SYSTEMS="${FACTORY_TOOLS_ALLOWED_SYSTEMS:-*}"
 # Stable local key the sidecar files the shared credential under; the n8n agent
 # passes this exact string as user_google_email (Google auths by the token).
 WORKSPACE_GOOGLE_ACCOUNT_LABEL="${WORKSPACE_GOOGLE_ACCOUNT_LABEL:-shared-google@or-infra.com}"
+# Tool groups the Workspace sidecar serves + the EXACT scopes of the shared
+# token's grant (rotated 2026-06-10 to 6: the original 4 + Drive + Docs). The
+# scopes list must equal the grant byte-for-byte or google-auth fails refresh
+# with "Scope has changed".
+WORKSPACE_MCP_TOOLS="${WORKSPACE_MCP_TOOLS:-calendar gmail drive docs}"
+WORKSPACE_MCP_SCOPES="${WORKSPACE_MCP_SCOPES:-https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/gmail.settings.basic https://www.googleapis.com/auth/gmail.settings.sharing https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/documents}"
 
 # Gateway env vars sourced from Secret Manager (ENV_NAME=secret-name). The
 # gateway already shipped these 19; N8N_MCP_AUTH_TOKEN is the only addition.
@@ -163,7 +169,8 @@ emit_env WORKSPACE_MCP_PORT "3002"
 emit_env WORKSPACE_MCP_CREDENTIALS_DIR "/creds"
 emit_env MCP_SINGLE_USER_MODE "1"
 emit_env OAUTHLIB_INSECURE_TRANSPORT "1"
-emit_env WORKSPACE_MCP_TOOLS "calendar gmail"
+emit_env WORKSPACE_MCP_TOOLS "${WORKSPACE_MCP_TOOLS}"
+emit_env WORKSPACE_MCP_SCOPES "${WORKSPACE_MCP_SCOPES}"
 # Full mode: the shared token is write-scoped, so --read-only would demand
 # readonly scopes it lacks. Write safety is the system's HITL gate (Stage 1).
 emit_env WORKSPACE_MCP_READ_ONLY "0"
