@@ -26,5 +26,8 @@
   לא intent; self-send לטלגרם — חריג מכוון לחוזה ה-single-voice).
 - golden רוענן (122 קבצים); המנגנון (`waitForSubWorkflow:false`, `maxIterations`) אומת מול n8n-MCP;
   לוגיקת Detect+Egress+chunking + שתי טרנספורמציות ה-strip אומתו ב-Node על קלט אמיתי.
+- **`monitoring/registry-exempt.txt`** — `deep-research.json` נוסף לרשימת הפטור של שער השומר
+  (sub-workflow ב-executeWorkflowTrigger בלבד, ללא cadence משלו; ה-executions מכוסים קולקטיבית ע"י
+  `system-n8n-executions`) — כמו `tg-vision`/`request-write-action`.
 - **מנגנון:** הקו הסינכרוני חוזר תוך שניות (ack), המחקר רץ כ-execution עצמאי ברקע (דקות) ושולח את
   הדוח לטלגרם בעצמו — עוקף את ה-timeout של webhook הטלגרם. שוחרר ע"י `n8n-2x-upgrade` (2.25.7).
