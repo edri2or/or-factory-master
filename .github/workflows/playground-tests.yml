@@ -91,6 +91,14 @@ jobs:
         # each system by provision-system.yml and runs there over workflows/n8n.
         run: AGENT_DIR=templates/system/workflows/n8n bash scripts/check-agent-single-voice.sh
 
+      - name: executeWorkflow-published gate (mould)
+        # n8n 2.x: a published workflow that calls a sub via executeWorkflow (MAIN)
+        # cannot publish while that sub is unpublished (HTTP 400) — it silently stays
+        # inactive (the async-deep-research / factory-test-053 bug: tg-inbound never
+        # activated). This gate fails CI if any executeWorkflow-referenced sub is
+        # installed `_upsert_wf … no`. toolWorkflow (ai_tool) subs are exempt.
+        run: WF_DIR=templates/system/workflows/n8n CONFIGURE_FILE=templates/system/.github/workflows/configure-agent-router.yml bash scripts/check-executeworkflow-published.sh
+
       - name: MCP server build + unit tests
         # Compile-check the mcp-server TypeScript and run its pure unit tests
         # (tsc + node --test). Until now NO PR-time gate compiled this code —

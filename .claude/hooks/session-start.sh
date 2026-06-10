@@ -3,6 +3,7 @@
 # linters and tests can run inside a Claude Code on the web session.
 #
 #   - shellcheck + yamllint  -> pipeline-tests.yml "shellcheck + yamllint" job
+#   - envsubst (gettext-base)-> scripts/render-system-golden.sh (System golden gate)
 #   - bats + git submodules  -> scripts/tests/*.bats
 #   - node deps (npm)        -> services/mcp-server `node --test`
 #
@@ -34,6 +35,12 @@ fi
 # 2. yamllint — via pip (no apt). Lands on the system PATH under root.
 command -v yamllint >/dev/null 2>&1 || python3 -m pip install --quiet yamllint
 
+# 2b. envsubst (gettext-base) — a base Ubuntu pkg (not a blocked third-party PPA),
+#     so plain apt works. Required by scripts/render-system-golden.sh +
+#     scripts/tests/validate-templates.sh (the System golden gate / template
+#     validation) — without it a golden render fails with "envsubst: command not found".
+command -v envsubst >/dev/null 2>&1 || { sudo apt-get update -qq && sudo apt-get install -y -qq gettext-base; }
+
 # 3. bats test runner (via npm) + its helper submodules (scripts/tests/*.bats).
 command -v bats >/dev/null 2>&1 || npm install -g bats >/dev/null 2>&1
 git submodule update --init --recursive
@@ -43,4 +50,4 @@ if [ -f services/mcp-server/package.json ]; then
   ( cd services/mcp-server && npm install --no-audit --no-fund )
 fi
 
-echo "session-start hook: dependencies ready (shellcheck, yamllint, bats, mcp-server node deps)."
+echo "session-start hook: dependencies ready (shellcheck, yamllint, envsubst, bats, mcp-server node deps)."
