@@ -35,3 +35,13 @@ plus `auth/drive` + `auth/documents`.
 extract-gmail-refresh-token (or-adhd-agent) → copy with rotate=true → PR-B
 (gateway: WORKSPACE_MCP_SCOPES env + tools="calendar gmail drive docs" +
 extended smoke).
+
+**Fix (same stage, found live):** the consent link first sent was
+`/rest/oauth2-credential/auth?id=...` — an endpoint that requires an n8n
+SESSION, so Or got `401 Unauthorized` on phone AND desktop. The workflow now
+calls that endpoint itself (owner cookie, server-side), extracts the direct
+`accounts.google.com` consent URL, validates its shape, and sends THAT — no
+n8n login needed on the operator side; n8n's oauth callback is session-exempt
+and validated by the embedded state token. (The template bootstrap's fallback
+link has the same latent flaw — recorded as a follow-up; its primary path is
+the no-click preloaded token.)

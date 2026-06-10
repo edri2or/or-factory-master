@@ -186,6 +186,13 @@ drive.readonly+drive.file ו-`auth/documents` מכסה documents.readonly — ה
 לוואי מתועדת: Gmail של or-adhd-agent מנותק עד הקליק), ‏SCOPE=6 בתבנית bootstrap+golden,
 ‏exempt. מקופל פנימה: סגירת התוכנית המקבילה shared-gmail-token (הקוד שלה מוזג עוד ב-6.6).
 תשתית מקבילה שהוכנה: ‏046 פורקה (run 27271445383), ‏047 נפרסה + ‏configure ירוק.
+**איטרציה חיה ראשונה:** הקישור ששוגר היה `/rest/oauth2-credential/auth?id=` שדורש סשן
+n8n — ל-Or אין סשן בטלפון וגם לא במחשב → ‏401 בשניהם (צילום + אימות). תוקן: ה-workflow
+קורא את ה-endpoint בעצמו עם cookie של ה-owner, מחלץ את כתובת גוגל הישירה
+(accounts.google.com, לא דורשת סשן) ושולח אותה; ה-callback של n8n פטור-סשן ומאומת
+ב-state. ‏follow-ups שנרשמו: (1) אותו פגם רדום בקישור ה-fallback של תבנית
+bootstrap-gmail-oauth; (2) לפני פירוק עתידי של or-adhd-agent חובה להעביר את ה-redirect
+URI הרשום של ה-client המשותף לכתובת קבועה (עריכה ידנית בקונסולת גוגל — אין לזה API).
 
 **שינוי תוכנית:** —
 
