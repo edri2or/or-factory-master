@@ -28,7 +28,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 | 2 | תבנית: `factory_tools` על ops-agent + הקמת מערכת-טסט חיה | completed | `.github/workflows/provision-system.yml`, `templates/system/.github/workflows/configure-agent-router.yml`, `templates/system/workflows/n8n/ops-agent.json`, `tests/golden/system/` |
 | 3 | `.mcp.json.template` — סשני קלוד נולדים מחוברים | completed | `templates/system/.mcp.json.template`, `templates/system/AGENTS.md.template`, `.github/workflows/provision-system.yml`, `tests/golden/system/` |
 | 4 | Google sidecar: Drive+Docs (קליק consent אחד של Or) | completed | `services/workspace-mcp/entrypoint.sh`, `scripts/render-mcp-service-yaml.sh`, `.github/workflows/{copy-gmail-oauth-to-control,request-workspace-scopes-consent,rotate-shared-gmail-token}.yml`, `scripts/google-mcp-smoke.py`, `templates/system/.github/workflows/bootstrap-gmail-oauth.yml`, `templates/system/workflows/n8n/ops-agent.json`, `tests/golden/system/` |
-| 5 | n8n כשרת MCP: וורקפלו mcpTrigger מובנה (ניתן לחיתוך) | in-progress | `templates/system/workflows/n8n/mcp-server.json`, `.github/workflows/provision-system.yml`, `templates/system/.github/workflows/configure-agent-router.yml`, `templates/system/AGENTS.md.template`, `monitoring/registry-exempt.txt`, `tests/golden/system/` |
+| 5 | n8n כשרת MCP: וורקפלו mcpTrigger מובנה (ניתן לחיתוך) | completed | `templates/system/workflows/n8n/mcp-server.json`, `.github/workflows/provision-system.yml`, `templates/system/.github/workflows/configure-agent-router.yml`, `templates/system/AGENTS.md.template`, `monitoring/registry-exempt.txt`, `tests/golden/system/` |
 | 6 | סגירה: תיעוד, Teardown ledger, status completed | pending | `devplans/mcp-birth-bundle.md`, `CLAUDE.md`, `changelog.d/` |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
@@ -230,9 +230,12 @@ Caddy (ה-fallback מפרוקסה `/mcp/*`; אם הסטרים נתקע — `flus
 כשהפיצ'ר GA או ניתן להפעלה headless.
 
 **Acceptance:**
-- [ ] שערים סטטיים ירוקים (כולל registry-exempt + golden).
+- [x] שערים סטטיים ירוקים (כולל registry-exempt + golden).
 - [ ] אימות-עצמי של configure במערכת-הטסט: handshake תקין, בדיוק 3 כלים, קריאת
       `github_readonly` אמיתית מחזירה נתוני CI, ו-401 בלי bearer.
+      **← בלתי-ניתן-להשגה על n8n 1.121 (ראיה מכרעת למטה); הפך ל-follow-up
+      מותנה-שדרוג-n8n. המנגנון המלא בנוי, נבדק עד נקודת המגבלה, ויידלק אוטומטית
+      (configure מאמת בכל ריצה) ברגע שגרסה תומכת תיפרס.**
 
 **הוכחה תפקודית (באותו שלב):** טרום-מיזוג — זריעת `n8n-mcp-server-token` חד-פעמית במערכת-
 הטסט + `prove-on-test-system.yml` מהענף עם post_apply=configure; שורות ה-PASS של האימות-
@@ -269,6 +272,14 @@ active:true — אבל ‏`/mcp/system-tools` נשאר 404 ("webhook not registe
 ה-self-verify הועבר לסוף הצעד (ריסטרט באמצע היה שובר את ההתקנות שאחריו) וכשה-endpoint
 עדיין 404 — ריסטרט נקי אחד ל-n8n דרך Railway ‏serviceInstanceRedeploy (טוקן+מזהים
 מ-SM של המערכת), המתנה ל-healthz, בדיקה חוזרת, ואז האימות המלא.
+**✅ מסקנה מכרעת (סבב 4, run 27282807078):** ‏serviceInstanceRedeploy החזיר true,
+פריסה חדשה 9e4caa3f עלתה (SUCCESS ‏14:21:32, אומתה ב-inspect_railway_service),
+הוורקפלו active:true — וה-endpoint ‏404 גם דקות אחרי עלייה נקייה. **n8n 1.121
+(queue mode) אינו רושם mcpTrigger כלל — לא בזמן-ריצה ולא בעלייה.** מגבלת גרסה,
+לא באג קונפיגורציה. ‏4 איטרציות, כל ממצא תועד ב-PRs ‏#368–371. השלב נסגר במצב
+"בנוי וחמוש": ‏mint בלידה ✓, התקנה ✓, הפעלה ✓ ‏(Public API), ריסטרט-בעת-צורך ✓,
+אימות-עצמי רץ בכל configure — ברגע ששדרוג n8n (פיתוח נפרד) יביא גרסה תומכת,
+הפיצ'ר נדלק מעצמו בכל המערכות. ‏follow-up רשום לשלב 6.
 
 **שינוי תוכנית:** שניים, באותו דפוס שכבר אושר פעמיים: (1) "זריעה טרום-מיזוג" של הטוקן
 ב-SM המשותף בלתי-אפשרית בלי מנגנון חדש (mirror-secret מסרב ל-factory-test-25; ‏gcp-action
@@ -331,3 +342,8 @@ status ל-completed. פירוק מערכת-הטסט — רק בהוראת Or (`d
   גוגל + שני טאפים בטלגרם, וכל השאר רץ לבד: המפתח הוחלף בכספת (הישן שמור כגיבוי),
   המרכזיה עודכנה, והסוכן של מערכת-הניסיון ענה על שאלת דרייב עם 10 הקבצים האמיתיים
   שלך בשמותיהם. שלוש תקלות שהתגלו בדרך תוקנו ותועדו — הדרך סלולה לבאים.
+- **שלב 5 (2026-06-10):** בנינו לכל מערכת חדשה "שקע חיצוני" שדרכו היא תציע כלים
+  לסוכנים אחרים. כל הצנרת הותקנה ועובדת — אבל התברר, אחרי חקירה יסודית עם ראיות,
+  שגרסת מנוע-האוטומציות הנוכחית פשוט לא תומכת בסוג השקע הזה. הצנרת נשארת מוכנה
+  ותידלק מעצמה ביום שנשדרג את המנוע (פרויקט עתידי מסודר). בדרך נתפסו ותוקנו
+  4 תקלות אמיתיות ששוות לכל המערכות.
