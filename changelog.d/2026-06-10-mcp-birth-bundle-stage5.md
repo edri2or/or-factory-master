@@ -64,3 +64,13 @@ Public-API deactivate→activate pair with `X-N8N-API-KEY` (this system's own
 cleanly. (This also explains why regular-webhook workflows never hit this:
 their PATCH path registers `webhook` triggers; mcpTrigger needs the full
 activation service.)
+
+**Iteration 4 (Or chose to keep investigating):** even the Public API's 200
+left `/mcp/system-tools` 404 — on n8n 1.121 NO runtime activation path
+registers an mcpTrigger route (plain webhooks do register; boot-time is the
+remaining mechanism). The self-verification moved to the END of the
+configure step (a restart mid-step would break the /rest installs that
+follow) and now, when the endpoint still 404s after activation, forces ONE
+clean n8n restart via Railway `serviceInstanceRedeploy` (token + project +
+n8n-service ids from the system's own SM), waits for `/healthz`, re-checks
+registration, then runs the full verification.
