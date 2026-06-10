@@ -1184,10 +1184,15 @@ jobs:
                   || echo "WARN: pending-actions-executor GitHub-branch strip failed — using template as-is" >&2
                 echo "INFO: pending-actions-executor GitHub branch → stripped (no GitHub App credential)"
               fi
-              PENDING_EXECUTOR_ID=$(_upsert_wf "factory-master: pending-actions-executor" /tmp/ar-prep-pending-actions-executor.json no) \
+              # Published (activate=yes): tg-inbound calls it via executeWorkflow (main
+              # connection) on the approval path. n8n 2.x refuses to PUBLISH a parent
+              # (tg-inbound) that references an UNPUBLISHED executeWorkflow sub — so this
+              # must be published or tg-inbound never activates. executeWorkflowTrigger is
+              # a no-op trigger, so a published sub never self-fires.
+              PENDING_EXECUTOR_ID=$(_upsert_wf "factory-master: pending-actions-executor" /tmp/ar-prep-pending-actions-executor.json yes) \
                 || PENDING_EXECUTOR_ID=""
               if [ -n "$PENDING_EXECUTOR_ID" ] && [ "$PENDING_EXECUTOR_ID" != "null" ]; then
-                echo "PASS: factory-master: pending-actions-executor → id=${PENDING_EXECUTOR_ID} (לא-פעיל by design — subworkflow)"
+                echo "PASS: factory-master: pending-actions-executor → id=${PENDING_EXECUTOR_ID} (published — invoked by tg-inbound via executeWorkflow)"
               else
                 echo "WARN: pending-actions-executor install failed" >&2; PENDING_EXECUTOR_ID=""
               fi
@@ -1303,9 +1308,12 @@ jobs:
               sed -e "s#@@CRED_TELEGRAM_ID@@#${CRED_TELEGRAM_ID}#g" \
                   -e "s#@@CRED_OPENROUTER_ID@@#${CRED_ID}#g" \
                   "$TGV_SRC" > /tmp/ar-prep-tg-vision.json
-              TG_VISION_WF_ID=$(_upsert_wf "factory-master: tg-vision" /tmp/ar-prep-tg-vision.json no) \
+              # Published (activate=yes): tg-inbound calls it via executeWorkflow (main)
+              # on the image branch; n8n 2.x won't publish tg-inbound while this sub is
+              # unpublished. executeWorkflowTrigger is a no-op trigger (never self-fires).
+              TG_VISION_WF_ID=$(_upsert_wf "factory-master: tg-vision" /tmp/ar-prep-tg-vision.json yes) \
                 || { echo "WARN: tg-vision upsert failed — image branch will be stripped" >&2; TG_VISION_WF_ID=""; }
-              [ -n "$TG_VISION_WF_ID" ] && echo "PASS: factory-master: tg-vision → id=${TG_VISION_WF_ID}"
+              [ -n "$TG_VISION_WF_ID" ] && echo "PASS: factory-master: tg-vision → id=${TG_VISION_WF_ID} (published — invoked by tg-inbound via executeWorkflow)"
             else
               echo "WARN: tg-vision.json not found in repo — image understanding skipped" >&2
             fi
@@ -1319,9 +1327,12 @@ jobs:
                 sed -e "s#@@CRED_DEEPGRAM_ID@@#${CRED_DEEPGRAM_ID}#g" \
                     -e "s#@@TELEGRAM_BOT_TOKEN@@#${TG_BOT_TOKEN}#g" \
                     "$TGVS_SRC" > /tmp/ar-prep-tg-voice-stt.json
-                TG_VOICE_STT_WF_ID=$(_upsert_wf "factory-master: tg-voice-stt" /tmp/ar-prep-tg-voice-stt.json no) \
+                # Published (activate=yes): tg-inbound calls it via executeWorkflow (main)
+                # on the voice branch; n8n 2.x won't publish tg-inbound while this sub is
+                # unpublished. executeWorkflowTrigger is a no-op trigger (never self-fires).
+                TG_VOICE_STT_WF_ID=$(_upsert_wf "factory-master: tg-voice-stt" /tmp/ar-prep-tg-voice-stt.json yes) \
                   || { echo "WARN: tg-voice-stt upsert failed — voice branch will be stripped" >&2; TG_VOICE_STT_WF_ID=""; }
-                [ -n "$TG_VOICE_STT_WF_ID" ] && echo "PASS: factory-master: tg-voice-stt → id=${TG_VOICE_STT_WF_ID}"
+                [ -n "$TG_VOICE_STT_WF_ID" ] && echo "PASS: factory-master: tg-voice-stt → id=${TG_VOICE_STT_WF_ID} (published — invoked by tg-inbound via executeWorkflow)"
               else
                 echo "WARN: tg-voice-stt.json not found in repo — voice STT skipped" >&2
               fi

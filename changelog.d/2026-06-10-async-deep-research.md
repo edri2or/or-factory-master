@@ -31,3 +31,15 @@
   `system-n8n-executions`) — כמו `tg-vision`/`request-write-action`.
 - **מנגנון:** הקו הסינכרוני חוזר תוך שניות (ack), המחקר רץ כ-execution עצמאי ברקע (דקות) ושולח את
   הדוח לטלגרם בעצמו — עוקף את ה-timeout של webhook הטלגרם. שוחרר ע"י `n8n-2x-upgrade` (2.25.7).
+
+### תיקון Day-0 שנתפס באימות החי — פרסום תתי-הוורקפלו של tg-inbound (2.x)
+
+- **באג שהתגלה על factory-test-053 (build טרי על 2.25.7):** שער-הכניסה `tg-inbound` נשאר `active:false`
+  אחרי configure → הבוט לא הגיב בטלגרם. שורש: ב-n8n 2.x פרסום הורה שמפנה דרך `executeWorkflow` (חיבור
+  ראשי) ל-sub **לא-מפורסם** נדחה — ו-tg-inbound קורא ל-`tg-vision`/`tg-voice-stt`/`pending-actions-executor`
+  שהותקנו `activate=no`. (הסוכנים פורסמו תקין כי הם קוראים ל-sub דרך `toolWorkflow`, שלא דורש פרסום.)
+  התגלה רק עכשיו כי ה-round-trip בטלגרם נבדק לאחרונה על **1.121** (לפני שדרוג 2.x), שם active=true לא
+  דרש פרסום תלויות.
+- **תיקון ב-`configure-agent-router.yml`:** שלושת תתי-הוורקפלו שה-tg-inbound קורא להם דרך executeWorkflow
+  עוברים ל-`activate=yes` (פרסום) — לפני tg-inbound. ‏executeWorkflowTrigger הוא טריגר no-op, אז sub
+  מפורסם לעולם לא יורה את עצמו (זהה לדפוס 5 הסוכנים + 7 תתי-ה-prod). golden רוענן.
