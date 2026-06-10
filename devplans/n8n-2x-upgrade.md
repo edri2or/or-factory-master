@@ -35,8 +35,8 @@ status: active
 
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
-| 1 | ענף התבנית: הצמדה 2.25.7 + מנגנון image-upsert + תיקוני 2.x + שערים סטטיים | in-progress | `templates/system/.github/workflows/deploy-railway-cloudflare.yml`, `templates/system/Dockerfile.worker`, `templates/system/.github/workflows/configure-agent-router.yml`, `templates/system/AGENTS.md.template`, `tests/golden/system/`, `changelog.d/` |
-| 2 | הוכחה חיה Day-2: שדרוג-במקום 1.121→2.25.7 על מערכת-טסט + הדלקת mcpTrigger | pending | מערכת-טסט חיה (reuse mode), `prove-on-test-system.yml` |
+| 1 | ענף התבנית: הצמדה 2.25.7 + מנגנון image-upsert + תיקוני 2.x + שערים סטטיים | completed | `templates/system/.github/workflows/deploy-railway-cloudflare.yml`, `templates/system/Dockerfile.worker`, `templates/system/.github/workflows/configure-agent-router.yml`, `templates/system/AGENTS.md.template`, `tests/golden/system/`, `changelog.d/` |
+| 2 | הוכחה חיה Day-2: שדרוג-במקום 1.121→2.25.7 על מערכת-טסט + הדלקת mcpTrigger | in-progress | מערכת-טסט חיה (reuse mode), `prove-on-test-system.yml` |
 | 3 | מיזוג + הוכחת לידה Day-0: provision טרי על 2.25.7 | pending | מערכת-טסט שנייה (reuse mode) |
 | 4 | שדרוג המערכות האמיתיות (פר-מערכת, באישור Or) | pending | `refresh-system-agents.yml`, ריפו + Railway של כל מערכת אמיתית |
 | 5 | תיעוד וסגירה | pending | `CLAUDE.md`, `docs/roadmap.md`, `devplans/n8n-2x-upgrade.md`, `changelog.d/` |
@@ -125,7 +125,21 @@ status: active
 **הוכחה תפקודית (באותו שלב):** שורות ה-PASS בלוגים של deploy+configure על מערכת-הטסט
 החיה + ‏probe_endpoint בלתי-תלוי על ‏`/mcp/system-tools` ‏(401 בלי bearer = רשום וחי).
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה (2026-06-10):** הפיקסצ'ר הוקם בדרך חתחתים מלמדת:
+‏(א) הקמות 049/050 נפלו על ‏401 לסירוגין של GitHub בצעד `Set repo variables` —
+היחיד בלי retry; תוקן ומוזג ב-hotfix נפרד ‏(PR ‎#376, ‏squash ‏854fe20) כדי לא לפתוח
+את ‎#375 לפני ההוכחה; ‏051 קמה ירוקה עם החיסון (הריפוז היתומים 049/050 יאורכבו
+בפירוק). ‏(ב) ‏051: ‏provision+register-App (שני קליקים של Or)+deploy+configure
+ירוקים; אומת חי ‏versionCli=1.121.0 ו-404 על ‏`/mcp/system-tools` (מצב-לפני).
+‏(ג) ‏prove-on-test-system מהענף עבד (sandbox, ‏PR+מיזוג בריפו הטסט) → דיפלוי
+השדרוג: ‏**מנגנון ה-image-upsert עבד בפעם הראשונה חי** — ‏`upgrade:
+1.121.0→2.25.7`, ‏deployment חדש ‏SUCCESS (גילוי: ‏serviceInstanceUpdate לא
+מרנדפלא לבד על שינוי image — ה-fallback ל-serviceInstanceDeploy מפורש נדרש ועבד).
+**ממצא חי ‎#1:** אסרטת ה-versionCli נכשלה — ‏n8n 2.x מקשיח את ‏`/rest/settings`
+הלא-מאומת ומסתיר את הגרסה (אומת ב-probe מול ‏051 המשודרגת מול אותה קריאה על
+1.121). תוקן: ‏fallback ל-login של ה-owner וקריאה מאומתת (login מוצלח = הוכחת
+Day-2 ל-DB), ‏FAIL קשיח רק כשגרסה נקראת ושגויה, קבלה סטרוקטורלית
+(deployment חדש+healthz+login) כשאין גרסה בשום מסלול. ממתין לסבב prove שני.
 
 **שינוי תוכנית:** —
 

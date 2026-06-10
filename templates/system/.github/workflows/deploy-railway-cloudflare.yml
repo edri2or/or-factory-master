@@ -1541,26 +1541,78 @@ jobs:
           fi
 
           # n8n's reported version — and, on an in-place upgrade run
-          # (N8N_IMAGE_CHANGED exported by the Provision Railway step), a hard
-          # assertion that the NEW version is actually the one serving: a 200
-          # from /rest/settings alone cannot distinguish the old container
-          # still draining from the upgraded one.
+          # (N8N_IMAGE_CHANGED exported by the Provision Railway step), an
+          # assertion that the NEW version is actually the one serving.
+          # Version sources, in order (proven live on factory-test-051, run
+          # 27292322027): 1.x exposes versionCli on the UNAUTHENTICATED
+          # /rest/settings; n8n 2.x hardened that surface and strips the
+          # version pre-login — so when it is absent, log in as the owner
+          # (creds are in this job's env on every run) and read the
+          # authenticated settings. A successful owner login is itself the
+          # Day-2 proof that the migrated DB + user table survived. If a
+          # version IS readable and differs → hard fail (old container still
+          # serving). If NO version is readable even authenticated, rely on
+          # the structural rollout proof (the Provision step already required
+          # a NEW deployment id at SUCCESS) and WARN: on a 1.x→2.x upgrade a
+          # *missing* public version is itself 2.x behavior — an old 1.x
+          # container would have kept exposing versionCli=1.x.
           VERSION_CLI=$(jq -r '.data.versionCli // .versionCli // ""' /tmp/n8n-settings.json 2>/dev/null || echo "")
-          echo "INFO: n8n reports versionCli=${VERSION_CLI:-<none>}"
+          echo "INFO: n8n reports versionCli=${VERSION_CLI:-<none>} (unauthenticated)"
           if [ "${N8N_IMAGE_CHANGED:-false}" = "true" ]; then
             WANT_VER="${N8N_IMAGE#*:}"
+            VERSION_OK=false
+            STRUCTURAL_OK=false
+            VA_COOKIES=/tmp/version-assert-cookies.txt
             for i in $(seq 1 12); do
-              [ "$VERSION_CLI" = "$WANT_VER" ] && break
+              if [ "$VERSION_CLI" = "$WANT_VER" ]; then
+                VERSION_OK=true
+                break
+              fi
+              if [ -z "$VERSION_CLI" ]; then
+                # 2.x hides the version pre-login — authenticate and re-read.
+                rm -f "$VA_COOKIES"
+                LOGIN_HTTP="000"
+                for field in emailOrLdapLoginId email; do
+                  LOGIN_HTTP=$(curl -sS -o /tmp/version-login.json -w '%{http_code}' --max-time 15 \
+                    -c "$VA_COOKIES" -X POST "$BASE/rest/login" \
+                    -H "Content-Type: application/json" \
+                    -d "$(jq -cn --arg e "$N8N_OWNER_EMAIL" --arg p "$N8N_OWNER_PASSWORD" --arg f "$field" \
+                      '{($f): $e, password: $p}')" || echo "000")
+                  [ "$LOGIN_HTTP" = "200" ] && break
+                done
+                if [ "$LOGIN_HTTP" = "200" ]; then
+                  echo "PASS: owner login OK on the upgraded instance (migrated DB serves auth)."
+                  AUTH_HTTP=$(curl -sS -o /tmp/n8n-settings-auth.json -w '%{http_code}' --max-time 10 \
+                    -b "$VA_COOKIES" "$BASE/rest/settings" || echo "000")
+                  if [ "$AUTH_HTTP" = "200" ]; then
+                    VERSION_CLI=$(jq -r '.data.versionCli // .versionCli // ""' /tmp/n8n-settings-auth.json 2>/dev/null || echo "")
+                    if [ "$VERSION_CLI" = "$WANT_VER" ]; then
+                      VERSION_OK=true
+                      break
+                    fi
+                    if [ -z "$VERSION_CLI" ]; then
+                      # No version anywhere, but auth + DB work on the
+                      # rolled-out deployment — accept structurally.
+                      STRUCTURAL_OK=true
+                      break
+                    fi
+                  fi
+                fi
+              fi
               echo "[version assert ${i}/12] versionCli=${VERSION_CLI:-<none>} != ${WANT_VER}; old container may still be serving, sleeping 10s..."
               sleep 10
-              curl -sS -o /tmp/n8n-settings.json --max-time 10 "$BASE/rest/settings" || true
+              HTTP=$(curl -sS -o /tmp/n8n-settings.tmp -w '%{http_code}' --max-time 10 "$BASE/rest/settings" || echo "000")
+              [ "$HTTP" = "200" ] && mv /tmp/n8n-settings.tmp /tmp/n8n-settings.json
               VERSION_CLI=$(jq -r '.data.versionCli // .versionCli // ""' /tmp/n8n-settings.json 2>/dev/null || echo "")
             done
-            if [ "$VERSION_CLI" != "$WANT_VER" ]; then
+            if [ "$VERSION_OK" = "true" ]; then
+              echo "PASS: upgrade landed — n8n versionCli=${VERSION_CLI}."
+            elif [ "$STRUCTURAL_OK" = "true" ]; then
+              echo "WARN: n8n exposes no versionCli even authenticated — accepting the upgrade on structural proof (new deployment SUCCESS + healthz + owner login)." >&2
+            else
               echo "FAIL: upgrade did not land — n8n serves versionCli=${VERSION_CLI:-<none>}, expected ${WANT_VER}." >&2
               exit 1
             fi
-            echo "PASS: upgrade landed — n8n versionCli=${VERSION_CLI}."
           fi
 
           NEEDS=$(jq -r '.data.userManagement.showSetupOnFirstLoad
