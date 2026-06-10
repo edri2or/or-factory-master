@@ -1121,18 +1121,30 @@ jobs:
               MCPSRV_WF_ID=$(_upsert_wf "factory-master: mcp-server" /tmp/ar-prep-mcp-server.json no) \
                 || MCPSRV_WF_ID=""
               if [ -n "$MCPSRV_WF_ID" ] && [ "$MCPSRV_WF_ID" != "null" ]; then
-                # Activate EXPLICITLY with full visibility. The shared helper's
-                # silent PATCH fallback can set the DB active flag WITHOUT runtime
-                # trigger registration (observed live on factory-test-048: API
-                # showed active:true while /mcp/system-tools stayed 404) — so here
-                # the activate response is always surfaced, and a failed activate
-                # gets one deactivate→activate cycle.
-                ACT_HTTP=$(_napi POST "$BASE/rest/workflows/${MCPSRV_WF_ID}/activate" /tmp/ar-mcp-act.json)
-                if [ "$ACT_HTTP" != "200" ] && [ "$ACT_HTTP" != "204" ]; then
-                  echo "WARN: mcp-server POST /activate HTTP ${ACT_HTTP}: $(head -c 300 /tmp/ar-mcp-act.json 2>/dev/null)" >&2
-                  _napi PATCH "$BASE/rest/workflows/${MCPSRV_WF_ID}" /tmp/ar-mcp-act2.json '{"active":false}' >/dev/null || true
-                  ACT_HTTP=$(_napi POST "$BASE/rest/workflows/${MCPSRV_WF_ID}/activate" /tmp/ar-mcp-act.json)
-                  echo "INFO: mcp-server re-activate attempt → HTTP ${ACT_HTTP}: $(head -c 300 /tmp/ar-mcp-act.json 2>/dev/null)"
+                # Activate via the PUBLIC API. Live findings on factory-test-048:
+                # POST /rest/workflows/:id/activate does NOT exist in n8n 1.121
+                # (404 + the SPA's HTML page), and PATCH {"active":true} only sets
+                # the DB flag — the mcpTrigger runtime route stays unregistered
+                # (active:true yet /mcp/* 404). The supported programmatic path is
+                # the Public API's deactivate→activate pair (X-N8N-API-KEY from
+                # this system's own SM, minted at deploy). Deactivate-first makes
+                # re-runs re-register cleanly regardless of the current DB flag.
+                N8N_API_KEY=$(_sm_read "n8n-api-key" || echo "")
+                ACT_HTTP="000"
+                if [ -n "$N8N_API_KEY" ]; then
+                  echo "::add-mask::${N8N_API_KEY}"
+                  curl -sS -o /dev/null --max-time 30 -X POST \
+                    "$BASE/api/v1/workflows/${MCPSRV_WF_ID}/deactivate" \
+                    -H "X-N8N-API-KEY: ${N8N_API_KEY}" 2>/dev/null || true
+                  ACT_HTTP=$(curl -sS -o /tmp/ar-mcp-act.json -w '%{http_code}' --max-time 30 -X POST \
+                    "$BASE/api/v1/workflows/${MCPSRV_WF_ID}/activate" \
+                    -H "X-N8N-API-KEY: ${N8N_API_KEY}" || echo "000")
+                else
+                  echo "WARN: n8n-api-key missing in SM — cannot public-API-activate mcp-server" >&2
+                fi
+                if [ "$ACT_HTTP" != "200" ]; then
+                  echo "WARN: mcp-server public-API activate HTTP ${ACT_HTTP}: $(head -c 300 /tmp/ar-mcp-act.json 2>/dev/null) — falling back to PATCH active:true" >&2
+                  _napi PATCH "$BASE/rest/workflows/${MCPSRV_WF_ID}" /tmp/ar-mcp-act2.json '{"active":true}' >/dev/null || true
                 fi
                 echo "PASS: factory-master: mcp-server → id=${MCPSRV_WF_ID} (activate HTTP ${ACT_HTTP} — MCP endpoint /mcp/system-tools)"
 
