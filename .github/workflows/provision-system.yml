@@ -1137,6 +1137,7 @@ jobs:
             railway-worker-service-id
             redis-password
             workspace-mcp-bearer
+            factory-mcp-bearer
           )
           RUNTIME_SA="runtime-sa@${GCP_PROJECT}.iam.gserviceaccount.com"
           DEPLOY_SA="deploy-sa@${GCP_PROJECT}.iam.gserviceaccount.com"
@@ -1194,7 +1195,7 @@ jobs:
             --secret="mcp-server-admin-secret" \
             --project="or-factory-master-control" 2>/dev/null | tr -d '\r\n' || echo "")
           if [ -z "$WS_ADMIN" ]; then
-            echo "WARN: could not read mcp-server-admin-secret from control SM — workspace-mcp-bearer left empty (google_workspace will be stripped)."
+            echo "WARN: could not read mcp-server-admin-secret from control SM — workspace-mcp-bearer + factory-mcp-bearer left empty (google_workspace + factory_tools will be stripped)."
           else
             echo "::add-mask::${WS_ADMIN}"
             WS_HTTP=$(curl -sS -o /tmp/ws-token.json -w '%{http_code}' --max-time 30 \
@@ -1209,6 +1210,25 @@ jobs:
               echo "PASS: minted + stored workspace-mcp-bearer for ${SYSTEM_NAME}."
             else
               echo "WARN: mint /workspace/${SYSTEM_NAME}/token returned HTTP ${WS_HTTP} (no token) — workspace-mcp-bearer left empty (google_workspace will be stripped)."
+            fi
+
+            # mcp-birth-bundle Stage 2: mint the twin factory-runtime bearer for the
+            # tenant-locked factory telemetry subset (/factory/<system>/mcp) and store
+            # it in factory-mcp-bearer. Same admin secret, same soft-fail contract:
+            # any miss leaves the shell empty → configure-agent-router strips the
+            # ops-agent's factory_tools node (graceful degradation).
+            FT_HTTP=$(curl -sS -o /tmp/ft-token.json -w '%{http_code}' --max-time 30 \
+              -X POST "${GATEWAY_URL}/factory/${SYSTEM_NAME}/token" \
+              -H "X-Admin-Secret: ${WS_ADMIN}" 2>/dev/null || echo "000")
+            FT_TOKEN=$(jq -r '.access_token // empty' /tmp/ft-token.json 2>/dev/null || echo "")
+            rm -f /tmp/ft-token.json
+            if [ "$FT_HTTP" = "200" ] && [ -n "$FT_TOKEN" ]; then
+              echo "::add-mask::${FT_TOKEN}"
+              printf '%s' "$FT_TOKEN" | gcloud secrets versions add "factory-mcp-bearer" \
+                --project="$GCP_PROJECT" --data-file=-
+              echo "PASS: minted + stored factory-mcp-bearer for ${SYSTEM_NAME}."
+            else
+              echo "WARN: mint /factory/${SYSTEM_NAME}/token returned HTTP ${FT_HTTP} (no token) — factory-mcp-bearer left empty (factory_tools will be stripped)."
             fi
           fi
 
