@@ -25,7 +25,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
 | 1 | חומרי-ייחוס: מסמך capability-first + תיקוני Pin + Capability Card | completed | `docs/capability-first.md` (חדש), `templates/agent-design-spec.md`, `docs/agent-isolation-testing.md` |
-| 2 | חיווט החזית ל-build-agent (שני עותקי mirror) + רענון golden | pending | `.claude/commands/build-agent.md`, `templates/system/.claude/commands/build-agent.md` (נגזר), `tests/golden/system/MANIFEST.sha256` (נגזר) |
+| 2 | חיווט החזית ל-build-agent (שני עותקי mirror) + רענון golden | completed | `.claude/commands/build-agent.md`, `templates/system/.claude/commands/build-agent.md` (נגזר), `tests/golden/system/MANIFEST.sha256` (נגזר) |
 | 3 | הזרקה ל-provisioning + פתק changelog | pending | `.github/workflows/provision-system.yml` |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
@@ -59,16 +59,19 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 ### שלב 2 — חיווט החזית ל-build-agent (שני עותקי mirror) + רענון golden
 
 **Acceptance:**
-- [ ] `.claude/commands/build-agent.md` Step 0: שורה מקדימה "Phase 1 — הוכח יכולת מחוץ ל-n8n" + פריט ברשימת ה-Read-First, מפנה ל-`docs/capability-first.md`.
-- [ ] `templates/system/.claude/commands/build-agent.md` זהה-בייט (דרך `scripts/sync-skills-mirror.sh`, לא עריכה ידנית).
-- [ ] `tests/golden/system/MANIFEST.sha256` מרוענן (דרך `scripts/check-system-golden.sh --update`), **אחרי** ה-mirror.
-- [ ] מקומית: `check-skills-mirror.sh` + `check-system-golden.sh` עוברים.
+- [x] `.claude/commands/build-agent.md` Step 0: שורה מקדימה "Phase 1 — הוכח יכולת מחוץ ל-n8n" + פריט (5) ברשימת ה-Read-First, מפנה ל-`docs/capability-first.md`.
+- [x] `templates/system/.claude/commands/build-agent.md` זהה-בייט (דרך `scripts/sync-skills-mirror.sh`, לא עריכה ידנית).
+- [x] `tests/golden/system/MANIFEST.sha256` מרוענן (דרך `scripts/check-system-golden.sh --update`), **אחרי** ה-mirror.
+- [x] מקומית: `check-skills-mirror.sh` + `check-system-golden.sh` + `check-golden-sync.sh` עוברים.
 
 **הוכחה תפקודית (באותו שלב):** `bash scripts/check-skills-mirror.sh && bash scripts/check-system-golden.sh`
 עוברים מקומית; `diff` בין שני עותקי build-agent.md = זהים; ה-golden manifest תואם את המבנה המרונדר.
 ואז CI ירוק על skills-mirror + golden-sync + system-golden.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם. ערכתי את עותק ה-factory של build-agent.md (Step 0 + פריט 5),
+הרצתי `sync-skills-mirror.sh` (העותק תחת `templates/system/` זהה-בייט — `diff` נקי), ואז
+`check-system-golden.sh --update` (golden זז בשורה אחת בלבד — ה-hash של build-agent.md). שלוש
+בדיקות-המעטפת עברו מקומית.
 
 **שינוי תוכנית:** —
 
@@ -103,3 +106,4 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 > שורה פשוטה אחת לכל שלב שהסתיים — בשפה ש-Or מבין, בלי ז'רגון.
 
 - שלב 1 הושלם — כתבנו את מסמך החזית החדש (capability-first) ותיקנו את שתי ההנחיות על "נעיצת" קבצים. תוכן בלבד, בלי נגיעה בריצת המערכות.
+- שלב 2 הושלם — חיברנו את החזית לתוך פקודת בניית-הסוכן (בשני העותקים, זהים בדיוק) ועדכנו את "תמונת-הייחוס" (golden). הבדיקות הרגישות יותר עברו.

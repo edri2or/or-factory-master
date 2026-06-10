@@ -33,14 +33,24 @@ Read these before scaffolding (independent — read in parallel):
    column). Its rationale + decision matrix + the bottom-up "4 phases / 3 gates" discipline
    live in `docs/research/agent-role-decomposition-planning.md` (read §3 matrix, §7
    single-voice rule, §8 bottom-up gates before a complex build).
-5. `docs/agent-isolation-testing.md` — HOW to prove a brick alone: n8n Pin data, testing a
+5. `docs/capability-first.md` — **Phase 1**: prove the raw capability works OUTSIDE n8n (a
+   `curl`/script spike) on a real fixture, then the feasibility go/no-go — *before* decomposing.
+   Precedes proving a brick alone inside n8n.
+6. `docs/agent-isolation-testing.md` — HOW to prove a brick alone: n8n Pin data, testing a
    sub-workflow in isolation, and reading a result MCP-independently via the n8n Public API.
-6. Optionally one existing agent (`workflows/n8n/infra-agent.json` is the minimal model;
+7. Optionally one existing agent (`workflows/n8n/infra-agent.json` is the minimal model;
    `workflows/n8n/ops-agent.json` if the new agent needs tools).
 
 ## Instructions
 
 ### Step 0: Decompose & plan the role — AND define how each part is proven (mandatory)
+**Phase 1 first — prove the raw capability OUTSIDE n8n.** Before you decompose, prove each
+external capability the agent depends on (read a Hebrew form, fill a PDF, send a threaded email)
+actually works **outside n8n** — a `curl`/script spike on a real fixture — and pass the
+feasibility go/no-go. Record it in the design-spec's Capability Card (§0). See
+`docs/capability-first.md`. This *precedes* (does not replace) "prove each brick alone": only a
+capability proven feasible is worth decomposing and building.
+
 Before scaffolding, decide **what** to build — not just how to wire it. This step is
 **always run**; its depth is adaptive (a trivial agent gets ~4 lines; only a genuinely
 complex one gets the full spec). Apply the decision matrix from
