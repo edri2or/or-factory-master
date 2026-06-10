@@ -26,8 +26,8 @@ Gmail/יומן/Drive/Docs) "כתובת חזרה" אחת הרשומה אצל גו
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
 | 1 | כתיבת-סוד ל-Secret Manager + הרשאה ממוקדת | completed | `services/mcp-server/src/gcp-client.ts`, `test/secret-version.test.mjs`, `.github/workflows/deploy-mcp-server.yml`, `scripts/render-mcp-service-yaml.sh` |
-| 2 | קישור-ההתחברות + route ההתחלה | pending | `services/mcp-server/src/google-oauth.ts` (+test), `services/mcp-server/src/workspace-consent.ts` (חדש), `index.ts` |
-| 3 | לוכד ה-callback + שמירה ל-SM + שומרים | pending | `services/mcp-server/src/workspace-consent.ts` (+test) |
+| 2 | קישור-ההתחברות + route ההתחלה | completed | `services/mcp-server/src/google-oauth.ts` (+test), `index.ts` |
+| 3 | לוכד ה-callback + שמירה ל-SM + שומרים | pending | `index.ts` (route callback), `services/mcp-server/src/google-oauth.ts` (exchange/parse +test) |
 | 4 | חיווט-מחדש של workflow ההתחברות ל-gateway | pending | `.github/workflows/request-workspace-scopes-consent.yml` |
 | 5 | מיזוג → פריסה → רישום כתובת + consent חי + smoke (אבן-דרך חיה) | pending | מיזוג ל-main + קונסולת גוגל + control SM |
 | 6 | פירוק or-adhd-agent + פרישת הצינורות הישנים | pending | dispatch `decommission-test-system.yml`; retire `rotate-shared-gmail-token.yml` + נתיב rotate ב-`copy-gmail-oauth-to-control.yml` |
@@ -70,32 +70,39 @@ Gmail/יומן/Drive/Docs) "כתובת חזרה" אחת הרשומה אצל גו
 ### שלב 2 — קישור-ההתחברות + route ההתחלה
 
 **Acceptance:**
-- [ ] `workspaceConsentUrl()` + `exchangeWorkspaceConsentCode()` נוספו כאחים ב-`google-oauth.ts` בלי לגעת בפונקציות ה-login (`googleAuthorizeUrl`/`exchangeGoogleCode`), בשימוש-חוזר ב-`googleConfigured`/`emailAllowed`/`GOOGLE_TOKEN_URL`.
-- [ ] מודול חדש `workspace-consent.ts` עם `registerWorkspaceConsent(app)` + `GET /workspace/consent/start` (גדור ב-`secretMatches` + `googleConfigured`); `index.ts` מייבא וקורא.
-- [ ] Playground ירוק.
+- [x] `WORKSPACE_SCOPES` (6, byte-equal ל-`WORKSPACE_MCP_SCOPES`) + `workspaceConsentUrl()` נוספו כאחים ב-`google-oauth.ts` בלי לגעת בפונקציות ה-login (`googleAuthorizeUrl`/`exchangeGoogleCode`).
+- [x] `GET /workspace/consent/start` (inline ב-`index.ts`, גדור ב-`x-admin-secret`+`secretMatches`, ‏503 אם לא `googleConfigured`, ‏302 ל-Google) + מפת `pendingConsent` (TTL, מודל על `pendingAuth`).
+- [x] בדיקות `workspaceConsentUrl` ירוקות מקומית (87/87) + tsc קומפל את ה-route נקי; Playground ב-CI לאישור.
 
-**הוכחה תפקודית (באותו שלב):** (1) בדיקת יחידה ל-`workspaceConsentUrl` מאמתת מחרוזת
-מדויקת: `scope` = 6 ההרשאות בסדר של `WORKSPACE_MCP_SCOPES`, `access_type=offline`,
-`prompt=consent`, `redirect_uri=.../workspace/consent/callback`. (2) בדיקת אינטגרציה
-(express in-process) ל-`/workspace/consent/start`: עם admin-secret נכון → 302 ל-`accounts.google.com`; בלעדיו → 403. נצפה: ירוק ב-CI.
+**הוכחה תפקודית (באותו שלב):** בדיקת יחידה ב-`test/google-oauth.test.mjs` ל-`workspaceConsentUrl`
+מאמתת מחרוזת מדויקת: `scope` = 6 ההרשאות בדיוק (byte-equal ל-`WORKSPACE_SCOPES`),
+`access_type=offline`, `prompt=consent`, `redirect_uri=.../workspace/consent/callback`, `state`;
++ regression-guard ש-`googleAuthorizeUrl` (login) נשאר `openid email`/`online`. **הוכח מקומית
+(87/87).** ה-302/403 של ה-route עצמו: ‏`index.ts` לא ניתן-לייבוא-בבידוד (top-level throw + listen,
+כמו בכל הבדיקות הקיימות), אז התנהגותו החיה מאומתת בשלב 5 (חיבור-חיצוני = לבנה אחרונה); כאן
+הוא מאומת ב-tsc-compile + סקירה.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם. `WORKSPACE_SCOPES`+`workspaceConsentUrl` ב-google-oauth;
+‏`pendingConsent`+route ההתחלה inline ב-index.ts. מקומית 87/87 ירוק.
 
-**שינוי תוכנית:** —
+**שינוי תוכנית:** עוקב אחרי קונבנציית-הבית — ה-routes מוגדרים **inline ב-`index.ts`** (כמו
+`/oauth/*`), לא במודול `workspace-consent.ts` נפרד (אין דפוס `registerX(app)` בקוד הקיים).
+‏`exchangeWorkspaceConsentCode` + `parseWorkspaceConsentResponse` הוזזו לשלב 3 (נצרכים ע"י
+ה-callback). split נקי: שלב 2 = "שולח לגוגל", שלב 3 = "לוכד מה שחוזר".
 
 ---
 
 ### שלב 3 — לוכד ה-callback + שמירה ל-SM + שומרים
 
 **Acceptance:**
-- [ ] `GET /workspace/consent/callback` ב-`workspace-consent.ts`: ולידציית `state` מול map ייעודי `pendingConsent` (TTL, חד-פעמי, נפרד מ-`pendingAuth`); טיפול ב-`?error=`; החלפת code→refresh_token; **scope-equality guard** (לא כותב אם לא חזרו בדיוק 6); ואז `addSecretVersion('or-factory-master-control','gmail-oauth-refresh-token',token)`.
+- [ ] `parseWorkspaceConsentResponse` (טהור) + `exchangeWorkspaceConsentCode` ב-`google-oauth.ts`: דורש `refresh_token`, ו-**scope-equality guard** (זורק אם לא חזרו בדיוק 6, order-insensitive).
+- [ ] `GET /workspace/consent/callback` inline ב-`index.ts`: ולידציית `state` מול `pendingConsent` (TTL, חד-פעמי); `?error=`; קורא `exchangeWorkspaceConsentCode` ואז `addSecretVersion('or-factory-master-control','gmail-oauth-refresh-token',token)`.
 - [ ] Playground ירוק.
 
-**הוכחה תפקודית (באותו שלב):** בדיקות אינטגרציה (mock ל-token endpoint של גוגל + mock
-ל-`addSecretVersion`): ‏(a) state תקין + 6 scopes → `addSecretVersion` נקרא פעם אחת עם
-`gmail-oauth-refresh-token`; ‏(b) scope-mismatch → לא נכתב + שגיאה; ‏(c) state פג/חסר → 400
-בלי כתיבה; ‏(d) `?error=` → מוצג בלי כתיבה; ‏(e) חסר refresh_token → 502 בלי כתיבה. נצפה:
-כל הבדיקות ירוקות ב-CI.
+**הוכחה תפקודית (באותו שלב):** בדיקות יחידה ל-`parseWorkspaceConsentResponse` (הלוגיקה
+הבטיחותית של הלכידה — טהורה, ניתנת-לבדיקה): ‏(a) 6 scopes + refresh_token → מחזיר את הטוקן;
+‏(b) scope-mismatch → זורק (לא ייכתב); ‏(c) חסר refresh_token → זורק. ה-route ב-index.ts
+(state/error/write) מאומת ב-tsc-compile + חי בשלב 5 (כמו שלב 2). נצפה: ירוק ב-CI.
 
 **הערת התקדמות אחרונה:** —
 
@@ -180,3 +187,4 @@ grep מאמת שמחרוזת ה-URL הנבנית היא `${GATEWAY}/workspace/co
 
 - הפיתוח נפתח (2026-06-10): בונים דלת קבועה ב-gateway, מוכיחים חי, ואז מפרקים 5 מערכות ישנות — הכל בשערי ✅.
 - שלב 1 הושלם — נתתי ל-gateway יכולת בטוחה לשמור את הטוקן החדש (הוספה בלבד, אף פעם לא מחיקה). בדיקה אוטומטית ירוקה.
+- שלב 2 הושלם — בניתי את "כפתור ההתחברות" לגוגל (עם 6 ההרשאות הנכונות) ואת נקודת-הכניסה שמייצרת אותו. בדיקה אוטומטית ירוקה; ההתחברות הקיימת לא נפגעה.
