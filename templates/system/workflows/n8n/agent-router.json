@@ -24,6 +24,81 @@
     },
     {
       "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// async-deep-research: detect an explicit deep-research trigger phrase. If\n// present, the router kicks the background deep-research sub-workflow\n// (fire-and-forget) and returns an instant ack; otherwise the message flows to\n// the normal classifier unchanged. The matched trigger phrase is stripped so the\n// background research gets a clean topic. Trigger phrases contain no regex\n// metacharacters, so they are used directly as case-insensitive patterns.\nconst s = $('Sanitize Input').first().json.sanitized || '';\nconst TRIGGERS = ['תחקור לעומק','תחקרי לעומק','חקור לעומק','מחקר עמוק','מחקר מעמיק','חקירה מעמיקה','deep research','research deeply','in-depth research','in depth research'];\nconst low = s.toLowerCase();\nlet deep = false;\nfor (let i = 0; i < TRIGGERS.length; i++) { if (low.indexOf(TRIGGERS[i].toLowerCase()) !== -1) { deep = true; break; } }\nlet topic = s;\nif (deep) {\n  for (let i = 0; i < TRIGGERS.length; i++) { topic = topic.replace(new RegExp(TRIGGERS[i], 'ig'), ' '); }\n  topic = topic.replace(/\\s+/g, ' ').trim();\n  if (!topic) { topic = s; }\n}\nreturn [{ json: { sanitized: deep ? topic : s, deep_gate: deep ? 'deep' : 'normal', original_sanitized: s } }];"
+      },
+      "id": "a0000000-0000-0000-0000-0000000000e1",
+      "name": "Detect Deep Research",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [600, 140]
+    },
+    {
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose", "version": 2 },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "c3000000-0000-0000-0000-000000000001",
+                    "leftValue": "={{ $json.deep_gate }}",
+                    "rightValue": "deep",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "deep"
+            }
+          ]
+        },
+        "options": { "fallbackOutput": "extra", "renameFallbackOutput": "normal" }
+      },
+      "id": "a0000000-0000-0000-0000-0000000000e2",
+      "name": "Deep Gate",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [780, 140]
+    },
+    {
+      "parameters": {
+        "workflowId": { "__rl": true, "value": "@@SUB_DEEP_RESEARCH_WF_ID@@", "mode": "id" },
+        "mode": "once",
+        "options": { "waitForSubWorkflow": false }
+      },
+      "id": "a0000000-0000-0000-0000-0000000000e3",
+      "name": "Kick Deep Research",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [980, 60]
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "e3000000-0000-0000-0000-000000000001",
+              "name": "reply",
+              "type": "string",
+              "value": "={{ '🔎 מתחיל מחקר מעמיק על: ' + ($('Detect Deep Research').first().json.sanitized || '').slice(0, 200) + '\\nזה ייקח כמה דקות — אשלח לך את התשובה כשתהיה מוכנה.' }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a0000000-0000-0000-0000-0000000000e4",
+      "name": "Deep Ack",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1180, 60]
+    },
+    {
+      "parameters": {
         "promptType": "define",
         "text": "={{ $json.sanitized }}",
         "hasOutputParser": false,
@@ -325,7 +400,16 @@
   ],
   "connections": {
     "Webhook": { "main": [[{ "node": "Sanitize Input", "type": "main", "index": 0 }]] },
-    "Sanitize Input": { "main": [[{ "node": "Classify Intent", "type": "main", "index": 0 }]] },
+    "Sanitize Input": { "main": [[{ "node": "Detect Deep Research", "type": "main", "index": 0 }]] },
+    "Detect Deep Research": { "main": [[{ "node": "Deep Gate", "type": "main", "index": 0 }]] },
+    "Deep Gate": {
+      "main": [
+        [{ "node": "Kick Deep Research", "type": "main", "index": 0 }],
+        [{ "node": "Classify Intent", "type": "main", "index": 0 }]
+      ]
+    },
+    "Kick Deep Research": { "main": [[{ "node": "Deep Ack", "type": "main", "index": 0 }]] },
+    "Deep Ack": { "main": [[{ "node": "Egress Validation", "type": "main", "index": 0 }]] },
     "Classify Intent": { "main": [[{ "node": "Build Dispatch", "type": "main", "index": 0 }]] },
     "Classifier Model": { "ai_languageModel": [[{ "node": "Classify Intent", "type": "ai_languageModel", "index": 0 }]] },
     "Build Dispatch": { "main": [[{ "node": "Load Catalog", "type": "main", "index": 0 }]] },
