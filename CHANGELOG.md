@@ -1,5 +1,12 @@
 # Changelog
 
+## OIL auto-fix — OIL-49 — 2026-06-10T15:04Z
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | fix | Auto-fix proposed by oil-autofix for **OIL-49** (repo `or-factory-master`). עדכון watchdog-registry.json: תיקון tolerance_hours מ-9 ל-30 ועדכון cron מ-'*/6' ל-daily עבור factory-health-audit ו-system-runtime-audit — ישר עם לוחות הזמנים האמיתיים של הוורקפלואו Root cause: The watchdog-registry.json still documents cron:'0 */6 * * *' and tolerance_hours:9 for both factory-health-audit and system-runtime-audit, but those workflows were widened to once-daily schedules (06:00 and 06:15 UTC respectively). The watchdog runs at 05:00 UTC, so the most recent completed run of each daily audit is ~23 hours old at check time — well beyond the 9-hour tolerance. When the watchdog ran at 06:32 UTC today (a delayed 05:00 scheduled run), the 06:00 audit run was likely still in-progress or not yet started due to the same queue delay, so the newest completed run remained yesterday's, triggering the stale-success red branch in proof_gh_run_freshness. Compare: audit-openrouter-orphan-keys (also daily 06:00) is correctly configured with tolerance_hours:30 in the same registry.. Opened as a DRAFT PR by the broker App; awaits human Telegram approval (merged by the separate oil-autofix-approver identity). The fix + repro test passed the deterministic safety gate (≤2 AI-authored files / ≤100 lines, no forbidden paths, no secrets, fail-before/pass-after). This CHANGELOG entry is appended by the workflow, not the AI. |
+
+
 ## Stage 139 — chore: OIL Stage-4 teardown — remove smoke scaffold + fixture; loop verified live
 
 | PR | Type | Summary |
