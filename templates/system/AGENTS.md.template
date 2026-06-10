@@ -65,7 +65,7 @@ The deploy workflow authenticates as deploy-sa via WIF (no SA keys). Runtime wor
 
 The factory has set up the following components for this system:
 
-- **n8n** 1.121 on Railway (with Postgres + persistent volume)
+- **n8n** 2.25 on Railway (with Postgres + persistent volume)
 - **Caddy gateway** in front of n8n, enforcing HMAC-SHA256 on `/webhook/*` and per-IP rate limits
 - **Cloudflare DNS** + Let's Encrypt certificate (DNS-only mode)
 - **`.claude/`** package — slash commands and skills (incl. `gcp-hands-client`)
@@ -174,9 +174,10 @@ queue (Bull) instead of one at a time.
   public domain — it never serves HTTP). Webhooks still arrive through the main n8n + Caddy.
 - **Cost:** roughly **~$10–20/month** extra (Redis + worker run 24/7). That's why it's
   opt-in per system, not the default.
-- **Storage note:** queue mode sets `N8N_DEFAULT_BINARY_DATA_MODE=default` — the DB-backed
-  mode (filesystem binary storage isn't shared across separate worker containers), so binary
-  data lives in Postgres — expect the database to grow faster.
+- **Storage note:** queue mode sets `N8N_DEFAULT_BINARY_DATA_MODE=database` (the in-memory
+  `default` mode was removed in n8n 2.0; filesystem binary storage isn't shared across
+  separate worker containers), so binary data lives in Postgres — expect the database to
+  grow faster.
 - **Off = unchanged:** with `QUEUE_MODE=false` the deploy is byte-identical to a non-queue
   system — no Redis, no worker, no extra cost.
 

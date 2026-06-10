@@ -33,13 +33,17 @@ on:
 permissions: {}
 
 env:
-  # n8n 1.85.4 is in the vulnerable range for CVE-2026-21858 ("Ni8mare",
-  # CVSS 10.0, unauthenticated RCE via webhooks, fixed in 1.121.0).
-  # Pin to the minimum patched 1.x — bump further only after validating
-  # that newer 1.x / 2.x releases don't break the owner-setup flow we
-  # automated, the Postgres template our Provision Railway step uses,
-  # or the env-var contract n8n expects (DB_POSTGRESDB_*, N8N_*).
-  N8N_IMAGE: n8nio/n8n:1.121.0
+  # 2.25.7 is the official `stable` release (verified against Docker Hub
+  # digests, 2026-06-10). Bumped from 1.121.0 (the minimum CVE-2026-21858
+  # "Ni8mare" patch) because 1.x never registers mcpTrigger routes — proven
+  # conclusively on factory-test-048 (mcp-birth-bundle stage 5) — so the
+  # per-system MCP surface (/mcp/system-tools) needs 2.x to light up.
+  # CAUTION: n8n runs one-way DB migrations on first boot of a newer
+  # version — NEVER lower this pin below a version already deployed to a
+  # system (rollback = restore from backup, not an image downgrade).
+  # Keep templates/system/Dockerfile.worker's FROM tag in sync (queue mode
+  # requires main + worker on the SAME n8n version).
+  N8N_IMAGE: n8nio/n8n:2.25.7
   RAILWAY_GQL: https://backboard.railway.com/graphql/v2
   CF_API: https://api.cloudflare.com/client/v4
   TIMEZONE: Asia/Jerusalem
@@ -515,6 +519,42 @@ jobs:
             echo "PASS: railway-n8n-service-id persisted to SM."
           fi
 
+          # ===== n8n image upsert (Day-2 upgrade path) =====
+          # serviceCreate above runs only on the FIRST deploy; on every re-run
+          # the service id comes from SM and the create block is skipped — so
+          # an N8N_IMAGE bump in this file never reached an existing system.
+          # Read the production service-instance's current image and stage an
+          # update ONLY when it differs (a true no-op otherwise, preserving
+          # this workflow's idempotency contract). The rollout-and-wait runs
+          # AFTER the env upsert below, so the image change and any env change
+          # land together and we wait on a single fresh deployment.
+          echo "=== Railway: n8n image check (desired: ${N8N_IMAGE}) ==="
+          CUR_IMG=$(_gql 'query($id: String!) { service(id: $id) { serviceInstances { edges { node { environmentId source { image } } } } } }' \
+            "$(jq -cn --arg id "$N8N_ID" '{id: $id}')" 2>/dev/null \
+            | jq -r --arg eid "$ENV_ID" \
+              '[(.data.service.serviceInstances.edges // [])[] | select(.node.environmentId==$eid)][0].node.source.image // ""' 2>/dev/null || echo "")
+          N8N_IMAGE_CHANGED=false
+          N8N_PREV_DEPLOY_ID=""
+          if [ -z "$CUR_IMG" ]; then
+            echo "INFO: no readable service-instance image (service likely created this run) — skipping image upsert."
+          elif [ "$CUR_IMG" = "$N8N_IMAGE" ]; then
+            echo "INFO: n8n image already ${N8N_IMAGE} — no-op."
+          else
+            echo "INFO: n8n image upgrade: ${CUR_IMG} -> ${N8N_IMAGE}"
+            # Remember the latest deployment BEFORE the change so the rollout
+            # wait below can demand a NEW deployment id (an old SUCCESS must
+            # not false-PASS the upgrade).
+            N8N_PREV_DEPLOY_ID=$(_gql 'query($id: String!) { service(id: $id) { deployments(first: 1) { edges { node { id } } } } }' \
+              "$(jq -cn --arg id "$N8N_ID" '{id: $id}')" 2>/dev/null \
+              | jq -r '(.data.service.deployments.edges // []) | .[0].node.id // ""' 2>/dev/null || echo "")
+            _gql 'mutation($eid: String!, $sid: String!, $input: ServiceInstanceUpdateInput!) { serviceInstanceUpdate(environmentId: $eid, serviceId: $sid, input: $input) }' \
+              "$(jq -cn --arg eid "$ENV_ID" --arg sid "$N8N_ID" --arg img "$N8N_IMAGE" \
+                '{eid: $eid, sid: $sid, input: {source: {image: $img}}}')" >/dev/null
+            N8N_IMAGE_CHANGED=true
+            echo "PASS: n8n service-instance image update staged (${N8N_IMAGE})."
+          fi
+          echo "N8N_IMAGE_CHANGED=${N8N_IMAGE_CHANGED}" >> "$GITHUB_ENV"
+
           # No n8n-data volume: n8n's official Docker image runs as user
           # `node` (uid 1000), but Railway volumes mount as root. Attaching
           # a volume to /home/node/.n8n causes EACCES on n8n's runtime
@@ -682,16 +722,20 @@ jobs:
           # stays a resilient fallback executor; workers still take load via the queue.
           QUEUE_EXTRA='{}'
           if [ "$QM" = "true" ]; then
+            # Binary-data mode `database`: the in-memory `default` mode was
+            # REMOVED in n8n 2.0 (allowed: filesystem/database/s3). `database`
+            # keeps the existing "all state lives in volume-backed Postgres"
+            # contract with no new volume, and is n8n's own queue-mode default.
             QUEUE_EXTRA=$(jq -cn --arg rpw "$REDIS_PASSWORD" '{
               EXECUTIONS_MODE: "queue",
               QUEUE_BULL_REDIS_HOST: "redis.railway.internal",
               QUEUE_BULL_REDIS_PORT: "6379",
               QUEUE_BULL_REDIS_PASSWORD: $rpw,
-              N8N_DEFAULT_BINARY_DATA_MODE: "default",
+              N8N_DEFAULT_BINARY_DATA_MODE: "database",
               N8N_GRACEFUL_SHUTDOWN_TIMEOUT: "30",
               OFFLOAD_MANUAL_EXECUTIONS_TO_WORKERS: "true"
             }')
-            echo "INFO: queue mode ON — main n8n gets queue vars (binary mode=default)."
+            echo "INFO: queue mode ON — main n8n gets queue vars (binary mode=database)."
           fi
           _upsert_collection "$N8N_ID" "$(jq -cn \
             --arg host "${DLR}{{Postgres.RAILWAY_PRIVATE_DOMAIN}}" \
@@ -725,6 +769,57 @@ jobs:
               EXECUTIONS_DATA_PRUNE_MAX_COUNT: "25000"
             } + $extra')"
           echo "PASS: n8n env vars set (22 base vars + queue extras when QM=true; one upsert → single redeploy)."
+
+          # ===== (Day-2 upgrade) roll out the staged image change and wait =====
+          # When the image changed above, make sure a NEW deployment rolls out
+          # and reaches SUCCESS before anything downstream probes n8n. The
+          # staged config may already have rolled (serviceInstanceUpdate often
+          # self-redeploys — the Redis startCommand update above does — and the
+          # env upsert may have rolled one too), so first poll briefly for a
+          # new deployment id and only trigger an explicit serviceInstanceDeploy
+          # if none appeared. Then wait up to ~10 min: the first boot on a
+          # bumped version runs one-way DB migrations.
+          if [ "$N8N_IMAGE_CHANGED" = "true" ]; then
+            echo "=== Railway: rolling out upgraded n8n image (${N8N_IMAGE}) ==="
+            _latest_n8n_deploy() {
+              _gql 'query($id: String!) { service(id: $id) { deployments(first: 1) { edges { node { id status } } } } }' \
+                "$(jq -cn --arg id "$N8N_ID" '{id: $id}')" 2>/dev/null \
+                | jq -r '(.data.service.deployments.edges // []) | .[0].node | ((.id // "") + " " + (.status // ""))' 2>/dev/null || echo ""
+            }
+            dep_id=""; dep_status=""
+            for i in 1 2 3 4 5 6; do
+              read -r dep_id dep_status <<<"$(_latest_n8n_deploy)" || true
+              [ -n "$dep_id" ] && [ "$dep_id" != "$N8N_PREV_DEPLOY_ID" ] && break
+              dep_id=""
+              sleep 5
+            done
+            if [ -z "$dep_id" ]; then
+              echo "INFO: no deployment rolled automatically — triggering serviceInstanceDeploy."
+              _gql 'mutation($eid: String!, $sid: String!) { serviceInstanceDeploy(environmentId: $eid, serviceId: $sid) }' \
+                "$(jq -cn --arg eid "$ENV_ID" --arg sid "$N8N_ID" '{eid: $eid, sid: $sid}')" >/dev/null \
+                || echo "WARN: serviceInstanceDeploy errored; waiting on the latest deployment anyway." >&2
+            fi
+            dep_status=""
+            for i in $(seq 1 60); do
+              read -r dep_id dep_status <<<"$(_latest_n8n_deploy)" || true
+              echo "[n8n upgrade rollout ${i}/60] deployment=${dep_id:-<none>} status=${dep_status:-<none>}"
+              if [ -n "$dep_id" ] && [ "$dep_id" != "$N8N_PREV_DEPLOY_ID" ] && [ "$dep_status" = "SUCCESS" ]; then
+                break
+              fi
+              if [ "$dep_status" = "FAILED" ] || [ "$dep_status" = "CRASHED" ]; then
+                echo "FAIL: upgraded n8n deployment ${dep_id:-?} status=${dep_status} — aborting. The DB may" >&2
+                echo "      already hold one-way 2.x migrations: do NOT roll the image pin back blindly;" >&2
+                echo "      investigate the deploy logs and restore from backup if a downgrade is needed." >&2
+                exit 1
+              fi
+              sleep 10
+            done
+            if [ "$dep_status" != "SUCCESS" ] || [ "$dep_id" = "$N8N_PREV_DEPLOY_ID" ]; then
+              echo "FAIL: upgraded n8n deployment not SUCCESS after ~10 min (deployment=${dep_id:-<none>} status=${dep_status:-<none>})." >&2
+              exit 1
+            fi
+            echo "PASS: upgraded n8n image rolled out (deployment ${dep_id})."
+          fi
 
           # ===== (queue mode) n8n worker service: SM-first, find, then create =====
           # Second n8n process that pulls jobs from Redis and runs them — created
@@ -795,13 +890,30 @@ jobs:
                   QUEUE_BULL_REDIS_HOST: "redis.railway.internal",
                   QUEUE_BULL_REDIS_PORT: "6379",
                   QUEUE_BULL_REDIS_PASSWORD: $rpw,
-                  N8N_DEFAULT_BINARY_DATA_MODE: "default",
+                  N8N_DEFAULT_BINARY_DATA_MODE: "database",
                   N8N_GRACEFUL_SHUTDOWN_TIMEOUT: "30",
                   RAILWAY_DOCKERFILE_PATH: "Dockerfile.worker"
                 }')"
               echo "PASS: worker env set (builds from Dockerfile.worker → n8n worker mode)."
             else
               echo "INFO: worker env already set — skipping to avoid a needless redeploy."
+            fi
+
+            # (Day-2 upgrade) An existing worker keeps its first-create env and
+            # is repo-built from Dockerfile.worker, so a version bump needs two
+            # repairs on re-run: upsert the 2.x-safe binary-data mode (the env
+            # upsert above is first-create-only — in-memory `default` was
+            # removed in 2.0) and force a rebuild from the system repo's
+            # current main so the new FROM tag lands — queue mode requires
+            # main + worker on the SAME n8n version. The main's upgraded
+            # rollout already completed above, so the skew window is just this
+            # rebuild. Skipped entirely when the image didn't change.
+            if [ "$WORKER_FIRST_TIME" != "true" ] && [ "${N8N_IMAGE_CHANGED:-false}" = "true" ]; then
+              echo "=== Railway: rebuilding worker for the n8n upgrade ==="
+              _upsert_collection "$WORKER_ID" '{"N8N_DEFAULT_BINARY_DATA_MODE":"database"}'
+              _gql 'mutation($eid: String!, $sid: String!) { serviceInstanceDeploy(environmentId: $eid, serviceId: $sid) }' \
+                "$(jq -cn --arg eid "$ENV_ID" --arg sid "$WORKER_ID" '{eid: $eid, sid: $sid}')" >/dev/null \
+                || echo "WARN: worker serviceInstanceDeploy errored — worker may stay on the old n8n version; re-dispatch the deploy." >&2
             fi
 
             # Wait for the worker deployment to land — building Dockerfile.worker
@@ -1427,6 +1539,82 @@ jobs:
             head -c 400 /tmp/n8n-settings.json 2>/dev/null >&2 || true; echo >&2
             exit 1
           fi
+
+          # n8n's reported version — and, on an in-place upgrade run
+          # (N8N_IMAGE_CHANGED exported by the Provision Railway step), an
+          # assertion that the NEW version is actually the one serving.
+          # Version sources, in order (proven live on factory-test-051, run
+          # 27292322027): 1.x exposes versionCli on the UNAUTHENTICATED
+          # /rest/settings; n8n 2.x hardened that surface and strips the
+          # version pre-login — so when it is absent, log in as the owner
+          # (creds are in this job's env on every run) and read the
+          # authenticated settings. A successful owner login is itself the
+          # Day-2 proof that the migrated DB + user table survived. If a
+          # version IS readable and differs → hard fail (old container still
+          # serving). If NO version is readable even authenticated, rely on
+          # the structural rollout proof (the Provision step already required
+          # a NEW deployment id at SUCCESS) and WARN: on a 1.x→2.x upgrade a
+          # *missing* public version is itself 2.x behavior — an old 1.x
+          # container would have kept exposing versionCli=1.x.
+          VERSION_CLI=$(jq -r '.data.versionCli // .versionCli // ""' /tmp/n8n-settings.json 2>/dev/null || echo "")
+          echo "INFO: n8n reports versionCli=${VERSION_CLI:-<none>} (unauthenticated)"
+          if [ "${N8N_IMAGE_CHANGED:-false}" = "true" ]; then
+            WANT_VER="${N8N_IMAGE#*:}"
+            VERSION_OK=false
+            STRUCTURAL_OK=false
+            VA_COOKIES=/tmp/version-assert-cookies.txt
+            for i in $(seq 1 12); do
+              if [ "$VERSION_CLI" = "$WANT_VER" ]; then
+                VERSION_OK=true
+                break
+              fi
+              if [ -z "$VERSION_CLI" ]; then
+                # 2.x hides the version pre-login — authenticate and re-read.
+                rm -f "$VA_COOKIES"
+                LOGIN_HTTP="000"
+                for field in emailOrLdapLoginId email; do
+                  LOGIN_HTTP=$(curl -sS -o /tmp/version-login.json -w '%{http_code}' --max-time 15 \
+                    -c "$VA_COOKIES" -X POST "$BASE/rest/login" \
+                    -H "Content-Type: application/json" \
+                    -d "$(jq -cn --arg e "$N8N_OWNER_EMAIL" --arg p "$N8N_OWNER_PASSWORD" --arg f "$field" \
+                      '{($f): $e, password: $p}')" || echo "000")
+                  [ "$LOGIN_HTTP" = "200" ] && break
+                done
+                if [ "$LOGIN_HTTP" = "200" ]; then
+                  echo "PASS: owner login OK on the upgraded instance (migrated DB serves auth)."
+                  AUTH_HTTP=$(curl -sS -o /tmp/n8n-settings-auth.json -w '%{http_code}' --max-time 10 \
+                    -b "$VA_COOKIES" "$BASE/rest/settings" || echo "000")
+                  if [ "$AUTH_HTTP" = "200" ]; then
+                    VERSION_CLI=$(jq -r '.data.versionCli // .versionCli // ""' /tmp/n8n-settings-auth.json 2>/dev/null || echo "")
+                    if [ "$VERSION_CLI" = "$WANT_VER" ]; then
+                      VERSION_OK=true
+                      break
+                    fi
+                    if [ -z "$VERSION_CLI" ]; then
+                      # No version anywhere, but auth + DB work on the
+                      # rolled-out deployment — accept structurally.
+                      STRUCTURAL_OK=true
+                      break
+                    fi
+                  fi
+                fi
+              fi
+              echo "[version assert ${i}/12] versionCli=${VERSION_CLI:-<none>} != ${WANT_VER}; old container may still be serving, sleeping 10s..."
+              sleep 10
+              HTTP=$(curl -sS -o /tmp/n8n-settings.tmp -w '%{http_code}' --max-time 10 "$BASE/rest/settings" || echo "000")
+              [ "$HTTP" = "200" ] && mv /tmp/n8n-settings.tmp /tmp/n8n-settings.json
+              VERSION_CLI=$(jq -r '.data.versionCli // .versionCli // ""' /tmp/n8n-settings.json 2>/dev/null || echo "")
+            done
+            if [ "$VERSION_OK" = "true" ]; then
+              echo "PASS: upgrade landed — n8n versionCli=${VERSION_CLI}."
+            elif [ "$STRUCTURAL_OK" = "true" ]; then
+              echo "WARN: n8n exposes no versionCli even authenticated — accepting the upgrade on structural proof (new deployment SUCCESS + healthz + owner login)." >&2
+            else
+              echo "FAIL: upgrade did not land — n8n serves versionCli=${VERSION_CLI:-<none>}, expected ${WANT_VER}." >&2
+              exit 1
+            fi
+          fi
+
           NEEDS=$(jq -r '.data.userManagement.showSetupOnFirstLoad
                         // .userManagement.showSetupOnFirstLoad // false' /tmp/n8n-settings.json)
           echo "showSetupOnFirstLoad=$NEEDS"
@@ -1956,12 +2144,24 @@ jobs:
           }
           echo "PASS: workflow created (id=${WF_ID}, name='${WF_NAME}')."
 
-          # 6. Activate. Inactive workflows only respond on /webhook-test/<path>;
-          #    we want the production /webhook/<path> URL. n8n's internal API
-          #    uses POST /rest/workflows/:id/activate; modern versions also
-          #    accept PATCH /rest/workflows/:id with {active:true}. Try the
-          #    dedicated endpoint first, fall back to PATCH.
-          HTTP=$(_napi POST "$BASE/rest/workflows/${WF_ID}/activate" /tmp/n8n-activate.json)
+          # 6. Activate = publish. Inactive workflows only respond on
+          #    /webhook-test/<path>; we want the production /webhook/<path>
+          #    URL. On n8n 2.x production routes register only when a
+          #    workflow VERSION is published — the UI Publish button posts
+          #    the draft versionId to POST /rest/workflows/:id/activate
+          #    (proven live on factory-test-051; a body-less call fails DTO
+          #    validation). On 1.x that endpoint takes no body; try the
+          #    versioned call first, then the body-less legacy call, then
+          #    PATCH {active:true} (1.x only; 2.x ignores it).
+          WF_VID=$(jq -r '(.data // .).versionId // empty' /tmp/n8n-wf.json 2>/dev/null || echo "")
+          HTTP="000"
+          if [ -n "$WF_VID" ]; then
+            HTTP=$(_napi POST "$BASE/rest/workflows/${WF_ID}/activate" /tmp/n8n-activate.json \
+              "$(jq -cn --arg v "$WF_VID" '{versionId: $v, name: "deploy-publish"}')")
+          fi
+          if [ "$HTTP" != "200" ] && [ "$HTTP" != "204" ]; then
+            HTTP=$(_napi POST "$BASE/rest/workflows/${WF_ID}/activate" /tmp/n8n-activate.json)
+          fi
           if [ "$HTTP" != "200" ] && [ "$HTTP" != "204" ]; then
             HTTP=$(_napi PATCH "$BASE/rest/workflows/${WF_ID}" /tmp/n8n-activate.json '{"active":true}')
           fi
@@ -2056,7 +2256,7 @@ jobs:
           # 2. Independent fresh n8n login — its own cookie jar, not shared with any
           #    earlier step.
           COOKIE_JAR=$(mktemp)
-          trap 'rm -f "$COOKIE_JAR" /tmp/or-login.json /tmp/or-creds.json /tmp/or-cred-new.json /tmp/or-wfs.json /tmp/or-wf.json /tmp/or-wf-get.json /tmp/or-activate.json /tmp/or-hook.json /tmp/or-exec-list.json' EXIT
+          trap 'rm -f "$COOKIE_JAR" /tmp/or-login.json /tmp/or-creds.json /tmp/or-cred-new.json /tmp/or-wfs.json /tmp/or-wf.json /tmp/or-wf-get.json /tmp/or-wf-vid.json /tmp/or-activate.json /tmp/or-hook.json /tmp/or-exec-list.json' EXIT
           _login() {
             local field="$1"
             curl -sS -o /tmp/or-login.json -w '%{http_code}' --max-time 15 \
@@ -2107,8 +2307,8 @@ jobs:
           echo "PASS: n8n owner login → session cookie captured."
 
           # 3. Credential idempotency: reuse by name, else create. Both apiKey AND url are
-          #    required — n8n 1.121.0's openRouterApi validator rejects a partial data
-          #    object even though url is marked hidden in the credential source.
+          #    required — n8n's openRouterApi validator (seen on 1.121.0) rejects a partial
+          #    data object even though url is marked hidden in the credential source.
           HTTP=$(_napi GET "$BASE/rest/credentials" /tmp/or-creds.json)
           [ "$HTTP" = "200" ] || { echo "FAIL: GET /rest/credentials HTTP $HTTP" >&2; head -c 400 /tmp/or-creds.json >&2 || true; _soft_exit0 "GET /rest/credentials נכשל (HTTP $HTTP)"; }
           CRED_ID=$(jq -r --arg n "$CRED_NAME" \
@@ -2192,8 +2392,33 @@ jobs:
             echo "PASS: workflow created (id=${WF_ID}, webhook path=${WEBHOOK_PATH})."
           fi
 
-          # 5. Activate (idempotent). Try the dedicated endpoint, fall back to PATCH.
-          HTTP=$(_napi POST "$BASE/rest/workflows/${WF_ID}/activate" /tmp/or-activate.json)
+          # 5. Activate = publish (idempotent). On n8n 2.x production trigger
+          #    routes register only when a workflow VERSION is published — the
+          #    UI Publish button posts the draft versionId to the cookie-authed
+          #    POST /rest/workflows/:id/activate (proven live on
+          #    factory-test-051; the Public API activate 200s WITHOUT
+          #    registering — upstream gap czlonkowski/n8n-mcp#551). On 1.x
+          #    that endpoint is absent, so fall back to the Public API
+          #    (X-N8N-API-KEY, the 1.x path proven on factory-test-048; key
+          #    minted later in this job on a FIRST deploy, present on re-runs),
+          #    then PATCH {active:true} as last resort.
+          _napi GET "$BASE/rest/workflows/${WF_ID}" /tmp/or-wf-vid.json >/dev/null || true
+          WF_VID=$(jq -r '(.data // .).versionId // empty' /tmp/or-wf-vid.json 2>/dev/null || echo "")
+          HTTP="000"
+          if [ -n "$WF_VID" ]; then
+            HTTP=$(_napi POST "$BASE/rest/workflows/${WF_ID}/activate" /tmp/or-activate.json \
+              "$(jq -cn --arg v "$WF_VID" '{versionId: $v, name: "deploy-publish"}')")
+          fi
+          if [ "$HTTP" != "200" ] && [ "$HTTP" != "204" ]; then
+            N8N_API_KEY_SM=$(gcloud secrets versions access latest \
+              --secret=n8n-api-key --project="$PROJECT_ID" 2>/dev/null || echo "")
+            if [ -n "$N8N_API_KEY_SM" ]; then
+              echo "::add-mask::${N8N_API_KEY_SM}"
+              HTTP=$(curl -sS -o /tmp/or-activate.json -w '%{http_code}' --max-time 20 \
+                -X POST -H "X-N8N-API-KEY: ${N8N_API_KEY_SM}" \
+                "$BASE/api/v1/workflows/${WF_ID}/activate" || echo "000")
+            fi
+          fi
           if [ "$HTTP" != "200" ] && [ "$HTTP" != "204" ]; then
             HTTP=$(_napi PATCH "$BASE/rest/workflows/${WF_ID}" /tmp/or-activate.json '{"active":true}')
           fi
