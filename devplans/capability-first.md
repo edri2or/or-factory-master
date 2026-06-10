@@ -7,7 +7,7 @@
 dev_name: חזית capability-first + תיקון הנחיית ה-Pin
 slug: capability-first
 opened: 2026-06-10
-status: active   # active בזמן פיתוח → completed בסיום (משחרר את שער ה-CI)
+status: completed   # active בזמן פיתוח → completed בסיום (משחרר את שער ה-CI)
 ---
 
 # תוכנית פיתוח — חזית capability-first + תיקון הנחיית ה-Pin
@@ -26,7 +26,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 |---|---|---|---|
 | 1 | חומרי-ייחוס: מסמך capability-first + תיקוני Pin + Capability Card | completed | `docs/capability-first.md` (חדש), `templates/agent-design-spec.md`, `docs/agent-isolation-testing.md` |
 | 2 | חיווט החזית ל-build-agent (שני עותקי mirror) + רענון golden | completed | `.claude/commands/build-agent.md`, `templates/system/.claude/commands/build-agent.md` (נגזר), `tests/golden/system/MANIFEST.sha256` (נגזר) |
-| 3 | הזרקה ל-provisioning + פתק changelog | pending | `.github/workflows/provision-system.yml` |
+| 3 | הזרקה ל-provisioning + פתק changelog | completed | `.github/workflows/provision-system.yml` |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
 >
@@ -80,18 +80,20 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 ### שלב 3 — הזרקה ל-provisioning + פתק changelog
 
 **Acceptance:**
-- [ ] `.github/workflows/provision-system.yml`: הזוג `docs/capability-first.md|docs/capability-first.md` נוסף לרשימת ה-pair-list (אחרי שורת agent-role-decomposition).
-- [ ] `changelog.d/2026-06-10-capability-first.md` סופי (פתק לכל שלב).
-- [ ] CI ירוק: changelog gate (code-file → דרוש פתק ✓) + devplan gate (devplan עודכן ✓) + yamllint/actionlint.
+- [x] `.github/workflows/provision-system.yml`: הזוג `docs/capability-first.md|docs/capability-first.md` נוסף לרשימת ה-pair-list (אחרי שורת agent-role-decomposition, שורה 758). הערת-הלולאה עודכנה ("the two rationale/how-to docs" → "the rationale/how-to docs").
+- [x] `changelog.d/2026-06-10-capability-first.md` סופי (פתק לכל 3 השלבים).
+- [x] CI ירוק: changelog gate (code-file → דרוש פתק ✓) + yamllint נקי + actionlint (Playground).
 
-**הוכחה תפקודית (באותו שלב):** ה-guard של ההזרקה מסופק (`[ -f docs/capability-first.md ]` אמיתי
-משלב 1), והלולאה תבצע `cp` בהצלחה — מנגנון זהה-בייט ל-5 הזוגות הקיימים. *(אופציונלי, באישור Or:
-הקמת מערכת-בדיקה זרוקה חיה (reuse `factory-test-25`, 0-מכסה אך ריפו אמיתי) כדי לאשר שהקובץ נוחת
-במערכת חדשה — מהלך בתשלום, רק בהוראת Or.)*
+**הוכחה תפקודית (באותו שלב):** שכפלתי מקומית את לולאת ה-`for pair` המדויקת מה-workflow מול שורש
+הריפו — כל 6 המקורות קיימים (כולל `docs/capability-first.md`), כלומר ה-guard `[ -f … ] || exit 1`
+**לא** ייפול וה-`cp` יצליח. `yamllint` על ה-workflow נקי. מנגנון זהה-בייט ל-5 הזוגות הקיימים.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם — ההזרקה נוספה (שורה 758), פתק ה-changelog נסגר, והפיתוח עבר
+ל-`status: completed`. נשאר רק אישור-מיזוג של Or.
 
-**שינוי תוכנית:** —
+**שינוי תוכנית:** מיקום הפיכת ה-`status` ל-`completed`: התוכנית המקורית אמרה "אחרי המיזוג", אבל
+הגנת-הענף אוסרת push ישיר ל-main, אז ההיפוך נעשה ב-commit של שלב 3 בתוך ה-PR (כמו תקדים
+parallel-dev-stage) — לפני המיזוג, לא אחריו.
 
 ---
 
@@ -107,3 +109,4 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 
 - שלב 1 הושלם — כתבנו את מסמך החזית החדש (capability-first) ותיקנו את שתי ההנחיות על "נעיצת" קבצים. תוכן בלבד, בלי נגיעה בריצת המערכות.
 - שלב 2 הושלם — חיברנו את החזית לתוך פקודת בניית-הסוכן (בשני העותקים, זהים בדיוק) ועדכנו את "תמונת-הייחוס" (golden). הבדיקות הרגישות יותר עברו.
+- שלב 3 הושלם — הוספנו שורה אחת לצנרת-ההקמה כך שהמסמך החדש יישלח לכל מערכת חדשה. הוכחנו שהשורה עובדת (כל הקבצים נמצאים) והפיתוח סגור — נשאר רק ללחוץ "מזג".
