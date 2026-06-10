@@ -7,7 +7,7 @@
 dev_name: לידה מחוברת — חיבורי MCP מובנים לכל מערכת
 slug: mcp-birth-bundle
 opened: 2026-06-09
-status: active   # active בזמן פיתוח → completed בסיום (משחרר את שער ה-CI)
+status: completed   # נסגר 2026-06-10 — 6/6 שלבים; שלב 5 'בנוי וחמוש' (מותנה שדרוג n8n)
 ---
 
 # תוכנית פיתוח — לידה מחוברת (mcp-birth-bundle)
@@ -29,7 +29,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 | 3 | `.mcp.json.template` — סשני קלוד נולדים מחוברים | completed | `templates/system/.mcp.json.template`, `templates/system/AGENTS.md.template`, `.github/workflows/provision-system.yml`, `tests/golden/system/` |
 | 4 | Google sidecar: Drive+Docs (קליק consent אחד של Or) | completed | `services/workspace-mcp/entrypoint.sh`, `scripts/render-mcp-service-yaml.sh`, `.github/workflows/{copy-gmail-oauth-to-control,request-workspace-scopes-consent,rotate-shared-gmail-token}.yml`, `scripts/google-mcp-smoke.py`, `templates/system/.github/workflows/bootstrap-gmail-oauth.yml`, `templates/system/workflows/n8n/ops-agent.json`, `tests/golden/system/` |
 | 5 | n8n כשרת MCP: וורקפלו mcpTrigger מובנה (ניתן לחיתוך) | completed | `templates/system/workflows/n8n/mcp-server.json`, `.github/workflows/provision-system.yml`, `templates/system/.github/workflows/configure-agent-router.yml`, `templates/system/AGENTS.md.template`, `monitoring/registry-exempt.txt`, `tests/golden/system/` |
-| 6 | סגירה: תיעוד, Teardown ledger, status completed | pending | `devplans/mcp-birth-bundle.md`, `CLAUDE.md`, `changelog.d/` |
+| 6 | סגירה: תיעוד, Teardown ledger, status completed | completed | `devplans/mcp-birth-bundle.md`, `CLAUDE.md`, `changelog.d/` |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
 >
@@ -299,7 +299,19 @@ active:true — אבל ‏`/mcp/system-tools` נשאר 404 ("webhook not registe
 status ל-completed. פירוק מערכת-הטסט — רק בהוראת Or (`decommission-test-system.yml`).
 
 **Acceptance:**
-- [ ] כל השלבים completed; ledger מעודכן; CLAUDE.md + changelog ממוזגים.
+- [x] כל השלבים completed; ledger מעודכן; CLAUDE.md + changelog ממוזגים.
+
+**הערת סגירה + follow-ups (2026-06-10):** ‏CLAUDE.md עודכן (מסלולי ה-gateway החדשים,
+‏.mcp.json מולד, ‏3 ה-workflows החדשים); fragment מסכם ב-changelog.d. ‏follow-ups שנרשמו:
+(1) **שדרוג גרסת n8n לכל המערכות** — מדליק את שלב 5 (mcpTrigger) אוטומטית + בחינה מחודשת
+של ה-MCP המובנה; (2) ‏get_railway_build_logs/verify_* כ-v2 של סט factory_tools;
+(3) טוקן גוגל בסקופ קריאה-בלבד כשער-כתיבה קשיח; (4) איכות ראוטר: unknown-agent מחזיר
+reply ריק + ‏Classifier error ב-smoke של 048; (5) קישור ה-fallback בתבנית
+bootstrap-gmail-oauth דורש סשן (אותו פגם שתוקן ב-consent); (6) העברת ה-redirect URI של
+ה-client המשותף מ-or-adhd-agent לכתובת קבועה לפני פירוקה; (7) הקשחת gcp-action נגד
+קידומת gcloud כפולה; (8) אינטראקציית שער-devplan עם PRs של OIL (נחסמים בזמן פיתוח
+פעיל — לשקול פטור לענפי oil-autofix/*); (9) אימות secrets:read+administration:read
+לברוקר (ירושה מ-consolidate).
 
 **הוכחה תפקודית (באותו שלב):** תוכן בלבד.
 
@@ -311,15 +323,12 @@ status ל-completed. פירוק מערכת-הטסט — רק בהוראת Or (`d
 
 ## מצב מערכת-הטסט (Teardown ledger)
 
-- **factory-test-047** — חיה, מערכת-הטסט הנוכחית (הוקמה 2026-06-10 בשלב 3, reuse mode על
-  `factory-test-25`, ‏0 מכסה). רכיבים: ריפו `edri2or/factory-test-047` (עם `.mcp.json` מולד);
-  **טרם נפרסה** (אין Railway/DNS עדיין — deploy בתחילת שלב 4). סודות ב-SM של `factory-test-25`
-  (הסבב הנוכחי). תשמש את שלבים 4–5. פירוק: `decommission-test-system.yml` — רק בהוראת Or.
-- **factory-test-046** — בדימוס (הוחלפה ע"י 047 בשלב 3): ניקוי-הסודות של פרוביז'ן 047 הפך
-  אותה ללא-ניתנת-לניהול (by design של מצב reuse). שרידים לפירוק: פרויקט Railway
-  `d4ba2820-a7cc-462a-a2dc-83a86a3cb24a` (postgres+n8n רצים!), ‏DNS
-  ‏`n8n-factory-test-046.or-infra.com`, ריפו `edri2or/factory-test-046`. **ממתינה לאישור Or
-  לפירוק** (`decommission-test-system.yml` עם `shared_gcp_project=factory-test-25`).
+- **factory-test-047** — ✅ פורקה (2026-06-10, run 27284519258, באישור Or): ‏Railway+DNS
+  נמחקו, הריפו אורכב. שירתה את הוכחות שלבים 3–4.
+- **factory-test-046** — ✅ פורקה (2026-06-10, run 27271445383, באישור Or). שירתה את
+  הוכחת שלב 2.
+- **factory-test-048** — ✅ פורקה (2026-06-10, run 27284623257, באישור Or): ‏Railway+DNS
+  נמחקו, הריפו אורכב. שירתה את הוכחות שלב 5 (4 איטרציות + המסקנה המכרעת).
 
 ## יומן ל-Or (עברית)
 
@@ -347,3 +356,6 @@ status ל-completed. פירוק מערכת-הטסט — רק בהוראת Or (`d
   שגרסת מנוע-האוטומציות הנוכחית פשוט לא תומכת בסוג השקע הזה. הצנרת נשארת מוכנה
   ותידלק מעצמה ביום שנשדרג את המנוע (פרויקט עתידי מסודר). בדרך נתפסו ותוקנו
   4 תקלות אמיתיות ששוות לכל המערכות.
+- **סגירה (2026-06-10):** הפיתוח הושלם — כל מערכת חדשה נולדת מחוברת: עיניים על עצמה,
+  ‏Google מלא (כולל Drive/Docs), סשני קלוד מוכנים מהשנייה הראשונה, ו"שקע חיצוני" חמוש
+  לעתיד. שלוש מערכות-הניסיון פורקו, הכל מתועד, ‏9 משימות-המשך רשומות מסודר.
