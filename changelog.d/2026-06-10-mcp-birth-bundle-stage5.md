@@ -38,3 +38,9 @@ configure log are the acceptance evidence; independent 401 probe via
 App credentials, so the always-available `postgres_named_query` proves the
 identical toolWorkflow path; `github_readonly` exercises automatically on
 real systems (where the App is registered).
+
+**Fix (found live on factory-test-048):** n8n 1.121 rejected the workflow
+POST with HTTP 500 — `null value in column "active" ... violates not-null
+constraint`. Every other template carries a top-level `"active": false` and
+the new mcp-server.json didn't; added. (Caught by the live loop exactly as
+designed: the install failed soft, the router still configured.)

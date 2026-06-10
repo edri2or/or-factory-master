@@ -1,5 +1,6 @@
 {
   "name": "factory-master: mcp-server",
+  "active": false,
   "nodes": [
     {
       "parameters": {
