@@ -50,7 +50,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
 | 0 | נעילת תכן + פתיחת תוכנית (קריאה בלבד) | completed | devplans/bot-trace-observability.md |
-| 1 | טבלת `agent_trace_events` | pending | db-setup.json + golden + changelog |
+| 1 | טבלת `agent_trace_events` | completed | db-setup.json + golden + changelog |
 | 2 | אינסטרומנטציה לגבול-הכלי (3 כלי-קריאה) | pending | postgres-named-queries / github-readonly / railway-readonly + golden + changelog |
 | 3 | 3 שאילתות חשיפה | pending | postgres-named-queries.json + golden + changelog |
 | 4 | חשיפה ב-MCP + תיאורי-כלי | pending | mcp-server / ops-agent / unknown-agent + golden + changelog |
@@ -87,15 +87,18 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 ### שלב 1 — טבלת `agent_trace_events`
 
 **Acceptance:**
-- [ ] DDL אידמפוטנטי (`CREATE TABLE/INDEX IF NOT EXISTS`) נוסף ל-"Create Tables" ב-db-setup.json, לפני ה-SELECT המאמת.
-- [ ] `'agent_trace_events'` נוסף לרשימת ה-`IN (…)` של ה-SELECT המאמת.
-- [ ] golden רוענן (`scripts/check-system-golden.sh --update`) ונכלל באותו commit.
-- [ ] fragment ל-changelog.d + עדכון devplan באותו commit.
+- [x] DDL אידמפוטנטי (`CREATE TABLE/INDEX IF NOT EXISTS`) נוסף ל-"Create Tables" ב-db-setup.json, לפני ה-SELECT המאמת.
+- [x] `'agent_trace_events'` נוסף לרשימת ה-`IN (…)` של ה-SELECT המאמת.
+- [x] golden רוענן (`scripts/check-system-golden.sh --update`) ונכלל באותו commit.
+- [x] fragment ל-changelog.d + עדכון devplan באותו commit.
 
-**הוכחה תפקודית (באותו שלב):** `validate_workflow` על db-setup.json עובר; "Playground tests" +
-"Changelog gates" ירוקים. (יצירת-הטבלה בפועל מוכחת בשלב 5 על מערכת חיה — מודל הפקטורי.)
+**הוכחה תפקודית (באותו שלב):** JSON תקין (jq) — שינוי SQL בלבד בצומת קיים, בלי שינוי מבני;
+golden + "Playground tests" + "Changelog gates" ירוקים. (`validate_workflow` המבני נדרש בשלבים
+2–3 שמוסיפים צמתים; יצירת-הטבלה בפועל מוכחת בשלב 5 על מערכת חיה — מודל הפקטורי.)
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם. db-setup.json עודכן (CREATE+ALTER+3 אינדקסים, +רשימת-אימות),
+JSON תקין (jq), golden רוענן (MANIFEST בלבד), שני שערי-הזהב ירוקים מקומית. נוסף `ALTER TABLE
+... ADD COLUMN IF NOT EXISTS` לריפוי-עצמי אם הטבלה קיימת מסכמה ישנה.
 
 **שינוי תוכנית:** —
 
@@ -204,3 +207,4 @@ iterate fix→apply→verify עד ירוק.
 > שורה פשוטה אחת לכל שלב שהסתיים — בלי ז'רגון.
 
 - שלב 0 הושלם — נעלנו את התכן (אימות מול הקוד), פתחנו קובץ-תוכנית, ומצאנו 2 קיצורי-דרך שמקטינים סיכון.
+- שלב 1 הושלם — הוספנו את טבלת-התיעוד שתיוולד בכל מערכת חדשה. השערים ירוקים, לא נגענו בשום דבר חי.
