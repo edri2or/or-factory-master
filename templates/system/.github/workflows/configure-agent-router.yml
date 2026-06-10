@@ -689,7 +689,22 @@ jobs:
             if [ -f "$RWRO_SRC" ]; then
               sed -e "s#@@CRED_RAILWAY_ID@@#${CRED_RAILWAY_ID}#g" \
                   -e "s#@@RAILWAY_PROJECT_ID@@#${RW_PROJECT_ID}#g" \
+                  -e "s#@@CRED_POSTGRES_ID@@#${CRED_POSTGRES_ID}#g" \
+                  -e "s#@@CHAT_ID@@#${CHAT_ID}#g" \
                   "$RWRO_SRC" > /tmp/ar-prep-railway-readonly.json
+              # bot-trace-observability: the trace nodes write to agent_trace_events and
+              # need the Postgres credential. With none, strip them + restore Normalize
+              # Input → Route by Command (never leave a node on an empty credential).
+              if [ -z "$CRED_POSTGRES_ID" ] || [ "$CRED_POSTGRES_ID" = "null" ]; then
+                jq '(.nodes |= map(select((.name | IN("Mint Trace","Write Trace Attempt","Write Trace Result","Return Tool Payload")) | not)))
+                    | .connections."Normalize Input" = {"main":[[{"node":"Route by Command","type":"main","index":0}]]}
+                    | del(.connections."Mint Trace") | del(.connections."Write Trace Attempt")
+                    | del(.connections."Format Output") | del(.connections."Write Trace Result")' \
+                  /tmp/ar-prep-railway-readonly.json > /tmp/ar-prep-railway-readonly.json.tmp \
+                  && mv /tmp/ar-prep-railway-readonly.json.tmp /tmp/ar-prep-railway-readonly.json \
+                  || echo "WARN: railway-readonly trace-strip failed — using prepped file as-is" >&2
+                echo "INFO: railway-readonly trace nodes stripped (no Postgres credential)"
+              fi
               WF_RAILWAY_READONLY_ID=$(_upsert_wf "factory-master: railway-readonly" /tmp/ar-prep-railway-readonly.json yes) || WF_RAILWAY_READONLY_ID=""
               { [ -n "$WF_RAILWAY_READONLY_ID" ] && [ "$WF_RAILWAY_READONLY_ID" != "null" ]; } \
                 && echo "PASS: factory-master: railway-readonly → id=${WF_RAILWAY_READONLY_ID} (published — נקרא ב-production דרך toolWorkflow)" \
@@ -707,7 +722,22 @@ jobs:
                   -e "s#@@GITHUB_APP_ID@@#${GH_APP_ID}#g" \
                   -e "s#@@GITHUB_INSTALLATION_ID@@#${GH_APP_INSTALL_ID}#g" \
                   -e "s#@@SYSTEM_NAME@@#${SYSTEM_NAME}#g" \
+                  -e "s#@@CRED_POSTGRES_ID@@#${CRED_POSTGRES_ID}#g" \
+                  -e "s#@@CHAT_ID@@#${CHAT_ID}#g" \
                   "$GHRO_SRC" > /tmp/ar-prep-github-readonly.json
+              # bot-trace-observability: the trace nodes write to agent_trace_events and
+              # need the Postgres credential. With none, strip them + restore Normalize
+              # Input → Token Cache Check (never leave a node on an empty credential).
+              if [ -z "$CRED_POSTGRES_ID" ] || [ "$CRED_POSTGRES_ID" = "null" ]; then
+                jq '(.nodes |= map(select((.name | IN("Mint Trace","Write Trace Attempt","Write Trace Result","Return Tool Payload")) | not)))
+                    | .connections."Normalize Input" = {"main":[[{"node":"Token Cache Check","type":"main","index":0}]]}
+                    | del(.connections."Mint Trace") | del(.connections."Write Trace Attempt")
+                    | del(.connections."Format Output") | del(.connections."Write Trace Result")' \
+                  /tmp/ar-prep-github-readonly.json > /tmp/ar-prep-github-readonly.json.tmp \
+                  && mv /tmp/ar-prep-github-readonly.json.tmp /tmp/ar-prep-github-readonly.json \
+                  || echo "WARN: github-readonly trace-strip failed — using prepped file as-is" >&2
+                echo "INFO: github-readonly trace nodes stripped (no Postgres credential)"
+              fi
               WF_GITHUB_READONLY_ID=$(_upsert_wf "factory-master: github-readonly" /tmp/ar-prep-github-readonly.json yes) || WF_GITHUB_READONLY_ID=""
               { [ -n "$WF_GITHUB_READONLY_ID" ] && [ "$WF_GITHUB_READONLY_ID" != "null" ]; } \
                 && echo "PASS: factory-master: github-readonly → id=${WF_GITHUB_READONLY_ID} (published — נקרא ב-production דרך toolWorkflow)" \

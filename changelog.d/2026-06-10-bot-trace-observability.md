@@ -39,3 +39,18 @@
   (mcp-server מצביע לאותו sub-workflow).
 - אומת מבנית (jq + בדיקת חיווט: אפס IDs/שמות כפולים, כל קצה-חיבור וכל `$('…')` מצביע לצומת קיים);
   golden רוענן; שערי-הזהב ירוקים. (התנהגות חיה — שלב 5.)
+
+### שלב 3 — שכפול אינסטרומנטציה ל-github-readonly + railway-readonly
+
+- **אותו דפוס trace** הוחל על `github-readonly.json` (15→19 צמתים) ו-`railway-readonly.json`
+  (9→13): Mint Trace → Write Trace Attempt (לפני Token-mint / Route, tool_name תואם) →
+  Format Output → Write Trace Result → Return Tool Payload. github כבר קרא `$('Normalize Input')`
+  לפי-שם; ב-railway הופנו 2 תנאי ה-Switch לפי-שם (clobber של Postgres).
+- **שינוי מתקין (configure-agent-router.yml):** prep של github/railway קיבל
+  `@@CRED_POSTGRES_ID@@`+`@@CHAT_ID@@` (לא היו Postgres-consumers קודם), עם **fallback אם אין PG**
+  — `jq` שמסיר את 4 צמתי-ה-trace ומשחזר את ה-topology המקורי (Normalize→Token Cache Check /
+  Route by Command, Format Output טרמינל). זהו ה"שינוי 6" שה-handoff צפה. *(תיקון תוך-כדי: ה-jq
+  הראשון השתמש ב-`index(.name)` ששגוי בהקשר; הוחלף ל-`.name | IN(...)` ואומת ששתי המערכות חוזרות
+  ל-topology המקורי.)*
+- אומת: yamllint על המתקין; happy-path (PG קיים) + מסלול-ה-strip (אין PG) שניהם מייצרים JSON תקין
+  עם topology נכון; golden רוענן; שערי-הזהב ירוקים. (התנהגות חיה — שלב 5.)
