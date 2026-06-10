@@ -64,8 +64,17 @@ Source: n8n issues #14322 / #14446; n8n docs — *Gmail Trigger / poll-mode opti
 - For systematic scoring, n8n has a built-in **Evaluations** feature (Evaluation node +
   a dataset in Data tables / Google Sheets + metrics) — dev-time "light evaluations" are
   hand-picked test cases, exactly the golden-fixture idea below.
+- **Binary caveat — pinning a *string* is not proof for *binary*.** Pinning the form image/PDF
+  **as a base64 string** (above) exercises the prompt path, but proves only that the string
+  reached the node — not decode/stream/multipart. For a real **binary property** (a Webhook file
+  upload, a downloaded attachment) n8n can report node **success while silently dropping the
+  binary** — pinning included (n8n GitHub #28843, observed on 2.15.0; docs: *"You can't pin data
+  if the output data includes binary data"*). Prove a binary path **end-to-end through a real
+  trigger** (e.g. POST a test file to a fixed-path Webhook — §5), never by pinning. Full method:
+  `docs/capability-first.md`.
 
-Source: n8n docs — *Basic LLM Chain*; *Evaluations overview*; blog — *Debug AI agent behavior*.
+Source: n8n docs — *Basic LLM Chain*; *Evaluations overview*; *Data pinning* (binary limitation);
+blog — *Debug AI agent behavior*.
 
 ---
 
@@ -140,6 +149,9 @@ The capability that, in the pilot, was only ever proven at the very end. Here it
 2. **Run it alone (no Gmail, no orchestrator):** in the editor, Pin the base64 of
    `sample-form.pdf` on the input node → **Test step** on the `form-reader` sub-workflow.
    For CI, drive it via a fixed-path Webhook (Pattern A) or trigger + read the execution.
+   (Pinning here pins a base64 *string* — fine to exercise the VLM prompt path, but it does
+   **not** prove real binary handling; for a binary path prove it through the Webhook, per §4's
+   binary caveat.)
 3. **Assert (MCP-independent):**
    ```bash
    curl -s -H "X-N8N-API-KEY: $KEY" \
