@@ -53,3 +53,14 @@ registration. The mcp-server install now activates EXPLICITLY (response
 always surfaced; one deactivate→activate retry cycle on failure) and the
 self-verification waits out registration lag (up to ~60s of 404) before
 asserting.
+
+**Iteration 3 (found live on factory-test-048):** the explicit activation
+surfaced the real mechanism — `POST /rest/workflows/:id/activate` does NOT
+exist in n8n 1.121 (404 + the SPA's HTML), and `PATCH {"active":true}` only
+flips the DB flag without registering the mcpTrigger runtime route. The
+supported programmatic activation is the PUBLIC API: the block now does the
+Public-API deactivate→activate pair with `X-N8N-API-KEY` (this system's own
+`n8n-api-key`, minted at deploy), deactivate-first so re-runs re-register
+cleanly. (This also explains why regular-webhook workflows never hit this:
+their PATCH path registers `webhook` triggers; mcpTrigger needs the full
+activation service.)
