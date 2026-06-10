@@ -350,6 +350,30 @@ jobs:
             echo "WARN: factory-mcp-bearer missing/placeholder in SM — factory_tools tool skipped" >&2
           fi
 
+          # n8n MCP server (mcp-birth-bundle Stage 5): the system's n8n also SERVES
+          # tools outward — the mcp-server workflow's mcpTrigger guards its
+          # /mcp/system-tools endpoint with a Bearer credential built from this
+          # system's n8n-mcp-server-token (minted at provision). Additive + soft:
+          # a miss only skips the mcp-server workflow (the router still configures).
+          MCPSRV_TOKEN=$(_sm_read "n8n-mcp-server-token" || echo "")
+          [ -n "$MCPSRV_TOKEN" ] && echo "::add-mask::${MCPSRV_TOKEN}" || true
+          CRED_N8N_MCP_SERVER_ID=""
+          if [ -n "$MCPSRV_TOKEN" ] && [ "$MCPSRV_TOKEN" != "__NOT_CONFIGURED__" ]; then
+            MS_CRED_NAME="n8n MCP Server"
+            CRED_N8N_MCP_SERVER_ID=$(jq -r --arg n "$MS_CRED_NAME" '[(.data // .) | .[]? | select(.name==$n)][0].id // empty' /tmp/ar-creds.json || echo "")
+            if [ -z "$CRED_N8N_MCP_SERVER_ID" ]; then
+              MS_CRED_BODY=$(jq -cn --arg n "$MS_CRED_NAME" --arg t "$MCPSRV_TOKEN" '{name:$n, type:"httpBearerAuth", data:{token:$t}}')
+              HTTP=$(_napi POST "$BASE/rest/credentials" /tmp/ar-cred-ms.json "$MS_CRED_BODY")
+              { [ "$HTTP" = "200" ] || [ "$HTTP" = "201" ]; } || { head -c 300 /tmp/ar-cred-ms.json >&2 || true; echo "WARN: POST /rest/credentials (n8n MCP Server) HTTP $HTTP — mcp-server skipped" >&2; }
+              CRED_N8N_MCP_SERVER_ID=$(jq -r '.data.id // .id // empty' /tmp/ar-cred-ms.json || echo "")
+            fi
+            { [ -n "$CRED_N8N_MCP_SERVER_ID" ] && [ "$CRED_N8N_MCP_SERVER_ID" != "null" ]; } \
+              && echo "INFO: n8n MCP Server credential id=${CRED_N8N_MCP_SERVER_ID}" \
+              || { echo "WARN: no n8n MCP Server credential id — mcp-server skipped" >&2; CRED_N8N_MCP_SERVER_ID=""; }
+          else
+            echo "WARN: n8n-mcp-server-token missing/placeholder in SM — mcp-server workflow skipped" >&2
+          fi
+
           # (b2) Deepgram STT: Hebrew voice-to-text. Uses httpHeaderAuth with
           #      "Authorization: Token <key>". Graceful: absent → voice branch stripped
           #      from tg-inbound later. deepgram-api-key is copied from factory SM by
@@ -1061,6 +1085,109 @@ jobs:
               fi
             else
               echo "WARN: pending-actions-executor.json not found in repo — HITL executor skipped" >&2
+            fi
+          fi
+
+          # 5i. n8n as an MCP SERVER (mcp-birth-bundle Stage 5): install + activate the
+          #     mcp-server workflow — an mcpTrigger guarding /mcp/system-tools (Bearer =
+          #     n8n-mcp-server-token) that exposes the three existing READ subworkflows
+          #     (postgres_named_query / github_readonly / railway_readonly) as MCP tools
+          #     for external agents. request_write_action is deliberately OUT — this is
+          #     a read-only surface. Tools whose subworkflow id is missing are stripped
+          #     (graceful degradation). Soft-fail; never blocks the router. Ends with a
+          #     BUILT-IN SELF-VERIFICATION that runs on every system this configures.
+          MCPSRV_WF_ID=""
+          if [ -n "$CRED_N8N_MCP_SERVER_ID" ] && [ "$CRED_N8N_MCP_SERVER_ID" != "null" ]; then
+            MCPSRV_SRC="${WF_DIR}/mcp-server.json"
+            if [ -f "$MCPSRV_SRC" ]; then
+              sed -e "s#@@CRED_N8N_MCP_SERVER_ID@@#${CRED_N8N_MCP_SERVER_ID}#g" \
+                  -e "s#@@WF_PG_NAMED_QUERIES_ID@@#${PG_NAMED_WF_ID}#g" \
+                  -e "s#@@WF_GITHUB_READONLY_ID@@#${WF_GITHUB_READONLY_ID}#g" \
+                  -e "s#@@WF_RAILWAY_READONLY_ID@@#${WF_RAILWAY_READONLY_ID}#g" \
+                  "$MCPSRV_SRC" > /tmp/ar-prep-mcp-server.json
+              # Strip any tool whose subworkflow was not created (empty id).
+              for pair in "postgres_named_query|${PG_NAMED_WF_ID}" \
+                          "github_readonly|${WF_GITHUB_READONLY_ID}" \
+                          "railway_readonly|${WF_RAILWAY_READONLY_ID}"; do
+                tname="${pair%%|*}"; tid="${pair#*|}"
+                if [ -z "$tid" ] || [ "$tid" = "null" ]; then
+                  jq --arg n "$tname" '(.nodes |= map(select(.name != $n))) | del(.connections[$n])' \
+                    /tmp/ar-prep-mcp-server.json > /tmp/ar-prep-mcp-server.json.tmp \
+                    && mv /tmp/ar-prep-mcp-server.json.tmp /tmp/ar-prep-mcp-server.json \
+                    || echo "WARN: mcp-server ${tname} strip failed" >&2
+                  echo "INFO: mcp-server tool ${tname} → stripped (subworkflow missing)"
+                fi
+              done
+              MCPSRV_WF_ID=$(_upsert_wf "factory-master: mcp-server" /tmp/ar-prep-mcp-server.json yes) \
+                || MCPSRV_WF_ID=""
+              if [ -n "$MCPSRV_WF_ID" ] && [ "$MCPSRV_WF_ID" != "null" ]; then
+                echo "PASS: factory-master: mcp-server → id=${MCPSRV_WF_ID} (פעיל — MCP endpoint /mcp/system-tools)"
+
+                # ── Built-in self-verification (runs on every system) ──────────────
+                # Proves the live endpoint end to end: 401 without the bearer;
+                # initialize + tools/list with it; one REAL tool call through the
+                # MCP surface (postgres_named_query — works on every system; the
+                # argument key is discovered from the tool's own inputSchema).
+                MCP_EP="${BASE}/mcp/system-tools"
+                _mcp_post() { # $1=payload $2=outfile [$3=session-id] -> echoes http code
+                  if [ -n "${3:-}" ]; then
+                    curl -sS -o "$2" -w '%{http_code}' --max-time 30 -X POST "$MCP_EP" \
+                      -H "Authorization: Bearer ${MCPSRV_TOKEN}" -H "Content-Type: application/json" \
+                      -H "Accept: application/json, text/event-stream" -H "mcp-session-id: $3" \
+                      --data-binary "$1" || echo "000"
+                  else
+                    curl -sS -o "$2" -w '%{http_code}' --max-time 30 -X POST "$MCP_EP" \
+                      -H "Authorization: Bearer ${MCPSRV_TOKEN}" -H "Content-Type: application/json" \
+                      -H "Accept: application/json, text/event-stream" \
+                      --data-binary "$1" || echo "000"
+                  fi
+                }
+                _mcp_json() { # extract the last data: line (SSE) or raw JSON from $1
+                  if grep -q '^data:' "$1" 2>/dev/null; then grep '^data:' "$1" | tail -1 | sed 's/^data: *//'; else cat "$1"; fi
+                }
+                # (a) no bearer -> must be rejected (401/403)
+                NOAUTH=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 15 -X POST "$MCP_EP" \
+                  -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" \
+                  --data-binary '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"self-verify","version":"1.0"}}}' || echo "000")
+                { [ "$NOAUTH" = "401" ] || [ "$NOAUTH" = "403" ]; } \
+                  && echo "PASS: mcp-server self-verify — no bearer rejected (HTTP ${NOAUTH})" \
+                  || echo "WARN: mcp-server self-verify — expected 401/403 without bearer, got HTTP ${NOAUTH}" >&2
+                # (b) initialize with the bearer (capture the session id if issued)
+                INIT_HTTP=$(curl -sS -D /tmp/ar-mcp-hdr -o /tmp/ar-mcp-init -w '%{http_code}' --max-time 30 -X POST "$MCP_EP" \
+                  -H "Authorization: Bearer ${MCPSRV_TOKEN}" -H "Content-Type: application/json" \
+                  -H "Accept: application/json, text/event-stream" \
+                  --data-binary '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"self-verify","version":"1.0"}}}' || echo "000")
+                MCP_SID=$(awk 'BEGIN{IGNORECASE=1} /^mcp-session-id:/ {print $2}' /tmp/ar-mcp-hdr | tr -d '\r' | head -1)
+                if [ "$INIT_HTTP" = "200" ] && _mcp_json /tmp/ar-mcp-init | jq -e '.result.serverInfo' >/dev/null 2>&1; then
+                  echo "PASS: mcp-server self-verify — initialize ok (session=${MCP_SID:-stateless})"
+                else
+                  echo "WARN: mcp-server self-verify — initialize HTTP ${INIT_HTTP}" >&2; head -c 300 /tmp/ar-mcp-init >&2 || true
+                fi
+                _mcp_post '{"jsonrpc":"2.0","method":"notifications/initialized"}' /tmp/ar-mcp-note "${MCP_SID:-}" >/dev/null || true
+                # (c) tools/list -> the expected read-only tool set
+                TL_HTTP=$(_mcp_post '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' /tmp/ar-mcp-tl "${MCP_SID:-}")
+                TOOLS=$(_mcp_json /tmp/ar-mcp-tl | jq -r '[.result.tools[].name] | sort | join(",")' 2>/dev/null || echo "")
+                if [ "$TL_HTTP" = "200" ] && [ -n "$TOOLS" ]; then
+                  echo "PASS: mcp-server self-verify — tools/list: ${TOOLS}"
+                else
+                  echo "WARN: mcp-server self-verify — tools/list HTTP ${TL_HTTP} tools='${TOOLS}'" >&2
+                fi
+                # (d) one REAL call through the MCP surface (argument key from schema)
+                ARG_KEY=$(_mcp_json /tmp/ar-mcp-tl | jq -r '[.result.tools[] | select(.name=="postgres_named_query")][0].inputSchema.properties | keys[0] // "input"' 2>/dev/null || echo "input")
+                CALL_BODY=$(jq -cn --arg k "$ARG_KEY" '{jsonrpc:"2.0",id:3,method:"tools/call",params:{name:"postgres_named_query",arguments:{($k):"executions_summary_24h"}}}')
+                CALL_HTTP=$(_mcp_post "$CALL_BODY" /tmp/ar-mcp-call "${MCP_SID:-}")
+                CALL_TEXT=$(_mcp_json /tmp/ar-mcp-call | jq -r '[.result.content[]? | select(.type=="text") | .text] | join("")' 2>/dev/null || echo "")
+                if [ "$CALL_HTTP" = "200" ] && printf '%s' "$CALL_TEXT" | grep -q '"ok"'; then
+                  echo "PASS: mcp-server self-verify — real postgres_named_query call returned data ($(printf '%s' "$CALL_TEXT" | wc -c) bytes)"
+                else
+                  echo "WARN: mcp-server self-verify — tools/call HTTP ${CALL_HTTP}; body: $(printf '%s' "$CALL_TEXT" | head -c 200)" >&2
+                fi
+                rm -f /tmp/ar-mcp-hdr /tmp/ar-mcp-init /tmp/ar-mcp-note /tmp/ar-mcp-tl /tmp/ar-mcp-call
+              else
+                echo "WARN: mcp-server install failed" >&2; MCPSRV_WF_ID=""
+              fi
+            else
+              echo "WARN: mcp-server.json not found in repo — skipping" >&2
             fi
           fi
 

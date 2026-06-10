@@ -39,6 +39,10 @@ templates/system/workflows/n8n/tg-voice-stt.json
 # by the "system-n8n-executions" registry entry, like the other per-system crons:
 templates/system/workflows/n8n/pending-actions-cleanup.json
 templates/system/workflows/n8n/db-vacuum.json
+# mcp-server: inbound MCP endpoint (mcpTrigger, no schedule of its own) — proven
+# by configure-agent-router's built-in self-verification on every system, and its
+# executions are covered collectively by "system-n8n-executions" like the rest:
+templates/system/workflows/n8n/mcp-server.json
 # Not an automation at all — a data manifest (the source-of-truth registry of the
 # orchestrator's agents, read by /build-agent). Nothing runs, so nothing to monitor.
 templates/system/workflows/n8n/agents.manifest.json
