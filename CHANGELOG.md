@@ -1,5 +1,12 @@
 # Changelog
 
+## OIL auto-fix — OIL-49 — 2026-06-10T06:36Z
+
+| PR | Type | Summary |
+|---|---|---|
+| TBD | fix | Auto-fix proposed by oil-autofix for **OIL-49** (repo `or-factory-master`). עודכן watchdog-registry.json: factory-health-audit ו-system-runtime-audit שינו cron ל-daily ('0 6 * * *' / '15 6 * * *') ו-tolerance_hours מ-9 ל-25 כדי להתאים ללוח הזמנים היומי ולמנוע false-positive של השומר Root cause: The watchdog registry retains tolerance_hours:9 for factory-health-audit and system-runtime-audit — a value calibrated for the old every-6h cron. Both workflows were later widened to daily schedules (factory-health-audit.yml: '0 6 * * *'; system-runtime-audit.yml: '15 6 * * *'), but the registry was never updated. The watchdog itself is scheduled at 05:00 UTC (runs before both audits start) and in today's run fired at 06:32 UTC (same scheduling window as both audits). The proof_gh_run_freshness probe finds no completed run younger than 9 hours — the newest completed successful run is yesterday's (~23h old) — and correctly classifies each as red by its own freshness-window logic. The registry cron fields also still read '0 */6 * * *' / '15 */6 * * *' (every-6h), diverging from the actual daily workflow schedules. This mismatch causes a repeatable false-positive alert every day the watchdog fires before both audits complete.. Opened as a DRAFT PR by the broker App; awaits human Telegram approval (merged by the separate oil-autofix-approver identity). The fix + repro test passed the deterministic safety gate (≤2 AI-authored files / ≤100 lines, no forbidden paths, no secrets, fail-before/pass-after). This CHANGELOG entry is appended by the workflow, not the AI. |
+
+
 ## Stage 139 — chore: OIL Stage-4 teardown — remove smoke scaffold + fixture; loop verified live
 
 | PR | Type | Summary |
