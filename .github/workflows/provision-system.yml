@@ -747,14 +747,15 @@ jobs:
           # Agent-build references: ship the /build-agent skill's reference material so each
           # system can build its own sub-agents (the skill itself rides in the .claude tree).
           # The scaffold template + contract come from the system mould; the design-spec and
-          # the two rationale/how-to docs ship from the factory's own copies (single source).
+          # the rationale/how-to docs ship from the factory's own copies (single source).
           mkdir -p "$CLONE_DIR/templates/n8n" "$CLONE_DIR/docs/research"
           for pair in \
             "templates/system/templates/n8n/subagent.template.json|templates/n8n/subagent.template.json" \
             "templates/system/templates/n8n/subagent.contract.md|templates/n8n/subagent.contract.md" \
             "templates/agent-design-spec.md|templates/agent-design-spec.md" \
             "docs/agent-isolation-testing.md|docs/agent-isolation-testing.md" \
-            "docs/research/agent-role-decomposition-planning.md|docs/research/agent-role-decomposition-planning.md"; do
+            "docs/research/agent-role-decomposition-planning.md|docs/research/agent-role-decomposition-planning.md" \
+            "docs/capability-first.md|docs/capability-first.md"; do
             src="${pair%%|*}"; dst="${pair##*|}"
             [ -f "${GITHUB_WORKSPACE}/${src}" ] || { echo "FAIL: ${src} not found" >&2; exit 1; }
             cp "${GITHUB_WORKSPACE}/${src}" "$CLONE_DIR/${dst}"
