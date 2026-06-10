@@ -1,0 +1,5 @@
+## OIL auto-fix — OIL-49 — 2026-06-10
+
+| PR | Type | Summary |
+|---|---|---|
+| #374 | fix | Auto-fix proposed by oil-autofix for **OIL-49** (repo `or-factory-master`). עדכון watchdog-registry.json: תיקון tolerance_hours מ-9 ל-30 ועדכון cron מ-'*/6' ל-daily עבור factory-health-audit ו-system-runtime-audit — ישר עם לוחות הזמנים האמיתיים של הוורקפלואו. Root cause: the registry still documented cron '0 */6 * * *' + tolerance_hours 9 for both audits, but the workflows were widened to once-daily (06:00 / 06:15 UTC) — so at the 05:00 watchdog check the newest completed run was ~23h old, tripping the stale-success branch. Mirrors audit-openrouter-orphan-keys (daily, tolerance 30) in the same registry. Approved by Or's Telegram ✅; the fix + repro test passed the deterministic safety gate. (Entry moved from the head of CHANGELOG.md to this fragment — the head-write pushed the file over the 20 KB cap and failed check-changelog-size; teaching the OIL fixer to write fragments is a recorded follow-up.) |
