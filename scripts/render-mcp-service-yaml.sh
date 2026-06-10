@@ -118,6 +118,9 @@ emit_env FACTORY_TG_CHAT_MODEL "anthropic/claude-haiku-4.5"
 emit_env N8N_MCP_URL "http://localhost:3001/mcp"
 emit_env N8N_DEV_ALLOWED_SYSTEMS "${N8N_DEV_ALLOWED_SYSTEMS}"
 emit_env OAUTH_ALLOWED_EMAILS "${OAUTH_ALLOWED_EMAILS}"
+# Control project the gateway writes the captured workspace refresh token back to
+# (the /workspace/consent/callback door → Secret Manager addVersion).
+emit_env CONTROL_PROJECT "or-factory-master-control"
 # Google Workspace MCP sidecar endpoint (trailing slash: FastMCP 307-redirects
 # the slashless form) + which systems may reach it.
 emit_env WORKSPACE_MCP_URL "http://localhost:3002/mcp/"

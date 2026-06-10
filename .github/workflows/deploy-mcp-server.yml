@@ -545,6 +545,28 @@ jobs:
             echo "INFO: could not modify sentry-api-key IAM; assuming existing project-level access."
           fi
 
+      - name: Best-effort grant runtime SA secretVersionAdder on gmail-oauth-refresh-token
+        run: |
+          set -uo pipefail
+          # The workspace consent door (services/mcp-server/src/workspace-consent.ts)
+          # captures a freshly-consented 6-scope Google refresh token and writes it
+          # back as a NEW version of gmail-oauth-refresh-token (the sidecar reads
+          # :latest). The runtime SA already has secretAccessor on this secret (it
+          # is a mounted env), so this grants ONLY the resource-scoped, add-only
+          # roles/secretmanager.secretVersionAdder — it confers neither read of
+          # other secrets nor destroy, so a captured token can never remove the
+          # prior version (which stays as rollback). Best-effort, mirroring the
+          # sentry-api-key grant above.
+          if gcloud secrets add-iam-policy-binding "gmail-oauth-refresh-token" \
+               --project="${GCP_PROJECT}" \
+               --member="serviceAccount:${RUNTIME_SA_EMAIL}" \
+               --role="roles/secretmanager.secretVersionAdder" \
+               --quiet >/dev/null 2>&1; then
+            echo "PASS: ensured runtime SA secretVersionAdder on gmail-oauth-refresh-token."
+          else
+            echo "INFO: could not modify gmail-oauth-refresh-token IAM (grant may already exist)."
+          fi
+
       # No other "Grant runtime SA secretAccessor / project-level read / actAs"
       # steps — broker SA is the runtime SA (see env-block note), and the
       # broker already has access to every other secret it mounts (it created
