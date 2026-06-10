@@ -27,7 +27,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
-| 1 | שלד + מנגנון אסינכרוני (כל הקוד + golden + שערים סטטיים) | pending | `templates/system/workflows/n8n/deep-research.json` (חדש), `agent-router.json`, `agents.manifest.json`, `templates/system/.github/workflows/configure-agent-router.yml`, `tests/golden/system/**` |
+| 1 | שלד + מנגנון אסינכרוני (כל הקוד + golden + שערים סטטיים) | completed | `templates/system/workflows/n8n/deep-research.json` (חדש), `agent-router.json`, `agents.manifest.json`, `templates/system/.github/workflows/configure-agent-router.yml`, `tests/golden/system/**` |
 | 2 | אימות חי על מערכת-טסט (costed, Or-gated) | pending | — (dispatch בלבד) |
 | 3 | קידום (מיזוג ל-main) + תיעוד + סגירה | pending | `docs/telegram-chat-bot.md`, `docs/roadmap.md` |
 
@@ -55,11 +55,16 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 - [ ] golden מרוענן (`--update`) באותו PR; פתק changelog; devplan מעודכן.
 - [ ] שערים סטטיים ירוקים: Playground tests (golden) + Changelog gates (golden-sync) + shellcheck/yamllint + JSON תקין.
 
-**הוכחה תפקודית (באותו שלב):** `validate_workflow` של ה-n8n-MCP על `deep-research.json` ועל
-`agent-router.json` המעודכן עובר בלי שגיאות-מבנה; אימות מקומי של פרמטר ה-Wait=OFF המדויק
-(`executeWorkflow` v1.1) מול `get_node`; golden + reference-sync PASS מקומית. (round-trip חי = שלב 2.)
+**הוכחה תפקודית (באותו שלב):** `validate_workflow` של ה-n8n-MCP על `deep-research.json` = `valid:true`
+0 שגיאות; פרמטר ה-Wait=OFF (`options.waitForSubWorkflow:false`) ו-`maxIterations` אומתו מול `get_node`;
+לוגיקת `Detect Deep Research` (זיהוי+קילוף ביטוי), `Egress (deep)` (redaction+dedup+chunking, מקורות
+תמיד נשלחים) ושתי טרנספורמציות ה-strip (no-Tavily router / no-Postgres) הורצו ב-Node על קלט אמיתי —
+כולן PASS. golden (122) + golden-sync + yamllint + single-voice gate PASS מקומית. (round-trip חי = שלב 2.)
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הקוד נכתב ואומת מקומית במלואו. `deep-research.json` חדש (agent v2.2 sonnet-4.5
++ 2 כלי Tavily + egress+chunking), הראוטר מזהה מילת-מפתח ויורה fire-and-forget עם ack מיידי, `configure`
+מתקין+מפרסם לפני הראוטר עם graceful-degradation מלא, golden רוענן. ממתין ל-CI ירוק ולאישור Or לשלב 2
+(אימות חי — costed).
 
 **שינוי תוכנית:** —
 
@@ -109,4 +114,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 
 > שורה פשוטה אחת לכל שלב שהסתיים — בשפה ש-Or מבין, בלי ז'רגון.
 
--
+- שלב 1 הושלם — בנינו את כל הקוד: וורקפלו חדש שעושה מחקר ארוך ברקע ושולח את הדוח לטלגרם לבד, והבוט יודע
+  לזהות "תחקור לעומק" ולענות מיד "מתחיל לחקור" בלי לחכות. הכל נבדק מקומית ועובד; השערים האוטומטיים ירוקים.
+  השלב הבא (אימות חי על מערכת-בדיקה) עולה כסף ולכן ימתין לאישורך.
+
