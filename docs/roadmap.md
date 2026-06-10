@@ -237,6 +237,37 @@ after the template merge; existing systems are **not** auto-back-filled.
 **Not touched:** Caddy / webhooks (webhooks still flow through the main n8n behind Caddy);
 no default-on; no auto back-fill.
 
+## Open follow-ups (living list)
+
+Recorded follow-ups from closed developments, consolidated here so they live in ONE place
+(the per-development changelog fragments they were born in get compiled away over time).
+When a follow-up is taken up, open its own `/dev-stage` development; when it closes, strike
+it here in the same PR. Row order is provenance order, **not** priority — prioritization is
+Or's call. Scope: the four sources below; older prose-recorded follow-ups elsewhere in this
+file are not re-audited here. Provenance: `changelog.d/2026-06-10-mcp-birth-bundle-close.md`,
+`changelog.d/2026-06-10-oil-49-watchdog-tolerance.md`, `changelog.d/2026-06-10-n8n-2x-upgrade.md`,
+`devplans/async-deep-research.md`.
+
+| # | Follow-up | Origin | Status |
+|---|---|---|---|
+| 1 | ~~n8n version upgrade for all systems (lights the dormant `mcpTrigger` socket)~~ | mcp-birth-bundle | **Done** — `n8n-2x-upgrade` (2.25.7, socket lit at birth) |
+| 2 | `factory_tools` v2 — extend the per-system telemetry subset (Railway build logs, `verify_*` tools) | mcp-birth-bundle | Open |
+| 3 | Read-only-scoped Google token as a *hard* write gate (today writes are blocked by prompt + HITL, not by the grant itself) | mcp-birth-bundle | Open |
+| 4 | Router / unknown-agent reply quality — empty sub-agent answer + a one-off classifier failure seen live on factory-test-048 | mcp-birth-bundle | Open |
+| 5 | `bootstrap-gmail-oauth` template still sends the session-bound n8n `/auth` link — port the direct-consent-URL fix from `request-workspace-scopes-consent.yml` (#363) | mcp-birth-bundle | Open |
+| 6 | Move the shared Google OAuth redirect URI off or-adhd-agent to a stable address — **blocks any teardown of or-adhd-agent** (declared abandoned in `n8n-2x-upgrade` stage 4, but still carries the shared identity) | mcp-birth-bundle | Open (queued) |
+| 7 | `gcp-action` hardening — classify/reject a duplicated `gcloud gcloud` command before it reaches the Telegram approval card | mcp-birth-bundle | Open (queued) |
+| 8 | Devplan gate × OIL — `check-devplan-updated.sh` blocks `oil-autofix/*` PRs while any plan is active; exempt them (stalled OIL-49 / PR #357 on 2026-06-10) | mcp-birth-bundle | Open (queued) |
+| 9 | Verify the broker App's `secrets:read` + `administration:read` permissions (inherited check from consolidate-to-master; affects 3 permission-gated org-read tools) | mcp-birth-bundle | Open |
+| 10 | OIL fixer writes its changelog entry to the head of `CHANGELOG.md` — must write a `changelog.d/` fragment instead (broke the 20 KB size gate on PR #374; fixed by hand that round) | OIL-49 round | Open (queued) |
+| 11 | n8n 2.x exposes env control of the built-in MCP surface (`mcpManagedByEnv`/`mcpAccessEnabled`) — headless enable possible; revisit the built-in MCP vs our `mcp-server` workflow | n8n-2x-upgrade | Open |
+| 12 | Cosmetic: the deep-research agent sometimes prefixes a meta-sentence ("עכשיו אכין דוח…") before the report | async-deep-research | Open (optional) |
+
+Operational (not a dev, approval-gated): tear down the legacy non-factory projects — or-tok,
+tokile, or-edri-2, project-life-130 — and or-adhd-agent itself **after** follow-up 6 lands.
+Each deletion goes through the Telegram-✅ gates (`propose-repo-delete.yml` / Railway teardown),
+never automatically.
+
 ## Things we are deliberately not building
 
 The previous factory had these and they bought less than they cost:
