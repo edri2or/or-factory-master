@@ -469,15 +469,20 @@ jobs:
 
           # Upsert one workflow by name (PATCH if exists else POST), then activate.
           # $1=workflow name  $2=path to placeholder-resolved JSON  ->  echoes the WF id.
-          # Activation goes Public-API-first (X-N8N-API-KEY from this system's SM,
-          # minted at deploy): the only programmatic activation path proven to
-          # register trigger routes on modern n8n — found live on factory-test-048,
-          # where the /rest legs only flipped the DB flag. The /rest legs remain
-          # as fallbacks (and as the path when the key is somehow absent).
+          # Activation chain, by n8n generation (both proven live):
+          # 1. Cookie /rest activate with the just-saved draft versionId — on
+          #    2.x this is the UI Publish button's exact call, the ONLY path
+          #    that registers production trigger routes (factory-test-051;
+          #    the Public API activate 200s without registering — upstream
+          #    gap czlonkowski/n8n-mcp#551). On 1.x the endpoint is absent
+          #    (404) and the chain falls through.
+          # 2. Public API activate (X-N8N-API-KEY) — the 1.x programmatic
+          #    path (factory-test-048).
+          # 3. PATCH active:true — last resort (1.x only; 2.x ignores it).
           N8N_PUB_API_KEY=$(_sm_read "n8n-api-key" 2>/dev/null || echo "")
           [ -n "$N8N_PUB_API_KEY" ] && echo "::add-mask::${N8N_PUB_API_KEY}"
           _upsert_wf() {
-            local wf_name="$1" body_file="$2" activate="${3:-yes}" wid http
+            local wf_name="$1" body_file="$2" activate="${3:-yes}" wid http vid
             _napi GET "$BASE/rest/workflows" /tmp/ar-wfs.json >/dev/null
             wid=$(jq -r --arg n "$wf_name" '[(.data // .) | .[]? | select(.name==$n)][0].id // empty' /tmp/ar-wfs.json)
             if [ -n "$wid" ]; then
@@ -493,14 +498,16 @@ jobs:
             # Sub-agents trigger via Execute Workflow Trigger — n8n can't activate those,
             # and they don't need it (the router invokes them directly). Inactive by design.
             if [ "$activate" = "yes" ]; then
+              vid=$(jq -r '(.data // .).versionId // empty' /tmp/ar-wf.json 2>/dev/null || echo "")
               http="000"
-              if [ -n "$N8N_PUB_API_KEY" ]; then
+              if [ -n "$vid" ]; then
+                http=$(_napi POST "$BASE/rest/workflows/${wid}/activate" /tmp/ar-act.json \
+                  "$(jq -cn --arg v "$vid" '{versionId: $v, name: "configure-publish"}')")
+              fi
+              if [ "$http" != "200" ] && [ "$http" != "204" ] && [ -n "$N8N_PUB_API_KEY" ]; then
                 http=$(curl -sS -o /tmp/ar-act.json -w '%{http_code}' --max-time 30 -X POST \
                   -H "X-N8N-API-KEY: ${N8N_PUB_API_KEY}" \
                   "$BASE/api/v1/workflows/${wid}/activate" || echo "000")
-              fi
-              if [ "$http" != "200" ] && [ "$http" != "204" ]; then
-                http=$(_napi POST "$BASE/rest/workflows/${wid}/activate" /tmp/ar-act.json)
               fi
               { [ "$http" = "200" ] || [ "$http" = "204" ]; } \
                 || _napi PATCH "$BASE/rest/workflows/${wid}" /tmp/ar-act.json '{"active":true}' >/dev/null
@@ -1145,32 +1152,49 @@ jobs:
               MCPSRV_WF_ID=$(_upsert_wf "factory-master: mcp-server" /tmp/ar-prep-mcp-server.json no) \
                 || MCPSRV_WF_ID=""
               if [ -n "$MCPSRV_WF_ID" ] && [ "$MCPSRV_WF_ID" != "null" ]; then
-                # Activate via the PUBLIC API. Live findings on factory-test-048:
-                # POST /rest/workflows/:id/activate does NOT exist in n8n 1.121
-                # (404 + the SPA's HTML page), and PATCH {"active":true} only sets
-                # the DB flag — the mcpTrigger runtime route stays unregistered
-                # (active:true yet /mcp/* 404). The supported programmatic path is
-                # the Public API's deactivate→activate pair (X-N8N-API-KEY from
-                # this system's own SM, minted at deploy). Deactivate-first makes
-                # re-runs re-register cleanly regardless of the current DB flag.
-                N8N_API_KEY=$(_sm_read "n8n-api-key" || echo "")
+                # Activate = PUBLISH. Live findings, by n8n generation:
+                # - 2.x (factory-test-051, 2.25.7): production trigger routes —
+                #   especially mcpTrigger — register only when a workflow
+                #   VERSION is published. The UI's Publish button posts the
+                #   draft versionId to /rest/workflows/:id/activate (cookie
+                #   auth); the Public API activate returns 200 yet registers
+                #   no route (upstream gap, czlonkowski/n8n-mcp#551), and
+                #   PATCH active:true is ignored for publication.
+                # - 1.x (factory-test-048, 1.121): /rest/workflows/:id/activate
+                #   does NOT exist (404 + SPA HTML) — the Public API
+                #   deactivate→activate pair is the only programmatic path
+                #   (and 1.x never registers mcpTrigger routes regardless).
+                # So: cookie-/rest-publish first (2.x), Public API second
+                # (1.x), PATCH active:true as a last resort.
+                _napi GET "$BASE/rest/workflows/${MCPSRV_WF_ID}" /tmp/ar-mcp-wf.json >/dev/null || true
+                MCP_DRAFT_VID=$(jq -r '(.data // .).versionId // empty' /tmp/ar-mcp-wf.json 2>/dev/null || echo "")
                 ACT_HTTP="000"
-                if [ -n "$N8N_API_KEY" ]; then
-                  echo "::add-mask::${N8N_API_KEY}"
-                  curl -sS -o /dev/null --max-time 30 -X POST \
-                    "$BASE/api/v1/workflows/${MCPSRV_WF_ID}/deactivate" \
-                    -H "X-N8N-API-KEY: ${N8N_API_KEY}" 2>/dev/null || true
-                  ACT_HTTP=$(curl -sS -o /tmp/ar-mcp-act.json -w '%{http_code}' --max-time 30 -X POST \
-                    "$BASE/api/v1/workflows/${MCPSRV_WF_ID}/activate" \
-                    -H "X-N8N-API-KEY: ${N8N_API_KEY}" || echo "000")
-                else
-                  echo "WARN: n8n-api-key missing in SM — cannot public-API-activate mcp-server" >&2
+                if [ -n "$MCP_DRAFT_VID" ]; then
+                  # Deactivate-first makes re-runs re-register cleanly
+                  # regardless of the current published state (1.x lesson).
+                  _napi POST "$BASE/rest/workflows/${MCPSRV_WF_ID}/deactivate" /tmp/ar-mcp-deact.json '{}' >/dev/null 2>&1 || true
+                  ACT_HTTP=$(_napi POST "$BASE/rest/workflows/${MCPSRV_WF_ID}/activate" /tmp/ar-mcp-act.json \
+                    "$(jq -cn --arg v "$MCP_DRAFT_VID" '{versionId: $v, name: "configure-publish"}')")
                 fi
                 if [ "$ACT_HTTP" != "200" ]; then
-                  echo "WARN: mcp-server public-API activate HTTP ${ACT_HTTP}: $(head -c 300 /tmp/ar-mcp-act.json 2>/dev/null) — falling back to PATCH active:true" >&2
+                  N8N_API_KEY=$(_sm_read "n8n-api-key" || echo "")
+                  if [ -n "$N8N_API_KEY" ]; then
+                    echo "::add-mask::${N8N_API_KEY}"
+                    curl -sS -o /dev/null --max-time 30 -X POST \
+                      "$BASE/api/v1/workflows/${MCPSRV_WF_ID}/deactivate" \
+                      -H "X-N8N-API-KEY: ${N8N_API_KEY}" 2>/dev/null || true
+                    ACT_HTTP=$(curl -sS -o /tmp/ar-mcp-act.json -w '%{http_code}' --max-time 30 -X POST \
+                      "$BASE/api/v1/workflows/${MCPSRV_WF_ID}/activate" \
+                      -H "X-N8N-API-KEY: ${N8N_API_KEY}" || echo "000")
+                  else
+                    echo "WARN: n8n-api-key missing in SM — cannot public-API-activate mcp-server" >&2
+                  fi
+                fi
+                if [ "$ACT_HTTP" != "200" ]; then
+                  echo "WARN: mcp-server publish/activate HTTP ${ACT_HTTP}: $(head -c 300 /tmp/ar-mcp-act.json 2>/dev/null) — falling back to PATCH active:true" >&2
                   _napi PATCH "$BASE/rest/workflows/${MCPSRV_WF_ID}" /tmp/ar-mcp-act2.json '{"active":true}' >/dev/null || true
                 fi
-                echo "PASS: factory-master: mcp-server → id=${MCPSRV_WF_ID} (activate HTTP ${ACT_HTTP} — MCP endpoint /mcp/system-tools)"
+                echo "PASS: factory-master: mcp-server → id=${MCPSRV_WF_ID} (publish/activate HTTP ${ACT_HTTP} — MCP endpoint /mcp/system-tools)"
                 # The self-verification (and the boot-registration restart it may
                 # need) runs in 5j at the END of this step — restarting n8n here
                 # would interrupt the /rest installs that follow.

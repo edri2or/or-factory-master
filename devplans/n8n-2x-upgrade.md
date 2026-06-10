@@ -139,7 +139,16 @@ status: active
 הלא-מאומת ומסתיר את הגרסה (אומת ב-probe מול ‏051 המשודרגת מול אותה קריאה על
 1.121). תוקן: ‏fallback ל-login של ה-owner וקריאה מאומתת (login מוצלח = הוכחת
 Day-2 ל-DB), ‏FAIL קשיח רק כשגרסה נקראת ושגויה, קבלה סטרוקטורלית
-(deployment חדש+healthz+login) כשאין גרסה בשום מסלול. ממתין לסבב prove שני.
+(deployment חדש+healthz+login) כשאין גרסה בשום מסלול. **סבב 2 (no-op):** ‏deploy שני
+ירוק — ‏`image already 2.25.7 — no-op` (חוזה האידמפוטנטיות ✓), והדמו ירה חי על 2.25.7.
+**ממצא חי ‎#2 (המרכזי):** האימות-העצמי של mcp-server נכשל גם על 2.25.7 — ‏404 אחרי
+‏activate ‏200 וגם אחרי ריסטרט; ‏n8n מכריז "Activated" בעלייה בלי לרשום את ה-route
+(webhooks רגילים כן נרשמים). שורש (קוד-מקור 2.25.7 + ‏docs + ‏n8n-mcp#551): ב-2.x
+רישום production = **פרסום גרסה** — ‏cookie ‏`/rest/workflows/:id/activate` עם
+‏`{versionId}`; ‏Public-API activate מחזיר 200 בלי לרשום; ‏PATCH נבלע. תוקן בשרשרת
+תואמת-דורות בשלוש נקודות (mcp-server block, ‏_upsert_wf, ‏notifier+demo בדיפלוי —
+האחרון קריטי ל-Day-0). ממצא-אגב (סעיף 7): ‏MCP מובנה ניתן ל-env-control
+(‏mcpManagedByEnv) — ‏headless אפשרי. ממתין לסבב prove שלישי (post_apply=configure).
 
 **שינוי תוכנית:** —
 
