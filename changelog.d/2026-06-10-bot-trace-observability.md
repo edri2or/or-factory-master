@@ -54,3 +54,12 @@
   ל-topology המקורי.)*
 - אומת: yamllint על המתקין; happy-path (PG קיים) + מסלול-ה-strip (אין PG) שניהם מייצרים JSON תקין
   עם topology נכון; golden רוענן; שערי-הזהב ירוקים. (התנהגות חיה — שלב 5.)
+
+### שלב 4 — חשיפה ב-MCP + תיאורי-כלי
+
+- **תיאור `postgres_named_query` הורחב מ-5 ל-8 שמות** בשלושת המקומות שמתעדים את הכלי:
+  `mcp-server.json` (המשטח שסוכן-הפיתוח קורא דרך `/mcp/system-tools`), `ops-agent.json`,
+  `unknown-agent.json` — עם gloss קצר לכל שאילתה חדשה (conversation_transcript / tool_trace_recent /
+  claim_actual_mismatch). כך סוכן-הפיתוח (וגם סוכני-הבוט) יודעים שהשאילתות קיימות וכיצד להשתמש בהן.
+- גם רשימת-השמות ב-system-prompt של ops-agent עודכנה ל-8 השמות (עקביות).
+- אומת jq על שלושת הקבצים; golden רוענן; שערי-הזהב ירוקים. (קריאה חיה דרך MCP — שלב 5.)
