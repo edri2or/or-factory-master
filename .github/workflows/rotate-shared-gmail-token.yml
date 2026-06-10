@@ -1,0 +1,122 @@
+name: Rotate shared Gmail token (dispatch extract on or-adhd-agent)
+
+# Narrow one-shot bridge (mcp-birth-bundle Stage 4). After Or's re-consent
+# lands the NEW 6-scope refresh token inside or-adhd-agent's n8n, this
+# workflow dispatches that system's own extract-gmail-refresh-token.yml
+# (inputs.confirm=extract) AS the broker App and follows the run to a
+# terminal state — because no interactive path may dispatch on a system
+# repo (the session GitHub MCP is factory-scoped, and the factory MCP's
+# dispatch_workflow allowlist deliberately excludes ad-hoc system
+# workflows).
+#
+# Deliberately NARROW, not a generic dispatcher: target repo, workflow file,
+# and inputs are HARDCODED, and the minted App token is scoped to
+# or-adhd-agent with actions:write only. The next step in the chain
+# (copy-gmail-oauth-to-control with rotate=true) is dispatched separately by
+# the agent AFTER verifying this run's outcome — no auto-chaining.
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "rotate" to dispatch the token extraction on or-adhd-agent.'
+        required: true
+        type: string
+
+permissions: {}
+
+env:
+  TARGET_REPO: "or-adhd-agent"
+  TARGET_WORKFLOW: "extract-gmail-refresh-token.yml"
+
+jobs:
+  dispatch-extract:
+    name: Dispatch + follow extract-gmail-refresh-token on or-adhd-agent
+    runs-on: ubuntu-latest
+    environment: production
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
+
+      - name: Validate confirmation
+        env:
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          set -euo pipefail
+          [ "$CONFIRM" = "rotate" ] || { echo "FAIL: type 'rotate' to confirm" >&2; exit 1; }
+          echo "PASS: confirmed"
+
+      - name: Authenticate to GCP via WIF
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093  # v3.0.0
+        with:
+          workload_identity_provider: "projects/140345952904/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
+          service_account: "factory-master-broker@or-factory-master-control.iam.gserviceaccount.com"
+
+      - name: Dispatch and follow the extraction run
+        run: |
+          set -euo pipefail
+          # Broker App token scoped to ONE repo with actions:write only.
+          APP_ID=$(gcloud secrets versions access latest \
+            --secret="factory-master-broker-app-id" --project="or-factory-master-control")
+          INSTALL_ID=$(gcloud secrets versions access latest \
+            --secret="factory-master-broker-app-installation-id" --project="or-factory-master-control")
+          gcloud secrets versions access latest \
+            --secret="factory-master-broker-app-private-key" \
+            --project="or-factory-master-control" > /tmp/broker-app-key.pem
+          chmod 600 /tmp/broker-app-key.pem
+          TOKEN=$(bash scripts/generate-app-token.sh /tmp/broker-app-key.pem "$APP_ID" "$INSTALL_ID" \
+            "" '{"actions":"write"}' "[\"${TARGET_REPO}\"]")
+          shred -u /tmp/broker-app-key.pem 2>/dev/null || rm -f /tmp/broker-app-key.pem
+          [ -n "$TOKEN" ] || { echo "FAIL: could not mint scoped App token" >&2; exit 1; }
+          echo "::add-mask::${TOKEN}"
+
+          _api() { curl -sS -H "Authorization: Bearer ${TOKEN}" -H "Accept: application/vnd.github+json" "$@"; }
+          DISPATCHED_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+          HTTP=$(curl -sS -o /tmp/rsgt-disp.json -w '%{http_code}' --max-time 30 \
+            -X POST "https://api.github.com/repos/edri2or/${TARGET_REPO}/actions/workflows/${TARGET_WORKFLOW}/dispatches" \
+            -H "Authorization: Bearer ${TOKEN}" -H "Accept: application/vnd.github+json" \
+            -d '{"ref":"main","inputs":{"confirm":"extract"}}')
+          [ "$HTTP" = "204" ] || { head -c 300 /tmp/rsgt-disp.json >&2 || true; echo "FAIL: dispatch returned HTTP $HTTP" >&2; exit 1; }
+          echo "PASS: dispatched ${TARGET_WORKFLOW} on ${TARGET_REPO}."
+
+          # Find the run this dispatch created (newest run created at/after our mark).
+          RUN_ID=""
+          for i in $(seq 1 12); do
+            sleep 5
+            RUN_ID=$(_api "https://api.github.com/repos/edri2or/${TARGET_REPO}/actions/workflows/${TARGET_WORKFLOW}/runs?event=workflow_dispatch&created=>=${DISPATCHED_AT}&per_page=1" \
+              | jq -r '.workflow_runs[0].id // empty')
+            [ -n "$RUN_ID" ] && break
+          done
+          [ -n "$RUN_ID" ] || { echo "FAIL: created run not found within 60s" >&2; exit 1; }
+          echo "INFO: following run ${RUN_ID} (https://github.com/edri2or/${TARGET_REPO}/actions/runs/${RUN_ID})"
+
+          # Poll to a terminal state (extraction ≈ 2-4 min: TCP proxy + docker n8n CLI).
+          STATUS=""; CONCLUSION=""
+          for i in $(seq 1 40); do
+            sleep 15
+            RUN=$(_api "https://api.github.com/repos/edri2or/${TARGET_REPO}/actions/runs/${RUN_ID}")
+            STATUS=$(printf '%s' "$RUN" | jq -r '.status // ""')
+            CONCLUSION=$(printf '%s' "$RUN" | jq -r '.conclusion // ""')
+            echo "INFO: poll ${i}/40 — status=${STATUS} conclusion=${CONCLUSION:-—}"
+            [ "$STATUS" = "completed" ] && break
+          done
+          [ "$STATUS" = "completed" ] || { echo "FAIL: extraction run did not complete within 10 minutes" >&2; exit 1; }
+          if [ "$CONCLUSION" != "success" ]; then
+            echo "FAIL: extraction run concluded '${CONCLUSION}' — see https://github.com/edri2or/${TARGET_REPO}/actions/runs/${RUN_ID}" >&2
+            exit 1
+          fi
+
+          {
+            echo "## ✅ Shared Gmail token extracted on ${TARGET_REPO}"
+            echo ""
+            echo "Run: https://github.com/edri2or/${TARGET_REPO}/actions/runs/${RUN_ID}"
+            echo ""
+            echo "The fresh 6-scope refresh token now sits in factory-test-7's SM."
+            echo "Next (agent-driven, after verification): copy-gmail-oauth-to-control with rotate=true."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "PASS: extraction succeeded."

@@ -9,6 +9,7 @@
 # One-shot / already-used registrations (run once, never on a cadence):
 .github/workflows/copy-gmail-oauth-to-control.yml
 .github/workflows/request-workspace-scopes-consent.yml
+.github/workflows/rotate-shared-gmail-token.yml
 .github/workflows/bootstrap-sandbox-tester.yml
 .github/workflows/register-broker-app.yml
 .github/workflows/register-oil-approver-app.yml
