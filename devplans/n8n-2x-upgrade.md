@@ -36,7 +36,7 @@ status: active
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
 | 1 | ענף התבנית: הצמדה 2.25.7 + מנגנון image-upsert + תיקוני 2.x + שערים סטטיים | completed | `templates/system/.github/workflows/deploy-railway-cloudflare.yml`, `templates/system/Dockerfile.worker`, `templates/system/.github/workflows/configure-agent-router.yml`, `templates/system/AGENTS.md.template`, `tests/golden/system/`, `changelog.d/` |
-| 2 | הוכחה חיה Day-2: שדרוג-במקום 1.121→2.25.7 על מערכת-טסט + הדלקת mcpTrigger | in-progress | מערכת-טסט חיה (reuse mode), `prove-on-test-system.yml` |
+| 2 | הוכחה חיה Day-2: שדרוג-במקום 1.121→2.25.7 על מערכת-טסט + הדלקת mcpTrigger | completed | מערכת-טסט חיה (reuse mode), `prove-on-test-system.yml` |
 | 3 | מיזוג + הוכחת לידה Day-0: provision טרי על 2.25.7 | pending | מערכת-טסט שנייה (reuse mode) |
 | 4 | שדרוג המערכות האמיתיות (פר-מערכת, באישור Or) | pending | `refresh-system-agents.yml`, ריפו + Railway של כל מערכת אמיתית |
 | 5 | תיעוד וסגירה | pending | `CLAUDE.md`, `docs/roadmap.md`, `devplans/n8n-2x-upgrade.md`, `changelog.d/` |
@@ -116,16 +116,16 @@ status: active
    ‏ב-2.25.7 — לתעד ממצא ל-follow-up.
 
 **Acceptance:**
-- [ ] שדרוג-במקום עבר על מערכת שנולדה על 1.121: לוג upgrade + ‏versionCli=2.25.7.
-- [ ] ריצה חוזרת של הדיפלוי = ‏no-op (חוזה האידמפוטנטיות נשמר).
-- [ ] ‏state שרד: ‏owner נכנס, הוורקפלואים פעילים, סבב router מחזיר תשובה.
-- [ ] ‏`/mcp/system-tools` חי: האימות-העצמי של configure ‏PASS מלא.
-- [ ] ‏n8n-mcp-smoke ירוק מול המערכת המשודרגת.
+- [x] שדרוג-במקום עבר על מערכת שנולדה על 1.121: לוג upgrade + ‏versionCli=2.25.7.
+- [x] ריצה חוזרת של הדיפלוי = ‏no-op (חוזה האידמפוטנטיות נשמר).
+- [x] ‏state שרד: ‏owner נכנס, הוורקפלואים פעילים, סבב router מחזיר תשובה.
+- [x] ‏`/mcp/system-tools` חי: האימות-העצמי של configure ‏PASS מלא (4/4 שורות).
+- [x] ‏n8n-mcp-smoke ירוק מול המערכת המשודרגת (5/5 PASS, run 27297054563).
 
 **הוכחה תפקודית (באותו שלב):** שורות ה-PASS בלוגים של deploy+configure על מערכת-הטסט
 החיה + ‏probe_endpoint בלתי-תלוי על ‏`/mcp/system-tools` ‏(401 בלי bearer = רשום וחי).
 
-**הערת התקדמות אחרונה (2026-06-10):** הפיקסצ'ר הוקם בדרך חתחתים מלמדת:
+**הערת התקדמות אחרונה (2026-06-10, COMPLETED):** הפיקסצ'ר הוקם בדרך חתחתים מלמדת:
 ‏(א) הקמות 049/050 נפלו על ‏401 לסירוגין של GitHub בצעד `Set repo variables` —
 היחיד בלי retry; תוקן ומוזג ב-hotfix נפרד ‏(PR ‎#376, ‏squash ‏854fe20) כדי לא לפתוח
 את ‎#375 לפני ההוכחה; ‏051 קמה ירוקה עם החיסון (הריפוז היתומים 049/050 יאורכבו
@@ -148,7 +148,10 @@ Day-2 ל-DB), ‏FAIL קשיח רק כשגרסה נקראת ושגויה, קבל
 ‏`{versionId}`; ‏Public-API activate מחזיר 200 בלי לרשום; ‏PATCH נבלע. תוקן בשרשרת
 תואמת-דורות בשלוש נקודות (mcp-server block, ‏_upsert_wf, ‏notifier+demo בדיפלוי —
 האחרון קריטי ל-Day-0). ממצא-אגב (סעיף 7): ‏MCP מובנה ניתן ל-env-control
-(‏mcpManagedByEnv) — ‏headless אפשרי. ממתין לסבב prove שלישי (post_apply=configure).
+(‏mcpManagedByEnv) — ‏headless אפשרי. סבב prove שלישי (post_apply=configure) ירוק: כל 4 שורות PASS אומתו. ‏n8n-mcp-smoke 5/5
+PASS על factory-test-051 (run 27297054563): מגיים מלא gateway→sidecar→n8n 2.25.7. רגל
+queue-mode נדחתה לשלב 4 (‏SKIP_EDGE חוסם ב-factory-test; הקוד בתבנית נכון — יוכח על
+מערכת אמיתית עם queue_mode=true).
 
 **שינוי תוכנית:** —
 
@@ -235,10 +238,15 @@ Day-2 ל-DB), ‏FAIL קשיח רק כשגרסה נקראת ושגויה, קבל
 
 ## מצב מערכת-הטסט (Teardown ledger)
 
-- (יתמלא כשתקום מערכת-טסט בשלב 2.)
+| מערכת | מטרה | סטטוס | הערות |
+|---|---|---|---|
+| factory-test-049 | פיקסצ'ר שלב 2 (נפל לפני הקמה מלאה) | ריפו יתום — לארכוב בפירוק | Railway/DNS לא הוקמו |
+| factory-test-050 | פיקסצ'ר שלב 2 (נפל לפני הקמה מלאה) | ריפו יתום — לארכוב בפירוק | Railway/DNS לא הוקמו |
+| factory-test-051 | פיקסצ'ר שלב 2 — הוכחת שדרוג-במקום | פעיל | שדרוג 1.121→2.25.7 הוכח; ימשיך לשלב 3 (Day-0 על מערכת שנייה) ויפורק אחרי מיזוג |
 
 ## יומן ל-Or (עברית)
 
 > שורה פשוטה אחת לכל שלב שהסתיים — בשפה ש-Or מבין, בלי ז'רגון.
 
-- (טרם החל ביצוע.)
+- שלב 1 (2026-06-10): כל שינויי התבנית — הצמדה 2.25.7, מנגנון image-upsert, תיקוני 2.x, golden. CI ירוק.
+- שלב 2 (2026-06-10): שדרוג חי 1.121→2.25.7 על factory-test-051 — המנגנון עבד, ה-mcpTrigger נדלק, gateway תואם. הכל ירוק.
