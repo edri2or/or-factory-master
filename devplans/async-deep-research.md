@@ -1,0 +1,112 @@
+<!--
+מסמך-תוכנית פיתוח (DEVPLAN) — מנוהל על ידי /dev-stage-factory.
+הזיכרון/המצפן של הסוכן — לא חומר קריאה ל-Or. Or לא פותח אותו; הסוכן מסכם לו בעברית לפי דרישה.
+-->
+---
+dev_name: מחקר-אינטרנט אסינכרוני ארוך (deep research) לבוט הטלגרם — ברמת התבנית
+slug: async-deep-research
+opened: 2026-06-10
+status: active   # active בזמן פיתוח → completed בסיום (משחרר את שער ה-CI)
+---
+
+# תוכנית פיתוח — מחקר-אינטרנט אסינכרוני ארוך לבוט הטלגרם
+
+## מטרה
+
+היום הבוט יודע לחפש באינטרנט חיפוש **מהיר** (Tavily, סינכרוני). חסר מחקר **ארוך של דקות**:
+הבוט עונה מיד "מתחיל לחקור", המחקר רץ **ברקע**, והתשובה המלאה נשלחת לטלגרם בנפרד כשמוכנה — בלי
+לתקוע את השיחה. שינוי **ברמת התבנית** → רק מערכות **חדשות** (n8n 2.25.7) מקבלות. שוחרר ע"י
+`n8n-2x-upgrade`. החלטות Or: הפעלה ב**מילת-מפתח מפורשת** ("תחקור לעומק"); מנוע **פנימי ב-n8n**
+עם הכלים הקיימים (Tavily + Claude sonnet-4.5) — **בלי מפתח/סוד/עלות חדשים**.
+
+המנגנון: ב-n8n 2.x ל-`executeWorkflow` יש "Wait for Sub-Workflow Completion" — כבוי = fire-and-forget
+(ההורה ממשיך מיד; ה-sub רץ ברקע). ה-sub שולח את הדוח ישירות לטלגרם בעצמו (כמו `tg-proactive`), כך
+שעוקף את ה-timeout של הקו הסינכרוני. אין צורך ב-Wait/resumeUrl (המחקר מתבצע בתוך n8n).
+
+## שלבים
+
+| # | כותרת השלב | סטטוס | קבצים מושפעים |
+|---|---|---|---|
+| 1 | שלד + מנגנון אסינכרוני (כל הקוד + golden + שערים סטטיים) | pending | `templates/system/workflows/n8n/deep-research.json` (חדש), `agent-router.json`, `agents.manifest.json`, `templates/system/.github/workflows/configure-agent-router.yml`, `tests/golden/system/**` |
+| 2 | אימות חי על מערכת-טסט (costed, Or-gated) | pending | — (dispatch בלבד) |
+| 3 | קידום (מיזוג ל-main) + תיעוד + סגירה | pending | `docs/telegram-chat-bot.md`, `docs/roadmap.md` |
+
+> סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
+>
+> **הוכחה בכל שלב:** שלב נסגר רק כשהוכח שהלבנה עובדת על קלט אמיתי *באותו שלב*. הוכחה תפקודית
+> מלאה (round-trip חי בטלגרם) היא שלב 2; שלב 1 מוכח סטטית (golden + validate_workflow).
+
+---
+
+### שלב 1 — שלד + מנגנון אסינכרוני
+
+**Acceptance:**
+- [ ] `deep-research.json` חדש: `executeWorkflowTrigger` → (Read Style Profile) → `Deep Research Agent`
+  (agent v2.2, sonnet-4.5, 2 כלי Tavily `@@CRED_TAVILY_ID@@`, maxIterations גבוה, prompt "מחקר עמוק"
+  + `[[SOURCES]]`) → `Egress Validation (deep)` (עותק לוגיקת ה-egress מהראוטר + chunking ≤3500) →
+  `Send Report` (Telegram `@@CHAT_ID@@`/`@@CRED_TELEGRAM_ID@@`, item-לכל-chunk).
+- [ ] `agent-router.json`: `Detect Deep Research` בין Sanitize ל-Classify; ענף deep → `Kick Deep Research`
+  (`executeWorkflow` → `@@SUB_DEEP_RESEARCH_WF_ID@@`, **Wait=OFF**) → `Deep Ack` → Egress; ענף no →
+  Classify כרגיל (5 האינטנטים ללא שינוי).
+- [ ] `configure-agent-router.yml`: התקנה+publish של `deep-research.json` לפני הראוטר, לכידת
+  `@@SUB_DEEP_RESEARCH_WF_ID@@` והזרקתו לראוטר, הזרקת creds, הרחבת strip ה-Tavily לכסות deep-research +
+  הסרת ה-deep-kick מהראוטר כשאין Tavily, שורה בטבלת הסיכום.
+- [ ] `agents.manifest.json`: רשומת מטא ל-deep-research (background worker).
+- [ ] golden מרוענן (`--update`) באותו PR; פתק changelog; devplan מעודכן.
+- [ ] שערים סטטיים ירוקים: Playground tests (golden) + Changelog gates (golden-sync) + shellcheck/yamllint + JSON תקין.
+
+**הוכחה תפקודית (באותו שלב):** `validate_workflow` של ה-n8n-MCP על `deep-research.json` ועל
+`agent-router.json` המעודכן עובר בלי שגיאות-מבנה; אימות מקומי של פרמטר ה-Wait=OFF המדויק
+(`executeWorkflow` v1.1) מול `get_node`; golden + reference-sync PASS מקומית. (round-trip חי = שלב 2.)
+
+**הערת התקדמות אחרונה:** —
+
+**שינוי תוכנית:** —
+
+---
+
+### שלב 2 — אימות חי על מערכת-טסט (costed, Or-gated)
+
+**Acceptance:**
+- [ ] באישור Or: החלת שינוי-הענף על מערכת-טסט חיה עם Tavily (יעד מועדף: `factory-test-tavily2`)
+  דרך `prove-on-test-system.yml` (ענף) או — אחרי מיזוג — `refresh-system-agents.yml` → `configure`.
+- [ ] מבחן טלגרם אמיתי: "תחקור לעומק <נושא>" → (1) ack מיידי (<5ש'); (2) דוח מלא + בלוק "מקורות"
+  מגיע בנפרד אחרי דקות; (3) שאלה רגילה (בלי מילת-מפתח) עדיין עוברת בזרימה הקיימת.
+- [ ] הצלבה ב-`inspect_n8n_execution`: שני executions — ההורה המהיר + הרקע הארוך העצמאי שרץ אחרי
+  שההורה הסתיים (הוכחת fire-and-forget).
+
+**הוכחה תפקודית (באותו שלב):** round-trip חי בטלגרם כמתואר למעלה + צילום ה-executions ב-MCP.
+
+**הערת התקדמות אחרונה:** —
+
+**שינוי תוכנית:** —
+
+---
+
+### שלב 3 — קידום + תיעוד + סגירה
+
+**Acceptance:**
+- [ ] מיזוג ל-`main` (CI ירוק) — זו ההפצה.
+- [ ] `docs/telegram-chat-bot.md` + `docs/roadmap.md` (שורת async deep-research → done) עודכנו.
+- [ ] Teardown ledger מתועד; `status: completed`; פתק changelog.
+
+**הוכחה תפקודית (באותו שלב):** תוכן בלבד (תיעוד) + מיזוג ירוק.
+
+**הערת התקדמות אחרונה:** —
+
+**שינוי תוכנית:** —
+
+---
+
+## מצב מערכת-הטסט (Teardown ledger)
+
+> שורה חיה אחת: `torn-down — <date/session>` **או** `left-alive by user decision — <date/session>`.
+> נכון לעכשיו: טרם הוקמה/הוחלה מערכת-טסט (שלב 2 עוד לא רץ).
+
+---
+
+## יומן ל-Or (עברית)
+
+> שורה פשוטה אחת לכל שלב שהסתיים — בשפה ש-Or מבין, בלי ז'רגון.
+
+-
