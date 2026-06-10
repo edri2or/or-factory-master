@@ -6,7 +6,7 @@
 dev_name: מחקר-אינטרנט אסינכרוני ארוך (deep research) לבוט הטלגרם — ברמת התבנית
 slug: async-deep-research
 opened: 2026-06-10
-status: active   # active בזמן פיתוח → completed בסיום (משחרר את שער ה-CI)
+status: completed   # active בזמן פיתוח → completed בסיום (משחרר את שער ה-CI)
 ---
 
 # תוכנית פיתוח — מחקר-אינטרנט אסינכרוני ארוך לבוט הטלגרם
@@ -29,7 +29,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 |---|---|---|---|
 | 1 | שלד + מנגנון אסינכרוני (כל הקוד + golden + שערים סטטיים) | completed | `templates/system/workflows/n8n/deep-research.json` (חדש), `agent-router.json`, `agents.manifest.json`, `templates/system/.github/workflows/configure-agent-router.yml`, `tests/golden/system/**` |
 | 2 | אימות חי על מערכת-טסט (costed, Or-gated) | completed | — (dispatch בלבד) |
-| 3 | קידום (מיזוג ל-main) + תיעוד + סגירה | in-progress | `docs/telegram-chat-bot.md`, `docs/roadmap.md` |
+| 3 | קידום (מיזוג ל-main) + תיעוד + סגירה | completed | `docs/telegram-chat-bot.md`, `docs/roadmap.md` |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
 >
@@ -136,7 +136,8 @@ healthz 200) ✅ → prove-on-test-system (PR+מיזוג דרך CI של מערכ
 ## מצב מערכת-הטסט (Teardown ledger)
 
 > שורה חיה אחת: `torn-down — <date/session>` **או** `left-alive by user decision — <date/session>`.
-> נכון לעכשיו: טרם הוקמה/הוחלה מערכת-טסט (שלב 2 עוד לא רץ).
+`torn-down — 2026-06-10 (session 01ASrewo...)` — factory-test-053 פורקה דרך decommission-test-system.yml
+> (run 27311488345, success): Railway נמחק, Cloudflare DNS הוסר, repo אורכב. 0 עלות שיורית.
 
 ---
 
