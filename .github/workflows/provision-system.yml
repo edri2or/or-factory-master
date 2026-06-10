@@ -790,7 +790,8 @@ jobs:
 
           AGENTS_TMPL="${GITHUB_WORKSPACE}/templates/system/AGENTS.md.template"
           CLAUDE_TMPL="${GITHUB_WORKSPACE}/templates/system/CLAUDE.md.template"
-          if [ ! -f "$AGENTS_TMPL" ] || [ ! -f "$CLAUDE_TMPL" ]; then
+          MCP_TMPL="${GITHUB_WORKSPACE}/templates/system/.mcp.json.template"
+          if [ ! -f "$AGENTS_TMPL" ] || [ ! -f "$CLAUDE_TMPL" ] || [ ! -f "$MCP_TMPL" ]; then
             echo "WARN: orientation template missing — skipping" >&2
             {
               echo "## ⚠️ Push orientation docs נדלג"
@@ -865,11 +866,16 @@ jobs:
 
           OUT_AGENTS=$(mktemp)
           OUT_CLAUDE=$(mktemp)
-          trap 'rm -f "$OUT_AGENTS" "$OUT_CLAUDE"' EXIT
+          OUT_MCP=$(mktemp)
+          trap 'rm -f "$OUT_AGENTS" "$OUT_CLAUDE" "$OUT_MCP"' EXIT
 
           ALLOWLIST='${SYSTEM_NAME} ${GCP_PROJECT} ${PROJECT_NUMBER} ${ISO_TIMESTAMP} ${PUBLIC_URL} ${HEALTH_URL} ${REPO_URL} ${GITHUB_RUN_ID} ${GITHUB_RUN_URL} ${WIF_PROVIDER} ${MODE} ${GENERIC_SECRETS} ${SYSTEM_PURPOSE} ${AGENT_NAME}'
           envsubst "$ALLOWLIST" < "$AGENTS_TMPL" > "$OUT_AGENTS"
           envsubst '${SYSTEM_NAME}' < "$CLAUDE_TMPL" > "$OUT_CLAUDE"
+          # .mcp.json — born-connected Claude Code sessions (mcp-birth-bundle
+          # Stage 3). References only ${SYSTEM_NAME}, like CLAUDE.md; no secrets
+          # (auth is the gateway's own OAuth/Google login at first use).
+          envsubst '${SYSTEM_NAME}' < "$MCP_TMPL" > "$OUT_MCP"
 
           # Sanity check: warn (don't fail) on any unresolved ${VAR} in the output.
           if grep -qE '\$\{[A-Z_]+\}' "$OUT_AGENTS"; then
@@ -891,10 +897,11 @@ jobs:
 
           cp "$OUT_AGENTS" "$CLONE_DIR/AGENTS.md"
           cp "$OUT_CLAUDE" "$CLONE_DIR/CLAUDE.md"
+          cp "$OUT_MCP" "$CLONE_DIR/.mcp.json"
 
           git -C "$CLONE_DIR" config user.name "or-factory-master[bot]"
           git -C "$CLONE_DIR" config user.email "factory-master-broker@or-factory-master-control.iam.gserviceaccount.com"
-          git -C "$CLONE_DIR" add AGENTS.md CLAUDE.md
+          git -C "$CLONE_DIR" add AGENTS.md CLAUDE.md .mcp.json
 
           # Defensive idempotency (repo is fresh per run, but matches step 14 pattern).
           if git -C "$CLONE_DIR" diff --cached --quiet; then
@@ -903,7 +910,7 @@ jobs:
             exit 0
           fi
 
-          if ! git -C "$CLONE_DIR" commit -q -m "ci: scaffold system orientation docs (from or-factory-master)"; then
+          if ! git -C "$CLONE_DIR" commit -q -m "ci: scaffold system orientation docs + .mcp.json (from or-factory-master)"; then
             echo "WARN: commit failed — skipping" >&2
             rm -rf "$CLONE_DIR"
             exit 0
