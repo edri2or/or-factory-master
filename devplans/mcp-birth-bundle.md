@@ -243,8 +243,14 @@ Caddy (ה-fallback מפרוקסה `/mcp/*`; אם הסטרים נתקע — `flus
 (‏openssl, ‏mint-if-empty) ב-provision; ‏credential "n8n MCP Server" + התקנה+הפעלה+
 **אימות-עצמי מובנה** ב-configure (401 בלי bearer → initialize → tools/list → קריאת
 postgres_named_query אמיתית עם גילוי מפתח-הארגומנט מה-inputSchema); פסקת endpoint
-ב-AGENTS (בכוונה לא ב-.mcp.json); ‏exempt + ‏golden ‏(120). ממתין: שערים → מיזוג →
-provision של factory-test-048 → שורות ה-PASS בלוג ה-configure.
+ב-AGENTS (בכוונה לא ב-.mcp.json); ‏exempt + ‏golden ‏(120). ‏PR ‎#367 מוזג →
+‏factory-test-048 הוקמה (run 27278230774 — `PASS: minted n8n-mcp-server-token`,
+ה-mint הפרוביז'ני הוכח) → deploy ירוק → configure ‏(run 27279058361): ה-credential
+נוצר, חיתוך-החן עבד (github_readonly נחתך — אין App במערכת-טסט), אבל **באג חי נתפס**:
+‏n8n דחה את ה-POST ב-500 (`active` not-null) — לתבנית החדשה חסר `"active": false` שיש
+לכל השאר. תוקן (+golden); ההוכחה ממשיכה דרך refresh-system-agents על 048 (בלי provision
+נוסף). תצפית אגב לא-בסקופ: ה-smoke הפנימי של הראוטר ב-048 נכשל ב-Classifier Model
+(timeout) — לבדוק אחרי סגירת השלב.
 
 **שינוי תוכנית:** שניים, באותו דפוס שכבר אושר פעמיים: (1) "זריעה טרום-מיזוג" של הטוקן
 ב-SM המשותף בלתי-אפשרית בלי מנגנון חדש (mirror-secret מסרב ל-factory-test-25; ‏gcp-action
