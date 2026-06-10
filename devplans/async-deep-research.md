@@ -82,9 +82,15 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 
 **הוכחה תפקודית (באותו שלב):** round-trip חי בטלגרם כמתואר למעלה + צילום ה-executions ב-MCP.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** שלב 1 CI ירוק לגמרי (6/6 בדיקות PASS על 792a348). ממצא: כל מערכות-הטסט
+(`factory-test-tavily2`, `052`, וכל ה-`factory-test-0XX`) **מאורכבות** — אין מערכת חיה לאמת עליה.
+לכן שלב 2 דורש **build טרי מלא** (provision reuse → register-app → deploy), ואז החלת שינוי-הענף דרך
+`prove-on-test-system.yml` (sandbox, ref=ענף) + `configure-agent-router.yml`. ממתין לאישור Or על העלות.
 
-**שינוי תוכנית:** —
+**שינוי תוכנית:** היעד `factory-test-tavily2` כבר לא חי (מאורכב) → אי-אפשר reuse. שלב 2 הופך מ"רענון
+מערכת חיה" ל"build טרי מלא של מערכת-טסט חדשה" (reuse על factory-test-25, 0-quota אך Railway/DNS/repo
+אמיתיים). האימות של שינוי-הענף לפני מיזוג נעשה דרך `prove-on-test-system.yml` (רץ off-main עם זהות
+ה-sandbox), שמחיל את ה-templates של הענף על מערכת-הטסט ומריץ configure.
 
 ---
 
