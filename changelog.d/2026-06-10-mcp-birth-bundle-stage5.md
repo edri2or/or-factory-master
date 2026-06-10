@@ -74,3 +74,13 @@ follow) and now, when the endpoint still 404s after activation, forces ONE
 clean n8n restart via Railway `serviceInstanceRedeploy` (token + project +
 n8n-service ids from the system's own SM), waits for `/healthz`, re-checks
 registration, then runs the full verification.
+
+**Conclusive (iteration 4 result):** `serviceInstanceRedeploy` returned true,
+the new deployment came up clean (verified) — and the endpoint still 404s
+after a fresh boot. **n8n 1.121 (queue mode) does not register mcpTrigger
+routes at all — neither at runtime nor at boot.** Version limitation, not a
+configuration bug. The stage closes "built and armed": provision mints,
+configure installs + Public-API-activates + restarts-when-needed +
+self-verifies on every run — the feature lights up automatically on every
+system the moment a supporting n8n version ships (the n8n upgrade is a
+separate, recorded follow-up dev).
