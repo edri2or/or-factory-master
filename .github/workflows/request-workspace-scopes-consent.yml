@@ -141,9 +141,21 @@ jobs:
           [ "$HTTP" = "200" ] || { head -c 300 /tmp/rwsc-upd.json >&2 || true; echo "FAIL: PATCH credential (HTTP $HTTP)" >&2; exit 1; }
           echo "PASS: credential scope updated to the 6-scope set."
 
-          # 5. The one-click consent link (n8n's own OAuth flow — the only
-          #    registered redirect URI), delivered via the factory bot.
-          AUTH_URL="${BASE}/rest/oauth2-credential/auth?id=${CRED_ID}"
+          # 5. Fetch the GOOGLE consent URL itself, server-side, with the owner
+          #    cookie. The naive link ${BASE}/rest/oauth2-credential/auth?id=...
+          #    demands an n8n SESSION — the operator has none on phone OR desktop,
+          #    so it 401s (observed live on both). Called here WITH the cookie,
+          #    the endpoint returns the accounts.google.com URL; THAT link needs
+          #    no n8n session, and n8n's /rest/oauth2-credential/callback (where
+          #    Google redirects after Allow) is session-exempt by design — the
+          #    state token n8n embedded in the URL is the validation.
+          HTTP=$(_napi GET "$BASE/rest/oauth2-credential/auth?id=${CRED_ID}" /tmp/rwsc-auth.json)
+          [ "$HTTP" = "200" ] || { head -c 300 /tmp/rwsc-auth.json >&2 || true; echo "FAIL: GET oauth2-credential/auth (HTTP $HTTP)" >&2; exit 1; }
+          AUTH_URL=$(jq -r '.data // empty' /tmp/rwsc-auth.json)
+          case "$AUTH_URL" in
+            https://accounts.google.com/*) echo "PASS: got the direct Google consent URL (not echoed)." ;;
+            *) echo "FAIL: unexpected auth URL shape from n8n: $(printf '%s' "$AUTH_URL" | head -c 60)" >&2; exit 1 ;;
+          esac
           # Single physical line via $'...\n...' so the embedded newlines can't
           # break the YAML block (same trick as provision's SYSTEM_PURPOSE).
           MSG=$'🔐 הרחבת חיבור Google ל-Drive ו-Docs — נדרש קליק אחד:\n'"${AUTH_URL}"$'\n\nמה זה עושה: מאשר מחדש את חשבון Google המשותף עם 6 הרשאות (Gmail, יומן, והפעם גם Drive ו-Docs).\nשים לב: עד הקליק, כלי ה-Gmail של or-adhd-agent מנותקים זמנית — הקליק מחזיר אותם + מוסיף את החדשים.'
