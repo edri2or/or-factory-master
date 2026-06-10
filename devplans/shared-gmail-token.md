@@ -2,7 +2,7 @@
 dev_name: טוקן Gmail משותף לכל המערכות
 slug: shared-gmail-token
 opened: 2026-06-06
-status: active
+status: completed
 ---
 
 # תוכנית פיתוח — טוקן Gmail משותף
@@ -19,7 +19,14 @@ status: active
 |---|---|---|---|
 | 1 | copy-gmail-oauth-to-control מעתיק refresh-token כערך כשקיים | completed | `.github/workflows/copy-gmail-oauth-to-control.yml` |
 | 2 | תבנית מערכת: bootstrap-gmail-oauth שמחבר מהטוקן המשותף | completed | `templates/system/.github/workflows/bootstrap-gmail-oauth.yml`, `.github/workflows/provision-system.yml` |
-| 3 | ניקוי הודעה: ללא קישור consent במסלול האוטומטי | in-progress | `templates/system/.github/workflows/bootstrap-gmail-oauth.yml` |
+| 3 | ניקוי הודעה: ללא קישור consent במסלול האוטומטי | completed | `templates/system/.github/workflows/bootstrap-gmail-oauth.yml` |
+
+> **סגירה (2026-06-10, נקפל לתוך mcp-birth-bundle PR-A):** קוד שלב 3 כבר מוזג ב-2026-06-06
+> (fragment ‏`2026-06-06-shared-gmail-token-msg-cleanup.md`; המסלול האוטומטי שולח הודעת
+> "מחובר אוטומטית ✅" בלי קישור consent — שורות 155–170 בתבנית), והתוכנית פשוט לא נסגרה.
+> ההוכחה החיה של המסלול האוטומטי רכבה על פיתוח google-mcp-systems (מערכת factory-test-045
+> התחברה מהטוקן המשותף). הערה צופה-פני-עתיד: scope התבנית הורחב עכשיו ל-6
+> (drive+documents) במסגרת mcp-birth-bundle שלב 4 — אותו עיקרון "ללא קליק" נשמר.
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
 
