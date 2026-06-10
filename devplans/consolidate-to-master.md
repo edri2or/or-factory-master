@@ -2,7 +2,7 @@
 dev_name: איחוד שלוש המערכות ל-or-factory-master
 slug: consolidate-to-master
 opened: 2026-06-06
-status: active   # active בזמן פיתוח → completed בשלב 5 (משחרר את שער ה-CI)
+status: completed   # נסגר 2026-06-10 — כל 6 השלבים הושלמו; ראו הערת סגירה
 ---
 
 # תוכנית פיתוח — איחוד שלוש המערכות ל-or-factory-master
@@ -31,6 +31,12 @@ status: active   # active בזמן פיתוח → completed בשלב 5 (משחר
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
 >
 > נספח: ניקוי חד-פעמי של 200+ ריפו-זבל ישנים בארגון נעשה ב-`bulk-delete-repos.yml` (keep-list + dry-run, מחוץ ל-5 השלבים).
+>
+> **הערת סגירה (2026-06-10, נסגר אגב mcp-birth-bundle שלב 6):** כל השלבים בטבלה
+> completed זה מכבר והתוכנית פשוט לא נסגרה רשמית. ראיות חיות מצטברות: כלי ה-org-read
+> משרתים סשנים יום-יום, ו-gcp-action הופעל חי היום (ירוק/אדום+כרטיסי ✅) בפיתוח
+> mcp-birth-bundle. תת-משימה פתוחה אחת הפכה ל-follow-up עומד: אימות `secrets:read`
+> + `administration:read` ל-App של הברוקר עבור 3 כלי ה-Phase-4 המוגנים.
 
 ---
 
@@ -45,7 +51,7 @@ status: active   # active בזמן פיתוח → completed בשלב 5 (משחר
 - [x] `org-read-tools.ts` מוסיף 20 כלים נטו (ללא הכפלת 8 כלי-ה-Actions שכבר קיימים).
 - [x] `github-client.ts` מקבל `orgGet`/`searchGet`/`fetchFileContents`/`repoGet`/`ORG`, חוזרים על `installationToken()` הקיים.
 - [x] `tsc` עובר נקי.
-- [ ] לאחר deploy: `verify_mcp_server` ירוק + קריאה חיה של `list_repos`/`search_code`/`get_file_contents` על ריפו שאינו or-factory-master.
+- [x] לאחר deploy: `verify_mcp_server` ירוק + קריאה חיה של `list_repos`/`search_code`/`get_file_contents` על ריפו שאינו or-factory-master. **(הוכח בשימוש יומיומי — למשל בסשן mcp-birth-bundle: ‏get_file_contents על or-adhd-agent/factory-test-047, ‏get_repo על מערכות-טסט.)**
 - [ ] תת-משימה: לבדוק אם ל-App של הברוקר יש `secrets:read` + `administration:read` ל-3 כלי ה-Phase-4; אם לא — קליק הרחבת-הרשאות של Or (שאר 17 הכלים לא תלויים בזה).
 
 ### שלב 2 — מסווג-סיכון GCP (לוגיקה בלבד)
