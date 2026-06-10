@@ -265,6 +265,12 @@ The per-system telemetry route (`/factory/<system>/mcp`) is deliberately NOT lis
 here — that surface is for the n8n agent's bearer-bound `factory_tools` node;
 interactive sessions get the richer `factory` server above.
 
+This system is also an MCP **server**: its n8n exposes three read-only tools
+(`postgres_named_query`, `github_readonly`, `railway_readonly`) to external agents at
+`https://n8n-golden-reference-system.or-infra.com/mcp/system-tools` (Bearer — the
+`n8n-mcp-server-token` secret in this system's SM). Deliberately NOT in `.mcp.json`:
+that file is committed to the repo and this endpoint requires its secret.
+
 ## Forbidden Actions
 
 - **Never echo, print, or log values from Secret Manager.** Reference by name only.

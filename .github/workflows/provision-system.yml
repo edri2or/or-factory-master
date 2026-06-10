@@ -1145,6 +1145,7 @@ jobs:
             redis-password
             workspace-mcp-bearer
             factory-mcp-bearer
+            n8n-mcp-server-token
           )
           RUNTIME_SA="runtime-sa@${GCP_PROJECT}.iam.gserviceaccount.com"
           DEPLOY_SA="deploy-sa@${GCP_PROJECT}.iam.gserviceaccount.com"
@@ -1237,6 +1238,20 @@ jobs:
             else
               echo "WARN: mint /factory/${SYSTEM_NAME}/token returned HTTP ${FT_HTTP} (no token) — factory-mcp-bearer left empty (factory_tools will be stripped)."
             fi
+          fi
+
+          # mcp-birth-bundle Stage 5: mint the bearer that guards the system's OWN
+          # n8n MCP server endpoint (/mcp/system-tools, the mcpTrigger workflow).
+          # Purely local randomness — no gateway involved. Mint-if-empty: reuse
+          # provisions start from a wiped shell (fresh mint); a re-run never
+          # rotates a live token under the endpoint's consumers.
+          if gcloud secrets versions access latest \
+               --secret="n8n-mcp-server-token" --project="$GCP_PROJECT" >/dev/null 2>&1; then
+            echo "INFO: n8n-mcp-server-token already has a value — keeping it."
+          else
+            printf '%s' "$(openssl rand -hex 32)" | gcloud secrets versions add \
+              "n8n-mcp-server-token" --project="$GCP_PROJECT" --data-file=-
+            echo "PASS: minted n8n-mcp-server-token for ${SYSTEM_NAME}."
           fi
 
           # Seed n8n-telegram-chat-id from the factory-admin telegram-chat-id. The

@@ -1,0 +1,72 @@
+{
+  "name": "factory-master: mcp-server",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "system-tools",
+        "authentication": "bearerAuth",
+        "options": {}
+      },
+      "id": "c0000000-0000-0000-0000-000000000001",
+      "name": "MCP Server Trigger",
+      "type": "@n8n/n8n-nodes-langchain.mcpTrigger",
+      "typeVersion": 2,
+      "position": [0, 0],
+      "credentials": { "httpBearerAuth": { "id": "@@CRED_N8N_MCP_SERVER_ID@@", "name": "n8n MCP Server" } }
+    },
+    {
+      "parameters": {
+        "name": "postgres_named_query",
+        "description": "Call this tool with ONE input — a single string that is EXACTLY one of these 5 query names (do not wrap it in JSON or any object, just send the raw string): style_profile_get | recent_audit_log | pending_actions_open | executions_summary_24h | spend_total. The tool returns {ok:true, query_name, rows:[...]} for a valid name, or {ok:false, query_name, error} otherwise. style_profile_get = the operator's learned style profile. recent_audit_log = last 10 bot actions + decisions. pending_actions_open = open HITL-pending actions. executions_summary_24h = n8n executions in last 24h grouped by status. spend_total = the system's cumulative AI/LLM spend in USD.",
+        "workflowId": {
+          "__rl": true,
+          "value": "@@WF_PG_NAMED_QUERIES_ID@@",
+          "mode": "id"
+        }
+      },
+      "id": "c0000000-0000-0000-0000-000000000002",
+      "name": "postgres_named_query",
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.1,
+      "position": [-200, 240]
+    },
+    {
+      "parameters": {
+        "name": "github_readonly",
+        "description": "Call this tool with ONE input — a single raw string (do not wrap it in JSON or any object). Reads LIVE read-only data from this system's own GitHub repo as the system's GitHub App. Valid inputs: ci_runs = the 10 most recent CI workflow runs (status/conclusion/created); recent_commits = the 10 most recent commits; open_prs = currently-open pull requests; OR read_file:<path> to read the text contents of a repo file (a folder path returns a directory listing). Returns {ok, command, data}.",
+        "workflowId": {
+          "__rl": true,
+          "value": "@@WF_GITHUB_READONLY_ID@@",
+          "mode": "id"
+        }
+      },
+      "id": "c0000000-0000-0000-0000-000000000003",
+      "name": "github_readonly",
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.1,
+      "position": [0, 240]
+    },
+    {
+      "parameters": {
+        "name": "railway_readonly",
+        "description": "Call this tool with ONE input — a single raw string that is EXACTLY one of: deploy_status | recent_logs (do not wrap it in JSON or any object, just send the raw string). Reads LIVE read-only data from this system's Railway deployment. deploy_status = the latest deployments and their status with createdAt + staticUrl. recent_logs = recent deployment logs of the newest deployment. Returns {ok, command, data}.",
+        "workflowId": {
+          "__rl": true,
+          "value": "@@WF_RAILWAY_READONLY_ID@@",
+          "mode": "id"
+        }
+      },
+      "id": "c0000000-0000-0000-0000-000000000004",
+      "name": "railway_readonly",
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.1,
+      "position": [200, 240]
+    }
+  ],
+  "connections": {
+    "postgres_named_query": { "ai_tool": [[{ "node": "MCP Server Trigger", "type": "ai_tool", "index": 0 }]] },
+    "github_readonly": { "ai_tool": [[{ "node": "MCP Server Trigger", "type": "ai_tool", "index": 0 }]] },
+    "railway_readonly": { "ai_tool": [[{ "node": "MCP Server Trigger", "type": "ai_tool", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" }
+}

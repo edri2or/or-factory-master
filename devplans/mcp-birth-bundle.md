@@ -28,7 +28,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 | 2 | תבנית: `factory_tools` על ops-agent + הקמת מערכת-טסט חיה | completed | `.github/workflows/provision-system.yml`, `templates/system/.github/workflows/configure-agent-router.yml`, `templates/system/workflows/n8n/ops-agent.json`, `tests/golden/system/` |
 | 3 | `.mcp.json.template` — סשני קלוד נולדים מחוברים | completed | `templates/system/.mcp.json.template`, `templates/system/AGENTS.md.template`, `.github/workflows/provision-system.yml`, `tests/golden/system/` |
 | 4 | Google sidecar: Drive+Docs (קליק consent אחד של Or) | completed | `services/workspace-mcp/entrypoint.sh`, `scripts/render-mcp-service-yaml.sh`, `.github/workflows/{copy-gmail-oauth-to-control,request-workspace-scopes-consent,rotate-shared-gmail-token}.yml`, `scripts/google-mcp-smoke.py`, `templates/system/.github/workflows/bootstrap-gmail-oauth.yml`, `templates/system/workflows/n8n/ops-agent.json`, `tests/golden/system/` |
-| 5 | n8n כשרת MCP: וורקפלו mcpTrigger מובנה (ניתן לחיתוך) | pending | `templates/system/workflows/n8n/mcp-server.json`, `.github/workflows/provision-system.yml`, `templates/system/.github/workflows/configure-agent-router.yml`, `monitoring/registry-exempt.txt`, `tests/golden/system/` |
+| 5 | n8n כשרת MCP: וורקפלו mcpTrigger מובנה (ניתן לחיתוך) | in-progress | `templates/system/workflows/n8n/mcp-server.json`, `.github/workflows/provision-system.yml`, `templates/system/.github/workflows/configure-agent-router.yml`, `templates/system/AGENTS.md.template`, `monitoring/registry-exempt.txt`, `tests/golden/system/` |
 | 6 | סגירה: תיעוד, Teardown ledger, status completed | pending | `devplans/mcp-birth-bundle.md`, `CLAUDE.md`, `changelog.d/` |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
@@ -238,9 +238,21 @@ Caddy (ה-fallback מפרוקסה `/mcp/*`; אם הסטרים נתקע — `flus
 הטסט + `prove-on-test-system.yml` מהענף עם post_apply=configure; שורות ה-PASS של האימות-
 העצמי בלוג הן ההוכחה. ה-mint הפרוביז'ני מוכח ב-re-provision שאחרי המיזוג.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** קוד השלב כתוב: וורקפלו mcp-server.json (mcpTrigger v2,
+‏path system-tools, ‏bearerAuth + ‏3 ה-toolWorkflows הקוראים); ‏shell+mint מקומי
+(‏openssl, ‏mint-if-empty) ב-provision; ‏credential "n8n MCP Server" + התקנה+הפעלה+
+**אימות-עצמי מובנה** ב-configure (401 בלי bearer → initialize → tools/list → קריאת
+postgres_named_query אמיתית עם גילוי מפתח-הארגומנט מה-inputSchema); פסקת endpoint
+ב-AGENTS (בכוונה לא ב-.mcp.json); ‏exempt + ‏golden ‏(120). ממתין: שערים → מיזוג →
+provision של factory-test-048 → שורות ה-PASS בלוג ה-configure.
 
-**שינוי תוכנית:** —
+**שינוי תוכנית:** שניים, באותו דפוס שכבר אושר פעמיים: (1) "זריעה טרום-מיזוג" של הטוקן
+ב-SM המשותף בלתי-אפשרית בלי מנגנון חדש (mirror-secret מסרב ל-factory-test-25; ‏gcp-action
+לא מעביר ערכי-סוד) — ההוכחה עוברת ל-provision יורש (factory-test-048) שמוכיח גם את ה-mint
+הפרוביז'ני באותה ריצה. (2) הקריאה האמיתית באימות-העצמי היא `postgres_named_query` (זמינה
+בכל מערכת) ולא `github_readonly` — במערכות-טסט בלי register-system-app אין ל-github_readonly
+‏credentials של App; הנתיב הטכני (toolWorkflow דרך MCP) זהה, ו-github_readonly ימומש
+אוטומטית במערכות אמיתיות שרשמו App.
 
 ---
 
