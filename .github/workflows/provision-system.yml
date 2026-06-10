@@ -1324,18 +1324,36 @@ jobs:
           GCP_WIF_PROVIDER="projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
           GCP_DEPLOY_SA="deploy-sa@${GCP_PROJECT}.iam.gserviceaccount.com"
 
+          # Retry wrapper: GitHub's API intermittently rejects valid App tokens
+          # with a bare 401 (seen live 2026-06-10 — runs 27288991036 and
+          # 27289578027 both died here on a 401 sandwiched between 201s issued
+          # ~0.5s apart with the SAME token). This was the only GitHub write
+          # burst in the workflow with no retry. A duplicate-name conflict
+          # (409/422) on a retry means our earlier POST landed before the
+          # flaky response — same value, so treat as success.
           _set_var() {
-            local name="$1" value="$2" resp http_code
-            resp=$(curl -sS -w '\nHTTP_STATUS:%{http_code}' -X POST \
-              -H "Authorization: Bearer ${APP_TOKEN}" \
-              -H "Accept: application/vnd.github+json" \
-              -H "X-GitHub-Api-Version: 2022-11-28" \
-              "https://api.github.com/repos/edri2or/${SYSTEM_NAME}/actions/variables" \
-              -d "$(jq -cn --arg n "$name" --arg v "$value" '{name:$n, value:$v}')")
-            http_code=$(printf '%s' "$resp" | tail -1 | sed 's/HTTP_STATUS://')
-            [ "$http_code" = "201" ] \
-              || { echo "FAIL: set $name HTTP $http_code" >&2; return 1; }
-            echo "PASS: $name set."
+            local name="$1" value="$2" resp http_code attempt
+            for attempt in 1 2 3 4 5; do
+              resp=$(curl -sS -w '\nHTTP_STATUS:%{http_code}' -X POST \
+                -H "Authorization: Bearer ${APP_TOKEN}" \
+                -H "Accept: application/vnd.github+json" \
+                -H "X-GitHub-Api-Version: 2022-11-28" \
+                "https://api.github.com/repos/edri2or/${SYSTEM_NAME}/actions/variables" \
+                -d "$(jq -cn --arg n "$name" --arg v "$value" '{name:$n, value:$v}')")
+              http_code=$(printf '%s' "$resp" | tail -1 | sed 's/HTTP_STATUS://')
+              if [ "$http_code" = "201" ]; then
+                echo "PASS: $name set."
+                return 0
+              fi
+              if [ "$http_code" = "409" ] || [ "$http_code" = "422" ]; then
+                echo "PASS: $name already exists (HTTP $http_code) — treating as set."
+                return 0
+              fi
+              echo "WARN: set $name HTTP $http_code (attempt ${attempt}/5) — retrying in 5s..." >&2
+              sleep 5
+            done
+            echo "FAIL: set $name HTTP $http_code after 5 attempts" >&2
+            return 1
           }
           _set_var "GCP_WIF_PROVIDER" "$GCP_WIF_PROVIDER"
           _set_var "GCP_DEPLOY_SA"    "$GCP_DEPLOY_SA"
