@@ -31,6 +31,19 @@ depth: fast                  # fast | full
 
 ## Full path (רק כשהמטריצה נוחתת על orchestrating-workflow או multi-agent)
 
+### 0. כרטיס יכולת (Capability Card) — Phase 1: הוכח את היכולת הגולמית **מחוץ ל-n8n** (לפני §1)
+
+לפני פירוק ועיצוב — לכל יכולת-ליבה שהסוכן תלוי בה (ה*פועל*: "קרא / מלא / שלח / חלץ"), הוכח שהיא
+עובדת על קלט אמיתי **מחוץ ל-n8n** (curl או ~20 שורות node/python ישירות ל-API), ורק אז עבור לעיצוב.
+שער ההיתכנות למטה נסגר על סמך הכרטיס הזה. המתודולוגיה המלאה + 3 דוגמאות-עבודה: docs/capability-first.md.
+
+| יכולת | הוכחה גולמית (כלי + פקודה, מחוץ ל-n8n) | fixture אמיתי | פלט מצופה | הכרעה (go/no-go) | סיכונים / הנחות (`משוער`) |
+|---|---|---|---|---|---|
+| <היכולת> | <curl / ~20 שורות node/python> | <קובץ/payload אמיתי> | <פלט מאומת-ביד> | <go / no-go / partial> | <מה לא מאומת — סמן `משוער`> |
+
+> אם ההכרעה no-go/partial — **עצור ושנה-סקופ לפני בנייה** (כלי אחר / OCR בסיסי + LLM חיצוני / לומר ל-Or
+> שלא ישים). base64-בתוך-JSON מוכיח מחרוזת בלבד; binary אמיתי — אל תסמוך על pinning (ראה §3 + capability-first.md).
+
 ### 1. מטרה + למה סוכן
 <מה המטרה; למה סוכן ולא קריאת-LLM בודדת ולא workflow קבוע מראש>
 
@@ -64,6 +77,11 @@ depth: fast                  # fast | full
 > **שיטת-בדיקה — deterministic-first:** קודם בדיקה דטרמיניסטית (JSON תקין → שדות
 > קריטיים ב-exact match), ורק לטקסט פתוח LLM-as-judge. למשל יכולת קריאת-טופס: השדה
 > `email`/סכומים ב-exact, טקסט חופשי ב-field-diff. ראה docs/agent-isolation-testing.md.
+
+> **fixture עם binary — אזהרה:** fixture שהוא base64 בתוך JSON ניתן לנעיצה אך מוכיח רק
+> העברת-מחרוזת (לא decode/stream/multipart). ל-binary אמיתי (קובץ ב-Webhook, attachment) — n8n
+> עלול לדווח הצלחת-node תוך השמטת ה-binary בשקט, **כולל ב-pinning**; הוכח end-to-end דרך trigger
+> אמיתי, לא ב-pinning. ראה docs/capability-first.md ו-docs/agent-isolation-testing.md §4.
 
 ### 4. זהות / פרסונה
 <שם ייחודי + תיאור יכולת ברור לניתוב. תיאור מעורפל גורם ל"הרעלת הקשר".>
@@ -99,7 +117,7 @@ request_write_action. לעולם לא SQL חופשי או כלי-כתיבה יש
 ## רשימת שערים — בסדר בנייה בוטום-אפ (gate list)
 
 לפני בנייה:
-- [ ] שער היתכנות (feasibility go/no-go)
+- [ ] שער היתכנות (feasibility go/no-go) — אחרי הוכחת היכולת הגולמית מחוץ ל-n8n (Phase 1); ראה docs/capability-first.md
 - [ ] סקירת פירוק — כל רכיב = אחריות יחידה + **שורת הוכחה-לבד מוגדרת** (§3)
 - [ ] eval-before-build — 20–50 golden cases (או ≥1 fixture/רכיב) נכתבו *לפני* בנייה
 - [ ] נקודות HITL זוהו לפעולות סיכון-גבוה

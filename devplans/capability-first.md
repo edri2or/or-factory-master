@@ -24,7 +24,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
-| 1 | חומרי-ייחוס: מסמך capability-first + תיקוני Pin + Capability Card | pending | `docs/capability-first.md` (חדש), `templates/agent-design-spec.md`, `docs/agent-isolation-testing.md` |
+| 1 | חומרי-ייחוס: מסמך capability-first + תיקוני Pin + Capability Card | completed | `docs/capability-first.md` (חדש), `templates/agent-design-spec.md`, `docs/agent-isolation-testing.md` |
 | 2 | חיווט החזית ל-build-agent (שני עותקי mirror) + רענון golden | pending | `.claude/commands/build-agent.md`, `templates/system/.claude/commands/build-agent.md` (נגזר), `tests/golden/system/MANIFEST.sha256` (נגזר) |
 | 3 | הזרקה ל-provisioning + פתק changelog | pending | `.github/workflows/provision-system.yml` |
 
@@ -40,16 +40,17 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 ### שלב 1 — חומרי-ייחוס: מסמך capability-first + תיקוני Pin + Capability Card
 
 **Acceptance:**
-- [ ] `docs/capability-first.md` קיים: Phase 1 (הוכח יכולת גולמית מחוץ ל-n8n) → שער היתכנות → Phase 2 (=build-agent הקיים), 3 דוגמאות-עבודה (Document AI/עברית, PDF, Gmail), הערת binary, הערת credentials.
-- [ ] ספציפיקות לא-מאומתות (`iw`/`he`, "Form Parser גנרטיבי = אנגלית+4 אזורים") מסומנות `משוער`.
-- [ ] `templates/agent-design-spec.md`: הערת base64-מול-binary תחת §3, קישור שער-ההיתכנות ל-capability-first, וסקשן Capability Card.
-- [ ] `docs/agent-isolation-testing.md` §4: הערת binary (לא לסמוך על pinning, הוכח דרך trigger אמיתי); §7 cross-ref. **בלי** "ה-UI מתיר לנעוץ binary".
+- [x] `docs/capability-first.md` קיים: Phase 1 (הוכח יכולת גולמית מחוץ ל-n8n) → שער היתכנות → Phase 2 (=build-agent הקיים), 3 דוגמאות-עבודה (Document AI/עברית, PDF, Gmail), הערת binary, הערת credentials.
+- [x] ספציפיקות לא-מאומתות (`iw`/`he`, "Form Parser גנרטיבי = אנגלית+4 אזורים") מסומנות `משוער`.
+- [x] `templates/agent-design-spec.md`: הערת base64-מול-binary תחת §3, קישור שער-ההיתכנות ל-capability-first, וסקשן Capability Card (§0).
+- [x] `docs/agent-isolation-testing.md` §4: הערת binary (לא לסמוך על pinning, הוכח דרך trigger אמיתי); §7 cross-ref. **בלי** "ה-UI מתיר לנעוץ binary".
 
 **הוכחה תפקודית (באותו שלב):** תוכן בלבד (אין התנהגות רצה). הוכחה: CI ירוק (אין code-files →
 שערי changelog/devplan עוברים; אין נגיעה ב-`templates/system/**` → אין golden/mirror), וקריאה
 חוזרת שמאשרת: המסמך החדש פנימית-עקבי, כל ה-cross-references נפתרים, והניסוח של ה-binary מדויק.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם. 3 הקבצים נכתבו/עודכנו; בדיקות-תוכן עברו: אין ניסוח אסור
+("ה-UI מתיר לנעוץ binary" — לא קיים), `iw`/`he`+Form-Parser מסומנים `משוער`, ושום נגיעה ב-`templates/system/**`.
 
 **שינוי תוכנית:** —
 
@@ -101,4 +102,4 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 
 > שורה פשוטה אחת לכל שלב שהסתיים — בשפה ש-Or מבין, בלי ז'רגון.
 
-- <מתמלא תוך כדי>
+- שלב 1 הושלם — כתבנו את מסמך החזית החדש (capability-first) ותיקנו את שתי ההנחיות על "נעיצת" קבצים. תוכן בלבד, בלי נגיעה בריצת המערכות.
