@@ -27,7 +27,7 @@ Gmail/יומן/Drive/Docs) "כתובת חזרה" אחת הרשומה אצל גו
 |---|---|---|---|
 | 1 | כתיבת-סוד ל-Secret Manager + הרשאה ממוקדת | completed | `services/mcp-server/src/gcp-client.ts`, `test/secret-version.test.mjs`, `.github/workflows/deploy-mcp-server.yml`, `scripts/render-mcp-service-yaml.sh` |
 | 2 | קישור-ההתחברות + route ההתחלה | completed | `services/mcp-server/src/google-oauth.ts` (+test), `index.ts` |
-| 3 | לוכד ה-callback + שמירה ל-SM + שומרים | pending | `index.ts` (route callback), `services/mcp-server/src/google-oauth.ts` (exchange/parse +test) |
+| 3 | לוכד ה-callback + שמירה ל-SM + שומרים | completed | `index.ts` (route callback), `services/mcp-server/src/google-oauth.ts` (exchange/parse +test) |
 | 4 | חיווט-מחדש של workflow ההתחברות ל-gateway | pending | `.github/workflows/request-workspace-scopes-consent.yml` |
 | 5 | מיזוג → פריסה → רישום כתובת + consent חי + smoke (אבן-דרך חיה) | pending | מיזוג ל-main + קונסולת גוגל + control SM |
 | 6 | פירוק or-adhd-agent + פרישת הצינורות הישנים | pending | dispatch `decommission-test-system.yml`; retire `rotate-shared-gmail-token.yml` + נתיב rotate ב-`copy-gmail-oauth-to-control.yml` |
@@ -95,16 +95,18 @@ Gmail/יומן/Drive/Docs) "כתובת חזרה" אחת הרשומה אצל גו
 ### שלב 3 — לוכד ה-callback + שמירה ל-SM + שומרים
 
 **Acceptance:**
-- [ ] `parseWorkspaceConsentResponse` (טהור) + `exchangeWorkspaceConsentCode` ב-`google-oauth.ts`: דורש `refresh_token`, ו-**scope-equality guard** (זורק אם לא חזרו בדיוק 6, order-insensitive).
-- [ ] `GET /workspace/consent/callback` inline ב-`index.ts`: ולידציית `state` מול `pendingConsent` (TTL, חד-פעמי); `?error=`; קורא `exchangeWorkspaceConsentCode` ואז `addSecretVersion('or-factory-master-control','gmail-oauth-refresh-token',token)`.
-- [ ] Playground ירוק.
+- [x] `parseWorkspaceConsentResponse` (טהור) + `exchangeWorkspaceConsentCode` ב-`google-oauth.ts`: דורש `refresh_token`, ו-**scope-equality guard** (זורק אם לא חזרו בדיוק 6, order-insensitive).
+- [x] `GET /workspace/consent/callback` inline ב-`index.ts`: ולידציית `state` מול `pendingConsent` (TTL, חד-פעמי); `?error=`; קורא `exchangeWorkspaceConsentCode` ואז `addSecretVersion(CONTROL_PROJECT,'gmail-oauth-refresh-token',token)`; דף הצלחה ל-Or.
+- [x] בדיקות `parseWorkspaceConsentResponse` ירוקות מקומית (91/91) + tsc קומפל את ה-callback נקי; Playground ב-CI לאישור.
 
 **הוכחה תפקודית (באותו שלב):** בדיקות יחידה ל-`parseWorkspaceConsentResponse` (הלוגיקה
 הבטיחותית של הלכידה — טהורה, ניתנת-לבדיקה): ‏(a) 6 scopes + refresh_token → מחזיר את הטוקן;
-‏(b) scope-mismatch → זורק (לא ייכתב); ‏(c) חסר refresh_token → זורק. ה-route ב-index.ts
-(state/error/write) מאומת ב-tsc-compile + חי בשלב 5 (כמו שלב 2). נצפה: ירוק ב-CI.
+‏(b) order-insensitive; ‏(c) scope-mismatch (גם חסר וגם עודף) → זורק (לא ייכתב); ‏(d) חסר
+refresh_token → זורק. **הוכח מקומית (91/91).** ה-route ב-index.ts (state/error/write) מאומת
+ב-tsc-compile + חי בשלב 5 (כמו שלב 2).
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם. ‏parser טהור + exchange ב-google-oauth; ‏callback inline
+ב-index.ts (state-guard, scope-guard דרך ה-parser, כתיבה ל-SM, דף הצלחה). מקומית 91/91 ירוק.
 
 **שינוי תוכנית:** —
 
@@ -188,3 +190,4 @@ grep מאמת שמחרוזת ה-URL הנבנית היא `${GATEWAY}/workspace/co
 - הפיתוח נפתח (2026-06-10): בונים דלת קבועה ב-gateway, מוכיחים חי, ואז מפרקים 5 מערכות ישנות — הכל בשערי ✅.
 - שלב 1 הושלם — נתתי ל-gateway יכולת בטוחה לשמור את הטוקן החדש (הוספה בלבד, אף פעם לא מחיקה). בדיקה אוטומטית ירוקה.
 - שלב 2 הושלם — בניתי את "כפתור ההתחברות" לגוגל (עם 6 ההרשאות הנכונות) ואת נקודת-הכניסה שמייצרת אותו. בדיקה אוטומטית ירוקה; ההתחברות הקיימת לא נפגעה.
+- שלב 3 הושלם — בניתי את ה"לוכד": הוא תופס את הטוקן החדש שחוזר מגוגל, מוודא שיש בו בדיוק 6 ההרשאות (אחרת לא שומר — בטיחות), ושומר אותו במקום הקבוע. בדיקה אוטומטית ירוקה.

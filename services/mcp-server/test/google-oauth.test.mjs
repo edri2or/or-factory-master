@@ -7,8 +7,14 @@ process.env.GOOGLE_OAUTH_CLIENT_ID = 'test-client-id.apps.googleusercontent.com'
 process.env.GOOGLE_OAUTH_CLIENT_SECRET = 'test-secret';
 process.env.OAUTH_ALLOWED_EMAILS = 'edri2or@gmail.com, Someone@Example.com';
 
-const { googleConfigured, emailAllowed, googleAuthorizeUrl, workspaceConsentUrl, WORKSPACE_SCOPES } =
-  await import('../dist/google-oauth.js');
+const {
+  googleConfigured,
+  emailAllowed,
+  googleAuthorizeUrl,
+  workspaceConsentUrl,
+  WORKSPACE_SCOPES,
+  parseWorkspaceConsentResponse,
+} = await import('../dist/google-oauth.js');
 
 test('googleConfigured: true when id+secret present and not placeholder', () => {
   assert.equal(googleConfigured(), true);
@@ -60,4 +66,40 @@ test('login URL stays untouched while adding the consent door (openid email, onl
   const login = new URL(googleAuthorizeUrl('s', 'https://gw/oauth/callback'));
   assert.equal(login.searchParams.get('scope'), 'openid email');
   assert.equal(login.searchParams.get('access_type'), 'online');
+});
+
+test('parseWorkspaceConsentResponse: 6 scopes + refresh_token → returns the token', () => {
+  const r = parseWorkspaceConsentResponse({ refresh_token: 'rt-123', scope: WORKSPACE_SCOPES.join(' ') });
+  assert.equal(r.refreshToken, 'rt-123');
+  assert.equal(r.scopes.length, 6);
+});
+
+test('parseWorkspaceConsentResponse: scope check is order-insensitive', () => {
+  const reversed = [...WORKSPACE_SCOPES].reverse().join(' ');
+  const r = parseWorkspaceConsentResponse({ refresh_token: 'rt', scope: reversed });
+  assert.equal(r.refreshToken, 'rt');
+});
+
+test('parseWorkspaceConsentResponse: missing refresh_token → throws (nothing to persist)', () => {
+  assert.throws(
+    () => parseWorkspaceConsentResponse({ scope: WORKSPACE_SCOPES.join(' ') }),
+    /refresh_token/,
+  );
+});
+
+test('parseWorkspaceConsentResponse: scope mismatch → throws (never persisted)', () => {
+  // too few
+  assert.throws(
+    () => parseWorkspaceConsentResponse({ refresh_token: 'rt', scope: WORKSPACE_SCOPES.slice(0, 5).join(' ') }),
+    /6 workspace scopes/,
+  );
+  // an extra/unexpected scope
+  assert.throws(
+    () =>
+      parseWorkspaceConsentResponse({
+        refresh_token: 'rt',
+        scope: WORKSPACE_SCOPES.join(' ') + ' https://www.googleapis.com/auth/extra',
+      }),
+    /6 workspace scopes/,
+  );
 });
