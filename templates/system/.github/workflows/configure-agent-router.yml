@@ -467,17 +467,16 @@ jobs:
             echo "INFO: Telegram credential id=${CRED_TELEGRAM_ID}"
           fi
 
-          # Upsert one workflow by name (PATCH if exists else POST), then activate.
-          # $1=workflow name  $2=path to placeholder-resolved JSON  ->  echoes the WF id.
-          # Activation chain, by n8n generation (both proven live):
-          # 1. Cookie /rest activate with the just-saved draft versionId — on
-          #    2.x this is the UI Publish button's exact call, the ONLY path
-          #    that registers production trigger routes (factory-test-051;
-          #    the Public API activate 200s without registering — upstream
-          #    gap czlonkowski/n8n-mcp#551). On 1.x the endpoint is absent
-          #    (404) and the chain falls through.
-          # 2. Public API activate (X-N8N-API-KEY) — the 1.x programmatic
-          #    path (factory-test-048).
+          # Upsert one workflow by name (PATCH if exists else POST), then publish
+          # (activate=yes). $1=workflow name  $2=path to placeholder-resolved JSON
+          #  $3=yes|no  ->  echoes the WF id.
+          # Publish chain (the activate=yes block reads versionId from a FRESH GET):
+          # 1. Cookie /rest activate with the fresh versionId — on 2.x this is the
+          #    UI Publish button's exact call, the ONLY path that registers
+          #    production trigger routes (factory-test-051/052; the Public API
+          #    activate 200s without registering — upstream gap
+          #    czlonkowski/n8n-mcp#551). On 1.x the endpoint is absent (404).
+          # 2. Public API activate (X-N8N-API-KEY) — the 1.x programmatic path.
           # 3. PATCH active:true — last resort (1.x only; 2.x ignores it).
           N8N_PUB_API_KEY=$(_sm_read "n8n-api-key" 2>/dev/null || echo "")
           [ -n "$N8N_PUB_API_KEY" ] && echo "::add-mask::${N8N_PUB_API_KEY}"
@@ -494,17 +493,35 @@ jobs:
               wid=$(jq -r '.data.id // .id' /tmp/ar-wf.json)
             fi
             [ -n "$wid" ] && [ "$wid" != "null" ] || return 1
-            # Activate only workflows with an activatable trigger (the router's Webhook).
-            # Sub-agents trigger via Execute Workflow Trigger — n8n can't activate those,
-            # and they don't need it (the router invokes them directly). Inactive by design.
+            # Publish (= register production trigger routes). n8n 2.x: a workflow's
+            # production routes (webhook AND mcpTrigger) register ONLY when a
+            # workflow VERSION is published — the cookie-auth
+            # POST /rest/workflows/:id/activate {versionId,name} (the UI's Publish
+            # button). The Public API activate returns 200 yet registers no route
+            # (upstream gap czlonkowski/n8n-mcp#551) and PATCH active:true is
+            # ignored for publication — both are last-resort fallbacks only.
+            # Mirror the proven mcp-server pattern (this file, 5i): read versionId
+            # from a FRESH GET (the upsert response /tmp/ar-wf.json can lag), then
+            # deactivate-first so idempotent re-runs re-register cleanly, then
+            # publish that exact versionId. Production-invoked sub-workflows
+            # publish too (activate=yes): publishing a PARENT that references an
+            # UNPUBLISHED executeWorkflow sub-workflow is refused (HTTP 400), and a
+            # production sub-workflow call loads only the published activeVersion.
+            # executeWorkflowTrigger is trigger-like (publishable) and its trigger()
+            # is a no-op, so a published sub-workflow never self-fires.
             if [ "$activate" = "yes" ]; then
-              vid=$(jq -r '(.data // .).versionId // empty' /tmp/ar-wf.json 2>/dev/null || echo "")
+              _napi GET "$BASE/rest/workflows/${wid}" /tmp/ar-wf-fresh.json >/dev/null || true
+              vid=$(jq -r '(.data // .).versionId // empty' /tmp/ar-wf-fresh.json 2>/dev/null || echo "")
               http="000"
               if [ -n "$vid" ]; then
+                _napi POST "$BASE/rest/workflows/${wid}/deactivate" /tmp/ar-deact.json '{}' >/dev/null 2>&1 || true
                 http=$(_napi POST "$BASE/rest/workflows/${wid}/activate" /tmp/ar-act.json \
                   "$(jq -cn --arg v "$vid" '{versionId: $v, name: "configure-publish"}')")
               fi
               if [ "$http" != "200" ] && [ "$http" != "204" ] && [ -n "$N8N_PUB_API_KEY" ]; then
+                curl -sS -o /dev/null --max-time 30 -X POST \
+                  -H "X-N8N-API-KEY: ${N8N_PUB_API_KEY}" \
+                  "$BASE/api/v1/workflows/${wid}/deactivate" 2>/dev/null || true
                 http=$(curl -sS -o /tmp/ar-act.json -w '%{http_code}' --max-time 30 -X POST \
                   -H "X-N8N-API-KEY: ${N8N_PUB_API_KEY}" \
                   "$BASE/api/v1/workflows/${wid}/activate" || echo "000")
@@ -526,18 +543,14 @@ jobs:
               sed -e "s#@@CRED_POSTGRES_ID@@#${CRED_POSTGRES_ID}#g" "$DB_SRC" > /tmp/ar-prep-db-setup.json
               DB_SETUP_ID=$(_upsert_wf "factory-master: db-setup" /tmp/ar-prep-db-setup.json no) || DB_SETUP_ID=""
               if [ -n "$DB_SETUP_ID" ] && [ "$DB_SETUP_ID" != "null" ]; then
-                # n8n's /rest/workflows/:id/run (manual execution) requires
-                # body.workflowData with `id` matching the URL param + a startNodes
-                # entry pointing at the trigger; an empty {} crashes the handler
-                # with "Cannot read properties of undefined (reading 'id')" (500).
-                # See packages/cli/src/workflows/workflows.controller.ts (shape
-                # established on n8n 1.121; the call is soft-fail-guarded below,
-                # so a 2.x shape change degrades to a WARN, not a broken run).
-                # Recent n8n also requires `destinationNode` for the "new partial
-                # execution flow" — set it to the only data node so the full chain
-                # (Run Once → Create Tables) executes.
-                RUN_BODY=$(jq -cn --slurpfile wf /tmp/ar-prep-db-setup.json --arg id "$DB_SETUP_ID" \
-                  '{workflowData: ($wf[0] + {id:$id}), runData:{}, startNodes:[{name:"Run Once", sourceData:null}], destinationNode:"Create Tables"}')
+                # n8n 2.x /rest/workflows/:id/run: workflowData/startNodes are
+                # IGNORED (the controller loads the workflow from the DB), and
+                # destinationNode is now an OBJECT {nodeName}, not a string. The
+                # minimal full manual execution from the auto-detected trigger is
+                # just the destination node (the "unknown trigger" shape: no
+                # triggerToStartFrom, no runData) — runs Run Once → Create Tables.
+                # A 1.x-shaped body 500s ("node named undefined"). Soft-guarded below.
+                RUN_BODY='{"destinationNode":{"nodeName":"Create Tables"}}'
                 HTTP=$(_napi POST "$BASE/rest/workflows/${DB_SETUP_ID}/run" /tmp/ar-db-run.json "$RUN_BODY")
                 if [ "$HTTP" = "200" ] || [ "$HTTP" = "201" ]; then
                   echo "PASS: db-setup ran (id=${DB_SETUP_ID}) — Postgres tables ensured"
@@ -627,9 +640,9 @@ jobs:
                   -e "s#@@CHAT_ID@@#${CHAT_ID}#g" \
                   "$PGNQ_SRC" > /tmp/ar-prep-pg-named-queries.json
               PG_NAMED_WF_ID=$(_upsert_wf "factory-master: postgres-named-queries" \
-                /tmp/ar-prep-pg-named-queries.json no) || PG_NAMED_WF_ID=""
+                /tmp/ar-prep-pg-named-queries.json yes) || PG_NAMED_WF_ID=""
               if [ -n "$PG_NAMED_WF_ID" ] && [ "$PG_NAMED_WF_ID" != "null" ]; then
-                echo "PASS: factory-master: postgres-named-queries → id=${PG_NAMED_WF_ID} (לא-פעיל by design — subworkflow)"
+                echo "PASS: factory-master: postgres-named-queries → id=${PG_NAMED_WF_ID} (published — נקרא ב-production דרך toolWorkflow)"
               else
                 echo "WARN: postgres-named-queries install failed" >&2
                 PG_NAMED_WF_ID=""
@@ -677,9 +690,9 @@ jobs:
               sed -e "s#@@CRED_RAILWAY_ID@@#${CRED_RAILWAY_ID}#g" \
                   -e "s#@@RAILWAY_PROJECT_ID@@#${RW_PROJECT_ID}#g" \
                   "$RWRO_SRC" > /tmp/ar-prep-railway-readonly.json
-              WF_RAILWAY_READONLY_ID=$(_upsert_wf "factory-master: railway-readonly" /tmp/ar-prep-railway-readonly.json no) || WF_RAILWAY_READONLY_ID=""
+              WF_RAILWAY_READONLY_ID=$(_upsert_wf "factory-master: railway-readonly" /tmp/ar-prep-railway-readonly.json yes) || WF_RAILWAY_READONLY_ID=""
               { [ -n "$WF_RAILWAY_READONLY_ID" ] && [ "$WF_RAILWAY_READONLY_ID" != "null" ]; } \
-                && echo "PASS: factory-master: railway-readonly → id=${WF_RAILWAY_READONLY_ID} (לא-פעיל by design — subworkflow)" \
+                && echo "PASS: factory-master: railway-readonly → id=${WF_RAILWAY_READONLY_ID} (published — נקרא ב-production דרך toolWorkflow)" \
                 || { echo "WARN: railway-readonly install failed" >&2; WF_RAILWAY_READONLY_ID=""; }
             else
               echo "WARN: railway-readonly.json not found in repo — skipping" >&2
@@ -695,9 +708,9 @@ jobs:
                   -e "s#@@GITHUB_INSTALLATION_ID@@#${GH_APP_INSTALL_ID}#g" \
                   -e "s#@@SYSTEM_NAME@@#${SYSTEM_NAME}#g" \
                   "$GHRO_SRC" > /tmp/ar-prep-github-readonly.json
-              WF_GITHUB_READONLY_ID=$(_upsert_wf "factory-master: github-readonly" /tmp/ar-prep-github-readonly.json no) || WF_GITHUB_READONLY_ID=""
+              WF_GITHUB_READONLY_ID=$(_upsert_wf "factory-master: github-readonly" /tmp/ar-prep-github-readonly.json yes) || WF_GITHUB_READONLY_ID=""
               { [ -n "$WF_GITHUB_READONLY_ID" ] && [ "$WF_GITHUB_READONLY_ID" != "null" ]; } \
-                && echo "PASS: factory-master: github-readonly → id=${WF_GITHUB_READONLY_ID} (לא-פעיל by design — subworkflow)" \
+                && echo "PASS: factory-master: github-readonly → id=${WF_GITHUB_READONLY_ID} (published — נקרא ב-production דרך toolWorkflow)" \
                 || { echo "WARN: github-readonly install failed" >&2; WF_GITHUB_READONLY_ID=""; }
             else
               echo "WARN: github-readonly.json not found in repo — skipping" >&2
@@ -882,7 +895,12 @@ jobs:
                 echo "INFO: ${slot}-agent → Read Style Profile stripped (no Postgres credential)"
               fi
             fi
-            ID=$(_upsert_wf "$wf_name" "/tmp/ar-prep-${file}" no) || _soft_exit0 "כשל ביצירת/עדכון ${wf_name}"
+            # Publish each sub-agent: the router calls them via executeWorkflow,
+            # and n8n 2.x refuses to publish the router while a referenced
+            # executeWorkflow sub-workflow is unpublished (HTTP 400). Their only
+            # trigger is executeWorkflowTrigger (publishable, no-op trigger — never
+            # self-fires). Published BEFORE the router (installed last) by order.
+            ID=$(_upsert_wf "$wf_name" "/tmp/ar-prep-${file}" yes) || _soft_exit0 "כשל ביצירת/עדכון ${wf_name}"
             [ -n "$ID" ] && [ "$ID" != "null" ] || _soft_exit0 "לא התקבל id עבור ${wf_name}"
             case "$slot" in
               UNKNOWN)  SUB_UNKNOWN_WF_ID="$ID" ;;
@@ -891,7 +909,7 @@ jobs:
               RESEARCH) SUB_RESEARCH_WF_ID="$ID" ;;
               INFRA)    SUB_INFRA_WF_ID="$ID" ;;
             esac
-            echo "PASS: ${wf_name} → id=${ID}"
+            echo "PASS: ${wf_name} → id=${ID} (published — sub-agent invoked via executeWorkflow)"
           done
 
           # 5. Router LAST — substitute cred + all five live sub IDs (Stage 51b wires
@@ -1045,10 +1063,10 @@ jobs:
               if [ -n "$FCAT_WF_ID" ] && [ "$FCAT_WF_ID" != "null" ]; then
                 echo "PASS: factory-master: file-catalog-refresh → id=${FCAT_WF_ID} (פעיל, cron 0 * * * *)"
                 # Seed the catalog once at install so the resolver works immediately
-                # (otherwise it waits up to an hour for the first cron). Same /run shape
-                # as db-setup. Soft: a failure here only delays the first refresh.
-                FCAT_RUN_BODY=$(jq -cn --slurpfile wf /tmp/ar-prep-file-catalog-refresh.json --arg id "$FCAT_WF_ID" \
-                  '{workflowData: ($wf[0] + {id:$id}), runData:{}, startNodes:[{name:"Hourly", sourceData:null}], destinationNode:"Upsert Catalog"}')
+                # (otherwise it waits up to an hour for the first cron). 2.x /run shape
+                # (see db-setup): destinationNode is an object {nodeName}; runs
+                # Hourly → Upsert Catalog. Soft: a failure only delays the first refresh.
+                FCAT_RUN_BODY='{"destinationNode":{"nodeName":"Upsert Catalog"}}'
                 FCAT_HTTP=$(_napi POST "$BASE/rest/workflows/${FCAT_WF_ID}/run" /tmp/ar-fcat-run.json "$FCAT_RUN_BODY")
                 if [ "$FCAT_HTTP" = "200" ] || [ "$FCAT_HTTP" = "201" ]; then
                   echo "PASS: file-catalog-refresh initial run (id=${FCAT_WF_ID}) — file_catalog seeded"
