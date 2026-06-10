@@ -16,6 +16,11 @@ Steps (each asserted):
      shared token refreshed against Google and the read reached the live account).
      We read GMAIL labels (covered by the token's gmail.modify scope); list_calendars
      would need calendar.readonly, which this write-scoped token deliberately lacks.
+  5. tools/list also carries the Drive + Docs tool groups (search_drive_files,
+     search_docs) — proves WORKSPACE_MCP_TOOLS="calendar gmail drive docs" landed.
+  6. tools/call search_drive_files(...)  -> real Drive data, NOT an auth prompt —
+     proves the rotated 6-scope shared token (auth/drive + auth/documents added
+     2026-06-10) refreshes cleanly and the new scopes are live.
 
 Env: GATEWAY_URL, ADMIN_SECRET, SMOKE_SYSTEM (default or-adhd-agent),
      GOOGLE_ACCOUNT_LABEL (default shared-google@or-infra.com).
@@ -121,7 +126,7 @@ if st != 200:
 TOKEN = json.loads(body).get("access_token", "")
 if not TOKEN:
     _fail("mint token: no access_token", body)
-print(f"PASS [1/4] minted system-scoped workspace-runtime bearer for {SYSTEM}")
+print(f"PASS [1/6] minted system-scoped workspace-runtime bearer for {SYSTEM}")
 
 # ── 2. initialize ──
 _, init = mcp(
@@ -133,7 +138,7 @@ _, init = mcp(
     },
 )
 server = init.get("result", {}).get("serverInfo", {})
-print(f"PASS [2/4] MCP initialize ok (server={server.get('name','?')} "
+print(f"PASS [2/6] MCP initialize ok (server={server.get('name','?')} "
       f"session={'yes' if session_id else 'stateless'})")
 mcp("notifications/initialized", notify=True)
 
@@ -142,7 +147,7 @@ _, tl = mcp("tools/list")
 names = [t.get("name", "") for t in tl.get("result", {}).get("tools", [])]
 if "list_gmail_labels" not in names:
     _fail("tools/list did not include list_gmail_labels", json.dumps(names)[:600])
-print(f"PASS [3/4] tools/list: {len(names)} Google tools "
+print(f"PASS [3/6] tools/list: {len(names)} Google tools "
       f"(incl. list_gmail_labels; gateway->sidecar reachable)")
 
 # ── 4. real read against the shared Google account ──
@@ -153,8 +158,29 @@ if not ok or needs_auth:
     _fail("list_gmail_labels did not return real data — the shared token did not "
           "refresh against Google (check gmail-oauth-* secrets are real, not "
           "placeholders)", text)
-print(f"PASS [4/4] list_gmail_labels returned real Gmail data for the shared "
+print(f"PASS [4/6] list_gmail_labels returned real Gmail data for the shared "
       f"account ({len(text)} bytes)")
 
-print("\nSMOKE PASS: full loop proven (gateway bearer -> Workspace MCP sidecar -> "
-      "live Google read), no secret in session.")
+# ── 5. Drive + Docs tool groups are served (WORKSPACE_MCP_TOOLS landed) ──
+missing = [t for t in ("search_drive_files", "search_docs") if t not in names]
+if missing:
+    _fail(f"tools/list missing Drive/Docs tools {missing} — "
+          "WORKSPACE_MCP_TOOLS does not include drive+docs", json.dumps(names)[:600])
+print("PASS [5/6] tools/list carries the Drive + Docs groups "
+      "(search_drive_files, search_docs)")
+
+# ── 6. real Drive read — proves the rotated 6-scope token is live ──
+ok, text = tool_call("search_drive_files",
+                     {"user_google_email": LABEL, "query": "trashed=false"})
+needs_auth = ("ACTION REQUIRED" in text) or ("Authentication Needed" in text) \
+    or ("authorize" in text.lower() and "oauth" in text.lower()) \
+    or ("Scope has changed" in text)
+if not ok or needs_auth:
+    _fail("search_drive_files did not return real data — the rotated 6-scope "
+          "token did not refresh (scope mismatch between the grant and "
+          "WORKSPACE_MCP_SCOPES?)", text)
+print(f"PASS [6/6] search_drive_files returned real Drive data "
+      f"({len(text)} bytes) — the Drive+Docs scopes are live")
+
+print("\nSMOKE PASS 6/6: full loop proven (gateway bearer -> Workspace MCP sidecar -> "
+      "live Google reads incl. Drive), no secret in session.")
