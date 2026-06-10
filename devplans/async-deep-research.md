@@ -87,6 +87,15 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 לכן שלב 2 דורש **build טרי מלא** (provision reuse → register-app → deploy), ואז החלת שינוי-הענף דרך
 `prove-on-test-system.yml` (sandbox, ref=ענף) + `configure-agent-router.yml`. ממתין לאישור Or על העלות.
 
+**ביצוע שלב 2 (factory-test-053):** provision ✅ → register-app (קליקים של Or) ✅ → deploy (n8n חי,
+healthz 200) ✅ → prove-on-test-system (PR+מיזוג דרך CI של מערכת-הטסט, sandbox identity) ✅ → configure ✅.
+**אומת מותקן+פעיל חי:** `deep-research` (id 8HuUyaFSsZxz0J7z) **active**, `Agent Router` (QXTOIJ5enl41e6Xb)
+**active** עם נתיב ה-deep מחובר (ה-id הוזרק, לא הוסר). **חסם לאימות ה-round-trip:** `tg-inbound`
+(שער-הכניסה הכללי של הבוט) נשאר `active:false` גם אחרי הרצת configure חוזרת — ה-upsert עובר אבל ההפעלה
+לא נתפסת (נצפו גם timeouts ב-smoke על המכונה). **לא קשור ל-deep-research** (tg-inbound.json קוד-תבנית
+שלא נגעתי בו, עבד על 052/tavily2 לפני השינוי) — תקלת-הפעלה סביבתית/2.x של השער האחרון שמותקן. ה-gateway
+של n8n-mcp בסשן מחובר למערכת אחרת (or-tok) ולכן לא ניתן להפעיל משם ידנית. החלטת המשך מובאת ל-Or.
+
 **שינוי תוכנית:** היעד `factory-test-tavily2` כבר לא חי (מאורכב) → אי-אפשר reuse. שלב 2 הופך מ"רענון
 מערכת חיה" ל"build טרי מלא של מערכת-טסט חדשה" (reuse על factory-test-25, 0-quota אך Railway/DNS/repo
 אמיתיים). האימות של שינוי-הענף לפני מיזוג נעשה דרך `prove-on-test-system.yml` (רץ off-main עם זהות
