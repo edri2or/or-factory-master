@@ -469,6 +469,13 @@ jobs:
 
           # Upsert one workflow by name (PATCH if exists else POST), then activate.
           # $1=workflow name  $2=path to placeholder-resolved JSON  ->  echoes the WF id.
+          # Activation goes Public-API-first (X-N8N-API-KEY from this system's SM,
+          # minted at deploy): the only programmatic activation path proven to
+          # register trigger routes on modern n8n — found live on factory-test-048,
+          # where the /rest legs only flipped the DB flag. The /rest legs remain
+          # as fallbacks (and as the path when the key is somehow absent).
+          N8N_PUB_API_KEY=$(_sm_read "n8n-api-key" 2>/dev/null || echo "")
+          [ -n "$N8N_PUB_API_KEY" ] && echo "::add-mask::${N8N_PUB_API_KEY}"
           _upsert_wf() {
             local wf_name="$1" body_file="$2" activate="${3:-yes}" wid http
             _napi GET "$BASE/rest/workflows" /tmp/ar-wfs.json >/dev/null
@@ -486,7 +493,15 @@ jobs:
             # Sub-agents trigger via Execute Workflow Trigger — n8n can't activate those,
             # and they don't need it (the router invokes them directly). Inactive by design.
             if [ "$activate" = "yes" ]; then
-              http=$(_napi POST "$BASE/rest/workflows/${wid}/activate" /tmp/ar-act.json)
+              http="000"
+              if [ -n "$N8N_PUB_API_KEY" ]; then
+                http=$(curl -sS -o /tmp/ar-act.json -w '%{http_code}' --max-time 30 -X POST \
+                  -H "X-N8N-API-KEY: ${N8N_PUB_API_KEY}" \
+                  "$BASE/api/v1/workflows/${wid}/activate" || echo "000")
+              fi
+              if [ "$http" != "200" ] && [ "$http" != "204" ]; then
+                http=$(_napi POST "$BASE/rest/workflows/${wid}/activate" /tmp/ar-act.json)
+              fi
               { [ "$http" = "200" ] || [ "$http" = "204" ]; } \
                 || _napi PATCH "$BASE/rest/workflows/${wid}" /tmp/ar-act.json '{"active":true}' >/dev/null
             fi
@@ -508,7 +523,9 @@ jobs:
                 # body.workflowData with `id` matching the URL param + a startNodes
                 # entry pointing at the trigger; an empty {} crashes the handler
                 # with "Cannot read properties of undefined (reading 'id')" (500).
-                # See packages/cli/src/workflows/workflows.controller.ts in n8n 1.121.
+                # See packages/cli/src/workflows/workflows.controller.ts (shape
+                # established on n8n 1.121; the call is soft-fail-guarded below,
+                # so a 2.x shape change degrades to a WARN, not a broken run).
                 # Recent n8n also requires `destinationNode` for the "new partial
                 # execution flow" — set it to the only data node so the full chain
                 # (Run Once → Create Tables) executes.
@@ -557,13 +574,20 @@ jobs:
           # out-of-date card makes the bot wrongly deny a capability it actually has
           # (e.g. refusing GitHub questions). Updated when github_readonly/railway_readonly
           # were added, including the read_file file-contents command.
+          # The runtime line is injected into unknown-agent's authoritative system
+          # prompt — a stale hardcoded version makes the bot answer wrongly. Read
+          # the live version from n8n itself so it survives future upgrades.
+          N8N_LIVE_VER=$(curl -sS --max-time 10 "$BASE/rest/settings" 2>/dev/null \
+            | jq -r '.data.versionCli // .versionCli // empty' 2>/dev/null || echo "")
+          RUNTIME_DESC="Railway (n8n ${N8N_LIVE_VER:-unknown-version} + Postgres + Caddy)"
           SYSTEM_INFO_JSON=$(jq -cn \
             --arg sys "$SYSTEM_NAME" \
             --arg dom "$N8N_DOMAIN" \
             --arg proj "$PROJECT_ID" \
+            --arg rt "$RUNTIME_DESC" \
             '{system_name:$sys, n8n_domain:$dom, gcp_project_id:$proj,
               gcp_region:"me-west1",
-              runtime:"Railway (n8n 1.121 + Postgres + Caddy)",
+              runtime:$rt,
               capabilities:{
                 read_only:false, write:"approved-only",
                 live_read_sources:[
@@ -1404,16 +1428,19 @@ jobs:
           echo "PASS: agent-router configured (router=${ROUTER_ID}, ops=${SUB_OPS_WF_ID}, code=${SUB_CODE_WF_ID}, research=${SUB_RESEARCH_WF_ID}, infra=${SUB_INFRA_WF_ID}, unknown=${SUB_UNKNOWN_WF_ID}; 5 sub-agents inactive by design)."
 
           # 5j. mcp-server self-verification — LAST, because it may restart n8n.
-          #     Live findings on factory-test-048 (mcp-birth-bundle stage 5): on
+          #     Historical context (factory-test-048, mcp-birth-bundle stage 5): on
           #     n8n 1.121 NO runtime activation path registers an mcpTrigger route
           #     (REST /activate doesn't exist; PATCH flips only the DB flag; the
           #     Public API returns 200 yet the route stays 404) while plain
-          #     webhooks DO register — boot-time registration is the remaining
-          #     mechanism. So: wait briefly for registration; if the endpoint
-          #     still 404s, force ONE clean n8n restart via Railway
-          #     serviceInstanceRedeploy (token + ids from this system's own SM),
-          #     wait for /healthz, then verify for real: 401 without the bearer →
-          #     initialize → tools/list → one REAL postgres_named_query call.
+          #     webhooks DO register — 1.x never registers mcpTrigger at all, not
+          #     even at boot. From the 2.x template (n8n-2x-upgrade) registration
+          #     is expected to succeed directly after the Public-API activate; the
+          #     restart-and-retry below stays as belt-and-braces. So: wait briefly
+          #     for registration; if the endpoint still 404s, force ONE clean n8n
+          #     restart via Railway serviceInstanceRedeploy (token + ids from this
+          #     system's own SM), wait for /healthz, then verify for real: 401
+          #     without the bearer → initialize → tools/list → one REAL
+          #     postgres_named_query call.
           if [ -n "${MCPSRV_WF_ID:-}" ] && [ "$MCPSRV_WF_ID" != "null" ]; then
             MCP_EP="${BASE}/mcp/system-tools"
             _mcp_reg() {

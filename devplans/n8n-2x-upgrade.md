@@ -35,7 +35,7 @@ status: active
 
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
-| 1 | ענף התבנית: הצמדה 2.25.7 + מנגנון image-upsert + תיקוני 2.x + שערים סטטיים | pending | `templates/system/.github/workflows/deploy-railway-cloudflare.yml`, `templates/system/Dockerfile.worker`, `templates/system/.github/workflows/configure-agent-router.yml`, `templates/system/AGENTS.md.template`, `tests/golden/system/`, `changelog.d/` |
+| 1 | ענף התבנית: הצמדה 2.25.7 + מנגנון image-upsert + תיקוני 2.x + שערים סטטיים | in-progress | `templates/system/.github/workflows/deploy-railway-cloudflare.yml`, `templates/system/Dockerfile.worker`, `templates/system/.github/workflows/configure-agent-router.yml`, `templates/system/AGENTS.md.template`, `tests/golden/system/`, `changelog.d/` |
 | 2 | הוכחה חיה Day-2: שדרוג-במקום 1.121→2.25.7 על מערכת-טסט + הדלקת mcpTrigger | pending | מערכת-טסט חיה (reuse mode), `prove-on-test-system.yml` |
 | 3 | מיזוג + הוכחת לידה Day-0: provision טרי על 2.25.7 | pending | מערכת-טסט שנייה (reuse mode) |
 | 4 | שדרוג המערכות האמיתיות (פר-מערכת, באישור Or) | pending | `refresh-system-agents.yml`, ריפו + Railway של כל מערכת אמיתית |
@@ -81,7 +81,13 @@ status: active
 בלבד — ההתנהגות החיה מוכחת בשלבים 2–3, שהם חלק מהפיתוח ולא "שלב מאוחר": ה-PR לא
 ימוזג לפני שלב 2).
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** כל שינויי הקוד נכתבו (2026-06-10): הצמדה+הערת רציונל,
+‏image-upsert עם רולאאוט-והמתנה ל-deployment חדש (כולל גילוי-עצמי אם
+‏serviceInstanceUpdate כבר רינדפלא — פולינג ל-id חדש לפני deploy מפורש), אסרטת
+‏versionCli בשער המוכנות, ‏binary-mode→database ‏(main+worker), נתיב rebuild ל-worker
+קיים, רגל Public-API להפעלות (דיפלוי+configure), ‏runtime דינמי בפרומפט unknown-agent,
+‏AGENTS.md.template. ‏golden רוענן (120). מקומית: ‏yamllint + ‏bash -n על כל בלוקי ה-run
+‏+ ‏check-system-golden + ‏check-golden-sync — ‏PASS. ממתין לאישור CI על ה-PR.
 
 **שינוי תוכנית:** —
 
