@@ -1118,17 +1118,41 @@ jobs:
                   echo "INFO: mcp-server tool ${tname} → stripped (subworkflow missing)"
                 fi
               done
-              MCPSRV_WF_ID=$(_upsert_wf "factory-master: mcp-server" /tmp/ar-prep-mcp-server.json yes) \
+              MCPSRV_WF_ID=$(_upsert_wf "factory-master: mcp-server" /tmp/ar-prep-mcp-server.json no) \
                 || MCPSRV_WF_ID=""
               if [ -n "$MCPSRV_WF_ID" ] && [ "$MCPSRV_WF_ID" != "null" ]; then
-                echo "PASS: factory-master: mcp-server → id=${MCPSRV_WF_ID} (פעיל — MCP endpoint /mcp/system-tools)"
+                # Activate EXPLICITLY with full visibility. The shared helper's
+                # silent PATCH fallback can set the DB active flag WITHOUT runtime
+                # trigger registration (observed live on factory-test-048: API
+                # showed active:true while /mcp/system-tools stayed 404) — so here
+                # the activate response is always surfaced, and a failed activate
+                # gets one deactivate→activate cycle.
+                ACT_HTTP=$(_napi POST "$BASE/rest/workflows/${MCPSRV_WF_ID}/activate" /tmp/ar-mcp-act.json)
+                if [ "$ACT_HTTP" != "200" ] && [ "$ACT_HTTP" != "204" ]; then
+                  echo "WARN: mcp-server POST /activate HTTP ${ACT_HTTP}: $(head -c 300 /tmp/ar-mcp-act.json 2>/dev/null)" >&2
+                  _napi PATCH "$BASE/rest/workflows/${MCPSRV_WF_ID}" /tmp/ar-mcp-act2.json '{"active":false}' >/dev/null || true
+                  ACT_HTTP=$(_napi POST "$BASE/rest/workflows/${MCPSRV_WF_ID}/activate" /tmp/ar-mcp-act.json)
+                  echo "INFO: mcp-server re-activate attempt → HTTP ${ACT_HTTP}: $(head -c 300 /tmp/ar-mcp-act.json 2>/dev/null)"
+                fi
+                echo "PASS: factory-master: mcp-server → id=${MCPSRV_WF_ID} (activate HTTP ${ACT_HTTP} — MCP endpoint /mcp/system-tools)"
 
                 # ── Built-in self-verification (runs on every system) ──────────────
                 # Proves the live endpoint end to end: 401 without the bearer;
                 # initialize + tools/list with it; one REAL tool call through the
                 # MCP surface (postgres_named_query — works on every system; the
                 # argument key is discovered from the tool's own inputSchema).
+                # Registration can lag activation — wait for the endpoint to stop
+                # 404ing (up to ~60s) before asserting anything.
                 MCP_EP="${BASE}/mcp/system-tools"
+                REG="000"
+                for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
+                  REG=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 -X POST "$MCP_EP" \
+                    -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" \
+                    --data-binary '{"jsonrpc":"2.0","id":0,"method":"ping"}' || echo "000")
+                  [ "$REG" != "404" ] && [ "$REG" != "000" ] && break
+                  sleep 5
+                done
+                echo "INFO: mcp-server endpoint registration wait → HTTP ${REG}"
                 _mcp_post() { # $1=payload $2=outfile [$3=session-id] -> echoes http code
                   if [ -n "${3:-}" ]; then
                     curl -sS -o "$2" -w '%{http_code}' --max-time 30 -X POST "$MCP_EP" \

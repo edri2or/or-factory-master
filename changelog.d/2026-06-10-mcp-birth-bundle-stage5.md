@@ -44,3 +44,12 @@ POST with HTTP 500 — `null value in column "active" ... violates not-null
 constraint`. Every other template carries a top-level `"active": false` and
 the new mcp-server.json didn't; added. (Caught by the live loop exactly as
 designed: the install failed soft, the router still configured.)
+
+**Iteration 2 (found live on factory-test-048):** after the active-field fix
+the workflow installed and the API showed `active: true` — but
+`/mcp/system-tools` stayed 404 ("webhook not registered"): the shared
+helper's silent PATCH fallback can set the DB flag without runtime trigger
+registration. The mcp-server install now activates EXPLICITLY (response
+always surfaced; one deactivate→activate retry cycle on failure) and the
+self-verification waits out registration lag (up to ~60s of 404) before
+asserting.
