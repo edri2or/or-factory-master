@@ -63,8 +63,22 @@ elif [ "$AL_RENDER" != "$AL_PROVISION" ] || [ "$AL_RENDER" != "$AL_VALIDATE" ]; 
   rc=1
 fi
 
+# --- (C) no fictional Google account in the system mould -----------------
+# `shared-google@or-infra.com` is a FICTIONAL workspace account (it never existed;
+# see docs/google-identities.md). The real shared workspace data account is
+# `edriorp38@or-infra.com`, and the workspace-mcp gateway REJECTS any other label.
+# This string has slipped back into the agent prompts twice; block it structurally
+# so no new system is ever born telling the operator to use a non-existent account.
+if grep -rIn --include='*.json' --include='*.template' --include='*.md' \
+     'shared-google@or-infra\.com' templates/system/ 2>/dev/null; then
+  echo "ERROR: fictional Google account 'shared-google@or-infra.com' found under templates/system/." >&2
+  echo "  The real shared workspace account is 'edriorp38@or-infra.com' (docs/google-identities.md)." >&2
+  echo "  Replace it — the workspace-mcp gateway rejects any other user_google_email." >&2
+  rc=1
+fi
+
 if [ "$rc" -ne 0 ]; then
   exit 1
 fi
 
-echo "PASS: template golden in sync (mould↔golden coupling + allow-list parity)."
+echo "PASS: template golden in sync (mould↔golden coupling + allow-list parity + no fictional Google account)."
