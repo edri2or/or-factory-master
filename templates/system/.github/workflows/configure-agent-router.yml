@@ -543,17 +543,35 @@ jobs:
               sed -e "s#@@CRED_POSTGRES_ID@@#${CRED_POSTGRES_ID}#g" "$DB_SRC" > /tmp/ar-prep-db-setup.json
               DB_SETUP_ID=$(_upsert_wf "factory-master: db-setup" /tmp/ar-prep-db-setup.json no) || DB_SETUP_ID=""
               if [ -n "$DB_SETUP_ID" ] && [ "$DB_SETUP_ID" != "null" ]; then
-                # n8n 2.x /rest/workflows/:id/run: workflowData/startNodes are
-                # IGNORED (the controller loads the workflow from the DB), and
-                # destinationNode is now an OBJECT {nodeName}, not a string. The
-                # minimal full manual execution from the auto-detected trigger is
-                # just the destination node (the "unknown trigger" shape: no
-                # triggerToStartFrom, no runData) — runs Run Once → Create Tables.
-                # A 1.x-shaped body 500s ("node named undefined"). Soft-guarded below.
-                RUN_BODY='{"destinationNode":{"nodeName":"Create Tables"}}'
+                # n8n 2.x manual run: the UI "Execute workflow" sends triggerToStartFrom
+                # (WHICH trigger to start the execution from). WITHOUT it the partial
+                # execution runs ONLY the trigger node and stops — "Create Tables" never
+                # executes and NO Postgres tables are created, yet /run still returns 200.
+                # That silent false-positive hid a real bug (proven live on factory-test-061:
+                # exec lastNode="Run Once", spend_track_state/agent_trace_events absent).
+                # triggerToStartFrom makes it run Run Once → Create Tables; destinationNode
+                # is kept for intent (it is the terminal node). workflowData/startNodes are
+                # ignored by 2.x (controller loads the workflow from the DB).
+                RUN_BODY='{"triggerToStartFrom":{"name":"Run Once"},"destinationNode":{"nodeName":"Create Tables"}}'
                 HTTP=$(_napi POST "$BASE/rest/workflows/${DB_SETUP_ID}/run" /tmp/ar-db-run.json "$RUN_BODY")
+                # VERIFY the DDL node actually ran — never trust HTTP 200 alone again. Read
+                # the latest db-setup execution's lastNodeExecuted; only "Create Tables"
+                # proves the tables were created/ensured.
+                DB_LAST_NODE=""
                 if [ "$HTTP" = "200" ] || [ "$HTTP" = "201" ]; then
-                  echo "PASS: db-setup ran (id=${DB_SETUP_ID}) — Postgres tables ensured"
+                  sleep 3
+                  if _napi GET "$BASE/rest/executions?filter=%7B%22workflowId%22%3A%22${DB_SETUP_ID}%22%7D&limit=1" /tmp/ar-db-exec.json >/dev/null 2>&1; then
+                    DB_EXEC_ID=$(jq -r '(.data[0].id) // (.results[0].id) // (.data[0].executionId) // empty' /tmp/ar-db-exec.json 2>/dev/null || echo "")
+                    if [ -n "$DB_EXEC_ID" ] && [ "$DB_EXEC_ID" != "null" ]; then
+                      _napi GET "$BASE/rest/executions/${DB_EXEC_ID}?includeData=true" /tmp/ar-db-exec2.json >/dev/null 2>&1 || true
+                      DB_LAST_NODE=$(jq -r '(.data.resultData.lastNodeExecuted) // (.resultData.lastNodeExecuted) // empty' /tmp/ar-db-exec2.json 2>/dev/null || echo "")
+                    fi
+                  fi
+                fi
+                if [ "$DB_LAST_NODE" = "Create Tables" ]; then
+                  echo "PASS: db-setup ran — Create Tables executed (id=${DB_SETUP_ID}, exec=${DB_EXEC_ID:-?}); Postgres tables created/ensured"
+                elif [ "$HTTP" = "200" ] || [ "$HTTP" = "201" ]; then
+                  echo "WARN: db-setup /run returned ${HTTP} but Create Tables did NOT execute (lastNode='${DB_LAST_NODE:-unknown}') — Postgres tables NOT created. Check the n8n 2.x manual-run body shape." >&2
                 else
                   echo "WARN: db-setup run HTTP ${HTTP} (body: $(head -c 200 /tmp/ar-db-run.json 2>/dev/null | tr '\n' ' ')) — tables may be missing" >&2
                 fi

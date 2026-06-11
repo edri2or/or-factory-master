@@ -63,3 +63,21 @@
   claim_actual_mismatch). כך סוכן-הפיתוח (וגם סוכני-הבוט) יודעים שהשאילתות קיימות וכיצד להשתמש בהן.
 - גם רשימת-השמות ב-system-prompt של ops-agent עודכנה ל-8 השמות (עקביות).
 - אומת jq על שלושת הקבצים; golden רוענן; שערי-הזהב ירוקים. (קריאה חיה דרך MCP — שלב 5.)
+
+### שלב 5 — הוכחה חיה + תיקון באג db-setup שההוכחה תפסה
+
+- **ההוכחה החיה רצה על factory-test-061** (provision → register-app → deploy → הוחל הענף דרך
+  `prove-on-test-system` → configure): כל ה-workflows המחווטים הותקנו ופורסמו חי; הבוט חי ומגיב,
+  והסוכן קרא בפועל את `postgres_named_query` (מנוע-השאילתות + הניתוב עובדים מקצה-לקצה).
+- **באג קריטי שנתפס (fix‑forward, מעבר ל-scope המקורי, מאושר):** ב-n8n 2.x ההרצה של `db-setup`
+  דרך `/rest/workflows/:id/run` **השמיטה `triggerToStartFrom`**, אז רץ רק צומת ה-trigger
+  ("Run Once") ו-"Create Tables" **לעולם לא רץ** → אף טבלה לא נוצרת, בעוד `/run` מחזיר 200 →
+  "PASS" שקרי. שובר בשקט את כל זיכרון-המסד של הבוט (spend/audit/style/pending + agent_trace_events)
+  מאז שדרוג n8n 2.x. אומת חי: exec lastNode="Run Once", הבוט החזיר `relation "spend_track_state"
+  does not exist`. *(זה בדיוק הפער "טען-אך-לא-עשה" שהפיתוח הזה נועד לחשוף.)*
+- **התיקון ב-`configure-agent-router.yml`:** `RUN_BODY` קיבל
+  `triggerToStartFrom:{"name":"Run Once"}` (כמו כפתור "Execute workflow" של n8n) — מריץ
+  Run Once → Create Tables. בנוסף **אימות אמיתי**: קריאת ה-execution האחרון ובדיקה
+  `lastNodeExecuted == "Create Tables"` (לא רק HTTP 200) — הורג את ה-false-positive שהסתיר את הבאג.
+- אומת: yamllint; golden רוענן; שערי-הזהב + executeWorkflow gate ירוקים. (אימות חי על
+  factory-test-061 — לאחר ההחלה.)
