@@ -30,7 +30,15 @@ import {
 import { handleChatUpdate } from './telegram-chat.js';
 import { proxyToN8nMcp, n8nMcpEnabled, isAllowedN8nSystem } from './n8n-mcp-proxy.js';
 import { proxyToWorkspaceMcp, workspaceMcpEnabled, isAllowedWorkspaceSystem } from './workspace-mcp-proxy.js';
-import { googleConfigured, googleAuthorizeUrl, exchangeGoogleCode, emailAllowed } from './google-oauth.js';
+import {
+  googleConfigured,
+  googleAuthorizeUrl,
+  exchangeGoogleCode,
+  emailAllowed,
+  workspaceConsentUrl,
+  exchangeWorkspaceConsentCode,
+} from './google-oauth.js';
+import { addSecretVersion } from './gcp-client.js';
 
 const PORT = Number(process.env.PORT ?? 3000);
 const ADMIN_SECRET = process.env.MCP_ADMIN_SECRET;
@@ -73,6 +81,11 @@ const BASE_URL = process.env.PUBLIC_BASE_URL
   ?? (process.env.RAILWAY_PUBLIC_DOMAIN
         ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
         : `http://localhost:${PORT}`);
+
+// Control project the workspace consent door writes the captured refresh token
+// back to (Secret Manager addVersion on gmail-oauth-refresh-token). Set as an env
+// by render-mcp-service-yaml.sh; falls back to the literal for local/dev.
+const CONTROL_PROJECT = process.env.CONTROL_PROJECT ?? 'or-factory-master-control';
 
 const TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;  // 30 days; Claude re-authorizes after
 const TOKEN_TTL_SEC = Math.floor(TOKEN_TTL_MS / 1000);
@@ -135,6 +148,19 @@ setInterval(() => {
   const now = Date.now();
   for (const [s, data] of pendingAuth) {
     if (now > data.expiry) pendingAuth.delete(s);
+  }
+}, 60_000).unref();
+
+// Pending WORKSPACE consents (separate from pendingAuth's login PKCE state): maps
+// the random serverState sent to Google back so the /workspace/consent/callback
+// can verify the round-trip is one we started (CSRF) and is one-time + TTL-bound.
+// Carries no client redirect — the consent has no downstream client; the callback
+// just captures the refresh_token and writes it to SM.
+const pendingConsent = new Map<string, { expiry: number }>();
+setInterval(() => {
+  const now = Date.now();
+  for (const [s, data] of pendingConsent) {
+    if (now > data.expiry) pendingConsent.delete(s);
   }
 }, 60_000).unref();
 
@@ -615,6 +641,70 @@ app.post('/oauth/token', (req: Request, res: Response) => {
   const token = signBearer(TOKEN_TTL_MS, 'oauth');
 
   res.json({ access_token: token, token_type: 'Bearer', expires_in: TOKEN_TTL_SEC });
+});
+
+// === Workspace consent door (Google) — the permanent home for the shared
+// identity's interactive re-consent, moved off or-adhd-agent's n8n into the
+// gateway. ===
+//
+// /workspace/consent/start: admin-gated (X-Admin-Secret), called server-side by
+// request-workspace-scopes-consent.yml. Redirects to Google's 6-scope OFFLINE
+// consent; the caller reads the Location header and Telegrams that accounts.google.com
+// link to Or. The matching /workspace/consent/callback (added in the next stage)
+// captures the refresh_token Google returns and writes it to control SM.
+app.get('/workspace/consent/start', (req: Request, res: Response) => {
+  const provided = (req.headers['x-admin-secret'] as string | undefined) ?? '';
+  if (!secretMatches(provided)) {
+    res.status(403).json({ error: 'unauthorized' });
+    return;
+  }
+  if (!googleConfigured()) {
+    res.status(503).json({ error: 'google_not_configured' });
+    return;
+  }
+  const serverState = randomBytes(32).toString('hex');
+  pendingConsent.set(serverState, { expiry: Date.now() + AUTH_CODE_TTL_MS });
+  res.redirect(302, workspaceConsentUrl(serverState, `${BASE_URL}/workspace/consent/callback`));
+});
+
+// /workspace/consent/callback: Google redirects Or's browser here after he grants
+// the 6 scopes. Validates the state (CSRF, one-time, TTL), exchanges the code for a
+// refresh_token (exchangeWorkspaceConsentCode enforces the exact-6-scope guard), and
+// writes it as a NEW version of control SM gmail-oauth-refresh-token (old version
+// stays as rollback). NOT admin-gated — Google can't send X-Admin-Secret; the random
+// one-time state IS the protection (same posture as /oauth/callback).
+app.get('/workspace/consent/callback', async (req: Request, res: Response) => {
+  const q = req.query as Record<string, string>;
+  const serverState = q['state'] ?? '';
+  const pending = pendingConsent.get(serverState);
+  if (!pending || Date.now() > pending.expiry) {
+    res.status(400).send('Consent session expired or invalid — please restart the consent.');
+    return;
+  }
+  pendingConsent.delete(serverState);
+  if (q['error']) { res.status(403).send(`Google consent failed: ${esc(q['error'])}`); return; }
+  const code = q['code'] ?? '';
+  if (!code) { res.status(400).send('Missing authorization code from Google.'); return; }
+
+  let result;
+  try {
+    result = await exchangeWorkspaceConsentCode(code, `${BASE_URL}/workspace/consent/callback`);
+  } catch (e) {
+    process.stdout.write(`[workspace/consent] exchange/scope error: ${String(e).slice(0, 200)}\n`);
+    res.status(502).send('Could not capture the workspace consent (token or scope check failed). Please retry.');
+    return;
+  }
+
+  try {
+    await addSecretVersion(CONTROL_PROJECT, 'gmail-oauth-refresh-token', result.refreshToken);
+  } catch (e) {
+    process.stdout.write(`[workspace/consent] SM write error: ${String(e).slice(0, 200)}\n`);
+    res.status(500).send('Captured the consent but could not store the token. Please retry.');
+    return;
+  }
+
+  process.stdout.write('[workspace/consent] captured + stored a fresh 6-scope refresh token\n');
+  res.send(`<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Workspace consent</title></head><body style="font-family:system-ui,sans-serif;max-width:420px;margin:80px auto;color:#111"><h2>✅ Workspace re-consented</h2><p>The gateway captured a fresh 6-scope Google token and stored it securely. Redeploy/restart the gateway to load it. You can close this tab.</p></body></html>`);
 });
 
 // Server-to-server bearer exchange for trusted callers (CI workflows via WIF→SM).
