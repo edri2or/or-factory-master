@@ -34,4 +34,11 @@ follow-up מ-google-door-cleanup. מאחדים את שני ה-OAuth clients של
   `WORKSPACE_GOOGLE_ACCOUNT_LABEL` (`render-mcp-service-yaml.sh`) + `LABEL` (`entrypoint.sh`) +
   `GOOGLE_ACCOUNT_LABEL` (`google-mcp-smoke.py`) → `edriorp38@or-infra.com`, **בלי consent נוסף** (הטוקן כבר שלו)
   + תיקון התיעוד השגוי (`docs/google-identities.md` + `CLAUDE.md` → 2 חשבונות אמיתיים; `edriorp38` = אדמין +
-  תיבת-ה-data של הסוכנים; אין `shared-google`). הוכחה: `google-mcp-smoke` ירוק אחרי מיזוג + פריסה.
+  תיבת-ה-data של הסוכנים; אין `shared-google`).
+- **שלב 4 (סיום) — הפעלת ה-GCP APIs + smoke ירוק:** עם החשבון תואם, ה-smoke חשף ש-Gmail/Calendar/Drive/Docs APIs
+  לא מופעלים בפרויקט-הבקרה (140345952904) — היו ב-factory-test-7. ניסיון אוטונומי דרך `gcp-action` (סווג red →
+  כרטיס-טלגרם → ✅ של Or → execute) נכשל ב-`AUTH_PERMISSION_DENIED`: לברוקר SA אין `serviceusage.services.enable`
+  על control. Or הפעיל את 4 ה-APIs בקונסולה כ-edriorp38 (הבעלים). **הוכחה סופית: `google-mcp-smoke` ירוק 6/6
+  (run 27344835076)** — bearer → init → 58 כלי → `list_gmail_labels` אמיתי (User: `edriorp38@or-infra.com`) →
+  Drive+Docs → `search_drive_files` אמיתי. **הארנק המאוחד מוכח end-to-end.** (Follow-up: לתת לברוקר
+  `serviceUsageAdmin` על control כדי שהפעלת-API תהיה אוטונומית.)

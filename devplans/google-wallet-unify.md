@@ -31,7 +31,7 @@ follow-up מסגירת `google-door-cleanup`. היום יש **שני** OAuth cli
 | 1 | Or יוצר את ה-client המאוחד + מסך-consent ב-control | completed | — (קונסולת גוגל) |
 | 2 | הרחבת זריעת-הסודות ב-deploy לכסות את שני זוגות-ה-clients | completed | `.github/workflows/deploy-mcp-server.yml` |
 | 3 | Or מזריק את מפתחות ה-client החדש ל-repo secrets + תיעוד rollback | completed | — (GitHub repo secrets) |
-| 4 | ההחלפה החיה + תיקון scopes (6→17): מיזוג→פריסה→consent→פריסה→smoke ירוק | in-progress | deploy + control SM + `google-oauth.ts`/`render-mcp-service-yaml.sh`/`entrypoint.sh` |
+| 4 | ההחלפה החיה (scopes 6→17 + תווית-חשבון + הפעלת APIs): smoke ירוק 6/6 | completed | deploy + control SM + `google-oauth.ts`/`render-mcp-service-yaml.sh`/`entrypoint.sh`/`google-mcp-smoke.py` + GCP APIs |
 | 5 | פרישת הכפילות `google-oauth-client-*` → ארנק אחד + צרור-מפתחות אחד | pending | `scripts/render-mcp-service-yaml.sh`, `.github/workflows/deploy-mcp-server.yml` |
 | 6 | ניקוי: השארת רק 2 ה-redirect URIs החיים על ה-client המאוחד | pending | — (קונסולת גוגל) |
 
@@ -163,14 +163,14 @@ Access - Nuriel` (`…pj46`, Jun 4) — **שלישי לא-קשור** (Cloudflare
 - [x] מיזוג שלב 2 + `deploy-mcp-server.yml` SUCCESS (כל 4 שמות-ה-SM = ה-client החדש; run 27339079527).
 - [x] `request-workspace-scopes-consent.yml` רץ; Or לחץ (×2); `gmail-oauth-refresh-token` קיבל גרסאות חדשות.
 - [x] פריסות-מחדש SUCCESS (27339465506, 27340017135).
-- [ ] **`google-mcp-smoke` ירוק** — נכשל ×2 (פער-scopes); ממתין למיזוג תיקון-ה-scopes + consent-מחדש + פריסה.
+- [x] **`google-mcp-smoke` ירוק 6/6** (run 27344835076) — אחרי 3 תיקונים: scopes (6→17), תווית-חשבון (shared-google→edriorp38), והפעלת GCP APIs.
 
 **הוכחה תפקודית (באותו שלב — מכרעת):** `probe_endpoint …/workspace/consent/start` → 302 עם 6 ה-scopes;
 `list_secret_metadata gmail-oauth-refresh-token` → גרסה חדשה בתאריך היום; **`google-mcp-smoke` ירוק 6/6**
 (mint bearer → initialize → tools/list עם כלי-גוגל → `list_gmail_labels` אמיתי → קבוצות Drive+Docs →
 `search_drive_files` אמיתי). ירוק כאן = הארנק המאוחד עובד end-to-end.
 
-**הערת התקדמות אחרונה:** in-progress (2026-06-11). ההחלפה רצה end-to-end: מיזוג #397 → deploy הזריע את הארנק
+**הערת התקדמות אחרונה:** **הושלם** (2026-06-11). ההחלפה רצה end-to-end: מיזוג #397 → deploy הזריע את הארנק
 המאוחד (`140345952904-csqtb1…`) לכל 4 המגירות → Or עשה consent → פריסה-מחדש — **אך `google-mcp-smoke` נכשל ×2**.
 אבחון מלוגי ה-sidecar ב-Cloud Run (לא ניחוש): ה-plumbing ירוק (bearer, MCP init, 58 כלי-גוגל, ה-client החדש
 בשימוש), אבל ה-sidecar (`--tools calendar gmail drive docs`) דורש **17 scopes** וה-token החדש מחזיק רק את 6
@@ -182,7 +182,12 @@ Access - Nuriel` (`…pj46`, Jun 4) — **שלישי לא-קשור** (Cloudflare
 ושאני (בטעות) תיעדתי כעובדה. החשבון האמיתי של or-infra הוא **`edriorp38@or-infra.com`** והטוקן שייך לו;
 ה-mcp שנבנה-מחדש אוכף שחשבון-הטוקן תואם לתווית → הבדויה נכשלה. **תיקון (relabel, בלי consent):**
 ‏`WORKSPACE_GOOGLE_ACCOUNT_LABEL`/`entrypoint LABEL`/`smoke GOOGLE_ACCOUNT_LABEL` → `edriorp38@or-infra.com`
-+ תיקון התיעוד השגוי (`google-identities.md`+`CLAUDE.md`). נותר: מיזוג → deploy → smoke (אמור לעבור — הטוקן כבר edriorp38).
++ תיקון התיעוד השגוי (`google-identities.md`+`CLAUDE.md`), מוזג (PR #400, `b4caf96`) ונפרס.
+**מכשול 5 (אחרון):** עם החשבון תואם — ה-smoke חשף "Gmail API is not enabled for project 140345952904". ה-APIs
+(Gmail/Calendar/Drive/Docs) לא היו מופעלים בפרויקט-הבקרה (היו ב-factory-test-7). ניסיון אוטונומי דרך `gcp-action`
+נכשל (`AUTH_PERMISSION_DENIED` — לברוקר אין serviceusage על control); Or הפעיל אותם בקונסולה כ-edriorp38 (4 קליקים).
+**✅ הושלם — `google-mcp-smoke` ירוק 6/6 (run 27344835076):** הארנק המאוחד עובד end-to-end (bearer → init → 58 כלי →
+`list_gmail_labels` אמיתי כ-`edriorp38@or-infra.com` → Drive+Docs → `search_drive_files` אמיתי).
 
 **שינוי תוכנית:** נוסף תת-מסלול תיקון-scopes בתוך שלב 4 — פער שנחשף ע"י הארנק הנקי (באג חבוי). תבנית-המערכת
 (`bootstrap-gmail-oauth.yml`) לא נגעה (אין מערכות חיות) → follow-up; שומר על `/dev-stage` ללא golden gate.
@@ -244,3 +249,4 @@ Access) לפני כל פירוק של factory-test-7. נרשם כגבול בהע
 - שלב 1 הושלם — אור יצר את הארנק החדש בבית הקבוע (פרויקט-הבקרה), עם 2 כתובות-החזרה. בדקתי מול גוגל שהארנק קיים והכתובות רשומות נכון — ירוק.
 - שלב 2 הושלם — הכנתי בקוד (ב-workflow של הפריסה) שמפתח-ארנק אחד יזרום לכל ארבע מגירות-הסוד. עדיין לא נפרס — רק נבדק, וכל בדיקות ה-CI ירוקות.
 - שלב 3 הושלם — אור הזין את מפתחות הארנק החדש (ID + secret) ב-GitHub. אומת שנחת. עדיין שום דבר חי לא הוחלף (זה קורה רק בשלב 4).
+- שלב 4 הושלם — **הארנק המאוחד חי ומוכח (smoke ירוק 6/6)!** בדרך התגברנו על 3 מכשולים חבויים: הרשאות חסרות (6→17), שם-חשבון בדוי שתיקנתי שגוי בתיעוד (shared-google→edriorp38, אור תיקן אותי), ו-APIs של גוגל שלא היו מופעלים בפרויקט החדש (אור הפעיל ב-4 קליקים). הסוכנים קוראים Gmail/Drive חי דרך הארנק האחד שב-control.
