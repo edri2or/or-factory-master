@@ -81,6 +81,32 @@
     },
     {
       "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// button-send-outcome-trace: mint a per-send tool_call_id + a SQL-safe input summary\n// for the approval-button send (mirrors postgres-named-queries' Mint Trace). esc()\n// doubles single quotes so arbitrary LLM input can't break the INSERT; onError on the\n// trace writers keeps the bot's reply safe even if a trace write fails.\nconst p = ($('Parse Request').first() && $('Parse Request').first().json) || {};\nconst ins = ($input.first() && $input.first().json) || {};\nconst esc = (s) => String(s).replace(/'/g, \"''\");\nconst toolCallId = Date.now() + '-' + Math.random().toString(36).slice(2, 12);\nlet summary = '';\ntry { summary = JSON.stringify({ action_type: p.action_type || '', target_system: p.target_system || '', target_id: p.target_id || '', human_summary: p.human_summary || '', pending_id: ins.id || null }); } catch (e) { summary = '{}'; }\nif (summary.length > 2000) { summary = summary.slice(0, 2000); }\nreturn [{ json: { tool_call_id: toolCallId, input_summary_sql: esc(summary), pending_id: ins.id || null } }];"
+      },
+      "id": "83000000-0000-0000-0000-000000000001",
+      "name": "Mint Trace",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1200, 240]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO agent_trace_events (trace_id, session_id, turn_id, tool_name, tool_call_id, status, input_summary, started_at) VALUES ('{{ $('Mint Trace').first().json.tool_call_id }}', 'tg:' || '@@CHAT_ID@@', (SELECT max(id) FROM n8n_chat_histories WHERE session_id = 'tg:' || '@@CHAT_ID@@'), 'request_write_action_send', '{{ $('Mint Trace').first().json.tool_call_id }}', 'attempted', '{{ $('Mint Trace').first().json.input_summary_sql }}'::jsonb, now());",
+        "options": {}
+      },
+      "id": "83000000-0000-0000-0000-000000000002",
+      "name": "Write Trace Attempt",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1360, 240],
+      "credentials": { "postgres": { "id": "@@CRED_POSTGRES_ID@@", "name": "Postgres (n8n)" } },
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
         "resource": "message",
         "operation": "sendMessage",
         "chatId": "@@CHAT_ID@@",
@@ -110,26 +136,108 @@
       "name": "Send Approval Buttons",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
-      "position": [1240, 140],
-      "credentials": { "telegramApi": { "id": "@@CRED_TELEGRAM_ID@@", "name": "Telegram (factory-master)" } }
+      "position": [1520, 240],
+      "credentials": { "telegramApi": { "id": "@@CRED_TELEGRAM_ID@@", "name": "Telegram (factory-master)" } },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "typeValidation": "loose", "version": 2 },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "81000000-0000-0000-0000-000000000003",
+              "leftValue": "={{ $json.result?.message_id ?? $json.message_id ?? '' }}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "notEmpty", "singleValue": true }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "83000000-0000-0000-0000-000000000003",
+      "name": "Guard message_id",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1720, 160]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE agent_trace_events SET status = 'success', output_summary = jsonb_build_object('ok', true, 'message_id', {{ $('Send Approval Buttons').first().json.result?.message_id ?? $('Send Approval Buttons').first().json.message_id ?? 'null' }}), error_message = NULL, finished_at = now(), duration_ms = CAST(EXTRACT(EPOCH FROM (now() - started_at)) * 1000 AS INTEGER) WHERE tool_call_id = '{{ $('Mint Trace').first().json.tool_call_id }}';",
+        "options": {}
+      },
+      "id": "83000000-0000-0000-0000-000000000004",
+      "name": "Write Trace Result OK",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1920, 60],
+      "credentials": { "postgres": { "id": "@@CRED_POSTGRES_ID@@", "name": "Postgres (n8n)" } },
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
     },
     {
       "parameters": {
         "mode": "manual",
         "assignments": {
           "assignments": [
-            { "id": "82000000-0000-0000-0000-000000000001", "name": "ok", "type": "boolean", "value": "=true" },
-            { "id": "82000000-0000-0000-0000-000000000002", "name": "status", "type": "string", "value": "pending_approval" },
-            { "id": "82000000-0000-0000-0000-000000000003", "name": "message", "type": "string", "value": "שלחתי לאופרטור בקשת אישור עם כפתורי ✅/❌ בטלגרם. הפעולה תתבצע רק אחרי אישור." }
+            { "id": "84000000-0000-0000-0000-000000000001", "name": "ok", "type": "boolean", "value": "=true" },
+            { "id": "84000000-0000-0000-0000-000000000002", "name": "status", "type": "string", "value": "sent" },
+            { "id": "84000000-0000-0000-0000-000000000003", "name": "message", "type": "string", "value": "=שלחתי לאופרטור בקשת אישור עם כפתורי ✅/❌ בטלגרם (message_id {{ $('Send Approval Buttons').first().json.result?.message_id ?? $('Send Approval Buttons').first().json.message_id }}). הפעולה תתבצע רק אחרי אישור." }
           ]
         },
         "options": {}
       },
-      "id": "80000000-0000-0000-0000-000000000007",
-      "name": "Tool Response",
+      "id": "83000000-0000-0000-0000-000000000006",
+      "name": "Tool Response Sent",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
-      "position": [1460, 140]
+      "position": [2120, 60]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// button-send-outcome-trace: normalize the failure reason from EITHER the send node's\n// error port ($json.error) OR the guard-false branch (200 OK but no message_id), and\n// esc() it SQL-safe. Keeps the failed-trace UPDATE one clean node fed by both sources.\nconst j = ($input.first() && $input.first().json) || {};\nconst esc = (s) => String(s).replace(/'/g, \"''\");\nlet reason;\nif (j.error) { reason = (typeof j.error === 'object') ? (j.error.message || JSON.stringify(j.error)) : ('' + j.error); }\nelse { reason = 'send reported ok but no message_id (possible false-success)'; }\nreason = String(reason).slice(0, 500);\nreturn [{ json: { error_message_sql: esc(reason) } }];"
+      },
+      "id": "83000000-0000-0000-0000-000000000005",
+      "name": "Normalize Failure",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1920, 360]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE agent_trace_events SET status = 'failed', output_summary = jsonb_build_object('ok', false, 'message_id', null), error_message = '{{ $('Normalize Failure').first().json.error_message_sql }}', finished_at = now(), duration_ms = CAST(EXTRACT(EPOCH FROM (now() - started_at)) * 1000 AS INTEGER) WHERE tool_call_id = '{{ $('Mint Trace').first().json.tool_call_id }}';",
+        "options": {}
+      },
+      "id": "83000000-0000-0000-0000-000000000007",
+      "name": "Write Trace Result Failed",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [2120, 360],
+      "credentials": { "postgres": { "id": "@@CRED_POSTGRES_ID@@", "name": "Postgres (n8n)" } },
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            { "id": "84000000-0000-0000-0000-000000000004", "name": "ok", "type": "boolean", "value": "=false" },
+            { "id": "84000000-0000-0000-0000-000000000005", "name": "status", "type": "string", "value": "send_failed" },
+            { "id": "84000000-0000-0000-0000-000000000006", "name": "message", "type": "string", "value": "לא הצלחתי לשלוח את כפתורי האישור לטלגרם, אז אי אפשר לאשר את הפעולה כרגע. כדאי לנסות שוב." }
+          ]
+        },
+        "options": {}
+      },
+      "id": "83000000-0000-0000-0000-000000000008",
+      "name": "Tool Response Failed",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [2320, 360]
     },
     {
       "parameters": {
@@ -147,7 +255,7 @@
       "name": "Return Duplicate",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
-      "position": [1240, 360]
+      "position": [1240, 460]
     },
     {
       "parameters": {
@@ -164,7 +272,7 @@
       "name": "Return Error",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
-      "position": [820, 460]
+      "position": [820, 560]
     }
   ],
   "connections": {
@@ -179,11 +287,27 @@
     "Insert Pending": { "main": [[{ "node": "Inserted?", "type": "main", "index": 0 }]] },
     "Inserted?": {
       "main": [
-        [{ "node": "Send Approval Buttons", "type": "main", "index": 0 }],
+        [{ "node": "Mint Trace", "type": "main", "index": 0 }],
         [{ "node": "Return Duplicate", "type": "main", "index": 0 }]
       ]
     },
-    "Send Approval Buttons": { "main": [[{ "node": "Tool Response", "type": "main", "index": 0 }]] }
+    "Mint Trace": { "main": [[{ "node": "Write Trace Attempt", "type": "main", "index": 0 }]] },
+    "Write Trace Attempt": { "main": [[{ "node": "Send Approval Buttons", "type": "main", "index": 0 }]] },
+    "Send Approval Buttons": {
+      "main": [
+        [{ "node": "Guard message_id", "type": "main", "index": 0 }],
+        [{ "node": "Normalize Failure", "type": "main", "index": 0 }]
+      ]
+    },
+    "Guard message_id": {
+      "main": [
+        [{ "node": "Write Trace Result OK", "type": "main", "index": 0 }],
+        [{ "node": "Normalize Failure", "type": "main", "index": 0 }]
+      ]
+    },
+    "Write Trace Result OK": { "main": [[{ "node": "Tool Response Sent", "type": "main", "index": 0 }]] },
+    "Normalize Failure": { "main": [[{ "node": "Write Trace Result Failed", "type": "main", "index": 0 }]] },
+    "Write Trace Result Failed": { "main": [[{ "node": "Tool Response Failed", "type": "main", "index": 0 }]] }
   },
   "settings": { "executionOrder": "v1" }
 }
