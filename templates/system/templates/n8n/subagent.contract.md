@@ -87,6 +87,17 @@ handoff/transfer: no leaf ever becomes the active speaker or owns a Telegram nod
 passes `check-agent-single-voice.sh` individually, so the existing gate already covers
 composites with no change. (Rationale: `docs/research/agent-role-decomposition-planning.md` §7.)
 
+## Multi-intent fan-out (the orchestrator, not a composite)
+
+Distinct from a composite agent (above): the **orchestrator** (`agent-router.json`) itself may,
+for a genuinely multi-domain request, run **several** of the registered agents and merge their
+replies into one. This changes nothing for an agent — each is still invoked with an
+`executeWorkflowTrigger` and returns a single `{reply}`; the router simply calls more than one
+(a single `executeWorkflow` `mode:each` node, reusing the same `@@SUB_*_WF_ID@@` ids) and a
+`Synthesize` step composes one answer before the shared `Egress Validation`. It is additive over
+the single-pick default and gated on a classifier `multi` flag, so most messages still reach
+exactly one agent; `unknown` never participates. (See `agents.manifest.json` → `orchestrator.routing`.)
+
 ## The four hard rules (enforced by CI)
 
 1. **No Telegram node.** A specialist agent must contain no `n8n-nodes-base.telegram`

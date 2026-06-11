@@ -4,7 +4,8 @@
     "name": "Agent Router",
     "router": "workflows/n8n/agent-router.json",
     "voice": "workflows/n8n/tg-inbound.json",
-    "invariant": "Only the orchestrator's voice (Send Reply in tg-inbound.json) messages the operator; every agent below returns {reply} to the orchestrator and never addresses the operator directly."
+    "invariant": "Only the orchestrator's voice (Send Reply in tg-inbound.json) messages the operator; every agent below returns {reply} to the orchestrator and never addresses the operator directly.",
+    "routing": "Single-pick by default: the classifier emits one primary intent and 'Route by Intent' dispatches to exactly one agent below. ADDITIVE conditional fan-out for multi-domain requests: the classifier also emits intents[] + multi; when multi=true (>=2 distinct fan-out domains from ops|code|research|infra) a 'Multi Gate' diverts to 'Build Fan-out Items' -> 'Run Specialists' (one executeWorkflow node, mode:each, per-item workflowId reusing the same @@SUB_*_WF_ID@@ ids) which runs the relevant agents, then 'Collect Replies' + 'Synthesize' merge their {reply}s into ONE reply before the shared Egress Validation. Graceful: a parse failure or <2 distinct domains falls back to single-pick. Never changes the single-pick path, the agents, or the voice; 'unknown' never participates in fan-out."
   },
   "contract": {
     "input": ["sanitized", "intent", "confidence", "entity_mention", "source"],
