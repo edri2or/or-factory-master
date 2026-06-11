@@ -75,3 +75,23 @@ orchestrator-workers).
 קובץ-בדיקה זמני שהוסר ממנו `"multi"` (ובנפרד `"intents"`) הפיל את `--check` (exit 1) עם ההודעה
 הנכונה — מוכיח שהנעילה תופסת רגרסיה. `router_battery.yaml` לא נגע, `check-agent-single-voice.sh`
 ו-`check-system-golden.sh` ירוקים.
+
+## מתזמר עם fan-out מותנה — שלב 4: הוכחה על מערכת-טסט חיה (prove → merge)
+
+הוכחת ה-fan-out **חי** על מערכת-טסט זמנית, לפני הקידום ל-main — השיניים של `/dev-stage-factory`.
+
+**מה נעשה:**
+- הוקמה מערכת-טסט חד-פעמית `factory-test-054` ב-reuse mode (`shared_gcp_project=factory-test-25`,
+  0 מכסת-GCP): `provision-system.yml` → `register-system-app.yml` → `deploy-railway-cloudflare.yml`
+  (n8n 2.25.7 + Caddy + Cloudflare), `/healthz`=200.
+- השינוי מענף ה-PR הוחל חי דרך `prove-on-test-system.yml` (זהות ה-sandbox, לא הברוקר): העתקת
+  `templates/system/workflows/n8n` → PR + CI + squash-merge בריפו-הטסט עצמו → `configure-agent-router.yml`
+  ייבא ופרסם את הראוטר (עם ה-fan-out) + 5 תת-הסוכנים ל-n8n החי.
+- **הוכחה חיה** (`probe_endpoint` POST ל-`/webhook/agent-router`): בקשה רב-תחומית (ops+code) החזירה
+  `reply` יחיד מאוחד בשני מקטעים (בדיקת שרתים + פונקציית פייתון), ~36ש'; בקשה חד-תחומית (code) החזירה
+  תשובת code יחידה, ~12ש'. הפרש הזמן + התוכן מאשרים: fan-out נדלק רק לרב-תחומי, single-pick שלם.
+
+**שינוי תוכנית שתועד:** הריצה הראשונה (שם `or-test-fanout`) נכשלה ב-`deploy` בשלב ה-WIF
+(`unauthorized_client` — תנאי ה-CEL של ה-test_pool המשותף מאשר רק `factory-test-*`). הוקמה מחדש
+כ-`factory-test-054`. אחרי הקידום מערכת-הטסט פורקה (`decommission-test-system.yml`) + נוקתה שארית
+`or-test-fanout` (ראה Teardown ledger בתוכנית הפיתוח).
