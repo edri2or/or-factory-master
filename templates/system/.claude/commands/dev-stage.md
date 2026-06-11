@@ -104,6 +104,15 @@ file contents at him — translate the state into one short, calm Hebrew summary
 When every stage is `completed`, set the plan's front-matter `status: completed` (this
 releases the CI devplan gate), give Or a short closing summary in Hebrew, and stop.
 
+> **Closing while another development is active → do it in a docs-only follow-up PR.** The devplan
+> gate (`check-devplan-updated.sh`) credits only plans that are *still* `status: active` AND updated
+> in the diff. Flipping your plan to `completed` in the **same PR that carries code**, while another
+> `devplans/*.md` is concurrently `active`, FAILS the gate (it sees only the other, untouched active
+> plan → "code changed but no active plan updated"). So: land the code with your plan still `active`,
+> then set `status: completed` in a SEPARATE docs-only PR (no `.sh`/`.json`/`.yml` in the diff → the
+> gate is a no-op). If yours is the **only** active plan, closing it in the code PR is fine (the
+> active set empties → the gate passes).
+
 ## Safety Rules
 
 1. **Never chain stages** without Or's approval at each boundary.

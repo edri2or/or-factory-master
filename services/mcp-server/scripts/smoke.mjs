@@ -129,8 +129,8 @@ async function main() {
   // 5. inspect_cloud_run — self-introspection
   try {
     const r = await callTool(bearer, 'inspect_cloud_run', {
-      serviceName: 'factory-actions-mcp',
-      project: 'factory-control-9piybr',
+      serviceName: 'factory-master-actions-mcp',
+      project: 'or-factory-master-control',
       region: 'me-west1',
     });
     record(
