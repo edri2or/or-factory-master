@@ -7,13 +7,29 @@
 > especially defaulting to the personal `edri2or@gmail.com` — has repeatedly caused
 > friction and is the reason this doc exists. **Never assume; this is the map.**
 
+## The purpose / directionality (Or's frame — the WHY, read this first)
+
+Or, the owner, frames the accounts by **purpose**, and the docs + agents must hold this:
+
+- **`or-infra.com` (`edriorp38`, `shared-google`) = the INFRASTRUCTURE we are building** — the
+  system, the scaffolding, the plumbing. The *means*, not the end.
+- **`edri2or@gmail.com` = Or's REAL personal life** — his actual day-to-day Gmail / Calendar.
+  This is the **ultimate purpose** the email/calendar agents exist to serve: automating *his* life.
+
+**Current state vs. that end goal (be honest about the gap):** today the workspace agents
+operate on the infrastructure mailbox **`shared-google@or-infra.com`** — a deliberate, safe
+sandbox so automations are built and proven *without* touching Or's real inbox. Pointing the
+agents at Or's real **`edri2or@gmail.com`** is the end goal, and a **separate, deliberate step**
+— never silently bundled into a plumbing change. So in Or's model `shared-google` sits inside the
+"infrastructure" box; `edri2or@gmail.com` is the destination.
+
 ## The three accounts
 
 | Account | Type | What it IS / what it's for | Proof |
 |---|---|---|---|
 | **`edriorp38@or-infra.com`** | Workspace (or-infra.com domain) | **THE operational / admin account.** Owns the cloud projects and manages the OAuth clients + consent screens. This is the account Or is signed into in the **Google Cloud Console** — his console links resolve to **`authuser=1`** = this account. **Any task that needs Or to click in the Cloud Console, or to create/manage an OAuth client or consent screen → it is THIS account.** | `roles/owner` on `or-factory-master-control`; `roles/owner` **+ `roles/oauthconfig.editor`** on `factory-test-7` (IAM, 2026-06-11) — `oauthconfig.editor` = manages the OAuth brand/clients. |
-| **`shared-google@or-infra.com`** | Workspace (or-infra.com domain) | **The shared DATA mailbox the AI factory operates on** — the Gmail / Calendar / Drive / Docs that the workspace-mcp sidecar (and every system's n8n) read & write. The `gmail-oauth-refresh-token` represents **this** account's consent. The workspace **consent "Allow"** that mints that token must be performed **signed in as this account**. | `WORKSPACE_GOOGLE_ACCOUNT_LABEL` / `user_google_email` in `scripts/render-mcp-service-yaml.sh:31`, `services/workspace-mcp/entrypoint.sh:16`, `scripts/google-mcp-smoke.py:37`. Has **no** cloud IAM roles (a pure data identity — absent from both project IAM policies). |
-| **`edri2or@gmail.com`** | Personal **consumer** Gmail | **Or's personal account** — the original creator/super-admin of the `or-infra.com` org and the **billing.admin**. Also the identity the **Claude.ai Google integration** (this session's Gmail/Calendar/Drive tools) is connected as, and the **current** gateway login allowlist (`OAUTH_ALLOWED_EMAILS`). **NOT the cloud-operator account — do not default to it for console/OAuth work.** | `roles/billing.admin` on the billing account (`docs/external-state.md:71`); only minor BigQuery roles on `or-factory-master-control`; **absent** from `factory-test-7` IAM; Calendar primary id = `edri2or@gmail.com`; `OAUTH_ALLOWED_EMAILS=edri2or@gmail.com` (`.github/workflows/deploy-mcp-server.yml:76`). |
+| **`shared-google@or-infra.com`** | Workspace (or-infra.com domain) | **The INFRASTRUCTURE / sandbox mailbox the AI agents operate on TODAY** — the Gmail / Calendar / Drive / Docs that the workspace-mcp sidecar (and every system's n8n) currently read & write, so automations are proven without touching Or's real inbox. The `gmail-oauth-refresh-token` represents **this** account's consent; the workspace **consent "Allow"** that mints it is performed **signed in as this account** (until/unless the deliberate switch to `edri2or@gmail.com` — see Purpose above — is made). | `WORKSPACE_GOOGLE_ACCOUNT_LABEL` / `user_google_email` in `scripts/render-mcp-service-yaml.sh:31`, `services/workspace-mcp/entrypoint.sh:16`, `scripts/google-mcp-smoke.py:37`. Has **no** cloud IAM roles (a pure data identity — absent from both project IAM policies). |
+| **`edri2or@gmail.com`** | Personal **consumer** Gmail | **Or's REAL personal life — the ultimate target the email/calendar automations exist to serve** (his actual day-to-day account). Also the org's original creator/super-admin and the **billing.admin**; the identity the **Claude.ai Google integration** (this session's Gmail/Calendar/Drive tools) is connected as; and the **current** gateway login allowlist (`OAUTH_ALLOWED_EMAILS`). **NOT the cloud-operator account — do not default to it for console/OAuth work**, even though it is the eventual *data* destination. | `roles/billing.admin` on the billing account (`docs/external-state.md:71`); only minor BigQuery roles on `or-factory-master-control`; **absent** from `factory-test-7` IAM; Calendar primary id = `edri2or@gmail.com`; `OAUTH_ALLOWED_EMAILS=edri2or@gmail.com` (`.github/workflows/deploy-mcp-server.yml:76`). |
 
 ## Per-purpose quick map (use this)
 

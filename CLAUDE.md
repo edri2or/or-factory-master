@@ -104,6 +104,8 @@ The previous factory (`edri2or/factory`) automated everything end-to-end. Failur
 
 There are **three distinct Google accounts**, each with one job. **Never conflate them; never assume `edri2or@gmail.com` for operator/console work.** Full reference + evidence: `docs/google-identities.md`.
 
+**Purpose frame (Or's WHY):** `or-infra.com` = the **infrastructure** being built (the means); **`edri2or@gmail.com` = Or's real personal life = the ultimate target the email/calendar agents exist to serve** (the end). Today those agents run on the `shared-google@or-infra.com` infra/sandbox mailbox; pointing them at Or's real `edri2or@gmail.com` is a **separate, deliberate step**, never silently bundled into a plumbing change.
+
 | Account | Role | Use it for |
 |---|---|---|
 | `edriorp38@or-infra.com` | Workspace **operator/admin** — `owner` of `or-factory-master-control`, `owner`+`oauthconfig.editor` of `factory-test-7` | **All Cloud Console clicks + OAuth client/consent-screen work.** This is Or's console account (`authuser=1`); when you hand Or a console link it is THIS account. Consent-screen support/contact email = this. |
