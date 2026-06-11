@@ -58,6 +58,9 @@ templates/system/.github/workflows/bootstrap-gmail-oauth.yml
 # Reverse twin of mirror-secret-to-system.yml: preserves a system secret into
 # control SM before a teardown. workflow_dispatch only; no cadence to prove.
 .github/workflows/preserve-secret-to-control.yml
+# Completion of the preserve/restore pair: re-injects a preserved secret from
+# control back into a (rebuilt) system. workflow_dispatch only; no cadence to prove.
+.github/workflows/restore-secret-from-control.yml
 # Reachable only via the MCP triage + Telegram-approval path (dispatch-only, no
 # cadence to prove); the broker side of the system resource-request channel.
 .github/workflows/fulfill-system-request.yml
