@@ -88,6 +88,8 @@ Access - Nuriel` (`…pj46`, Jun 4) — **שלישי לא-קשור** (Cloudflare
 **הערת התקדמות אחרונה:** in-progress (2026-06-11) — שלב 0 אישר single-client GO; הוראות צעד-צעד
 ל-Google Auth Platform (פרויקט `or-factory-master-control`) נמסרו ל-Or: מסך-consent External+publish,
 ואז client אחד מסוג Web עם 2 ה-redirect URIs. ממתין ש-Or יבצע וידווח client_id (+ ישמור את ה-secret לשלב 3).
+**זהות-חשבונות (תוקן — ראה `docs/google-identities.md`):** הקליקים בקונסולה + ה-support/contact email
+של מסך-ה-consent = **`edriorp38@or-infra.com`** (חשבון-המפעיל; `authuser=1`), **לא** `edri2or@gmail.com`.
 
 **שינוי תוכנית:** —
 
@@ -140,8 +142,9 @@ Access - Nuriel` (`…pj46`, Jun 4) — **שלישי לא-קשור** (Cloudflare
    על ה-client החדש. **⏱ חלון נפתח:** ה-sidecar מחזיק את הטוקן הישן (כבול ל-client הישן) מול
    ה-client החדש → `unauthorized_client`. (ההתחברות מתאוששת מיד — client חדש חי, `/oauth/callback` רשום.)
 2. **מיד לשגר `request-workspace-scopes-consent.yml`** (`confirm=consent`) → קישור-קליק-אחד ל-Or בטלגרם.
-3. **‏Or לוחץ Allow פעם אחת** → `/workspace/consent/callback` מחליף מול ה-client החדש, שומר ה-6-scopes עובר,
-   `addSecretVersion` כותב `gmail-oauth-refresh-token` חדש (כבול ל-client החדש; הישן נשמר כ-rollback).
+3. **‏Or לוחץ Allow פעם אחת — מחובר כ-`shared-google@or-infra.com`** (זהות-ה-data; ‏`docs/google-identities.md`)
+   → `/workspace/consent/callback` מחליף מול ה-client החדש, שומר ה-6-scopes עובר, `addSecretVersion` כותב
+   `gmail-oauth-refresh-token` חדש (כבול ל-client החדש + לחשבון shared-google; הישן נשמר כ-rollback).
 4. **פריסה מחדש** (re-run `deploy-mcp-server.yml`) כך שה-sidecar עולה עם הטוקן החדש. **⏱ חלון נסגר**
    כשהרוויזיה Ready. סה"כ ≈ קליק consent אחד + פריסה אחת ≈ דקות.
 
