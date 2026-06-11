@@ -182,6 +182,57 @@ jobs:
               --body "Automated refresh of \`${PATHS}\` from or-factory-master templates (refresh-system-agents.yml run ${RUN_ID}).") \
               || { echo "FAIL: gh pr create failed for edri2or/${SYSTEM_NAME}" >&2; exit 1; }
             echo "INFO: opened ${PR_URL}"
+            # --- Live E2E proof for behavior changes (master-system-integrity B7) ---
+            # If this refresh touches BEHAVIOR-bearing files and the system enforces
+            # the "E2E verification gate", the PR cannot merge without a fresh
+            # e2e-proofs/<slug>.json. The proof's content_hash is path-sensitive, so
+            # it must be BORN in the system repo on THIS branch — produced by the
+            # system's OWN e2e-verify.yml (drives a real inbound message, asserts the
+            # reply, commits the signed proof onto target_ref). We dispatch it, wait
+            # for the proof to land, then add a tiny broker-token commit: the proof
+            # commit is pushed with GITHUB_TOKEN, whose CI runs need manual approval
+            # and never run unattended, so a broker-token follow-up re-triggers
+            # runnable CI and lets the gate evaluate the proof before the merge.
+            BEHAVIOR_SYNCED=""
+            for raw in "${SYNC_PATHS[@]}"; do
+              q="${raw// /}"; [ -n "$q" ] || continue
+              case "$q" in
+                workflows/n8n|workflows/n8n/*|.github/workflows/configure-agent-router.yml) BEHAVIOR_SYNCED="yes" ;;
+              esac
+            done
+            if [ -n "$BEHAVIOR_SYNCED" ] && gh api "repos/edri2or/${SYSTEM_NAME}/contents/.github/workflows/e2e-verify.yml" >/dev/null 2>&1; then
+              echo "INFO: behavior files changed + system has the E2E gate — producing a live E2E proof on ${BRANCH}…"
+              gh workflow run e2e-verify.yml --repo "edri2or/${SYSTEM_NAME}" --ref main \
+                -f target_ref="$BRANCH" -f slug="refresh-system-${RUN_ID}" 2>/dev/null \
+                || { echo "FAIL: could not dispatch e2e-verify.yml on edri2or/${SYSTEM_NAME}" >&2; exit 1; }
+              PROOF_PATH="e2e-proofs/refresh-system-${RUN_ID}.json"
+              proof_ok=""
+              for attempt in $(seq 1 60); do
+                sleep 15
+                if gh api "repos/edri2or/${SYSTEM_NAME}/contents/${PROOF_PATH}?ref=${BRANCH}" >/dev/null 2>&1; then
+                  proof_ok="yes"; break
+                fi
+                echo "INFO: waiting for the live E2E proof on ${BRANCH} (${attempt}/60)…"
+              done
+              if [ -z "$proof_ok" ]; then
+                echo "FAIL: e2e-verify did not commit ${PROOF_PATH} onto ${BRANCH} within ~15m — the live E2E proof failed or timed out; refusing to merge an unproven behavior change." >&2
+                exit 1
+              fi
+              echo "PASS: live E2E proof committed onto ${BRANCH}."
+              # Nudge runnable CI (see note above): fast-forward to the proof commit,
+              # add an empty broker-token commit, push. The PR-synchronize event then
+              # runs the gate (which now sees the proof) under a runnable, non-approval
+              # context, so the protected merge below can succeed.
+              git -C sys-target fetch -q "https://x-access-token:${TOKEN}@github.com/edri2or/${SYSTEM_NAME}.git" "$BRANCH"
+              git -C sys-target checkout -q "$BRANCH"
+              git -C sys-target reset -q --hard FETCH_HEAD
+              git -C sys-target commit -q --allow-empty -m "ci: re-trigger checks to evaluate the E2E proof"
+              if ! perr=$(git -C sys-target push "https://x-access-token:${TOKEN}@github.com/edri2or/${SYSTEM_NAME}.git" "$BRANCH:$BRANCH" 2>&1); then
+                echo "FAIL: push re-trigger commit failed: $(printf '%s' "$perr" | sed "s/${TOKEN}/***/g")" >&2; exit 1
+              fi
+            elif [ -n "$BEHAVIOR_SYNCED" ]; then
+              echo "INFO: behavior files changed but the system has no e2e-verify.yml (pre-gate system) — no E2E proof required."
+            fi
             # The broker App token has no `checks:read`, so we can't read the PR's
             # status to gate the merge (gh pr checks fails with "Resource not
             # accessible by integration"). Instead, RETRY the protected merge — the
