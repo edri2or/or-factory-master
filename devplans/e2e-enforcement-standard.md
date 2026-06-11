@@ -24,7 +24,7 @@ registry-driven** שמכסה כל משטח-ריצה שדורש E2E — לא רק
 |---|---|---|---|
 | 1 | מסמך הסטנדרט + מטריצת-סיכון | completed | `docs/e2e-enforcement-standard.md` |
 | 2 | תשתית הרשם (בוט=ערך #1, אפס שינוי התנהגות) | completed | `e2e-surfaces.json`, `scripts/lib.sh`, `scripts/check-e2e-proof.sh`, `provision-system.yml` |
-| 3 | משטח Deploy/Caddy-HMAC (enforce) | in-progress | `scripts/deploy-verify.sh`, `*/deploy-verify.yml`, רשם, provision |
+| 3 | משטח Deploy/Caddy-HMAC (enforce) | completed | `scripts/deploy-verify.sh`, `*/deploy-verify.yml`, רשם, provision |
 | 4 | 3 שערי MCP (חובה+חתומים, factory-wide) | pending | smoke scripts → proof-producers, רשם, gates |
 | 5 | Day-0 + Observability + MCP health (מייעץ) | pending | drivers, רשם (enforce:false) |
 
@@ -93,7 +93,10 @@ valid-sig !=401 / rate-limit 429), ערך רשם `deploy-edge` (enforce:true, hi
 `deploy-verify.yml` (פקטורי+תבנית), provision שולח, allowlist+exempt+golden. נבדק מקומית:
 שינוי Caddyfile בלי הוכחה → חסום (deploy-edge), עם הוכחה → עובר, ושינוי בוט בלבד → רק
 הבוט נדרש (משטחים עצמאיים). **אומת חי-מקדים על or-edri-4 דרך probe_endpoint: /healthz=200,
-webhook לא-חתום=401.** נשאר: ההוכחה החיה המלאה (deploy-verify.yml) על or-edri-4.
+webhook לא-חתום=401.** **הושלם — הוכחה חיה מלאה על or-edri-4** (retrofit PR #9 merged →
+dispatch `deploy-verify.yml`, run 27384892330, success): התעודה `deploy-edge-or-edri-4.json`
+מראה checks אמיתיים — healthz 200, no_signature 401, bad_signature 401, good_signature 404
+(חתימה תקפה עברה את Caddy), rate_limit_429s 33. תעודה חתומה, קשורה ל-content_hash.
 
 **שינוי תוכנית:** אין צורך ב-context חדש ב-ruleset — `check-e2e-proof.sh` כבר surface-aware,
 אז ה-context הקיים "E2E verification gate" מכסה את deploy-edge אוטומטית (שער אחד, פר-משטח).
@@ -135,8 +138,10 @@ webhook לא-חתום=401.** נשאר: ההוכחה החיה המלאה (deploy-
 
 ## מצב מערכת-הטסט (Teardown ledger)
 
-> ימולא כשנעמיד מערכת-טסט (שלבים 3–5): `torn-down — <date/session>` או
-> `left-alive by user decision — <date/session>`.
+`no throwaway test system created — stage-3 live proof run on the EXISTING or-edri-4
+(Or's decision, like the bot proof); or-edri-4 left alive, now also deploy-edge-protected
+— 2026-06-11.` ענפי-עזר ב-or-edri-4 (`deploy-edge-proof`, ועוד) נותרו (ה-git proxy חוסם
+מחיקת ענפים); main של or-edri-4 נקי.
 
 ---
 
@@ -148,3 +153,6 @@ webhook לא-חתום=401.** נשאר: ההוכחה החיה המלאה (deploy-
   שמחליטה מתי זה חובה, ומפה של כל המקומות בפקטורי שבהם "ירוק" עדיין מתחזה ל"עובד".
 - שלב 2 הושלם — הפכתי את הבלם ל"מבוסס-רשם" (תשתית להכללה), בלי לשנות שום דבר בהתנהגות
   שלו: ה-hash זהה בּית-בּית והבדיקות עוברות בדיוק כמו קודם. עכשיו אפשר להוסיף משטחים נוספים.
+- שלב 3 הושלם — הוספתי הגנה אמיתית שנייה: קצה האבטחה (Caddy/HMAC). הוכח **חי על or-edri-4**
+  שהקצה באמת חוסם webhook לא-חתום (401) ומגביל קצב (429), ונוצרה תעודה. רגרסיה ששוברת את
+  ההגנה בשקט תיתפס ותחסום מיזוג.

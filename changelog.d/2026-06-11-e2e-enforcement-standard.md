@@ -43,3 +43,7 @@ healthz 200, webhook לא-חתום 401).
 `.github/workflows/deploy-verify.yml` (חדש), `templates/system/.github/workflows/deploy-verify.yml`
 (חדש), `.github/workflows/provision-system.yml`, `services/mcp-server/src/tools.ts`,
 `monitoring/registry-exempt.txt`, `tests/golden/system/MANIFEST.sha256`.
+
+**הוכחה חיה (or-edri-4):** retrofit (PR #9, merged) → dispatch `deploy-verify.yml`
+(run 27384892330, success) → תעודת `deploy-edge-or-edri-4.json` עם checks אמיתיים:
+healthz 200, no_signature 401, bad_signature 401, good_signature 404, rate_limit_429s 33.
