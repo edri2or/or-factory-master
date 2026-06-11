@@ -54,3 +54,14 @@ follow-up מ-google-door-cleanup. מאחדים את שני ה-OAuth clients של
   disable אופציונלי מאוחר יותר). אפס שינוי ב-`templates/system/**` → `/dev-stage` רגיל (בלי golden gate). הוכחה
   אחרי מיזוג+פריסה: round-trip התחברות + `google-mcp-smoke` ירוק + `list_secret_metadata` מאשר ש-
   `google-oauth-client-*` לא צבר גרסאות.
+- **שלב 5 (הוכח) + שלב 6 + סגירה:** PR #402 מוזג (אחרי rebase על main עקב פיתוח מקביל `button-send-outcome-trace`
+  שמוזג בו-זמנית — **אפס קונפליקט אמיתי**, קבצים נפרדים), `deploy-mcp-server.yml` פרס רוויזיה חדשה (run 27346755248).
+  **הוכחה end-to-end:** ה-gateway חי (probe `/oauth/authorize` → `Missing redirect_uri`, לא `invalid_client`);
+  **`google-mcp-smoke` ירוק** (run 27347132075 — workspace דרך הזוג היחיד); `list_secret_metadata` מאשר
+  ש-`google-oauth-client-*` נשארו **3/3** (יתומים, לא-מחוברים) ו-`gmail-oauth-client-*` 2/2. Or בחר **להשאיר את
+  היתומים מתועדים** (לא disabled — נשמרים כ-rollback, אינם מזיקים; הרוויזיה החדשה לא ממפה אותם). **שלב 6:** הארנק נולד
+  בשלב 1 עם בדיוק 2 כתובות-החזרה, ושתיהן מוכחות חיות (`/oauth/callback` בשלב 1, `/workspace/consent/callback`
+  בשלב 4 + ה-smoke החי) → אין מה לגזום. **הפיתוח נסגר (`status: completed`): ארנק אחד נקי ב-`or-factory-master-control`,
+  מוכח חי.** גבול נפרד (באישור Or): פירוק `factory-test-7` (651677607847) + 2 הארנקים הישנים + מסך-ה-consent + ה-client
+  הלא-קשור `Cloudflare Access - Nuriel`. follow-up: `inspect_cloud_run` של ה-MCP עדיין מצביע על הפרויקט הישן
+  `factory-control-9piybr`; `serviceUsageAdmin` לברוקר; עדכון `templates/system/**` (scopes 6→17, label) ל-`/dev-stage-factory`.
