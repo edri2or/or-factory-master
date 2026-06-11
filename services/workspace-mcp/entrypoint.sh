@@ -10,10 +10,13 @@
 set -euo pipefail
 
 CREDS_DIR="${WORKSPACE_MCP_CREDENTIALS_DIR:-/creds}"
-# A STABLE local key only — single-user mode loads creds by this filename and
-# Google authenticates by the refresh token, not by this label (proven in 0a with
-# a fake address). The n8n agent must pass this exact string as user_google_email.
-LABEL="${WORKSPACE_GOOGLE_ACCOUNT_LABEL:-shared-google@or-infra.com}"
+# The Google account the shared workspace token belongs to. Single-user mode files
+# the cred under "<this>.json", and the (rebuilt) workspace-mcp now ENFORCES that the
+# token's authenticated account matches this label — so it MUST be the token's REAL
+# account, edriorp38@or-infra.com (the prior "shared-google@or-infra.com" was a
+# fictional label the OLD image tolerated but the rebuilt one rejects; see
+# docs/google-identities.md). The n8n agent must pass this exact string as user_google_email.
+LABEL="${WORKSPACE_GOOGLE_ACCOUNT_LABEL:-edriorp38@or-infra.com}"
 PORT="${WORKSPACE_MCP_PORT:-3002}"
 read -r -a TOOLS_ARR <<< "${WORKSPACE_MCP_TOOLS:-calendar gmail drive docs}"
 

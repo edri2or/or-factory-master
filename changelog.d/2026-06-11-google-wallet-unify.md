@@ -25,4 +25,13 @@ follow-up מ-google-door-cleanup. מאחדים את שני ה-OAuth clients של
   (byte-equal: gmail read/compose/modify/send/labels/settings.basic + calendar(×3) + drive(×3) + docs(×2) +
   openid/userinfo.email/userinfo.profile), והבדיקות עודכנו (92/92 ירוק מקומית). תבנית-המערכת
   (`templates/system/.github/workflows/bootstrap-gmail-oauth.yml`) **לא** נגעה (אין מערכות חיות; שומר על
-  `/dev-stage` ללא golden) — נרשם כ-follow-up. הוכחה סופית: `google-mcp-smoke` ירוק אחרי consent-מחדש + פריסה.
+  `/dev-stage` ללא golden) — נרשם כ-follow-up. (אך ה-smoke המשיך להיכשל גם עם 17 scopes — ראה הבא.)
+- **שלב 4 (המשך) — תיקון תווית-החשבון (`shared-google` הבדוי → `edriorp38` האמיתי):** ה-smoke נכשל גם אחרי תיקון
+  ה-scopes (4 פעמים סה"כ). השורש (אישר Or ישירות): `shared-google@or-infra.com` הוא **חשבון בדוי** — תווית שסשן
+  קודם המציא ושתועדה בטעות כעובדה ב-`docs/google-identities.md`; החשבון האמיתי של or-infra הוא
+  `edriorp38@or-infra.com`, והטוקן שייך לו. ה-workspace-mcp שנבנה-מחדש אוכף שחשבון-הטוקן תואם ל-
+  `WORKSPACE_GOOGLE_ACCOUNT_LABEL` (הגרסה הישנה לא אכפה — לכן התווית הבדויה "סתם עבדה"). התיקון:
+  `WORKSPACE_GOOGLE_ACCOUNT_LABEL` (`render-mcp-service-yaml.sh`) + `LABEL` (`entrypoint.sh`) +
+  `GOOGLE_ACCOUNT_LABEL` (`google-mcp-smoke.py`) → `edriorp38@or-infra.com`, **בלי consent נוסף** (הטוקן כבר שלו)
+  + תיקון התיעוד השגוי (`docs/google-identities.md` + `CLAUDE.md` → 2 חשבונות אמיתיים; `edriorp38` = אדמין +
+  תיבת-ה-data של הסוכנים; אין `shared-google`). הוכחה: `google-mcp-smoke` ירוק אחרי מיזוג + פריסה.

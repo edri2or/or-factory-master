@@ -23,7 +23,7 @@ Steps (each asserted):
      2026-06-10) refreshes cleanly and the new scopes are live.
 
 Env: GATEWAY_URL, ADMIN_SECRET, SMOKE_SYSTEM (default or-adhd-agent),
-     GOOGLE_ACCOUNT_LABEL (default shared-google@or-infra.com).
+     GOOGLE_ACCOUNT_LABEL (default edriorp38@or-infra.com).
 """
 import json
 import os
@@ -34,7 +34,7 @@ import urllib.error
 GATEWAY = os.environ["GATEWAY_URL"].rstrip("/")
 ADMIN = os.environ["ADMIN_SECRET"]
 SYSTEM = os.environ.get("SMOKE_SYSTEM", "or-adhd-agent")
-LABEL = os.environ.get("GOOGLE_ACCOUNT_LABEL", "shared-google@or-infra.com")
+LABEL = os.environ.get("GOOGLE_ACCOUNT_LABEL", "edriorp38@or-infra.com")
 MCP_URL = f"{GATEWAY}/workspace/{SYSTEM}/mcp"
 PROTO = "2025-03-26"
 
