@@ -55,6 +55,19 @@ if [[ ${#ctok[@]} -eq 0 ]]; then
   exit 0
 fi
 
+# Reject a leading "gcloud" token. The contract is that the command is the gcloud
+# ARGS only (no leading "gcloud" — gcp-action.yml prepends it at execute). A leading
+# "gcloud" — most often a doubled "gcloud gcloud ..." prefix — would otherwise fall
+# through to red and be sent to Or's Telegram approval card for a command that can
+# only fail at runtime (the execute step re-prepends "gcloud"). Catch it HERE, in the
+# risk gate, and exit non-zero so the propose flow aborts BEFORE the approval POST
+# (the Classify step runs under `set -e`, so a non-zero exit stops the run). The
+# doubled case is a subset; even a single leading "gcloud" is malformed. (follow-up #8)
+if [[ "${ctok[0]}" == "gcloud" ]]; then
+  echo "ERROR: command must be the gcloud ARGS only — it starts with a 'gcloud' token (doubled/leading 'gcloud'); pass the args without 'gcloud'." >&2
+  exit 3
+fi
+
 # 0 if the command tokens (ctok) match the given pattern token-wise.
 match_pattern() {
   local pat="$1"; local -a ptok; local i

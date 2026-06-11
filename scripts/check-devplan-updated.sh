@@ -15,6 +15,19 @@ set -euo pipefail
 # shellcheck source=lib.sh
 source "$(dirname "$0")/lib.sh"
 
+# OIL auto-fix PRs (branch oil-autofix/*) are EXEMPT: they are automated, safety-gated
+# fixes — not dev stages — so they correctly never touch a devplan, and the gate must not
+# block them even while a development is active (this is how OIL-49 stalled — follow-up #9).
+# GitHub sets GITHUB_HEAD_REF on pull_request (the source branch) and GITHUB_REF_NAME on
+# push; either identifies the branch without any workflow change.
+BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}"
+case "$BRANCH" in
+  oil-autofix/*)
+    echo "PASS: oil-autofix branch ('$BRANCH') — devplan check skipped (automated safety-gated fix)."
+    exit 0
+    ;;
+esac
+
 CHANGED=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || echo "")
 
 # Collect ALL active development plans (not just the first).
