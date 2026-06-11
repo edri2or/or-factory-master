@@ -29,7 +29,7 @@ follow-up מסגירת `google-door-cleanup`. היום יש **שני** OAuth cli
 |---|---|---|---|
 | 0 | סיור קריאה-בלבד: מסך-ההסכמה הקיים + בתי-ה-clients (Or מדווח) | completed | — (קונסולת גוגל, קריאה בלבד) |
 | 1 | Or יוצר את ה-client המאוחד + מסך-consent ב-control | completed | — (קונסולת גוגל) |
-| 2 | הרחבת זריעת-הסודות ב-deploy לכסות את שני זוגות-ה-clients | pending | `.github/workflows/deploy-mcp-server.yml` |
+| 2 | הרחבת זריעת-הסודות ב-deploy לכסות את שני זוגות-ה-clients | in-progress | `.github/workflows/deploy-mcp-server.yml` |
 | 3 | Or מזריק את מפתחות ה-client החדש ל-repo secrets + תיעוד rollback | pending | — (GitHub repo secrets) |
 | 4 | ההחלפה החיה: מיזוג→פריסה→consent→פריסה→smoke ירוק | pending | מיזוג ל-main (deploy) + control SM + קונסולה |
 | 5 | פרישת הכפילות `google-oauth-client-*` → ארנק אחד + צרור-מפתחות אחד | pending | `scripts/render-mcp-service-yaml.sh`, `.github/workflows/deploy-mcp-server.yml` |
@@ -114,7 +114,10 @@ Access - Nuriel` (`…pj46`, Jun 4) — **שלישי לא-קשור** (Cloudflare
 `google-oauth-client-*` בפיתוח הקודם). **אין פריסה כאן** — השינוי אינרטי עד המיזוג בשלב 4
 (החיבור החי = הלבנה האחרונה). Playground ב-CI לאישור.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** in-progress (2026-06-11) — נכתב ב-`deploy-mcp-server.yml`: לולאת ה-placeholder
+כוללת עכשיו את 4 שמות-ה-clients, וצעד ה-`seed` מזריע את אותו `GOOGLE_OAUTH_CLIENT_{ID,SECRET}` (repo-secret)
+גם ל-`gmail-oauth-client-*` (4 קריאות `seed`, אותם 2 `GH_*`). אינרטי עד המיזוג בשלב 4. ממתין ל-CI (Playground +
+shellcheck/yamllint) על PR #397.
 
 **שינוי תוכנית:** —
 
