@@ -30,7 +30,7 @@ follow-up מסגירת `google-door-cleanup`. היום יש **שני** OAuth cli
 | 0 | סיור קריאה-בלבד: מסך-ההסכמה הקיים + בתי-ה-clients (Or מדווח) | completed | — (קונסולת גוגל, קריאה בלבד) |
 | 1 | Or יוצר את ה-client המאוחד + מסך-consent ב-control | completed | — (קונסולת גוגל) |
 | 2 | הרחבת זריעת-הסודות ב-deploy לכסות את שני זוגות-ה-clients | completed | `.github/workflows/deploy-mcp-server.yml` |
-| 3 | Or מזריק את מפתחות ה-client החדש ל-repo secrets + תיעוד rollback | in-progress | — (GitHub repo secrets) |
+| 3 | Or מזריק את מפתחות ה-client החדש ל-repo secrets + תיעוד rollback | completed | — (GitHub repo secrets) |
 | 4 | ההחלפה החיה: מיזוג→פריסה→consent→פריסה→smoke ירוק | pending | מיזוג ל-main (deploy) + control SM + קונסולה |
 | 5 | פרישת הכפילות `google-oauth-client-*` → ארנק אחד + צרור-מפתחות אחד | pending | `scripts/render-mcp-service-yaml.sh`, `.github/workflows/deploy-mcp-server.yml` |
 | 6 | ניקוי: השארת רק 2 ה-redirect URIs החיים על ה-client המאוחד | pending | — (קונסולת גוגל) |
@@ -127,7 +127,7 @@ Access - Nuriel` (`…pj46`, Jun 4) — **שלישי לא-קשור** (Cloudflare
 
 **Acceptance:**
 - [x] הסוכן רשם (דרך `list_secret_metadata`, בלי גישה-לערך) את מוני-הגרסאות הנוכחיים של 4 סודות-ה-client + `gmail-oauth-refresh-token` (ה-rollback השלם — מוסיפים גרסה בלבד): 2 / 2 / 1 / 1 / 4.
-- [ ] ‏Or עדכן את repo secrets `GOOGLE_OAUTH_CLIENT_ID` / `GOOGLE_OAUTH_CLIENT_SECRET` לערכי ה-client המאוחד החדש (נתיב ממוסך; ערכים לעולם לא בצ'אט/לוג).
+- [x] ‏Or עדכן את repo secrets `GOOGLE_OAUTH_CLIENT_ID` / `GOOGLE_OAUTH_CLIENT_SECRET` לערכי ה-client המאוחד החדש (נתיב ממוסך; ערכים לעולם לא בצ'אט/לוג).
 
 **הוכחה תפקודית (באותו שלב):** תצפיתי — GitHub מציג שהסודות "Updated"; הסוכן מאמת מחדש דרך
 `list_secret_metadata` ש-4 סודות-ה-SM **לא קיבלו גרסה חדשה** (שלב 3 אינרטי, ה-rollback שלם).
@@ -135,10 +135,13 @@ Access - Nuriel` (`…pj46`, Jun 4) — **שלישי לא-קשור** (Cloudflare
 
 **הערת התקדמות אחרונה:** in-progress (2026-06-11) — baseline ל-rollback נרשם (גרסאות SM נוכחיות בפרויקט-הבקרה:
 `google-oauth-client-id`=2, `google-oauth-client-secret`=2, `gmail-oauth-client-id`=1, `gmail-oauth-client-secret`=1,
-`gmail-oauth-refresh-token`=4; מוסיפים-גרסה בלבד → כולן נשמרות כ-rollback). ממתין ש-Or יעדכן את repo secrets
-`GOOGLE_OAUTH_CLIENT_ID`/`GOOGLE_OAUTH_CLIENT_SECRET` לארנק המאוחד (`140345952904-csqtb1…` + ה-secret).
+`gmail-oauth-refresh-token`=4; מוסיפים-גרסה בלבד → כולן נשמרות כ-rollback). **הושלם** — Or עדכן ידנית את שני
+ה-repo secrets לארנק המאוחד; אומת ב-`list_repo_secrets_names`: `GOOGLE_OAUTH_CLIENT_ID` updated 2026-06-11T09:43Z,
+`GOOGLE_OAUTH_CLIENT_SECRET` updated 09:39Z. SM לא נגע (repo-secrets נפרדים מ-GCP SM; ה-baseline 2/2/1/1/4 שלם).
 
-**שינוי תוכנית:** —
+**שינוי תוכנית:** עדכון ה-repo secret נעשה ידנית ע"י Or. מחקר תוך-כדי העלה: אין כיום כלי לכתיבת GitHub
+*secret* אוטונומית (דפוס ה-PyNaCl-PUT נפרש מטעמי אבטחה), ו-`client_id` (לא-סודי) ראוי לשבת ב-git/variable
+שהסוכן שולט בו — ה-`scan-for-secrets.sh` לא היה חוסם client_id. **שדרוג-האוטונומיה נדחה לסשן נפרד בבחירת Or.**
 
 ---
 
@@ -227,3 +230,4 @@ Access) לפני כל פירוק של factory-test-7. נרשם כגבול בהע
 - שלב 0 הושלם — הצצנו למסך-ההסכמה הישן: הוא "External + In production", בדיוק ההגדרה שמאפשרת ארנק אחד. אישור להמשיך לבנות ארנק אחד (בלי מסלול-גיבוי). גילינו גם ארנק שלישי לא-קשור (Cloudflare) שיטופל בנפרד בפירוק העתידי.
 - שלב 1 הושלם — אור יצר את הארנק החדש בבית הקבוע (פרויקט-הבקרה), עם 2 כתובות-החזרה. בדקתי מול גוגל שהארנק קיים והכתובות רשומות נכון — ירוק.
 - שלב 2 הושלם — הכנתי בקוד (ב-workflow של הפריסה) שמפתח-ארנק אחד יזרום לכל ארבע מגירות-הסוד. עדיין לא נפרס — רק נבדק, וכל בדיקות ה-CI ירוקות.
+- שלב 3 הושלם — אור הזין את מפתחות הארנק החדש (ID + secret) ב-GitHub. אומת שנחת. עדיין שום דבר חי לא הוחלף (זה קורה רק בשלב 4).
