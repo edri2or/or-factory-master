@@ -1,0 +1,12 @@
+# Changelog fragment — mask-multiline-secrets (2026-06-11)
+
+> A per-development changelog fragment (date + slug), written here instead of at the head of
+> `CHANGELOG.md` per the repo's default for all developments. The **Compile changelog** workflow
+> folds it into a numbered `CHANGELOG.md` in one single-threaded run. The CI changelog gate accepts
+> this fragment.
+
+## fix: mask-multiline-secrets — stop configure-agent-router leaking the GitHub App private key to its run log (Stage 1/5)
+
+| Type | Summary |
+|---|---|
+| fix | Stage 1 of the mask-multiline-secrets development (security: secret-leak prevention). In `templates/system/.github/workflows/configure-agent-router.yml`, the line meant to PROTECT the GitHub App key — `echo "::add-mask::${GH_APP_PRIVATE_KEY}"` — **leaked the full PEM to the run log**: `::add-mask::` is a line-based workflow command, so a raw echo of a multi-line value registers only the first line as a mask and prints the rest in plain text (actions/runner#161; same vulnerability class as CVE-2021-32074). New `_mask_secret` helper (defined next to `_sm_read`; the whole job is one `run:` block, so one definition covers every call): empty → no-op, single-line → one mask, multi-line → one `::add-mask::` per non-empty line; the value is never echoed outside a mask command and the helper always returns 0 under `set -e`. **All 18** `echo "::add-mask::…"` sites in the file now route through it — uniformity makes the copied-forward pattern the safe one for any future multi-line secret, and removes the latent `set -e` trap on the unguarded `N8N_PUB_API_KEY` mask. No change to the n8n credential logic (jwtAuth) or the soft-fail contract; verified the job has no `set -x`/trace. New `scripts/tests/mask-secret.bats` (runs in **Playground tests**): extracts the helper from the workflow file itself (tests the shipped code, not a copy), proves it on a real `openssl genrsa` key minted at test time (nothing committed — secret-scan stays quiet), documents the fail-before raw-echo leak, and pins the file so any future raw `echo "::add-mask::"` outside the helper fails CI. Golden refreshed via `scripts/check-system-golden.sh --update` (exactly one manifest hash line moved). Local gates green: 158/158 BATS, yamllint, validate-templates, executeworkflow-published, single-voice, system-golden, scan-for-secrets. Template-only — reaches systems provisioned after merge; live proof on a throwaway test system is Stage 2, existing systems are Stage 4 (both Or-gated). |
