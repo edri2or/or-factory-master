@@ -18,6 +18,9 @@
 
 # PR-only gates (run on pull_request; no main runs to prove via gh-last-run):
 .github/workflows/eval-agent-router-precheck.yml
+# E2E verification gate: the required-status-check that blocks merging a bot-behavior
+# change without a fresh E2E proof. No-op on PRs that touch no behavior file; no cadence.
+.github/workflows/e2e-gate.yml
 
 # Internal verification helpers (manual, ad-hoc):
 .github/workflows/_verify-bs-webhook.yml
@@ -80,6 +83,9 @@ templates/system/.github/workflows/bootstrap-gmail-oauth.yml
 .github/workflows/provision-system.yml
 .github/workflows/refresh-system-agents.yml
 .github/workflows/prove-on-test-system.yml
+# Twin of prove-on-test-system.yml: drives a real inbound E2E against a live system
+# and emits the signed E2E proof. workflow_dispatch only (on the MCP allowlist); no cadence.
+.github/workflows/e2e-verify.yml
 .github/workflows/cleanup-orphan-linear-webhooks.yml
 .github/workflows/n8n-mcp-smoke.yml
 # Manual smoke: proves the central Google Workspace MCP gateway live (mint bearer
