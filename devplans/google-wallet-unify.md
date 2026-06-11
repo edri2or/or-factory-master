@@ -28,7 +28,7 @@ follow-up מסגירת `google-door-cleanup`. היום יש **שני** OAuth cli
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
 | 0 | סיור קריאה-בלבד: מסך-ההסכמה הקיים + בתי-ה-clients (Or מדווח) | completed | — (קונסולת גוגל, קריאה בלבד) |
-| 1 | Or יוצר את ה-client המאוחד + מסך-consent ב-control | in-progress | — (קונסולת גוגל) |
+| 1 | Or יוצר את ה-client המאוחד + מסך-consent ב-control | completed | — (קונסולת גוגל) |
 | 2 | הרחבת זריעת-הסודות ב-deploy לכסות את שני זוגות-ה-clients | pending | `.github/workflows/deploy-mcp-server.yml` |
 | 3 | Or מזריק את מפתחות ה-client החדש ל-repo secrets + תיעוד rollback | pending | — (GitHub repo secrets) |
 | 4 | ההחלפה החיה: מיזוג→פריסה→consent→פריסה→smoke ירוק | pending | מיזוג ל-main (deploy) + control SM + קונסולה |
@@ -74,20 +74,22 @@ Access - Nuriel` (`…pj46`, Jun 4) — **שלישי לא-קשור** (Cloudflare
 (External, In production) ו-client אחד מסוג Web עם **בדיוק** 2 ה-redirect URIs.
 
 **Acceptance:**
-- [ ] מסך-ה-consent ב-`or-factory-master-control` נוצר: User Type External, Published (In production).
-- [ ] ‏client אחד מסוג "Web application" נוצר; שני ה-redirect URIs רשומים בדיוק:
+- [x] מסך-ה-consent ב-`or-factory-master-control` נוצר: User Type External. (Published/In production — לאישור Or; חובה לפני שלב 4.)
+- [x] ‏client אחד מסוג "Web application" נוצר; שני ה-redirect URIs רשומים — **הוכח** (probe → 200, בלי mismatch):
       `https://factory-master-actions-mcp-risl6twm4a-zf.a.run.app/oauth/callback`
       `https://factory-master-actions-mcp-risl6twm4a-zf.a.run.app/workspace/consent/callback`
-- [ ] ‏Or העתיק את ה-Client ID + Client secret (לשלב 3; לעולם לא לצ'אט).
+- [x] ‏Or העתיק את ה-Client ID (`140345952904-csqtb1…`) + Client secret (שמור אצל Or לשלב 3; לא לצ'אט).
 
 **הוכחה תפקודית (באותו שלב):** הוכחת-נגישות נטולת-סוד (לא click-through): `probe_endpoint` ל-URL
 ההרשאה של גוגל שנבנה עם ה-client_id החדש + ה-redirect של workspace + `scope=openid email` →
 לאשר HTTP 200 דף-גוגל, ו**לא** `redirect_uri_mismatch`/`invalid_client`. מוכיח שה-client קיים
 וה-redirect רשום — לפני שמחווטים סוד כלשהו. הפיך לגמרי (מחיקת ה-client).
 
-**הערת התקדמות אחרונה:** in-progress (2026-06-11) — שלב 0 אישר single-client GO; הוראות צעד-צעד
-ל-Google Auth Platform (פרויקט `or-factory-master-control`) נמסרו ל-Or: מסך-consent External+publish,
-ואז client אחד מסוג Web עם 2 ה-redirect URIs. ממתין ש-Or יבצע וידווח client_id (+ ישמור את ה-secret לשלב 3).
+**הערת התקדמות אחרונה:** הושלם + הוכח (2026-06-11). Or יצר ב-`or-factory-master-control` מסך-consent
+(External) + client אחד מסוג Web. **Client ID `140345952904-csqtb1hlrbk7keuukt7al5prhn6gbnt3.apps.googleusercontent.com`**
+(התחילית `140345952904` = מספר פרויקט-הבקרה → הארנק נולד ב-control ✓). **הוכחת-נגישות:** GET לדף ההרשאה
+של גוגל עם ה-client_id + כל אחת מ-2 כתובות-החזרה → HTTP 200 + דף sign-in, **בלי** `redirect_uri_mismatch`/
+`invalid_client` → הארנק קיים ושתי הכתובות רשומות נכון. ה-secret אצל Or לשלב 3. פתוח לאישור: ש-Or פרסם ל-In production.
 **זהות-חשבונות (תוקן — ראה `docs/google-identities.md`):** הקליקים בקונסולה + ה-support/contact email
 של מסך-ה-consent = **`edriorp38@or-infra.com`** (חשבון-המפעיל; `authuser=1`), **לא** `edri2or@gmail.com`.
 
@@ -217,3 +219,4 @@ Access) לפני כל פירוק של factory-test-7. נרשם כגבול בהע
 
 - הפיתוח נפתח (2026-06-11): מאחדים את שני "ארנקי גוגל" לאחד שיושב בבית הקבוע (פרויקט-הבקרה), מוכיחים חי, ומשאירים צרור-מפתחות אחד נקי — הכל בשערי ✅.
 - שלב 0 הושלם — הצצנו למסך-ההסכמה הישן: הוא "External + In production", בדיוק ההגדרה שמאפשרת ארנק אחד. אישור להמשיך לבנות ארנק אחד (בלי מסלול-גיבוי). גילינו גם ארנק שלישי לא-קשור (Cloudflare) שיטופל בנפרד בפירוק העתידי.
+- שלב 1 הושלם — אור יצר את הארנק החדש בבית הקבוע (פרויקט-הבקרה), עם 2 כתובות-החזרה. בדקתי מול גוגל שהארנק קיים והכתובות רשומות נכון — ירוק.
