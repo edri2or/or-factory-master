@@ -22,3 +22,26 @@
 סודות ב-env; לעולם לא מדפיס ערכים). shellcheck נקי; נבדק מקומית על execution סינתטי.
 
 **Changes:** `scripts/e2e-verify-inbound.sh` (חדש).
+
+## שלבים 3–4 — ה-workflow המייצר + השער האכיף
+
+**שלב 3 — מייצר ההוכחה.** `e2e-verify.yml` (פקטורי) + תאומה ב-`templates/system/.github/workflows/`:
+נדחף ב-`main` (כי ה-WIF CEL נעול ל-main) אך עושה checkout ל-`target_ref` (תוכן ה-branch),
+מאמת WIF (deploy-sa במערכת / broker בפקטורי), קורא סודות מ-SM, מריץ את ה-driver, ורק
+**כשההודעה האמיתית עברה** מחשב `content_hash`, חותם HMAC עם `mcp-server-bearer-signing-key`,
+כותב `e2e-proofs/<slug>.json`, עושה commit ל-branch ו-upload artifact `e2e-proof`.
+
+**שלב 4 — השער האכיף.** `scripts/check-e2e-proof.sh` (תאום ל-`check-devplan-updated.sh`):
+no-op אם לא נגעו בקבצי-התנהגות; אחרת דורש `e2e-proofs/*.json` באותו דיף ומאמת —
+`content_hash` תואם את הקבצים בדיף (עריכה אחרי ההוכחה → אדום), `result=pass`, טרי, וב-CI
+cross-check ש-`run_id` הוא ריצת `e2e-verify.yml` מוצלחת על הריפו וה-artifact בייט-תואם —
+**ללא ענן** (GitHub API ב-`GITHUB_TOKEN`). helpers משותפים ב-`scripts/lib.sh`
+(`e2e_behavior_files/hash/changed`). השער מותקן כ-job בשם `E2E verification gate`
+(`e2e-gate.yml` פקטורי+תבנית) ונוסף ל-`protect-main` ruleset (פקטורי 5→6) ול-
+`REQUIRED_CONTEXTS_JSON` של המערכות (4→5). פרופגציה: `provision-system.yml` מעתיק 2 workflows
++ 2 scripts. `e2e-verify.yml` נוסף ל-allowlist של `dispatch_workflow` ב-MCP. Golden עודכן.
+
+**Changes:** `.github/workflows/e2e-verify.yml`, `.github/workflows/e2e-gate.yml`,
+`templates/system/.github/workflows/{e2e-verify,e2e-gate}.yml`, `scripts/check-e2e-proof.sh`,
+`scripts/lib.sh`, `scripts/ensure-protect-main-ruleset.sh`, `.github/workflows/provision-system.yml`,
+`services/mcp-server/src/tools.ts`, `tests/golden/system/MANIFEST.sha256`.

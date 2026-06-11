@@ -21,7 +21,8 @@ DEFAULT_CONTEXTS='[
   {"context":"shellcheck + yamllint"},
   {"context":"Scan for committed secrets"},
   {"context":"Supply chain gates"},
-  {"context":"Playground tests"}
+  {"context":"Playground tests"},
+  {"context":"E2E verification gate"}
 ]'
 
 # Normalize REQUIRED_CONTEXTS_JSON to the [{context: ...}] form the rulesets

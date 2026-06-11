@@ -24,8 +24,8 @@ status: active
 |---|---|---|---|
 | 1 | מחקר + תיעוד הפער והסטנדרט | completed | `docs/e2e-verification-gate.md` |
 | 2 | ה-driver: הרצת התנהגות אמיתית דרך ה-inbound | completed | `scripts/e2e-verify-inbound.sh` |
-| 3 | workflow שמייצר הוכחה חתומה | pending | `.github/workflows/e2e-verify.yml`, `templates/system/.github/workflows/e2e-verify.yml` |
-| 4 | השער האכיף + חיווט ל-ruleset + פרופגציה | pending | `scripts/check-e2e-proof.sh`, `*/e2e-gate.yml`, `ensure-protect-main-ruleset.sh`, `provision-system.yml`, golden |
+| 3 | workflow שמייצר הוכחה חתומה | completed | `.github/workflows/e2e-verify.yml`, `templates/system/.github/workflows/e2e-verify.yml` |
+| 4 | השער האכיף + חיווט ל-ruleset + פרופגציה | completed | `scripts/check-e2e-proof.sh`, `scripts/lib.sh`, `*/e2e-gate.yml`, `ensure-protect-main-ruleset.sh`, `provision-system.yml`, `services/mcp-server/src/tools.ts`, golden |
 | 5 | חיבור /dev-stage (שדה הוכחת-E2E + טקסט סגירה) | pending | `templates/devplan/DEVPLAN.template.md`, `.claude/commands/dev-stage*.md` |
 | 6 | הוכחה חיה מקצה-לקצה על מערכת-טסט זרוקה | pending | (ריצות חיות; teardown ledger) |
 
@@ -84,13 +84,14 @@ status: active
 
 **הוכחת E2E (artifact):** מיוצר ע"י ה-workflow עצמו (שלב 6).
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם — `e2e-verify.yml` (פקטורי + תבנית מערכת): checkout של
+ה-branch (תוכן) תוך dispatch ב-main (כי ה-WIF CEL נעול ל-main), WIF→deploy-sa/broker,
+קריאת סודות מ-SM, הרצת ה-driver, חישוב `content_hash` (lib.sh), חתימת HMAC, commit ל-branch
+ו-upload artifact. actionlint+shellcheck נקי. הריצה החיה בפועל — שלב 6.
 
-**שינוי תוכנית:** —
-
----
-
-### שלב 4 — השער האכיף + חיווט ל-ruleset + פרופגציה
+**שינוי תוכנית:** ה-WIF CEL נעול ל-`refs/heads/main`, לכן ה-workflow נדחף ב-main אבל
+עושה checkout ל-`target_ref` (תוכן ה-branch) — כך ה-OIDC ref=main (auth עובר) וה-hash/commit
+על ה-branch.
 
 **Acceptance:**
 - [ ] `scripts/check-e2e-proof.sh`: no-op בלי קבצי-התנהגות; דורש proof תקף אחרת
@@ -103,13 +104,15 @@ status: active
 
 **הוכחת E2E (artifact):** הסקריפט הוא תשתית-שער, לא קובץ-התנהגות.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם — `check-e2e-proof.sh` + helpers ב-`lib.sh`
+(`e2e_behavior_files/hash/changed`). נבדק מקומית על git fixture ב-5 מקרים: ללא שינוי-התנהגות
+→ no-op; שינוי-התנהגות בלי proof → חוסם; content_hash שגוי/מזויף → חוסם; hash תקין → מעביר;
+proof ישן → חוסם. `e2e-gate.yml` (job name `E2E verification gate`) פקטורי+תבנית; context
+נוסף ל-`ensure-protect-main-ruleset.sh` (5→6) ול-`REQUIRED_CONTEXTS_JSON` (4→5); scaffold
+loops (2 workflows + 2 scripts); `e2e-verify.yml` ב-allowlist של ה-MCP (tsc נקי); golden עודכן.
 
-**שינוי תוכנית:** —
-
----
-
-### שלב 5 — חיבור /dev-stage
+**שינוי תוכנית:** השער cloud-free (cross-check של run+artifact דרך GitHub API ב-GITHUB_TOKEN,
+לא WIF) — מתאים ל-context PR-triggered. סניפי `oil-autofix/*` פטורים (כמו שער ה-devplan).
 
 **Acceptance:**
 - [ ] שדה `הוכחת E2E (artifact)` בתבנית devplan
@@ -157,3 +160,6 @@ status: active
 - שלב 1 הושלם — מסמך ייחוס שממפה איפה "ירוק" מתחזה ל"עובד" + הסטנדרט המקצועי + התוכנית.
 - שלב 2 הושלם — נכתב המנוע ששולח הודעה אמיתית דרך מסלול הבוט ובודק את התשובה בפועל;
   נבדק שהוא תופס "כלי שמת בשקט".
+- שלב 3 הושלם — נבנה ה-workflow שמייצר "תעודת אימות" חתומה רק כשההודעה האמיתית עברה.
+- שלב 4 הושלם — הותקן השער שחוסם מיזוג עד שיש תעודת-אימות אמיתית; נבדק שהוא חוסם בלי
+  הוכחה ושלא ניתן לזייף אותה, וחובר לאותו מנגנון נעילה כמו protect-main.

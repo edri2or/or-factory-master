@@ -711,7 +711,7 @@ jobs:
           # own scripts/ (single source of truth — check-skills-mirror.sh is
           # factory-specific and intentionally NOT shipped).
           CI_WF_SRC="${GITHUB_WORKSPACE}/templates/system/.github/workflows"
-          for wf in changelog-check pipeline-tests secret-scan supply-chain-check; do
+          for wf in changelog-check pipeline-tests secret-scan supply-chain-check e2e-gate e2e-verify; do
             [ -f "$CI_WF_SRC/${wf}.yml" ] || { echo "FAIL: CI workflow template $CI_WF_SRC/${wf}.yml not found" >&2; exit 1; }
             cp "$CI_WF_SRC/${wf}.yml" "$CLONE_DIR/.github/workflows/${wf}.yml"
           done
@@ -726,7 +726,8 @@ jobs:
           for sc in lib check-changelog-updated check-changelog-size compile-changelog scan-for-secrets \
                     check-actions-pinned check-workflow-permissions \
                     check-no-pull-request-target check-no-privileged-pr-workflows \
-                    check-devplan-updated check-agent-single-voice devplan-session-start-hook; do
+                    check-devplan-updated check-agent-single-voice devplan-session-start-hook \
+                    check-e2e-proof e2e-verify-inbound; do
             [ -f "${GITHUB_WORKSPACE}/scripts/${sc}.sh" ] || { echo "FAIL: scripts/${sc}.sh not found" >&2; exit 1; }
             cp "${GITHUB_WORKSPACE}/scripts/${sc}.sh" "$CLONE_DIR/scripts/${sc}.sh"
           done
@@ -772,7 +773,7 @@ jobs:
             || { echo "FAIL: could not push scaffold to edri2or/${SYSTEM_NAME}:main" >&2; exit 1; }
 
           rm -rf "$CLONE_DIR"
-          echo "PASS: .claude package + Agent Router + Caddy gateway + CI governance bundle pushed to edri2or/${SYSTEM_NAME}:main (${COUNT} commands + gcp-hands-client skill + ${N8N_COUNT} n8n workflows + configure-agent-router.yml + Caddyfile + Dockerfile.caddy + caddy/hmacguard + 4 CI workflows + 11 portable scripts (incl. compile-changelog + devplan gate/hook) + .claude/settings.json (devplan SessionStart hook) + templates/devplan/ seed + .yamllint + CHANGELOG.md + changelog.d/ seed)."
+          echo "PASS: .claude package + Agent Router + Caddy gateway + CI governance bundle pushed to edri2or/${SYSTEM_NAME}:main (${COUNT} commands + gcp-hands-client skill + ${N8N_COUNT} n8n workflows + configure-agent-router.yml + Caddyfile + Dockerfile.caddy + caddy/hmacguard + 6 CI workflows (incl. e2e-gate + e2e-verify) + 14 portable scripts (incl. compile-changelog + devplan gate/hook + E2E gate/driver) + .claude/settings.json (devplan SessionStart hook) + templates/devplan/ seed + .yamllint + CHANGELOG.md + changelog.d/ seed)."
 
       - name: Push system orientation docs (AGENTS.md + CLAUDE.md) to system repo
         continue-on-error: true
@@ -945,7 +946,7 @@ jobs:
         # safe. System repos have no "Playground tests" job, so only 4 contexts.
         env:
           TARGET_REPO: edri2or/${{ inputs.system_name }}
-          REQUIRED_CONTEXTS_JSON: '["Changelog gates","shellcheck + yamllint","Scan for committed secrets","Supply chain gates"]'
+          REQUIRED_CONTEXTS_JSON: '["Changelog gates","shellcheck + yamllint","Scan for committed secrets","Supply chain gates","E2E verification gate"]'
         run: bash scripts/ensure-protect-main-ruleset.sh
 
       - name: Clean shared-project secrets (reuse mode)
