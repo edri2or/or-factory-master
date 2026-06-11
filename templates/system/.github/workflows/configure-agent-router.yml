@@ -610,10 +610,21 @@ jobs:
                 for RUN_BODY in "${WF_FULL_BODY:-SKIP}" '{"triggerToStartFrom":{"name":"Run Once"}}' ; do
                   { [ -n "$RUN_BODY" ] && [ "$RUN_BODY" != "SKIP" ]; } || continue
                   HTTP=$(_napi POST "$BASE/rest/workflows/${DB_SETUP_ID}/run" /tmp/ar-db-run.json "$RUN_BODY")
-                  # poll up to ~30s for the FILTERED execution to register + finish
+                  # B1.1 — the /run response returns the executionId of the run it just
+                  # started; pull THAT execution directly (deterministic). The filtered
+                  # executions list (_db_check) is flaky on a live system (it was the
+                  # original false-negative source) — keep it only as a secondary fallback.
+                  EID=$(jq -r '(.data.executionId) // (.executionId) // (.data.id) // empty' /tmp/ar-db-run.json 2>/dev/null || echo "")
+                  { [ -n "$EID" ] && [ "$EID" != "null" ]; } || EID=$(grep -oE '"executionId"[^0-9]{0,4}[0-9]+' /tmp/ar-db-run.json 2>/dev/null | grep -oE '[0-9]+' | tail -1 || true)
+                  # poll up to ~30s for the execution to finish
                   for _i in 1 2 3 4 5 6 7 8 9 10 ; do
                     sleep 3
-                    DB_VERDICT="$(_db_check)"
+                    if [ -n "$EID" ] && [ "$EID" != "null" ]; then
+                      _napi GET "$BASE/rest/executions/${EID}?includeData=true" /tmp/ar-db-exec2.json >/dev/null 2>&1 || true
+                      DB_VERDICT="$(_db_verdict /tmp/ar-db-exec2.json)"
+                    else
+                      DB_VERDICT="$(_db_check)"
+                    fi
                     if [ "$DB_VERDICT" != "inconclusive" ]; then break; fi
                   done
                   if [ "$DB_VERDICT" = "ok" ]; then
