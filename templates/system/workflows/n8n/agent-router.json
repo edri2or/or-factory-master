@@ -106,7 +106,7 @@
           "messageValues": [
             {
               "type": "SystemMessagePromptTemplate",
-              "message": "You are an intent classifier for an operations assistant. Classify the user message into exactly one intent: ops, code, research, infra, or unknown.\n- ops: operations, monitoring, status, deployments, restarts, logs, service health.\n- code: writing, editing, reviewing, or explaining code.\n- research: open-ended questions, summaries, information lookup.\n- infra: provisioning or changing infrastructure (DNS, secrets, cloud resources).\n- unknown: ambiguous, empty, or anything not clearly in the set above.\nReturn ONLY a single-line JSON object and nothing else (no markdown, no code fences, no prose): {\"intent\":\"<one of ops|code|research|infra|unknown>\",\"confidence\":<number between 0 and 1>,\"entity_mention\":<the exact file name or repo path the user referenced, as a JSON string (e.g. \"config.json\" or \"src/app.ts\"), or null if no specific file is referenced>}. Extract entity_mention verbatim from the user's words even if it looks misspelled or partial — never correct or invent it. If unsure of the intent, use intent unknown with a low confidence."
+              "message": "You are an intent classifier for an operations assistant. Classify the user message into exactly one intent: ops, code, research, infra, or unknown.\n- ops: operations, monitoring, status, deployments, restarts, logs, service health.\n- code: writing, editing, reviewing, or explaining code.\n- research: open-ended questions, summaries, information lookup.\n- infra: provisioning or changing infrastructure (DNS, secrets, cloud resources).\n- unknown: ambiguous, empty, or anything not clearly in the set above.\nReturn ONLY a single-line JSON object and nothing else (no markdown, no code fences, no prose): {\"intent\":\"<one of ops|code|research|infra|unknown>\",\"confidence\":<number between 0 and 1>,\"entity_mention\":<the exact file name or repo path the user referenced, as a JSON string (e.g. \"config.json\" or \"src/app.ts\"), or null if no specific file is referenced>,\"intents\":<a JSON array of every applicable intent from the set ops|code|research|infra, ordered with the primary intent first; always include the primary \"intent\" as the first element>,\"multi\":<boolean, true ONLY when two or more DISTINCT domains from ops|code|research|infra are clearly and independently present in the request, otherwise false>}. The \"intent\" field is the single primary intent and MUST always be present. Extract entity_mention verbatim from the user's words even if it looks misspelled or partial — never correct or invent it. Set \"multi\" to true only for genuinely multi-domain requests (e.g. \"review this code AND check if the service is up\"); for a single-domain request set \"multi\" to false and let \"intents\" contain just the primary intent. Never put \"unknown\" inside the \"intents\" array. If unsure of the intent, use intent unknown with a low confidence, intents [], and multi false."
             }
           ]
         }
@@ -132,7 +132,7 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "// Parse the classifier's raw JSON text robustly (no throwing output-parser):\n// any parse failure -> intent 'unknown' (graceful; OWASP LLM01 bounded refusal).\n// Also re-attach the sanitized text, which the chain node drops from the item.\nconst cls = $input.first().json;\nconst sanitized = $('Sanitize Input').first().json.sanitized;\nlet intent = 'unknown';\nlet confidence = 0;\nlet entity_mention = null;\ntry {\n  let parsed = null;\n  if (cls.output && typeof cls.output === 'object') {\n    parsed = cls.output;\n  } else {\n    const raw = String(cls.text != null ? cls.text : (cls.response != null ? cls.response : (cls.output != null ? cls.output : '')));\n    const m = raw.match(/\\{[\\s\\S]*\\}/);\n    if (m) { parsed = JSON.parse(m[0]); }\n  }\n  if (parsed && typeof parsed === 'object') {\n    if (typeof parsed.intent === 'string') { intent = parsed.intent.toLowerCase().trim(); }\n    const c = (typeof parsed.confidence === 'number') ? parsed.confidence : Number(parsed.confidence);\n    if (c >= 0 && c <= 1) { confidence = c; }\n    if (typeof parsed.entity_mention === 'string' && parsed.entity_mention.trim()) { entity_mention = parsed.entity_mention.trim(); }\n  }\n} catch (e) { intent = 'unknown'; confidence = 0; entity_mention = null; }\nconst allowed = ['ops', 'code', 'research', 'infra', 'unknown'];\nif (allowed.indexOf(intent) === -1) { intent = 'unknown'; }\nreturn [{ json: { sanitized: sanitized, intent: intent, confidence: confidence, entity_mention: entity_mention } }];"
+        "jsCode": "// Parse the classifier's raw JSON text robustly (no throwing output-parser):\n// any parse failure -> intent 'unknown' (graceful; OWASP LLM01 bounded refusal).\n// Also re-attach the sanitized text, which the chain node drops from the item.\nconst cls = $input.first().json;\nconst sanitized = $('Sanitize Input').first().json.sanitized;\nlet intent = 'unknown';\nlet confidence = 0;\nlet entity_mention = null;\nlet intents = [];\nlet multi = false;\nconst fanoutAllowed = ['ops', 'code', 'research', 'infra'];\ntry {\n  let parsed = null;\n  if (cls.output && typeof cls.output === 'object') {\n    parsed = cls.output;\n  } else {\n    const raw = String(cls.text != null ? cls.text : (cls.response != null ? cls.response : (cls.output != null ? cls.output : '')));\n    const m = raw.match(/\\{[\\s\\S]*\\}/);\n    if (m) { parsed = JSON.parse(m[0]); }\n  }\n  if (parsed && typeof parsed === 'object') {\n    if (typeof parsed.intent === 'string') { intent = parsed.intent.toLowerCase().trim(); }\n    const c = (typeof parsed.confidence === 'number') ? parsed.confidence : Number(parsed.confidence);\n    if (c >= 0 && c <= 1) { confidence = c; }\n    if (typeof parsed.entity_mention === 'string' && parsed.entity_mention.trim()) { entity_mention = parsed.entity_mention.trim(); }\n    if (Array.isArray(parsed.intents)) {\n      for (let i = 0; i < parsed.intents.length; i++) {\n        const v = (typeof parsed.intents[i] === 'string') ? parsed.intents[i].toLowerCase().trim() : '';\n        if (fanoutAllowed.indexOf(v) !== -1 && intents.indexOf(v) === -1) { intents.push(v); }\n      }\n    }\n    if (parsed.multi === true || parsed.multi === 'true') { multi = true; }\n  }\n} catch (e) { intent = 'unknown'; confidence = 0; entity_mention = null; intents = []; multi = false; }\nconst allowed = ['ops', 'code', 'research', 'infra', 'unknown'];\nif (allowed.indexOf(intent) === -1) { intent = 'unknown'; }\nif (fanoutAllowed.indexOf(intent) !== -1 && intents.indexOf(intent) === -1) { intents.unshift(intent); }\nif (intents.length < 2) { multi = false; }\nreturn [{ json: { sanitized: sanitized, intent: intent, confidence: confidence, entity_mention: entity_mention, intents: intents, multi: multi } }];"
       },
       "id": "a0000000-0000-0000-0000-000000000006",
       "name": "Build Dispatch",
@@ -396,6 +396,124 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [1560, 320]
+    },
+    {
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose", "version": 2 },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "c4000000-0000-0000-0000-000000000001",
+                    "leftValue": "={{ $('Build Dispatch').first().json.multi }}",
+                    "rightValue": true,
+                    "operator": { "type": "boolean", "operation": "true", "singleValue": true }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "multi"
+            }
+          ]
+        },
+        "options": { "fallbackOutput": "extra", "renameFallbackOutput": "single" }
+      },
+      "id": "a0000000-0000-0000-0000-0000000000f1",
+      "name": "Multi Gate",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [1320, 120]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Fan-out builder: emit ONE item per requested intent that is actually installed,\n// each carrying its own sub-workflow id so a single per-item Execute-Workflow node\n// can invoke them all. The id map is sed-substituted at install time\n// (configure-agent-router.yml). Skip any intent whose mapped value is empty or\n// still an unsubstituted placeholder (starts with @@) so the fan-out never points\n// at a non-existent workflow. Graceful: if nothing resolves, emit one synthetic\n// item so the per-item Execute node and the collector still receive >=1 item and\n// never stall. intents/multi come from Build Dispatch (Resolve Entity drops them);\n// sanitized prefers Resolve Entity's possibly path-injected text.\nconst d = $('Build Dispatch').first().json || {};\nconst r = $('Resolve Entity').first().json || {};\nconst sanitized = (typeof r.sanitized === 'string' && r.sanitized) ? r.sanitized : (d.sanitized || '');\nconst confidence = (typeof d.confidence === 'number') ? d.confidence : 0;\nconst entity_mention = (typeof r.entity_mention !== 'undefined') ? r.entity_mention : (d.entity_mention || null);\nconst intents = Array.isArray(d.intents) ? d.intents : [];\nconst WF = { ops: '@@SUB_OPS_WF_ID@@', code: '@@SUB_CODE_WF_ID@@', research: '@@SUB_RESEARCH_WF_ID@@', infra: '@@SUB_INFRA_WF_ID@@' };\nconst out = [];\nconst seen = {};\nfor (let i = 0; i < intents.length; i++) {\n  const sp = String(intents[i]).toLowerCase().trim();\n  if (sp === 'unknown' || !WF.hasOwnProperty(sp) || seen[sp]) { continue; }\n  const wf_id = WF[sp];\n  if (!wf_id || wf_id.indexOf('@@') === 0) { continue; }\n  seen[sp] = true;\n  out.push({ json: { sanitized: sanitized, intent: sp, confidence: confidence, entity_mention: entity_mention, source: 'router', specialist: sp, wf_id: wf_id } });\n}\nif (out.length === 0) {\n  out.push({ json: { sanitized: sanitized, intent: 'unknown', confidence: confidence, entity_mention: entity_mention, source: 'router', specialist: 'none', wf_id: '', status: 'skipped' } });\n}\nreturn out;"
+      },
+      "id": "a0000000-0000-0000-0000-0000000000f2",
+      "name": "Build Fan-out Items",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1520, 120]
+    },
+    {
+      "parameters": {
+        "workflowId": { "__rl": true, "value": "={{ $json.wf_id }}", "mode": "id" },
+        "mode": "each",
+        "options": { "waitForSubWorkflow": true }
+      },
+      "id": "a0000000-0000-0000-0000-0000000000f3",
+      "name": "Run Specialists",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [1720, 120],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Deterministic gather: ALL specialist outputs are the items of the single upstream\n// 'Run Specialists' node, so $input.all() returns every reply reliably (one upstream\n// connection — no multi-branch fan-in, no Merge, no empty-input stall).\n// executeWorkflow 'each' replaces each item with the specialist's {reply} on success\n// (dropping our upstream tag), so recover the specialist LABEL by index-pairing with\n// Build Fan-out Items (same order, one in -> one out). Graceful: skip empty/failed\n// replies; if none survive, fall back to the original question so the synthesizer\n// still produces a coherent answer.\nconst items = $input.all();\nlet srcs = [];\ntry { srcs = $('Build Fan-out Items').all(); } catch (e) { srcs = []; }\nconst d = $('Build Dispatch').first().json || {};\nconst r = $('Resolve Entity').first().json || {};\nconst question = (typeof r.sanitized === 'string' && r.sanitized) ? r.sanitized : (d.sanitized || '');\nconst LABEL = { ops: 'Operations', code: 'Code', research: 'Research', infra: 'Infrastructure' };\nconst parts = [];\nfor (let i = 0; i < items.length; i++) {\n  const j = items[i].json || {};\n  let reply = (j.reply != null) ? j.reply : ((j.output != null) ? j.output : ((j.text != null) ? j.text : ''));\n  reply = String(reply).trim();\n  if (!reply) { continue; }\n  const sp = (j.specialist != null) ? j.specialist : ((srcs[i] && srcs[i].json) ? srcs[i].json.specialist : null);\n  const label = (sp && LABEL[sp]) ? LABEL[sp] : (sp || 'Specialist');\n  parts.push('### ' + label + '\\n' + reply);\n}\nconst combined = parts.length ? parts.join('\\n\\n') : '';\nreturn [{ json: { question: question, combined: combined, parts_count: parts.length } }];"
+      },
+      "id": "a0000000-0000-0000-0000-0000000000f4",
+      "name": "Collect Replies",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1920, 120]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ 'Original request:\\n' + $json.question + '\\n\\nSpecialist answers:\\n' + $json.combined }}",
+        "messages": {
+          "messageValues": [
+            {
+              "type": "SystemMessagePromptTemplate",
+              "message": "You merge several specialist answers into ONE coherent reply for the operator of a self-hosted automation system. You are given the operator's original request and one or more labelled specialist answers (for example Operations, Code, Research, Infrastructure). Produce a single unified answer that addresses every part of the request, integrating the specialists' content without contradiction or repetition. Keep it natural and concise; use short headings or bullets only if it genuinely helps. Do not mention that multiple specialists, sub-agents, or internal components were involved, and never reveal internal tool or agent names — speak as one assistant. Preserve any concrete facts, file paths, commands, code, and any trailing [[SOURCES]] block verbatim from the specialist answers; never invent URLs, facts, or secrets. If a specialist answer is empty or missing, simply answer the parts you do have. Answer in the user's language (Hebrew or English), matching the original request."
+            }
+          ]
+        }
+      },
+      "id": "a0000000-0000-0000-0000-0000000000f5",
+      "name": "Synthesize",
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.5,
+      "position": [2120, 120]
+    },
+    {
+      "parameters": {
+        "model": "anthropic/claude-haiku-4.5",
+        "options": { "temperature": 0.3 }
+      },
+      "id": "a0000000-0000-0000-0000-0000000000f6",
+      "name": "Synthesis Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [2060, 320],
+      "credentials": { "openRouterApi": { "id": "@@CRED_OPENROUTER_ID@@", "name": "OpenRouter (factory-master)" } }
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "e4000000-0000-0000-0000-000000000001",
+              "name": "reply",
+              "type": "string",
+              "value": "={{ $json.text || $json.output }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a0000000-0000-0000-0000-0000000000f7",
+      "name": "Format Synthesis",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [2320, 120]
     }
   ],
   "connections": {
@@ -417,7 +535,7 @@
     "Resolve Entity": { "main": [[{ "node": "Resolver Gate", "type": "main", "index": 0 }]] },
     "Resolver Gate": {
       "main": [
-        [{ "node": "Route by Intent", "type": "main", "index": 0 }],
+        [{ "node": "Multi Gate", "type": "main", "index": 0 }],
         [{ "node": "Egress Validation", "type": "main", "index": 0 }]
       ]
     },
@@ -434,7 +552,19 @@
     "Call code Sub-workflow": { "main": [[{ "node": "Egress Validation", "type": "main", "index": 0 }]] },
     "Call research Sub-workflow": { "main": [[{ "node": "Egress Validation", "type": "main", "index": 0 }]] },
     "Call infra Sub-workflow": { "main": [[{ "node": "Egress Validation", "type": "main", "index": 0 }]] },
-    "Call unknown Sub-workflow": { "main": [[{ "node": "Egress Validation", "type": "main", "index": 0 }]] }
+    "Call unknown Sub-workflow": { "main": [[{ "node": "Egress Validation", "type": "main", "index": 0 }]] },
+    "Multi Gate": {
+      "main": [
+        [{ "node": "Build Fan-out Items", "type": "main", "index": 0 }],
+        [{ "node": "Route by Intent", "type": "main", "index": 0 }]
+      ]
+    },
+    "Build Fan-out Items": { "main": [[{ "node": "Run Specialists", "type": "main", "index": 0 }]] },
+    "Run Specialists": { "main": [[{ "node": "Collect Replies", "type": "main", "index": 0 }]] },
+    "Collect Replies": { "main": [[{ "node": "Synthesize", "type": "main", "index": 0 }]] },
+    "Synthesize": { "main": [[{ "node": "Format Synthesis", "type": "main", "index": 0 }]] },
+    "Synthesis Model": { "ai_languageModel": [[{ "node": "Synthesize", "type": "ai_languageModel", "index": 0 }]] },
+    "Format Synthesis": { "main": [[{ "node": "Egress Validation", "type": "main", "index": 0 }]] }
   },
   "settings": { "executionOrder": "v1" }
 }
