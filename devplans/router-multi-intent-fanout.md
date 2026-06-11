@@ -21,7 +21,7 @@ status: active
 |---|---|---|---|
 | 1 | מסלול fan-out מותנה במתזמר | completed | `templates/system/workflows/n8n/agent-router.json`, `tests/golden/system/**` |
 | 2 | סנכרון מקור-אמת + אימות חיווט | completed | `agents.manifest.json`, `AGENTS.md.template`, `subagent.contract.md`, `tests/golden/system/**` |
-| 3 | נעילת חוזה ה-classifier בבדיקות | pending | `scripts/eval_router.py` |
+| 3 | נעילת חוזה ה-classifier בבדיקות | completed | `scripts/eval_router.py` |
 | 4 | הוכחה על מערכת-טסט חיה → קידום → teardown | pending | (הקמה/הרצה חיה — ללא שינוי קוד) |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
@@ -80,16 +80,17 @@ status: active
 ### שלב 3 — נעילת חוזה ה-classifier בבדיקות (שינוי המחקר 7) + השלמת golden (8)
 
 **Acceptance:**
-- [ ] `scripts/eval_router.py` (`validate_prompt`) נועל גם `"intents"`+`"multi"` בפרומפט (חוזה חדש, offline, ללא סוד, שער PR).
-- [ ] `tests/router_battery.yaml` **לא** שונה (נשמר 250/50-לכל-מחלקה → מדד Macro-F1 שלם).
-- [ ] `check-agent-single-voice.sh` עובר ללא שינוי. golden מאומת בסנכרון (ללא `--update`).
-- [ ] CI ירוק.
+- [x] `scripts/eval_router.py` (`validate_prompt`) נועל גם `"intents"`+`"multi"` בפרומפט (חוזה חדש, offline, ללא סוד, שער PR).
+- [x] `tests/router_battery.yaml` **לא** שונה (נשמר 250/50-לכל-מחלקה → מדד Macro-F1 שלם).
+- [x] `check-agent-single-voice.sh` עובר ללא שינוי. golden מאומת בסנכרון (ללא `--update`).
+- [ ] CI ירוק — נאמת אחרי push.
 
-**הוכחה תפקודית (באותו שלב):** `python3 scripts/eval_router.py --check` עובר עם הנעילה החדשה;
-ובדיקה שלילית — שינוי זמני שמסיר `"multi"` מהפרומפט גורם ל-`--check` ליפול (מוכיח שהנעילה תופסת רגרסיה),
-ואז החזרה.
+**הוכחה תפקודית (באותו שלב):** `python3 scripts/eval_router.py --check` עבר על הקובץ האמיתי;
+**בדיקה שלילית** — קובץ זמני שהוסר ממנו `"multi"` (ובנפרד `"intents"`) הפיל את `--check` עם
+ההודעה הנכונה (exit 1) — מוכיח שהנעילה תופסת רגרסיה. `router_battery.yaml` לא נגע;
+`check-agent-single-voice.sh` + `check-system-golden.sh` ירוקים.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** ✅ הושלם ואומת offline (חיובי + שלילי). נותר לאמת CI אחרי push, ואז שלב 4 (החי).
 
 **שינוי תוכנית:** —
 
@@ -126,3 +127,4 @@ status: active
 
 - שלב 1 הושלם — הוספנו למתזמר מסלול שמזהה בקשה רב-תחומית, מריץ את המומחים הרלוונטיים ומאחד את תשובותיהם לתשובה אחת. בקשות רגילות ממשיכות כרגיל. בדקנו את הלוגיקה על דוגמאות (23 מתוך 23 עברו).
 - שלב 2 הושלם — עדכנו את התיעוד הפנימי שיתאר את היכולת החדשה, ואימתנו שההתקנה האוטומטית של המערכת לא צריכה שום שינוי כדי לתמוך בזה. בלי שינוי התנהגות.
+- שלב 3 הושלם — נעלנו את הפורמט החדש בבדיקה האוטומטית: אם מישהו בעתיד ישבור בטעות את החוזה, ה-CI יתפוס את זה כבר ב-PR. בדקנו שזה גם עובר כשהכול תקין וגם נופל כשמשהו נשבר. קובץ הבדיקות הגדול נשאר נקי.

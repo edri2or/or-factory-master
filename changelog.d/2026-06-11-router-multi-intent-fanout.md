@@ -57,3 +57,21 @@ orchestrator-workers).
   → **אין צורך בשורת sed חדשה** (מודל הסינתיסייזר literal, לא placeholder). `golden` רוענן
   (`MANIFEST.sha256` + `rendered/AGENTS.md`); `eval_router.py --check` ו-`check-agent-single-voice.sh`
   ירוקים (לא הושפעו).
+
+## מתזמר עם fan-out מותנה — שלב 3: נעילת חוזה ה-classifier בבדיקות
+
+נעילת הפורמט החדש של ה-classifier בשער ה-PR הדטרמיניסטי (`eval-agent-router-precheck.yml`),
+בלי לגעת בסוללת 250 המקרים.
+
+**Changes:**
+- `scripts/eval_router.py` (`validate_prompt`) — נוסף ל-tokens הנדרשים `"intents"` ו-`"multi"`
+  (לצד `"intent"`/`"confidence"`/`json`). שובר-חוזה — הסרת הוראת ה-fan-out מהפרומפט — נופל כעת
+  אדום כבר ב-PR (offline, ללא סוד). הערה בדוקסטרינג: `"intent"` הוא השדה הראשי העצמאי ואינו
+  נתפס בתוך `"intents"`, לכן שניהם נבדקים בנפרד.
+- `tests/router_battery.yaml` — **לא שונה** (250 מקרים, 50/מחלקה) → מדד ה-Macro-F1 נשמר;
+  `parse_intent` קורא רק את `intent`/`confidence` ולכן השדות החדשים אינם משפיעים על הציון.
+
+**הוכחה (offline, באותו שלב):** `eval_router.py --check` עובר על הקובץ האמיתי; **בדיקה שלילית** —
+קובץ-בדיקה זמני שהוסר ממנו `"multi"` (ובנפרד `"intents"`) הפיל את `--check` (exit 1) עם ההודעה
+הנכונה — מוכיח שהנעילה תופסת רגרסיה. `router_battery.yaml` לא נגע, `check-agent-single-voice.sh`
+ו-`check-system-golden.sh` ירוקים.

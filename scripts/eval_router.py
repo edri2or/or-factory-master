@@ -173,13 +173,17 @@ def validate_battery(cases):
 
 
 def validate_prompt(prompt: str):
-    """The classifier MUST instruct single-line JSON output {intent, confidence}.
+    """The classifier MUST instruct single-line JSON output carrying the FULL contract:
+    the single-pick fields {intent, confidence} AND the additive conditional-fan-out
+    fields {intents, multi}.
 
-    Stripping that instruction is the canonical regression this gate must catch
-    at PR time (DoD red-case), so its absence is a hard failure.
+    Stripping any of these instructions is the canonical regression this gate must
+    catch at PR time (DoD red-case), so absence is a hard failure. Note: the literal
+    token '"intent"' is the standalone primary field and does NOT match inside
+    '"intents"', so both are checked independently.
     """
     problems = []
-    for token in ('"intent"', '"confidence"'):
+    for token in ('"intent"', '"confidence"', '"intents"', '"multi"'):
         if token not in prompt:
             problems.append(f"classifier prompt missing {token} — JSON-output instruction removed?")
     if "json" not in prompt.lower():
