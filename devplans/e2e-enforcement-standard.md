@@ -24,7 +24,7 @@ registry-driven** שמכסה כל משטח-ריצה שדורש E2E — לא רק
 |---|---|---|---|
 | 1 | מסמך הסטנדרט + מטריצת-סיכון | completed | `docs/e2e-enforcement-standard.md` |
 | 2 | תשתית הרשם (בוט=ערך #1, אפס שינוי התנהגות) | completed | `e2e-surfaces.json`, `scripts/lib.sh`, `scripts/check-e2e-proof.sh`, `provision-system.yml` |
-| 3 | משטח Deploy/Caddy-HMAC (enforce) | pending | `scripts/deploy-verify.sh`, רשם, workflows, ruleset/provision |
+| 3 | משטח Deploy/Caddy-HMAC (enforce) | in-progress | `scripts/deploy-verify.sh`, `*/deploy-verify.yml`, רשם, provision |
 | 4 | 3 שערי MCP (חובה+חתומים, factory-wide) | pending | smoke scripts → proof-producers, רשם, gates |
 | 5 | Day-0 + Observability + MCP health (מייעץ) | pending | drivers, רשם (enforce:false) |
 
@@ -88,9 +88,15 @@ golden לא הושפע (אין שינוי ב-templates/system).
 
 **הוכחת E2E (artifact):** `e2e-proofs/deploy-edge-*.json` מריצה חיה.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** בנייה הושלמה — `deploy-verify.sh` (no-sig 401 / bad-sig 401 /
+valid-sig !=401 / rate-limit 429), ערך רשם `deploy-edge` (enforce:true, high), מפיקי-הוכחה
+`deploy-verify.yml` (פקטורי+תבנית), provision שולח, allowlist+exempt+golden. נבדק מקומית:
+שינוי Caddyfile בלי הוכחה → חסום (deploy-edge), עם הוכחה → עובר, ושינוי בוט בלבד → רק
+הבוט נדרש (משטחים עצמאיים). **אומת חי-מקדים על or-edri-4 דרך probe_endpoint: /healthz=200,
+webhook לא-חתום=401.** נשאר: ההוכחה החיה המלאה (deploy-verify.yml) על or-edri-4.
 
-**שינוי תוכנית:** —
+**שינוי תוכנית:** אין צורך ב-context חדש ב-ruleset — `check-e2e-proof.sh` כבר surface-aware,
+אז ה-context הקיים "E2E verification gate" מכסה את deploy-edge אוטומטית (שער אחד, פר-משטח).
 
 ---
 

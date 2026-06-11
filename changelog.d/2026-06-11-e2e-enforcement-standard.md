@@ -25,3 +25,21 @@ proof_producer / proof_glob / hash_inputs / freshness / scope / enforce); הבו
 
 **Changes:** `e2e-surfaces.json` (חדש), `scripts/lib.sh`, `scripts/check-e2e-proof.sh`,
 `.github/workflows/provision-system.yml`.
+
+## שלב 3 — משטח Deploy/Caddy-HMAC (enforce) — בנייה
+
+המשטח השני: קצה ה-Caddy/HMAC. `scripts/deploy-verify.sh` מריץ את הקצה החי ומאמת
+**התנהגות אבטחה**: `/webhook/*` בלי חתימה → 401, חתימה רעה → 401, חתימת HMAC-SHA256 תקפה
+(header `X-Hub-Signature-256: sha256=<hex>`, מפתח `webhook-hmac-secret`) → לא-401, ו-burst
+מקבילי → 429. ערך רשם `deploy-edge` (risk_tier high, enforce:true; trigger/hash על
+Caddyfile/Dockerfile.caddy/caddy/hmacguard/deploy workflow). מפיקי-הוכחה `deploy-verify.yml`
+(פקטורי+תבנית) — WIF, מריצים את ה-driver, חותמים `e2e-proofs/deploy-edge-<slug>.json`.
+provision שולח את שניהם; allowlist (MCP) + registry-exempt (watchdog) + golden עודכנו.
+**אין context חדש** — `check-e2e-proof.sh` surface-aware, ה-context הקיים מכסה. נבדק מקומית
+(חסום בלי הוכחה / עובר עם / משטחים עצמאיים); אומת חי-מקדים על or-edri-4 (probe_endpoint:
+healthz 200, webhook לא-חתום 401).
+
+**Changes:** `scripts/deploy-verify.sh` (חדש), `e2e-surfaces.json`,
+`.github/workflows/deploy-verify.yml` (חדש), `templates/system/.github/workflows/deploy-verify.yml`
+(חדש), `.github/workflows/provision-system.yml`, `services/mcp-server/src/tools.ts`,
+`monitoring/registry-exempt.txt`, `tests/golden/system/MANIFEST.sha256`.

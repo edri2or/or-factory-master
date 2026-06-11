@@ -399,6 +399,7 @@ export function registerTools(server: McpServer): void {
     'bootstrap-sandbox-tester.yml',
     'prove-on-test-system.yml',
     'e2e-verify.yml',
+    'deploy-verify.yml',
     'cleanup-orphan-linear-webhooks.yml',
   ]);
 

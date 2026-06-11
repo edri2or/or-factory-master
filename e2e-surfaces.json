@@ -19,6 +19,30 @@
       ],
       "freshness_days": 14,
       "enforce": true
+    },
+    {
+      "id": "deploy-edge",
+      "name_he": "קצה Caddy/HMAC (deploy)",
+      "risk_tier": "high",
+      "scope": "system",
+      "trigger_paths": [
+        "Caddyfile",
+        "Dockerfile.caddy",
+        "caddy/hmacguard/*.go",
+        "caddy/hmacguard/go.mod",
+        ".github/workflows/deploy-railway-cloudflare.yml"
+      ],
+      "proof_producer": "deploy-verify.yml",
+      "proof_glob": "e2e-proofs/deploy-edge-*.json",
+      "hash_inputs": [
+        "Caddyfile",
+        "Dockerfile.caddy",
+        "caddy/hmacguard/*.go",
+        "caddy/hmacguard/go.mod",
+        ".github/workflows/deploy-railway-cloudflare.yml"
+      ],
+      "freshness_days": 30,
+      "enforce": true
     }
   ]
 }
