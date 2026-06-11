@@ -575,34 +575,30 @@ jobs:
                 # the 2.x upgrade). So we TRY the candidate run-body shapes in order and KEEP the first
                 # that actually executes Create Tables — VERIFIED via lastNodeExecuted, never HTTP 200
                 # alone. db-setup is idempotent (CREATE IF NOT EXISTS) so repeated runs are safe.
-                _db_last_node() {  # echo the latest db-setup execution's lastNodeExecuted ("" if none)
+                _db_ok() {  # 0 if the latest db-setup execution actually ran "Create Tables"
                   local eid=""
                   _napi GET "$BASE/rest/executions?filter=%7B%22workflowId%22%3A%22${DB_SETUP_ID}%22%7D&limit=1" /tmp/ar-db-exec.json >/dev/null 2>&1 || true
                   eid=$(jq -r '(.data[0].id) // (.results[0].id) // empty' /tmp/ar-db-exec.json 2>/dev/null || echo "")
-                  { [ -n "$eid" ] && [ "$eid" != "null" ]; } || { echo ""; return 0; }
+                  { [ -n "$eid" ] && [ "$eid" != "null" ]; } || { _napi GET "$BASE/rest/executions?limit=1" /tmp/ar-db-exec.json >/dev/null 2>&1 || true; eid=$(jq -r '(.data[0].id) // (.results[0].id) // empty' /tmp/ar-db-exec.json 2>/dev/null || echo ""); }
+                  { [ -n "$eid" ] && [ "$eid" != "null" ]; } || return 1
                   _napi GET "$BASE/rest/executions/${eid}?includeData=true" /tmp/ar-db-exec2.json >/dev/null 2>&1 || true
-                  jq -r '(.data.resultData.lastNodeExecuted) // (.resultData.lastNodeExecuted) // empty' /tmp/ar-db-exec2.json 2>/dev/null || echo ""
+                  # The execution data field is often stringified JSON; grep the raw text for
+                  # lastNodeExecuted == "Create Tables" (robust to escaping/nesting; jq path is not).
+                  grep -qE 'lastNodeExecuted.{0,8}Create Tables' /tmp/ar-db-exec2.json 2>/dev/null
                 }
-                # Full UI-equivalent body (workflowData + triggerToStartFrom) as a last resort.
+                # The workflowData + triggerToStartFrom body (n8n's "Execute workflow" UI shape) is
+                # the PROVEN winner (factory-test-061: ran Create Tables); plain triggerToStartFrom is
+                # a fallback. The {destinationNode}/{startNodes} shapes 500 or run only the trigger.
                 WF_FULL_BODY=$(jq -cn --slurpfile w /tmp/ar-prep-db-setup.json '{workflowData:$w[0],runData:{},triggerToStartFrom:{name:"Run Once"}}' 2>/dev/null || echo "")
-                DB_LAST_NODE=""
-                for RUN_BODY in \
-                  '{"triggerToStartFrom":{"name":"Run Once"}}' \
-                  '{"destinationNode":{"nodeName":"Create Tables"},"runData":{"Run Once":[{"data":{"main":[[{"json":{}}]]}}]}}' \
-                  '{"startNodes":[{"name":"Create Tables"}],"runData":{"Run Once":[{"data":{"main":[[{"json":{}}]]}}]}}' \
-                  "${WF_FULL_BODY:-SKIP}" ; do
+                DB_OK=""
+                for RUN_BODY in "${WF_FULL_BODY:-SKIP}" '{"triggerToStartFrom":{"name":"Run Once"}}' ; do
                   { [ -n "$RUN_BODY" ] && [ "$RUN_BODY" != "SKIP" ]; } || continue
                   HTTP=$(_napi POST "$BASE/rest/workflows/${DB_SETUP_ID}/run" /tmp/ar-db-run.json "$RUN_BODY")
                   sleep 3
-                  DB_LAST_NODE=$(_db_last_node)
-                  echo "INFO: db-setup /run HTTP=${HTTP} lastNode='${DB_LAST_NODE:-?}' body=$(printf '%s' "$RUN_BODY" | head -c 70)"
-                  if [ "$DB_LAST_NODE" = "Create Tables" ]; then break; fi
+                  if _db_ok; then DB_OK=1; echo "PASS: db-setup ran — Create Tables executed (HTTP ${HTTP}); Postgres tables created/ensured"; break; fi
+                  echo "INFO: db-setup /run HTTP=${HTTP} — Create Tables not confirmed for this body shape; trying next"
                 done
-                if [ "$DB_LAST_NODE" = "Create Tables" ]; then
-                  echo "PASS: db-setup ran — Create Tables executed (id=${DB_SETUP_ID}); Postgres tables created/ensured"
-                else
-                  echo "WARN: db-setup — Create Tables never executed across all run-body shapes (lastNode='${DB_LAST_NODE:-unknown}') — Postgres tables NOT created." >&2
-                fi
+                [ -n "$DB_OK" ] || echo "WARN: db-setup — could not confirm Create Tables executed across run-body shapes — Postgres tables may be missing." >&2
               else
                 echo "WARN: db-setup workflow install failed — Postgres tables not created" >&2
                 DB_SETUP_ID=""

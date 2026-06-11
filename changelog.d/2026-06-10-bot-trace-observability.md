@@ -82,3 +82,10 @@
   (CREATE IF NOT EXISTS) אז ריצות חוזרות בטוחות; שורות INFO מדווחות איזו צורה עבדה (תיעוד-עצמי + עמידות).
 - אומת: yamllint; golden רוענן; שערי-הזהב + executeWorkflow gate ירוקים. (אימות חי על
   factory-test-061 — לאחר ההחלה.)
+- **הוכחה חיה הצליחה + ליטושים שההוכחה הכתיבה:** `tool_trace_recent` הוכח חי על factory-test-061
+  (5 קריאות-כלי עם ניסיון→תוצאה: postgres_named_query + railway_readonly, status/input/output/duration;
+  הקריאה הנוכחית הופיעה כ-`attempted` — מנגנון הפער חי). ליטושים שנדרשו: (1) `conversation_transcript`
+  החזיר content=null → `COALESCE(message->'data'->>'content', message->>'content', message->'data'->'kwargs'->>'content')`
+  לעמידות מול צורות-סריאליזציה שונות של LangChain; (2) `claim_actual_mismatch` — חלון ה-90 שניות הוצמד
+  רק למקרה ה-no-result (פער-שקט), כך ש-`failed` מסומן מיד; (3) אימות db-setup הוחלף ל-grep על
+  `lastNodeExecuted` (ה-jq נכשל כי שדה ה-data של n8n הוא JSON-כמחרוזת), וה-body המנצח (workflowData) הוקדם.

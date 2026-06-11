@@ -245,7 +245,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT id, message->>'type' AS role, message->'data'->>'content' AS content, message->'data'->'tool_calls' AS tool_calls FROM n8n_chat_histories WHERE session_id = 'tg:' || '@@CHAT_ID@@' ORDER BY id DESC LIMIT 30;",
+        "query": "SELECT id, message->>'type' AS role, COALESCE(message->'data'->>'content', message->>'content', message->'data'->'kwargs'->>'content') AS content, COALESCE(message->'data'->'tool_calls', message->'tool_calls', message->'data'->'kwargs'->'tool_calls') AS tool_calls FROM n8n_chat_histories WHERE session_id = 'tg:' || '@@CHAT_ID@@' ORDER BY id DESC LIMIT 30;",
         "options": {}
       },
       "id": "50000000-0000-0000-0000-00000000000c",
@@ -275,7 +275,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "WITH per_call AS (SELECT tool_call_id, max(tool_name) AS tool_name, max(turn_id) AS turn_id, min(started_at) AS started_at, max(finished_at) AS finished_at, bool_or(status = 'success') AS had_success, bool_or(status = 'failed') AS had_failure, (array_agg(error_message) FILTER (WHERE error_message IS NOT NULL))[1] AS error_message, (array_agg(input_summary ORDER BY id))[1] AS input_summary FROM agent_trace_events WHERE session_id = 'tg:' || '@@CHAT_ID@@' AND started_at > now() - interval '24 hours' GROUP BY tool_call_id) SELECT pc.tool_call_id, pc.tool_name, pc.turn_id, pc.started_at, pc.error_message, pc.input_summary, CASE WHEN pc.had_failure THEN 'failed' WHEN pc.finished_at IS NULL THEN 'silently_dropped' ELSE 'no_success' END AS mismatch_kind, ch.message->'data'->>'content' AS operator_message FROM per_call pc LEFT JOIN n8n_chat_histories ch ON ch.id = pc.turn_id WHERE (pc.had_failure OR NOT pc.had_success) AND pc.started_at < now() - interval '90 seconds' ORDER BY pc.started_at DESC LIMIT 50;",
+        "query": "WITH per_call AS (SELECT tool_call_id, max(tool_name) AS tool_name, max(turn_id) AS turn_id, min(started_at) AS started_at, max(finished_at) AS finished_at, bool_or(status = 'success') AS had_success, bool_or(status = 'failed') AS had_failure, (array_agg(error_message) FILTER (WHERE error_message IS NOT NULL))[1] AS error_message, (array_agg(input_summary ORDER BY id))[1] AS input_summary FROM agent_trace_events WHERE session_id = 'tg:' || '@@CHAT_ID@@' AND started_at > now() - interval '24 hours' GROUP BY tool_call_id) SELECT pc.tool_call_id, pc.tool_name, pc.turn_id, pc.started_at, pc.error_message, pc.input_summary, CASE WHEN pc.had_failure THEN 'failed' WHEN pc.finished_at IS NULL THEN 'silently_dropped' ELSE 'no_success' END AS mismatch_kind, ch.message->'data'->>'content' AS operator_message FROM per_call pc LEFT JOIN n8n_chat_histories ch ON ch.id = pc.turn_id WHERE pc.had_failure OR (NOT pc.had_success AND pc.started_at < now() - interval '90 seconds') ORDER BY pc.started_at DESC LIMIT 50;",
         "options": {}
       },
       "id": "50000000-0000-0000-0000-00000000000e",
