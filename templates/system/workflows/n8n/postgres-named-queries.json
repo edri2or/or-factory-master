@@ -13,7 +13,7 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "// Normalize the LLM's tool args into a uniform { query_name } shape.\n// Stage 113 (verified end-to-end on tgbot15 with the operator's real Telegram\n// message): the toolWorkflow node has `specifyInputSchema:false`, so the LLM\n// passes a single RAW STRING as the tool's arg (no JSON wrapping). With the\n// trigger in passthrough mode, that string arrives at $json.query. Stage 110's\n// workflowInputs path + Stage 112's schemaType:\"fromJson\" both failed (the LLM\n// kept sending query_name:null in those modes — confirmed via DEBUG1+DEBUG2\n// Telegram messages on tgbot14/15). This normalizer tries every observed shape\n// in order so the Switch downstream can read `$json.query_name` uniformly.\nconst items = $input.all();\nconst raw = (items[0] && items[0].json) || {};\nconst valid = ['style_profile_get', 'recent_audit_log', 'pending_actions_open', 'executions_summary_24h', 'spend_total'];\nconst tryString = (s) => {\n  if (typeof s !== 'string') return '';\n  const t = s.trim();\n  if (!t) return '';\n  if (valid.indexOf(t) >= 0) return t;\n  try { const p = JSON.parse(t); if (p && typeof p.query_name === 'string') return p.query_name; } catch (e) { /* ignore */ }\n  return '';\n};\nlet qn = '';\nif (typeof raw.query_name === 'string' && raw.query_name) {\n  qn = raw.query_name;\n} else if (typeof raw.query === 'string') {\n  qn = tryString(raw.query);\n} else if (raw.query && typeof raw.query === 'object' && typeof raw.query.query_name === 'string') {\n  qn = raw.query.query_name;\n} else if (raw.input && typeof raw.input.query_name === 'string') {\n  qn = raw.input.query_name;\n} else if (typeof raw.arguments === 'string') {\n  qn = tryString(raw.arguments);\n}\nreturn [{ json: { query_name: qn, _raw_input: raw } }];"
+        "jsCode": "// Normalize the LLM's tool args into a uniform { query_name } shape.\n// Stage 113 (verified end-to-end on tgbot15 with the operator's real Telegram\n// message): the toolWorkflow node has `specifyInputSchema:false`, so the LLM\n// passes a single RAW STRING as the tool's arg (no JSON wrapping). With the\n// trigger in passthrough mode, that string arrives at $json.query. Stage 110's\n// workflowInputs path + Stage 112's schemaType:\"fromJson\" both failed (the LLM\n// kept sending query_name:null in those modes — confirmed via DEBUG1+DEBUG2\n// Telegram messages on tgbot14/15). This normalizer tries every observed shape\n// in order so the Switch downstream can read `$json.query_name` uniformly.\nconst items = $input.all();\nconst raw = (items[0] && items[0].json) || {};\nconst valid = ['style_profile_get', 'recent_audit_log', 'pending_actions_open', 'executions_summary_24h', 'spend_total', 'conversation_transcript', 'tool_trace_recent', 'claim_actual_mismatch'];\nconst tryString = (s) => {\n  if (typeof s !== 'string') return '';\n  const t = s.trim();\n  if (!t) return '';\n  if (valid.indexOf(t) >= 0) return t;\n  try { const p = JSON.parse(t); if (p && typeof p.query_name === 'string') return p.query_name; } catch (e) { /* ignore */ }\n  return '';\n};\nlet qn = '';\nif (typeof raw.query_name === 'string' && raw.query_name) {\n  qn = raw.query_name;\n} else if (typeof raw.query === 'string') {\n  qn = tryString(raw.query);\n} else if (raw.query && typeof raw.query === 'object' && typeof raw.query.query_name === 'string') {\n  qn = raw.query.query_name;\n} else if (raw.input && typeof raw.input.query_name === 'string') {\n  qn = raw.input.query_name;\n} else if (typeof raw.arguments === 'string') {\n  qn = tryString(raw.arguments);\n}\nreturn [{ json: { query_name: qn, _raw_input: raw } }];"
       },
       "id": "50000000-0000-0000-0000-00000000000a",
       "name": "Normalize Input",
@@ -33,7 +33,7 @@
                 "conditions": [
                   {
                     "id": "51000000-0000-0000-0000-000000000001",
-                    "leftValue": "={{ $json.query_name }}",
+                    "leftValue": "={{ $('Normalize Input').first().json.query_name }}",
                     "rightValue": "style_profile_get",
                     "operator": { "type": "string", "operation": "equals" }
                   }
@@ -49,7 +49,7 @@
                 "conditions": [
                   {
                     "id": "51000000-0000-0000-0000-000000000002",
-                    "leftValue": "={{ $json.query_name }}",
+                    "leftValue": "={{ $('Normalize Input').first().json.query_name }}",
                     "rightValue": "recent_audit_log",
                     "operator": { "type": "string", "operation": "equals" }
                   }
@@ -65,7 +65,7 @@
                 "conditions": [
                   {
                     "id": "51000000-0000-0000-0000-000000000003",
-                    "leftValue": "={{ $json.query_name }}",
+                    "leftValue": "={{ $('Normalize Input').first().json.query_name }}",
                     "rightValue": "pending_actions_open",
                     "operator": { "type": "string", "operation": "equals" }
                   }
@@ -81,7 +81,7 @@
                 "conditions": [
                   {
                     "id": "51000000-0000-0000-0000-000000000004",
-                    "leftValue": "={{ $json.query_name }}",
+                    "leftValue": "={{ $('Normalize Input').first().json.query_name }}",
                     "rightValue": "executions_summary_24h",
                     "operator": { "type": "string", "operation": "equals" }
                   }
@@ -97,7 +97,7 @@
                 "conditions": [
                   {
                     "id": "51000000-0000-0000-0000-000000000005",
-                    "leftValue": "={{ $json.query_name }}",
+                    "leftValue": "={{ $('Normalize Input').first().json.query_name }}",
                     "rightValue": "spend_total",
                     "operator": { "type": "string", "operation": "equals" }
                   }
@@ -105,6 +105,54 @@
               },
               "renameOutput": true,
               "outputKey": "spend_total"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose", "version": 2 },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "51000000-0000-0000-0000-000000000006",
+                    "leftValue": "={{ $('Normalize Input').first().json.query_name }}",
+                    "rightValue": "conversation_transcript",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "conversation_transcript"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose", "version": 2 },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "51000000-0000-0000-0000-000000000007",
+                    "leftValue": "={{ $('Normalize Input').first().json.query_name }}",
+                    "rightValue": "tool_trace_recent",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "tool_trace_recent"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose", "version": 2 },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "51000000-0000-0000-0000-000000000008",
+                    "leftValue": "={{ $('Normalize Input').first().json.query_name }}",
+                    "rightValue": "claim_actual_mismatch",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "claim_actual_mismatch"
             }
           ]
         },
@@ -117,7 +165,7 @@
       "name": "Route by Query Name",
       "type": "n8n-nodes-base.switch",
       "typeVersion": 3.2,
-      "position": [440, 320]
+      "position": [840, 320]
     },
     {
       "parameters": {
@@ -129,7 +177,7 @@
       "name": "Q: style_profile_get",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
-      "position": [680, 140],
+      "position": [1080, 140],
       "credentials": { "postgres": { "id": "@@CRED_POSTGRES_ID@@", "name": "Postgres (n8n)" } },
       "onError": "continueRegularOutput",
       "alwaysOutputData": true
@@ -144,7 +192,7 @@
       "name": "Q: recent_audit_log",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
-      "position": [680, 260],
+      "position": [1080, 240],
       "credentials": { "postgres": { "id": "@@CRED_POSTGRES_ID@@", "name": "Postgres (n8n)" } },
       "onError": "continueRegularOutput",
       "alwaysOutputData": true
@@ -159,7 +207,7 @@
       "name": "Q: pending_actions_open",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
-      "position": [680, 380],
+      "position": [1080, 340],
       "credentials": { "postgres": { "id": "@@CRED_POSTGRES_ID@@", "name": "Postgres (n8n)" } },
       "onError": "continueRegularOutput",
       "alwaysOutputData": true
@@ -174,7 +222,7 @@
       "name": "Q: executions_summary_24h",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
-      "position": [680, 500],
+      "position": [1080, 440],
       "credentials": { "postgres": { "id": "@@CRED_POSTGRES_ID@@", "name": "Postgres (n8n)" } },
       "onError": "continueRegularOutput",
       "alwaysOutputData": true
@@ -189,7 +237,52 @@
       "name": "Q: spend_total",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
-      "position": [680, 620],
+      "position": [1080, 540],
+      "credentials": { "postgres": { "id": "@@CRED_POSTGRES_ID@@", "name": "Postgres (n8n)" } },
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, message->>'type' AS role, COALESCE(message->'data'->>'content', message->>'content', message->'data'->'kwargs'->>'content') AS content, COALESCE(message->'data'->'tool_calls', message->'tool_calls', message->'data'->'kwargs'->'tool_calls') AS tool_calls FROM n8n_chat_histories WHERE session_id = 'tg:' || '@@CHAT_ID@@' ORDER BY id DESC LIMIT 30;",
+        "options": {}
+      },
+      "id": "50000000-0000-0000-0000-00000000000c",
+      "name": "Q: conversation_transcript",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1080, 640],
+      "credentials": { "postgres": { "id": "@@CRED_POSTGRES_ID@@", "name": "Postgres (n8n)" } },
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id, trace_id, session_id, turn_id, tool_name, tool_call_id, status, input_summary, output_summary, error_message, started_at, finished_at, duration_ms FROM agent_trace_events WHERE session_id = 'tg:' || '@@CHAT_ID@@' ORDER BY started_at DESC LIMIT 50;",
+        "options": {}
+      },
+      "id": "50000000-0000-0000-0000-00000000000d",
+      "name": "Q: tool_trace_recent",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1080, 740],
+      "credentials": { "postgres": { "id": "@@CRED_POSTGRES_ID@@", "name": "Postgres (n8n)" } },
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH per_call AS (SELECT tool_call_id, max(tool_name) AS tool_name, max(turn_id) AS turn_id, min(started_at) AS started_at, max(finished_at) AS finished_at, bool_or(status = 'success') AS had_success, bool_or(status = 'failed') AS had_failure, (array_agg(error_message) FILTER (WHERE error_message IS NOT NULL))[1] AS error_message, (array_agg(input_summary ORDER BY id))[1] AS input_summary FROM agent_trace_events WHERE session_id = 'tg:' || '@@CHAT_ID@@' AND started_at > now() - interval '24 hours' GROUP BY tool_call_id) SELECT pc.tool_call_id, pc.tool_name, pc.turn_id, pc.started_at, pc.error_message, pc.input_summary, CASE WHEN pc.had_failure THEN 'failed' WHEN pc.finished_at IS NULL THEN 'silently_dropped' ELSE 'no_success' END AS mismatch_kind, ch.message->'data'->>'content' AS operator_message FROM per_call pc LEFT JOIN n8n_chat_histories ch ON ch.id = pc.turn_id WHERE pc.had_failure OR (NOT pc.had_success AND pc.started_at < now() - interval '90 seconds') ORDER BY pc.started_at DESC LIMIT 50;",
+        "options": {}
+      },
+      "id": "50000000-0000-0000-0000-00000000000e",
+      "name": "Q: claim_actual_mismatch",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1080, 840],
       "credentials": { "postgres": { "id": "@@CRED_POSTGRES_ID@@", "name": "Postgres (n8n)" } },
       "onError": "continueRegularOutput",
       "alwaysOutputData": true
@@ -197,13 +290,13 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "// Format any of the 5 Postgres branch outputs into a uniform tool response.\n// Postgres nodes with alwaysOutputData:true emit one empty {} when SELECT returns\n// zero rows; filter that out so the LLM sees rows:[] rather than rows:[{}].\n// query_name comes from the Normalize Input node (Stage 111) which extracts it\n// defensively from any of the possible toolWorkflow payload shapes.\nconst normalized = $('Normalize Input').first().json || {};\nconst rows = $input.all()\n  .map(i => i.json)\n  .filter(o => o && typeof o === 'object' && Object.keys(o).length > 0);\nreturn [{ json: { ok: true, query_name: String(normalized.query_name || ''), rows: rows } }];"
+        "jsCode": "// Format any of the Postgres branch outputs into a uniform tool response.\n// Postgres nodes with alwaysOutputData:true emit one empty {} when SELECT returns\n// zero rows; filter that out so the LLM sees rows:[] rather than rows:[{}].\n// query_name comes from the Normalize Input node (Stage 111) which extracts it\n// defensively from any of the possible toolWorkflow payload shapes.\nconst normalized = $('Normalize Input').first().json || {};\nconst rows = $input.all()\n  .map(i => i.json)\n  .filter(o => o && typeof o === 'object' && Object.keys(o).length > 0);\nreturn [{ json: { ok: true, query_name: String(normalized.query_name || ''), rows: rows } }];"
       },
       "id": "50000000-0000-0000-0000-000000000007",
       "name": "Format Output",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [920, 320]
+      "position": [1320, 320]
     },
     {
       "parameters": {
@@ -226,7 +319,7 @@
               "id": "52000000-0000-0000-0000-000000000003",
               "name": "error",
               "type": "string",
-              "value": "unknown query_name — valid: style_profile_get, recent_audit_log, pending_actions_open, executions_summary_24h, spend_total"
+              "value": "unknown query_name — valid: style_profile_get, recent_audit_log, pending_actions_open, executions_summary_24h, spend_total, conversation_transcript, tool_trace_recent, claim_actual_mismatch"
             },
             {
               "id": "52000000-0000-0000-0000-000000000004",
@@ -242,12 +335,66 @@
       "name": "Unknown Query",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
-      "position": [920, 620]
+      "position": [1320, 840]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// bot-trace-observability: mint a per-tool-call id + a SQL-safe input summary.\n// tool_call_id is generated in JS (same idiom as request-write-action's\n// idempotency_key) so every downstream trace node references it by name.\n// esc() doubles single quotes (the repo's SQL-safe convention) so arbitrary\n// LLM input can never break the INSERT. onError on the writers keeps the bot safe.\nconst j = ($input.first() && $input.first().json) || {};\nconst esc = (s) => String(s).replace(/'/g, \"''\");\nconst toolCallId = Date.now() + '-' + Math.random().toString(36).slice(2, 12);\nlet summary = '';\ntry { summary = JSON.stringify({ query_name: j.query_name || '', raw: j._raw_input || {} }); } catch (e) { summary = '{}'; }\nif (summary.length > 2000) { summary = summary.slice(0, 2000); }\nreturn [{ json: { query_name: j.query_name || '', _raw_input: j._raw_input || {}, tool_call_id: toolCallId, input_summary_sql: esc(summary) } }];"
+      },
+      "id": "53000000-0000-0000-0000-000000000001",
+      "name": "Mint Trace",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [560, 320]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO agent_trace_events (trace_id, session_id, turn_id, tool_name, tool_call_id, status, input_summary, started_at) VALUES ('{{ $('Mint Trace').first().json.tool_call_id }}', 'tg:' || '@@CHAT_ID@@', (SELECT max(id) FROM n8n_chat_histories WHERE session_id = 'tg:' || '@@CHAT_ID@@'), 'postgres_named_query', '{{ $('Mint Trace').first().json.tool_call_id }}', 'attempted', '{{ $('Mint Trace').first().json.input_summary_sql }}'::jsonb, now());",
+        "options": {}
+      },
+      "id": "53000000-0000-0000-0000-000000000002",
+      "name": "Write Trace Attempt",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [680, 320],
+      "credentials": { "postgres": { "id": "@@CRED_POSTGRES_ID@@", "name": "Postgres (n8n)" } },
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE agent_trace_events SET status = '{{ $json.ok ? \"success\" : \"failed\" }}', output_summary = jsonb_build_object('ok', {{ $json.ok ? \"true\" : \"false\" }}, 'row_count', {{ Array.isArray($json.rows) ? $json.rows.length : 0 }}), error_message = {{ $json.ok ? \"NULL\" : \"'tool returned ok:false'\" }}, finished_at = now(), duration_ms = CAST(EXTRACT(EPOCH FROM (now() - started_at)) * 1000 AS INTEGER) WHERE tool_call_id = '{{ $('Mint Trace').first().json.tool_call_id }}';",
+        "options": {}
+      },
+      "id": "53000000-0000-0000-0000-000000000003",
+      "name": "Write Trace Result",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [1500, 320],
+      "credentials": { "postgres": { "id": "@@CRED_POSTGRES_ID@@", "name": "Postgres (n8n)" } },
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// bot-trace-observability: re-assert the original tool payload as the LAST node\n// on the path, so this toolWorkflow returns {ok,query_name,rows} to the LLM —\n// NOT the trace UPDATE result. Reads Format Output by name (robust to the trace\n// write clobbering $json).\nreturn [{ json: $('Format Output').first().json }];"
+      },
+      "id": "53000000-0000-0000-0000-000000000004",
+      "name": "Return Tool Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1680, 320]
     }
   ],
   "connections": {
     "When Executed by Another Workflow": { "main": [[{ "node": "Normalize Input", "type": "main", "index": 0 }]] },
-    "Normalize Input": { "main": [[{ "node": "Route by Query Name", "type": "main", "index": 0 }]] },
+    "Normalize Input": { "main": [[{ "node": "Mint Trace", "type": "main", "index": 0 }]] },
+    "Mint Trace": { "main": [[{ "node": "Write Trace Attempt", "type": "main", "index": 0 }]] },
+    "Write Trace Attempt": { "main": [[{ "node": "Route by Query Name", "type": "main", "index": 0 }]] },
     "Route by Query Name": {
       "main": [
         [{ "node": "Q: style_profile_get", "type": "main", "index": 0 }],
@@ -255,6 +402,9 @@
         [{ "node": "Q: pending_actions_open", "type": "main", "index": 0 }],
         [{ "node": "Q: executions_summary_24h", "type": "main", "index": 0 }],
         [{ "node": "Q: spend_total", "type": "main", "index": 0 }],
+        [{ "node": "Q: conversation_transcript", "type": "main", "index": 0 }],
+        [{ "node": "Q: tool_trace_recent", "type": "main", "index": 0 }],
+        [{ "node": "Q: claim_actual_mismatch", "type": "main", "index": 0 }],
         [{ "node": "Unknown Query", "type": "main", "index": 0 }]
       ]
     },
@@ -262,7 +412,12 @@
     "Q: recent_audit_log": { "main": [[{ "node": "Format Output", "type": "main", "index": 0 }]] },
     "Q: pending_actions_open": { "main": [[{ "node": "Format Output", "type": "main", "index": 0 }]] },
     "Q: executions_summary_24h": { "main": [[{ "node": "Format Output", "type": "main", "index": 0 }]] },
-    "Q: spend_total": { "main": [[{ "node": "Format Output", "type": "main", "index": 0 }]] }
+    "Q: spend_total": { "main": [[{ "node": "Format Output", "type": "main", "index": 0 }]] },
+    "Q: conversation_transcript": { "main": [[{ "node": "Format Output", "type": "main", "index": 0 }]] },
+    "Q: tool_trace_recent": { "main": [[{ "node": "Format Output", "type": "main", "index": 0 }]] },
+    "Q: claim_actual_mismatch": { "main": [[{ "node": "Format Output", "type": "main", "index": 0 }]] },
+    "Format Output": { "main": [[{ "node": "Write Trace Result", "type": "main", "index": 0 }]] },
+    "Write Trace Result": { "main": [[{ "node": "Return Tool Payload", "type": "main", "index": 0 }]] }
   },
   "settings": { "executionOrder": "v1" }
 }

@@ -567,20 +567,38 @@ jobs:
               sed -e "s#@@CRED_POSTGRES_ID@@#${CRED_POSTGRES_ID}#g" "$DB_SRC" > /tmp/ar-prep-db-setup.json
               DB_SETUP_ID=$(_upsert_wf "factory-master: db-setup" /tmp/ar-prep-db-setup.json no) || DB_SETUP_ID=""
               if [ -n "$DB_SETUP_ID" ] && [ "$DB_SETUP_ID" != "null" ]; then
-                # n8n 2.x /rest/workflows/:id/run: workflowData/startNodes are
-                # IGNORED (the controller loads the workflow from the DB), and
-                # destinationNode is now an OBJECT {nodeName}, not a string. The
-                # minimal full manual execution from the auto-detected trigger is
-                # just the destination node (the "unknown trigger" shape: no
-                # triggerToStartFrom, no runData) — runs Run Once → Create Tables.
-                # A 1.x-shaped body 500s ("node named undefined"). Soft-guarded below.
-                RUN_BODY='{"destinationNode":{"nodeName":"Create Tables"}}'
-                HTTP=$(_napi POST "$BASE/rest/workflows/${DB_SETUP_ID}/run" /tmp/ar-db-run.json "$RUN_BODY")
-                if [ "$HTTP" = "200" ] || [ "$HTTP" = "201" ]; then
-                  echo "PASS: db-setup ran (id=${DB_SETUP_ID}) — Postgres tables ensured"
-                else
-                  echo "WARN: db-setup run HTTP ${HTTP} (body: $(head -c 200 /tmp/ar-db-run.json 2>/dev/null | tr '\n' ' ')) — tables may be missing" >&2
-                fi
+                # n8n 2.x manual /run is finicky for a manualTrigger workflow: the obvious
+                # {"destinationNode":{"nodeName":"Create Tables"}} body (even +triggerToStartFrom)
+                # runs ONLY the "Run Once" trigger and STOPS — "Create Tables" never executes, so
+                # NO Postgres tables are created, yet /run returns 200 (silent false-positive proven
+                # live on factory-test-061; broke spend/audit/style/pending + agent_trace_events since
+                # the 2.x upgrade). So we TRY the candidate run-body shapes in order and KEEP the first
+                # that actually executes Create Tables — VERIFIED via lastNodeExecuted, never HTTP 200
+                # alone. db-setup is idempotent (CREATE IF NOT EXISTS) so repeated runs are safe.
+                _db_ok() {  # 0 if the latest db-setup execution actually ran "Create Tables"
+                  local eid=""
+                  _napi GET "$BASE/rest/executions?filter=%7B%22workflowId%22%3A%22${DB_SETUP_ID}%22%7D&limit=1" /tmp/ar-db-exec.json >/dev/null 2>&1 || true
+                  eid=$(jq -r '(.data[0].id) // (.results[0].id) // empty' /tmp/ar-db-exec.json 2>/dev/null || echo "")
+                  { [ -n "$eid" ] && [ "$eid" != "null" ]; } || { _napi GET "$BASE/rest/executions?limit=1" /tmp/ar-db-exec.json >/dev/null 2>&1 || true; eid=$(jq -r '(.data[0].id) // (.results[0].id) // empty' /tmp/ar-db-exec.json 2>/dev/null || echo ""); }
+                  { [ -n "$eid" ] && [ "$eid" != "null" ]; } || return 1
+                  _napi GET "$BASE/rest/executions/${eid}?includeData=true" /tmp/ar-db-exec2.json >/dev/null 2>&1 || true
+                  # The execution data field is often stringified JSON; grep the raw text for
+                  # lastNodeExecuted == "Create Tables" (robust to escaping/nesting; jq path is not).
+                  grep -qE 'lastNodeExecuted.{0,8}Create Tables' /tmp/ar-db-exec2.json 2>/dev/null
+                }
+                # The workflowData + triggerToStartFrom body (n8n's "Execute workflow" UI shape) is
+                # the PROVEN winner (factory-test-061: ran Create Tables); plain triggerToStartFrom is
+                # a fallback. The {destinationNode}/{startNodes} shapes 500 or run only the trigger.
+                WF_FULL_BODY=$(jq -cn --slurpfile w /tmp/ar-prep-db-setup.json '{workflowData:$w[0],runData:{},triggerToStartFrom:{name:"Run Once"}}' 2>/dev/null || echo "")
+                DB_OK=""
+                for RUN_BODY in "${WF_FULL_BODY:-SKIP}" '{"triggerToStartFrom":{"name":"Run Once"}}' ; do
+                  { [ -n "$RUN_BODY" ] && [ "$RUN_BODY" != "SKIP" ]; } || continue
+                  HTTP=$(_napi POST "$BASE/rest/workflows/${DB_SETUP_ID}/run" /tmp/ar-db-run.json "$RUN_BODY")
+                  sleep 3
+                  if _db_ok; then DB_OK=1; echo "PASS: db-setup ran — Create Tables executed (HTTP ${HTTP}); Postgres tables created/ensured"; break; fi
+                  echo "INFO: db-setup /run HTTP=${HTTP} — Create Tables not confirmed for this body shape; trying next"
+                done
+                [ -n "$DB_OK" ] || echo "WARN: db-setup — could not confirm Create Tables executed across run-body shapes — Postgres tables may be missing." >&2
               else
                 echo "WARN: db-setup workflow install failed — Postgres tables not created" >&2
                 DB_SETUP_ID=""
@@ -713,7 +731,22 @@ jobs:
             if [ -f "$RWRO_SRC" ]; then
               sed -e "s#@@CRED_RAILWAY_ID@@#${CRED_RAILWAY_ID}#g" \
                   -e "s#@@RAILWAY_PROJECT_ID@@#${RW_PROJECT_ID}#g" \
+                  -e "s#@@CRED_POSTGRES_ID@@#${CRED_POSTGRES_ID}#g" \
+                  -e "s#@@CHAT_ID@@#${CHAT_ID}#g" \
                   "$RWRO_SRC" > /tmp/ar-prep-railway-readonly.json
+              # bot-trace-observability: the trace nodes write to agent_trace_events and
+              # need the Postgres credential. With none, strip them + restore Normalize
+              # Input → Route by Command (never leave a node on an empty credential).
+              if [ -z "$CRED_POSTGRES_ID" ] || [ "$CRED_POSTGRES_ID" = "null" ]; then
+                jq '(.nodes |= map(select((.name | IN("Mint Trace","Write Trace Attempt","Write Trace Result","Return Tool Payload")) | not)))
+                    | .connections."Normalize Input" = {"main":[[{"node":"Route by Command","type":"main","index":0}]]}
+                    | del(.connections."Mint Trace") | del(.connections."Write Trace Attempt")
+                    | del(.connections."Format Output") | del(.connections."Write Trace Result")' \
+                  /tmp/ar-prep-railway-readonly.json > /tmp/ar-prep-railway-readonly.json.tmp \
+                  && mv /tmp/ar-prep-railway-readonly.json.tmp /tmp/ar-prep-railway-readonly.json \
+                  || echo "WARN: railway-readonly trace-strip failed — using prepped file as-is" >&2
+                echo "INFO: railway-readonly trace nodes stripped (no Postgres credential)"
+              fi
               WF_RAILWAY_READONLY_ID=$(_upsert_wf "factory-master: railway-readonly" /tmp/ar-prep-railway-readonly.json yes) || WF_RAILWAY_READONLY_ID=""
               { [ -n "$WF_RAILWAY_READONLY_ID" ] && [ "$WF_RAILWAY_READONLY_ID" != "null" ]; } \
                 && echo "PASS: factory-master: railway-readonly → id=${WF_RAILWAY_READONLY_ID} (published — נקרא ב-production דרך toolWorkflow)" \
@@ -731,7 +764,22 @@ jobs:
                   -e "s#@@GITHUB_APP_ID@@#${GH_APP_ID}#g" \
                   -e "s#@@GITHUB_INSTALLATION_ID@@#${GH_APP_INSTALL_ID}#g" \
                   -e "s#@@SYSTEM_NAME@@#${SYSTEM_NAME}#g" \
+                  -e "s#@@CRED_POSTGRES_ID@@#${CRED_POSTGRES_ID}#g" \
+                  -e "s#@@CHAT_ID@@#${CHAT_ID}#g" \
                   "$GHRO_SRC" > /tmp/ar-prep-github-readonly.json
+              # bot-trace-observability: the trace nodes write to agent_trace_events and
+              # need the Postgres credential. With none, strip them + restore Normalize
+              # Input → Token Cache Check (never leave a node on an empty credential).
+              if [ -z "$CRED_POSTGRES_ID" ] || [ "$CRED_POSTGRES_ID" = "null" ]; then
+                jq '(.nodes |= map(select((.name | IN("Mint Trace","Write Trace Attempt","Write Trace Result","Return Tool Payload")) | not)))
+                    | .connections."Normalize Input" = {"main":[[{"node":"Token Cache Check","type":"main","index":0}]]}
+                    | del(.connections."Mint Trace") | del(.connections."Write Trace Attempt")
+                    | del(.connections."Format Output") | del(.connections."Write Trace Result")' \
+                  /tmp/ar-prep-github-readonly.json > /tmp/ar-prep-github-readonly.json.tmp \
+                  && mv /tmp/ar-prep-github-readonly.json.tmp /tmp/ar-prep-github-readonly.json \
+                  || echo "WARN: github-readonly trace-strip failed — using prepped file as-is" >&2
+                echo "INFO: github-readonly trace nodes stripped (no Postgres credential)"
+              fi
               WF_GITHUB_READONLY_ID=$(_upsert_wf "factory-master: github-readonly" /tmp/ar-prep-github-readonly.json yes) || WF_GITHUB_READONLY_ID=""
               { [ -n "$WF_GITHUB_READONLY_ID" ] && [ "$WF_GITHUB_READONLY_ID" != "null" ]; } \
                 && echo "PASS: factory-master: github-readonly → id=${WF_GITHUB_READONLY_ID} (published — נקרא ב-production דרך toolWorkflow)" \

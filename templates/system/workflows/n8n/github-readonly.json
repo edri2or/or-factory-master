@@ -326,11 +326,65 @@
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
       "position": [1860, 900]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// bot-trace-observability: mint a per-tool-call id + SQL-safe input summary (esc()\n// doubles single quotes, repo idiom). tool_call_id in JS so downstream nodes ref it\n// by name. onError on the writers keeps the bot reply safe.\nconst j = ($input.first() && $input.first().json) || {};\nconst esc = (s) => String(s).replace(/'/g, \"''\");\nconst toolCallId = Date.now() + '-' + Math.random().toString(36).slice(2, 12);\nlet summary = '';\ntry { summary = JSON.stringify({ command: j.command || '', path: j.path || '' }); } catch (e) { summary = '{}'; }\nif (summary.length > 2000) { summary = summary.slice(0, 2000); }\nreturn [{ json: { command: j.command || '', path: j.path || '', _raw_input: j._raw_input || {}, tool_call_id: toolCallId, input_summary_sql: esc(summary) } }];"
+      },
+      "id": "74000000-0000-0000-0000-000000000001",
+      "name": "Mint Trace",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [560, 200]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO agent_trace_events (trace_id, session_id, turn_id, tool_name, tool_call_id, status, input_summary, started_at) VALUES ('{{ $('Mint Trace').first().json.tool_call_id }}', 'tg:' || '@@CHAT_ID@@', (SELECT max(id) FROM n8n_chat_histories WHERE session_id = 'tg:' || '@@CHAT_ID@@'), 'github_readonly', '{{ $('Mint Trace').first().json.tool_call_id }}', 'attempted', '{{ $('Mint Trace').first().json.input_summary_sql }}'::jsonb, now());",
+        "options": {}
+      },
+      "id": "74000000-0000-0000-0000-000000000002",
+      "name": "Write Trace Attempt",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [760, 200],
+      "credentials": { "postgres": { "id": "@@CRED_POSTGRES_ID@@", "name": "Postgres (n8n)" } },
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE agent_trace_events SET status = '{{ $json.ok ? \"success\" : \"failed\" }}', output_summary = jsonb_build_object('ok', {{ $json.ok ? \"true\" : \"false\" }}), error_message = {{ $json.ok ? \"NULL\" : \"'tool returned ok:false'\" }}, finished_at = now(), duration_ms = CAST(EXTRACT(EPOCH FROM (now() - started_at)) * 1000 AS INTEGER) WHERE tool_call_id = '{{ $('Mint Trace').first().json.tool_call_id }}';",
+        "options": {}
+      },
+      "id": "74000000-0000-0000-0000-000000000003",
+      "name": "Write Trace Result",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [2300, 200],
+      "credentials": { "postgres": { "id": "@@CRED_POSTGRES_ID@@", "name": "Postgres (n8n)" } },
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// bot-trace-observability: re-assert the original tool payload as the LAST node so\n// the toolWorkflow returns {ok,command,data} to the LLM, not the trace UPDATE result.\nreturn [{ json: $('Format Output').first().json }];"
+      },
+      "id": "74000000-0000-0000-0000-000000000004",
+      "name": "Return Tool Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2500, 360]
     }
   ],
   "connections": {
     "When Executed by Another Workflow": { "main": [[{ "node": "Normalize Input", "type": "main", "index": 0 }]] },
-    "Normalize Input": { "main": [[{ "node": "Token Cache Check", "type": "main", "index": 0 }]] },
+    "Normalize Input": { "main": [[{ "node": "Mint Trace", "type": "main", "index": 0 }]] },
+    "Mint Trace": { "main": [[{ "node": "Write Trace Attempt", "type": "main", "index": 0 }]] },
+    "Write Trace Attempt": { "main": [[{ "node": "Token Cache Check", "type": "main", "index": 0 }]] },
     "Token Cache Check": { "main": [[{ "node": "Token Valid?", "type": "main", "index": 0 }]] },
     "Token Valid?": {
       "main": [
@@ -354,7 +408,9 @@
     "GH CI Runs": { "main": [[{ "node": "Format Output", "type": "main", "index": 0 }]] },
     "GH Recent Commits": { "main": [[{ "node": "Format Output", "type": "main", "index": 0 }]] },
     "GH Open PRs": { "main": [[{ "node": "Format Output", "type": "main", "index": 0 }]] },
-    "GH File Contents": { "main": [[{ "node": "Format Output", "type": "main", "index": 0 }]] }
+    "GH File Contents": { "main": [[{ "node": "Format Output", "type": "main", "index": 0 }]] },
+    "Format Output": { "main": [[{ "node": "Write Trace Result", "type": "main", "index": 0 }]] },
+    "Write Trace Result": { "main": [[{ "node": "Return Tool Payload", "type": "main", "index": 0 }]] }
   },
   "settings": { "executionOrder": "v1" }
 }
