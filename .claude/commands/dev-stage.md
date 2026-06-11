@@ -76,6 +76,16 @@ For each stage, in order:
   check are green. If Playground is not relevant to the current stage's changes
   (e.g., a docs-only change), note "Playground: N/A — no testable changes" in the
   progress note and proceed.
+- **(a.3) E2E proof when you change bot behavior.** If the stage touches
+  behavior-bearing files — `workflows/n8n/*.json` or `.github/workflows/configure-agent-router.yml`
+  — it cannot close (and its code cannot merge) without a **fresh `e2e-proofs/<slug>.json`
+  in the same diff**, produced by dispatching `e2e-verify.yml` (ref=main, inputs
+  `target_ref=<branch>`, `slug`): it sends a REAL message through the live inbound path
+  and asserts on the reply. The "E2E verification gate" required check enforces this at
+  the server level (like `protect-main`) — `tools/list`/"config imported"/CI-green do NOT
+  satisfy it, and you cannot skip it or "decide it works". Fill the stage's
+  `הוכחת E2E (artifact)` field with the proof path (or "לא-התנהגותי" if the stage touches
+  no behavior file).
 - **(b) Update the bookkeeping** in the same change as the stage's code, so the CI gates
   stay green:
   - **Plan file**: set the stage's status (`in-progress` → `completed`) in the stages

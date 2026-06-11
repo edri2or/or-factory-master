@@ -96,6 +96,15 @@ For each stage, in order:
   - Stand up / reuse the live test system, apply the change (`refresh-system-agents.yml`
     for template files, or the deploy workflow for deeper changes), and verify it live
     (`probe_endpoint` / Telegram). Iterate fix→apply→verify until green.
+  - **E2E proof is mandatory when the change touches bot behavior**
+    (`templates/system/workflows/n8n/*.json` or the system `configure-agent-router.yml`).
+    After the change is applied live, dispatch `e2e-verify.yml` (ref=main, inputs
+    `system_name=<test system>`, `target_ref=<branch>`, `slug`): it drives a REAL message
+    through the test system's inbound path, asserts on the reply, and commits
+    `e2e-proofs/<slug>.json` onto the branch. The "E2E verification gate" required check
+    then blocks merge until that fresh proof is present and valid — `probe_endpoint`/
+    `/healthz`/"config imported" do NOT satisfy it. Record the proof path in the stage's
+    `הוכחת E2E (artifact)` field.
 
 - **(b) Update the bookkeeping** in the same commit (keep the CI gates green):
   - **Plan file**: stage status (`in-progress` → `completed`), the "הערת התקדמות אחרונה"

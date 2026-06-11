@@ -26,7 +26,7 @@ status: active
 | 2 | ה-driver: הרצת התנהגות אמיתית דרך ה-inbound | completed | `scripts/e2e-verify-inbound.sh` |
 | 3 | workflow שמייצר הוכחה חתומה | completed | `.github/workflows/e2e-verify.yml`, `templates/system/.github/workflows/e2e-verify.yml` |
 | 4 | השער האכיף + חיווט ל-ruleset + פרופגציה | completed | `scripts/check-e2e-proof.sh`, `scripts/lib.sh`, `*/e2e-gate.yml`, `ensure-protect-main-ruleset.sh`, `provision-system.yml`, `services/mcp-server/src/tools.ts`, golden |
-| 5 | חיבור /dev-stage (שדה הוכחת-E2E + טקסט סגירה) | pending | `templates/devplan/DEVPLAN.template.md`, `.claude/commands/dev-stage*.md` |
+| 5 | חיבור /dev-stage (שדה הוכחת-E2E + טקסט סגירה) | completed | `templates/devplan/DEVPLAN.template.md`, `.claude/commands/dev-stage*.md`, mirror, golden |
 | 6 | הוכחה חיה מקצה-לקצה על מערכת-טסט זרוקה | pending | (ריצות חיות; teardown ledger) |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
@@ -123,7 +123,10 @@ loops (2 workflows + 2 scripts); `e2e-verify.yml` ב-allowlist של ה-MCP (tsc 
 
 **הוכחת E2E (artifact):** לא-התנהגותי.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם — שדה `הוכחת E2E (artifact)` נוסף לכל שלב בתבנית
+`templates/devplan/DEVPLAN.template.md` + הערת-חובה כללית; קריטריון סגירת-שלב נוסף ל-
+`dev-stage.md` (a.3) ול-`dev-stage-factory.md` (a.2). מראָה (`sync-skills-mirror`) +
+golden עודכנו; `check-skills-mirror` ירוק.
 
 **שינוי תוכנית:** —
 
@@ -163,3 +166,5 @@ loops (2 workflows + 2 scripts); `e2e-verify.yml` ב-allowlist של ה-MCP (tsc 
 - שלב 3 הושלם — נבנה ה-workflow שמייצר "תעודת אימות" חתומה רק כשההודעה האמיתית עברה.
 - שלב 4 הושלם — הותקן השער שחוסם מיזוג עד שיש תעודת-אימות אמיתית; נבדק שהוא חוסם בלי
   הוכחה ושלא ניתן לזייף אותה, וחובר לאותו מנגנון נעילה כמו protect-main.
+- שלב 5 הושלם — חובת הוכחת-E2E נתפרה לתוך דיסציפלינת הפיתוח בשלבים: שלב שמשנה התנהגות
+  בוט לא נסגר בלי הוכחה אמיתית מצורפת.
