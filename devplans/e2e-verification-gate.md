@@ -27,7 +27,7 @@ status: active
 | 3 | workflow שמייצר הוכחה חתומה | completed | `.github/workflows/e2e-verify.yml`, `templates/system/.github/workflows/e2e-verify.yml` |
 | 4 | השער האכיף + חיווט ל-ruleset + פרופגציה | completed | `scripts/check-e2e-proof.sh`, `scripts/lib.sh`, `*/e2e-gate.yml`, `ensure-protect-main-ruleset.sh`, `provision-system.yml`, `services/mcp-server/src/tools.ts`, golden |
 | 5 | חיבור /dev-stage (שדה הוכחת-E2E + טקסט סגירה) | completed | `templates/devplan/DEVPLAN.template.md`, `.claude/commands/dev-stage*.md`, mirror, golden |
-| 6 | הוכחה חיה מקצה-לקצה על מערכת-טסט זרוקה | pending | (ריצות חיות; teardown ledger) |
+| 6 | הוכחה חיה מקצה-לקצה (על or-edri-4 הקיימת) | completed | (ריצות חיות; retrofit ל-or-edri-4) |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
 >
@@ -142,17 +142,29 @@ golden עודכנו; `check-skills-mirror` ירוק.
 
 **הוכחה תפקודית (באותו שלב):** הלולאה החיה למעלה — חוסם בכשל, מעביר בהצלחה.
 
-**הוכחת E2E (artifact):** `e2e-proofs/e2e-verification-gate.json` מריצה חיה.
+**הוכחת E2E (artifact):** הוכח חי על or-edri-4 (executions 77, 80; הבוט ענה "שם המערכת
+שלך הוא or-edri-4"); ה-proofs נחתמו וקושרו ל-content_hash.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם **חי על or-edri-4** (לבקשת Or — לא על מערכת זרוקה). בוצע
+retrofit: הותקן הבלם על or-edri-4 (PR #5, merged) ונוסף ל-ruleset שלה כ-context חובה.
+(א) **עובר:** `e2e-verify` שלח הודעות אמיתיות דרך ה-inbound; הבוט ענה נכון; נוצרו תעודות
+חתומות (exec 77, 80). (ב) **חוסם:** PR #6 עם שינוי-התנהגות בלי תעודה → רק "E2E verification
+gate" אדום, השאר ירוק → `mergeable_state: blocked`. (ג) **פותח:** הוספת תעודה תקפה →
+השער ירוק → `mergeable_state: clean`. PR #6 נסגר בלי מיזוג (main של or-edri-4 נקי).
 
-**שינוי תוכנית:** —
+**שינוי תוכנית:** ההוכחה החיה רצה על **or-edri-4 הקיימת** (החלטת Or) במקום מערכת-טסט
+זרוקה — מה שהפך את ה"רטרופיט ל-or-edri-4" (שתוכנן כהמשך נפרד) לחלק מהשלב הזה, והושלם.
+known-wrinkle: commit-התעודה ע"י הבוט גורם ל-`action_required` (GitHub לא מריץ CI על
+commit של בוט) — נדרש re-trigger אנושי. מועמד לליטוש עתידי.
 
 ---
 
 ## מצב מערכת-הטסט (Teardown ledger)
 
-> ימולא בשלב 6: `torn-down — <date/session>` או `left-alive by user decision — <date/session>`.
+`no throwaway test system created — live proof run on the EXISTING or-edri-4 (Or's
+decision); or-edri-4 left alive, now gate-protected via the retrofit — 2026-06-11.`
+ענפי-דמו ב-or-edri-4 (`e2e-demo-block`, `e2e-live-check`) — נותרו (ה-git proxy חוסם
+מחיקת ענפים); main של or-edri-4 נקי, אין PRs פתוחים.
 
 ---
 
@@ -168,3 +180,5 @@ golden עודכנו; `check-skills-mirror` ירוק.
   הוכחה ושלא ניתן לזייף אותה, וחובר לאותו מנגנון נעילה כמו protect-main.
 - שלב 5 הושלם — חובת הוכחת-E2E נתפרה לתוך דיסציפלינת הפיתוח בשלבים: שלב שמשנה התנהגות
   בוט לא נסגר בלי הוכחה אמיתית מצורפת.
+- שלב 6 הושלם — הוכח **חי על or-edri-4 האמיתית**: הבוט באמת ענה דרך מסלול ה-inbound,
+  השער חסם PR בלי תעודה, ושוחרר עם תעודה. הבלם עובד בשטח, לא רק בתאוריה.
