@@ -75,9 +75,10 @@
   "PASS" שקרי. שובר בשקט את כל זיכרון-המסד של הבוט (spend/audit/style/pending + agent_trace_events)
   מאז שדרוג n8n 2.x. אומת חי: exec lastNode="Run Once", הבוט החזיר `relation "spend_track_state"
   does not exist`. *(זה בדיוק הפער "טען-אך-לא-עשה" שהפיתוח הזה נועד לחשוף.)*
-- **התיקון ב-`configure-agent-router.yml`:** `RUN_BODY` קיבל
-  `triggerToStartFrom:{"name":"Run Once"}` (כמו כפתור "Execute workflow" של n8n) — מריץ
-  Run Once → Create Tables. בנוסף **אימות אמיתי**: קריאת ה-execution האחרון ובדיקה
-  `lastNodeExecuted == "Create Tables"` (לא רק HTTP 200) — הורג את ה-false-positive שהסתיר את הבאג.
+- **התיקון ב-`configure-agent-router.yml`:** `triggerToStartFrom` לבד עדיין הריץ רק "Run Once"
+  על 2.25.7, ואין דפוס-/run מוכח בריפו (ל-file-catalog אותה תקלה). אז המתקין מנסה את צורות
+  ה-run-body המועמדות בסדר ו**שומר את הראשונה שבאמת מריצה את "Create Tables"** — מאומת דרך
+  `lastNodeExecuted` (לא רק HTTP 200; זה הורג את ה-false-positive). db-setup אידמפוטנטי
+  (CREATE IF NOT EXISTS) אז ריצות חוזרות בטוחות; שורות INFO מדווחות איזו צורה עבדה (תיעוד-עצמי + עמידות).
 - אומת: yamllint; golden רוענן; שערי-הזהב + executeWorkflow gate ירוקים. (אימות חי על
   factory-test-061 — לאחר ההחלה.)
