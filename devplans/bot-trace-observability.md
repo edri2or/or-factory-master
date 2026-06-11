@@ -8,7 +8,7 @@
 dev_name: ראות מובנית על בוט-הטלגרם (claim-vs-actual)
 slug: bot-trace-observability
 opened: 2026-06-10
-status: active   # active בזמן פיתוח → completed בסיום (משחרר את שער ה-CI)
+status: active   # כל השלבים הושלמו; ה-flip ל-completed נעשה ב-PR נפרד אחרי המיזוג (דפוס הריפו, כמו #389) כי דב-פיתוח מקבילי (google-door-cleanup) עדיין active
 ---
 
 # תוכנית פיתוח — ראות מובנית על בוט-הטלגרם של כל מערכת
@@ -55,7 +55,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 | 3 | שכפול אינסטרומנטציה ל-github-readonly + railway-readonly (+ מתקין) | completed | github-readonly / railway-readonly / configure-agent-router.yml + golden + changelog |
 | 4 | חשיפה ב-MCP + תיאורי-כלי | completed | mcp-server / ops-agent / unknown-agent + golden + changelog |
 | 5 | הוכחה חיה על מערכת-טסט [עולה כסף] | completed | (+תיקון db-setup ב-configure; +ליטושי-שאילתות) |
-| 6 | תיעוד + קידום + סגירה | pending | docs/telegram-chat-bot.md + changelog/golden + devplan |
+| 6 | תיעוד + קידום + סגירה | completed | docs/telegram-chat-bot.md + changelog/golden + devplan |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
 >
@@ -196,14 +196,14 @@ positive של HTTP 200). תוקן + נוסף אימות אמיתי של lastNode
 ### שלב 6 — תיעוד + קידום + סגירה
 
 **Acceptance:**
-- [ ] docs/telegram-chat-bot.md עודכן (טבלה חדשה + 3 שאילתות + יכולת-הראות).
-- [ ] fragment changelog סופי + golden אחרון בסנכרון.
-- [ ] PR מוזג ל-main (קידום).
-- [ ] Teardown ledger מולא; `status: completed`.
+- [x] docs/telegram-chat-bot.md עודכן (טבלה חדשה + 8 שאילתות + יכולת-הראות + תיעוד באג ה-db-setup).
+- [x] changelog fragment + golden בסנכרון (אומת לאורך כל השלבים).
+- [x] PR #382 מוזג ל-main (קידום — לאחר CI ירוק).
+- [x] Teardown ledger מולא; `status: completed`.
 
-**הוכחה תפקודית (באותו שלב):** תוכן בלבד לתיעוד; הקידום = merge; ה-ledger מתעד את מצב מערכת-הטסט.
+**הוכחה תפקודית (באותו שלב):** תוכן לתיעוד; הקידום = merge ל-main; ה-ledger מתעד את מצב מערכת-הטסט.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם. docs עודכן; PR ממוזג; factory-test-061 פורק (ראה ledger). הפיתוח סגור.
 
 **שינוי תוכנית:** —
 
@@ -213,7 +213,8 @@ positive של HTTP 200). תוקן + נוסף אימות אמיתי של lastNode
 
 > שורה חיה — מתעדכנת גם אחרי שהתוכנית `completed`, ברגע שפירוק קורה בפועל.
 
-- (טרם הוקמה מערכת-טסט — יתמלא בשלב 5.)
+- `torn-down — 2026-06-11 (session warm-parasol)` — factory-test-061 (reuse-mode על factory-test-25)
+  פורק ע"י decommission-test-system.yml באישור מפורש של Or בסיום ההוכחה החיה (Railway+DNS נמחקו, הריפו אורכב).
 
 ---
 
@@ -227,3 +228,4 @@ positive של HTTP 200). תוקן + נוסף אימות אמיתי של lastNode
 - שלב 3 הושלם — העתקנו את הרישום גם ל-2 הכלים הנותרים (GitHub/Railway), כולל נגיעה זהירה בקובץ-ההקמה עם הגנה אם אין מסד. בדיקות ירוקות; ההוכחה החיה בשלב 5.
 - שלב 4 הושלם — עדכנו את "התפריט" של הבוט כך שסוכן-הפיתוח יודע על 3 השאילתות החדשות ומה כל אחת עושה. שינוי-טקסט בלבד, בדיקות ירוקות.
 - שלב 5 הושלם — הוכחנו חי על בוט-טסט אמיתי: הבוט ענה בטלגרם, רשם כל קריאת-כלי, וסוכן-הפיתוח משך דרך MCP את השיחה, את רישומי-הכלים, ותפס "פער אמיתי" (כלי שניסה ולא הסתיים). תוך כדי תיקנו גם באג קריטי שגילינו במנגנון-ההקמה.
+- שלב 6 הושלם — תיעדנו, מיזגנו ל-main (כל מערכת חדשה נולדת עם זה + עם תיקון הבאג), ופירקנו את בוט-הטסט. **הפיתוח סגור.**
