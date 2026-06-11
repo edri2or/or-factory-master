@@ -69,7 +69,7 @@ The factory has set up the following components for this system:
 - **Caddy gateway** in front of n8n, enforcing HMAC-SHA256 on `/webhook/*` and per-IP rate limits
 - **Cloudflare DNS** + Let's Encrypt certificate (DNS-only mode)
 - **`.claude/`** package — slash commands and skills (incl. `gcp-hands-client`)
-- **Agent Router + Telegram Chat Bot** — n8n workflows wired by `configure-agent-router.yml`: a classifier routes to ops/code/research/infra/unknown sub-agents, and an inbound Telegram bot turns the system's bot token into a smart, system-aware chat agent. → see [**Telegram Chat Bot**](#telegram-chat-bot) below.
+- **Agent Router + Telegram Chat Bot** — n8n workflows wired by `configure-agent-router.yml`: a classifier routes to ops/code/research/infra/unknown sub-agents (and, for genuinely multi-domain requests, fans out to the relevant specialists and synthesizes their answers into one reply), and an inbound Telegram bot turns the system's bot token into a smart, system-aware chat agent. → see [**Telegram Chat Bot**](#telegram-chat-bot) below.
 - **Observability emitter** — `scripts/emit-event.sh` ships factory.deploy.* events to Axiom/Telegram/Linear
 - **Claude n8n connector** — control this system's n8n directly from Claude.ai via the factory's central MCP gateway: add a custom connector with URL `https://factory-master-actions-mcp-140345952904.me-west1.run.app/n8n/golden-reference-system/mcp` and "Login with Google" (allowlisted account). No token. The deploy sends this connector link to your Telegram when it finishes.
 - **Queue mode** *(optional, off by default)* — see [**Queue mode (scaling)**](#queue-mode-scaling) below
@@ -124,6 +124,16 @@ operator → Telegram → https://n8n-golden-reference-system.or-infra.com/webho
 
 The Agent Router and its five sub-agents (`ops`, `code`, `research`, `infra`, `unknown`)
 pre-date Phase F; `unknown-agent` and `ops-agent` were upgraded with the system-aware tools below.
+
+**Single-pick by default; conditional fan-out for multi-domain requests.** The classifier
+emits a primary `intent` and `Route by Intent` dispatches to exactly one sub-agent. It also
+emits `intents[]` + `multi`; when `multi=true` (≥2 distinct domains from ops/code/research/infra)
+a `Multi Gate` diverts to a fan-out: `Build Fan-out Items` → a single `Run Specialists`
+`executeWorkflow` node (`mode:each`, per-item `workflowId` reusing the same sub-agent ids) runs
+the relevant specialists, then `Collect Replies` + `Synthesize` merge their `{reply}`s into ONE
+answer before the shared `Egress Validation`. This is additive and graceful (a parse failure or
+&lt;2 distinct domains falls back to single-pick); single-domain messages, the sub-agents, and the
+single voice are unchanged, and `unknown` never participates in fan-out.
 
 ### Postgres tables (created by `db-setup`)
 

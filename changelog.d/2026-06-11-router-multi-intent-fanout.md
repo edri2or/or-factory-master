@@ -36,3 +36,24 @@ orchestrator-workers).
 סינתטי; מצב מחווט→2 פריטים ops+code; איחוד עם תוויות Operations/Code; נפילת-גיבוי לשאלה המקורית).
 `eval_router.py --check`, `check-agent-single-voice.sh`, `check-system-golden.sh` — ירוקים.
 ההוכחה ההתנהגותית החיה (טלגרם end-to-end) היא שלב 4 (`/dev-stage-factory`).
+
+## מתזמר עם fan-out מותנה — שלב 2: סנכרון מקור-אמת + אימות חיווט
+
+סנכרון התיעוד/מקור-האמת ליכולת ה-fan-out (תוכן בלבד, בלי שינוי התנהגות), ואימות שהחיווט
+בהקמה אינו דורש שינוי.
+
+**Changes:**
+- `templates/system/workflows/n8n/agents.manifest.json` — ל-`orchestrator` נוסף שדה `routing`
+  המתאר single-pick כברירת-מחדל + ה-fan-out המותנה (Multi Gate → Build Fan-out Items →
+  Run Specialists `mode:each` → Collect Replies → Synthesize), כולל הנפילה החיננית וההבהרה
+  ש-`unknown` לא משתתף ב-fan-out.
+- `templates/system/AGENTS.md.template` — הוזכר ה-fan-out בכותרת "Agent Router" שב-"What was
+  provisioned", ונוספה פסקה ייעודית תחת תיאור חמשת תת-הסוכנים.
+- `templates/system/templates/n8n/subagent.contract.md` — נוסף סעיף "Multi-intent fan-out
+  (the orchestrator, not a composite)" המבחין בין fan-out של המתזמר לבין agent מורכב; חוזה
+  תת-הסוכן (executeWorkflowTrigger נכנס, `{reply}` יחיד יוצא) ללא שינוי.
+- **אימות חיווט (offline):** כל placeholder שהמתזמר משתמש בו (`@@SUB_*_WF_ID@@`,
+  `@@CRED_OPENROUTER_ID@@`, ...) עדיין מכוסה ע"י בלוק ה-sed של הראוטר ב-`configure-agent-router.yml`
+  → **אין צורך בשורת sed חדשה** (מודל הסינתיסייזר literal, לא placeholder). `golden` רוענן
+  (`MANIFEST.sha256` + `rendered/AGENTS.md`); `eval_router.py --check` ו-`check-agent-single-voice.sh`
+  ירוקים (לא הושפעו).

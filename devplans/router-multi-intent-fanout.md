@@ -20,7 +20,7 @@ status: active
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
 | 1 | מסלול fan-out מותנה במתזמר | completed | `templates/system/workflows/n8n/agent-router.json`, `tests/golden/system/**` |
-| 2 | סנכרון מקור-אמת + אימות חיווט | pending | `agents.manifest.json`, `AGENTS.md.template`, `subagent.contract.md`, `tests/golden/system/**` |
+| 2 | סנכרון מקור-אמת + אימות חיווט | completed | `agents.manifest.json`, `AGENTS.md.template`, `subagent.contract.md`, `tests/golden/system/**` |
 | 3 | נעילת חוזה ה-classifier בבדיקות | pending | `scripts/eval_router.py` |
 | 4 | הוכחה על מערכת-טסט חיה → קידום → teardown | pending | (הקמה/הרצה חיה — ללא שינוי קוד) |
 
@@ -61,16 +61,17 @@ status: active
 ### שלב 2 — סנכרון מקור-אמת + אימות חיווט (שינויי המחקר 5–6)
 
 **Acceptance:**
-- [ ] `configure-agent-router.yml` נבדק — אין צורך בשורת `sed` חדשה (כל ה-placeholders שהצמתים החדשים משתמשים בהם כבר מוחלפים).
-- [ ] `agents.manifest.json` — ה-orchestrator מתואר עם ה-fan-out המותנה.
-- [ ] `templates/system/AGENTS.md.template` — הערה על ה-fan-out הרב-תחומי.
-- [ ] `templates/system/templates/n8n/subagent.contract.md` — הערה על fan-out פנימי מרובה-intent.
-- [ ] golden עודכן (השינויים תחת `templates/system/`, כולל `rendered/AGENTS.md`). CI ירוק.
+- [x] `configure-agent-router.yml` נבדק — אין צורך בשורת `sed` חדשה (אומת תוכנתית: כל placeholder שהמתזמר משתמש בו מכוסה ע"י בלוק ה-sed של הראוטר).
+- [x] `agents.manifest.json` — ל-orchestrator נוסף שדה `routing` שמתאר את ה-fan-out המותנה.
+- [x] `templates/system/AGENTS.md.template` — הערה בכותרת + פסקה ייעודית על ה-fan-out הרב-תחומי.
+- [x] `templates/system/templates/n8n/subagent.contract.md` — סעיף חדש (orchestrator fan-out ≠ composite).
+- [x] golden עודכן (`MANIFEST.sha256` + `rendered/AGENTS.md`). CI — נאמת אחרי push.
 
-**הוכחה תפקודית (באותו שלב):** תוכן בלבד (תיעוד/מקור-אמת) + אימות סטטי: `jq` על המניפסט,
-`check-system-golden` ירוק, וקריאת בלוק ההתקנה ב-`configure-agent-router.yml` שמאשרת שאין placeholder חדש.
+**הוכחה תפקודית (באותו שלב):** תוכן בלבד (תיעוד/מקור-אמת) + אימות סטטי: `jq` על המניפסט (valid),
+`check-system-golden` ירוק, ואימות תוכנתי שכל placeholder ב-agent-router.json עדיין מכוסה ע"י
+בלוק ה-sed של הראוטר ב-`configure-agent-router.yml` (אין placeholder חדש → אין שורת sed חדשה).
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** ✅ הושלם ואומת offline. נותר לאמת CI אחרי push, ואז שלב 3.
 
 **שינוי תוכנית:** —
 
@@ -124,3 +125,4 @@ status: active
 > שורה פשוטה אחת לכל שלב שהסתיים — בשפה ש-Or מבין, בלי ז'רגון.
 
 - שלב 1 הושלם — הוספנו למתזמר מסלול שמזהה בקשה רב-תחומית, מריץ את המומחים הרלוונטיים ומאחד את תשובותיהם לתשובה אחת. בקשות רגילות ממשיכות כרגיל. בדקנו את הלוגיקה על דוגמאות (23 מתוך 23 עברו).
+- שלב 2 הושלם — עדכנו את התיעוד הפנימי שיתאר את היכולת החדשה, ואימתנו שההתקנה האוטומטית של המערכת לא צריכה שום שינוי כדי לתמוך בזה. בלי שינוי התנהגות.
