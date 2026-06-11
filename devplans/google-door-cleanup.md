@@ -28,7 +28,7 @@ Gmail/יומן/Drive/Docs) "כתובת חזרה" אחת הרשומה אצל גו
 | 1 | כתיבת-סוד ל-Secret Manager + הרשאה ממוקדת | completed | `services/mcp-server/src/gcp-client.ts`, `test/secret-version.test.mjs`, `.github/workflows/deploy-mcp-server.yml`, `scripts/render-mcp-service-yaml.sh` |
 | 2 | קישור-ההתחברות + route ההתחלה | completed | `services/mcp-server/src/google-oauth.ts` (+test), `index.ts` |
 | 3 | לוכד ה-callback + שמירה ל-SM + שומרים | completed | `index.ts` (route callback), `services/mcp-server/src/google-oauth.ts` (exchange/parse +test) |
-| 4 | חיווט-מחדש של workflow ההתחברות ל-gateway | pending | `.github/workflows/request-workspace-scopes-consent.yml` |
+| 4 | חיווט-מחדש של workflow ההתחברות ל-gateway | completed | `.github/workflows/request-workspace-scopes-consent.yml` |
 | 5 | מיזוג → פריסה → רישום כתובת + consent חי + smoke (אבן-דרך חיה) | pending | מיזוג ל-main + קונסולת גוגל + control SM |
 | 6 | פירוק or-adhd-agent + פרישת הצינורות הישנים | pending | dispatch `decommission-test-system.yml`; retire `rotate-shared-gmail-token.yml` + נתיב rotate ב-`copy-gmail-oauth-to-control.yml` |
 | 7 | פירוק 4 הנותרות + סגירה | pending | dispatch `decommission-test-system.yml` ×4 |
@@ -115,15 +115,17 @@ refresh_token → זורק. **הוכח מקומית (91/91).** ה-route ב-index
 ### שלב 4 — חיווט-מחדש של workflow ההתחברות ל-gateway
 
 **Acceptance:**
-- [ ] `request-workspace-scopes-consent.yml` עבר חיווט: מסיר את כל לוגיקת or-adhd-agent/n8n/factory-test-7; קורא `mcp-server-admin-secret` (WIF→SM), קורא ל-`/workspace/consent/start` בצד-שרת עם `X-Admin-Secret`, ושולח ל-Or את קישור ה-consent (שה-redirect שלו ל-gateway) בטלגרם.
-- [ ] shellcheck/yamllint ירוקים; אין יותר הפניה ל-or-adhd-agent בנתיב ה-consent.
+- [x] `request-workspace-scopes-consent.yml` נכתב מחדש: הוסרה כל לוגיקת or-adhd-agent/n8n/factory-test-7; auth כברוקר (WIF), `gcloud run describe` לכתובת ה-gateway, קריאת `mcp-server-admin-secret` (ממוסך, in-step), קריאה ל-`/workspace/consent/start` עם `X-Admin-Secret` (לוכד את ה-`Location` ב-`-w redirect_url` בלי לעקוב), ושליחת קישור ה-consent ל-Or בטלגרם.
+- [x] yamllint + shellcheck(severity=error, כמו actionlint) ירוקים; אין הפניה פונקציונלית ל-or-adhd-agent/n8n בנתיב ה-consent (4 איזכורים שנותרו — כולם בהערות-הסבר בלבד).
 
-**הוכחה תפקודית (באותו שלב):** ה-workflow רץ רק מ-main (`if: refs/heads/main`), אז ההוכחה
-ה*חיה* היא הלבנה האחרונה — שלב 5, אחרי המיזוג. בשלב הזה: הוכחת-בנייה סטטית — shellcheck +
-grep מאמת שמחרוזת ה-URL הנבנית היא `${GATEWAY}/workspace/consent/start` ושאין יותר
-`SYSTEM_NAME: or-adhd-agent` בנתיב. (חיבור-חיצוני = לבנה אחרונה, מותר.)
+**הוכחה תפקודית (באותו שלב):** ה-workflow רץ רק מ-main (`if: refs/heads/main`) ודורש gateway
+פרוס, אז ההוכחה ה*חיה* היא הלבנה האחרונה — שלב 5, אחרי המיזוג. כאן: הוכחת-בנייה סטטית —
+yamllint + shellcheck(severity=error) נקיים; grep מאמת שה-URL הנבנה הוא
+`${GATEWAY_URL}/workspace/consent/start` וש-or-adhd-agent/n8n נותרו רק בהערות. (חיבור-חיצוני
+= לבנה אחרונה — מותר; אומת חי בשלב 5.)
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם. ה-workflow מונע-gateway לגמרי: ‏broker→describe→admin-secret→
+‏/workspace/consent/start→Telegram. lint נקי מקומית.
 
 **שינוי תוכנית:** —
 
@@ -191,3 +193,4 @@ grep מאמת שמחרוזת ה-URL הנבנית היא `${GATEWAY}/workspace/co
 - שלב 1 הושלם — נתתי ל-gateway יכולת בטוחה לשמור את הטוקן החדש (הוספה בלבד, אף פעם לא מחיקה). בדיקה אוטומטית ירוקה.
 - שלב 2 הושלם — בניתי את "כפתור ההתחברות" לגוגל (עם 6 ההרשאות הנכונות) ואת נקודת-הכניסה שמייצרת אותו. בדיקה אוטומטית ירוקה; ההתחברות הקיימת לא נפגעה.
 - שלב 3 הושלם — בניתי את ה"לוכד": הוא תופס את הטוקן החדש שחוזר מגוגל, מוודא שיש בו בדיוק 6 ההרשאות (אחרת לא שומר — בטיחות), ושומר אותו במקום הקבוע. בדיקה אוטומטית ירוקה.
+- שלב 4 הושלם — חיברתי מחדש את כפתור-ההפעלה של ההתחברות אל הדלת החדשה ב-gateway (כבר לא עובר דרך המערכת הישנה or-adhd-agent). בדיקות ה-lint ירוקות.
