@@ -49,12 +49,17 @@ GATEWAY_SECRETS=(
   "MCP_ADMIN_SECRET=mcp-server-admin-secret"
   "BEARER_SIGNING_KEY=mcp-server-bearer-signing-key"
   "N8N_MCP_AUTH_TOKEN=n8n-mcp-internal-auth-token"
-  "GOOGLE_OAUTH_CLIENT_ID=google-oauth-client-id"
-  "GOOGLE_OAUTH_CLIENT_SECRET=google-oauth-client-secret"
-  # The WORKSPACE consent door must mint with the SHARED workspace client (the
-  # one the sidecar + every system's n8n refresh with) — NOT the login client
-  # above; a refresh token is bound to its issuing client (unauthorized_client
-  # otherwise — the 2026-06-11 stage-5 smoke failure).
+  # ONE unified OAuth client, ONE SM key-set: both the operator "Login with
+  # Google" flow (GOOGLE_OAUTH_CLIENT_*) and the shared workspace consent door +
+  # sidecar (WORKSPACE_OAUTH_CLIENT_*) read the single pair gmail-oauth-client-*.
+  # The former google-oauth-client-* login pair was retired once the unified
+  # client proved out (google-wallet-unify Stage 5, 2026-06-11) — both pairs had
+  # held the same client, so collapsing login onto gmail-oauth-client-* is
+  # value-identical. They MUST be one client: a refresh token is bound to its
+  # issuing client, so the consent door (which mints the refresh token via the
+  # WORKSPACE_* env) and login must share it — here they do, by construction.
+  "GOOGLE_OAUTH_CLIENT_ID=gmail-oauth-client-id"
+  "GOOGLE_OAUTH_CLIENT_SECRET=gmail-oauth-client-secret"
   "WORKSPACE_OAUTH_CLIENT_ID=gmail-oauth-client-id"
   "WORKSPACE_OAUTH_CLIENT_SECRET=gmail-oauth-client-secret"
   "GITHUB_APP_ID=factory-master-broker-app-id"

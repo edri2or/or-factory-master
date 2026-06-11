@@ -59,14 +59,15 @@ export function googleAuthorizeUrl(serverState: string, callbackUrl: string): st
 // / exchangeGoogleCode, access_type=online) is deliberately untouched — it never
 // needs a refresh_token.
 //
-// TWO OAuth clients exist (proven live 2026-06-11): the gateway LOGIN client
-// (google-oauth-client-*, CLIENT_ID above) and the shared WORKSPACE client
-// (gmail-oauth-client-*) that minted the shared refresh token and that BOTH the
-// workspace-mcp sidecar AND every system's n8n credential refresh with. A
-// refresh token is bound to its issuing client — refreshing it with the other
-// client fails with `unauthorized_client` (the stage-5 smoke failure: the door
-// minted with the login client, the sidecar refreshed with the workspace one).
-// So the consent door MUST mint with the WORKSPACE client below.
+// ONE unified OAuth client now backs both flows (google-wallet-unify Stage 5,
+// 2026-06-11): the single SM key-set gmail-oauth-client-* is mounted into BOTH
+// the LOGIN env (GOOGLE_OAUTH_CLIENT_*, CLIENT_ID above) and the WORKSPACE env
+// (WORKSPACE_OAUTH_CLIENT_* below). It minted the shared refresh token and is
+// what the workspace-mcp sidecar AND every system's n8n credential refresh with.
+// A refresh token is bound to its issuing client — they MUST be the one client,
+// or refreshing fails with `unauthorized_client` (the pre-unification stage-5
+// smoke failure, when the door minted with a separate login client). So the
+// consent door mints with the WORKSPACE client below — now == the login client.
 
 const WORKSPACE_CLIENT_ID = process.env.WORKSPACE_OAUTH_CLIENT_ID;
 const WORKSPACE_CLIENT_SECRET = process.env.WORKSPACE_OAUTH_CLIENT_SECRET;

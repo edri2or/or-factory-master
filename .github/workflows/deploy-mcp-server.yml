@@ -245,20 +245,20 @@ jobs:
             echo "PASS: n8n-mcp-internal-auth-token minted (no trailing newline)."
           fi
 
-      - name: Ensure google-oauth-client + gmail-oauth-client secrets exist (placeholder if missing)
+      - name: Ensure gmail-oauth-client secrets exist (placeholder if missing)
         run: |
           set -euo pipefail
           # The ONE unified Google OAuth client (consent screen + OAuth Web client,
           # created once manually in the Cloud Console — the one step that can't be
-          # API-automated) backs BOTH the operator "Login with Google" flow
-          # (google-oauth-client-*) AND the shared workspace consent door
-          # (gmail-oauth-client-*); both pairs hold the SAME client. We seed
-          # __NOT_CONFIGURED__ placeholders if absent so the Cloud Run secret mount
-          # never fails — the gateway treats the placeholder as "not configured" and
-          # falls back to the admin-secret form until the real values are added.
-          # Never overwrites a real value.
-          for NAME in google-oauth-client-id google-oauth-client-secret \
-                      gmail-oauth-client-id gmail-oauth-client-secret; do
+          # API-automated) backs BOTH the operator "Login with Google" flow AND the
+          # shared workspace consent door, from a SINGLE SM key-set,
+          # gmail-oauth-client-*. (The former google-oauth-client-* login pair was
+          # retired in google-wallet-unify Stage 5, 2026-06-11 — both pairs had held
+          # the same client.) We seed __NOT_CONFIGURED__ placeholders if absent so
+          # the Cloud Run secret mount never fails — the gateway treats the
+          # placeholder as "not configured" and falls back to the admin-secret form
+          # until the real values are added. Never overwrites a real value.
+          for NAME in gmail-oauth-client-id gmail-oauth-client-secret; do
             if gcloud secrets describe "${NAME}" --project="${GCP_PROJECT}" >/dev/null 2>&1; then
               echo "INFO: ${NAME} exists; leaving as-is."
             else
@@ -272,7 +272,7 @@ jobs:
             fi
           done
 
-      - name: Seed the unified Google OAuth client into all four SM secrets (if provided)
+      - name: Seed the unified Google OAuth client into the gmail-oauth-client SM secrets (if provided)
         env:
           GH_GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
           GH_GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
@@ -284,8 +284,10 @@ jobs:
           # of the placeholders; if absent, leave the placeholders (Google login
           # stays dormant, admin-form fallback). Idempotent — only writes a new
           # version when the repo secret differs from what's already in SM. The
-          # same id/secret is written to BOTH the login pair (google-oauth-client-*)
-          # AND the workspace pair (gmail-oauth-client-*) — one wallet, four slots.
+          # id/secret is written to the single gmail-oauth-client-* key-set, which
+          # backs BOTH the login flow and the workspace consent door (one wallet,
+          # one key-set — the google-oauth-client-* login pair was retired in
+          # google-wallet-unify Stage 5).
           seed() {
             local sm_name="$1" val="$2"
             [ -n "${val}" ] || { echo "INFO: ${sm_name} repo secret not set; leaving SM as-is."; return 0; }
@@ -300,10 +302,8 @@ jobs:
               echo "PASS: ${sm_name} updated from repo secret."
             fi
           }
-          # Login pair (operator "Login with Google"):
-          seed google-oauth-client-id "${GH_GOOGLE_CLIENT_ID}"
-          seed google-oauth-client-secret "${GH_GOOGLE_CLIENT_SECRET}"
-          # Workspace pair (the shared consent door + sidecar) — SAME unified client:
+          # The single unified key-set — backs BOTH operator login (GOOGLE_OAUTH_*)
+          # and the workspace consent door + sidecar (WORKSPACE_OAUTH_*):
           seed gmail-oauth-client-id "${GH_GOOGLE_CLIENT_ID}"
           seed gmail-oauth-client-secret "${GH_GOOGLE_CLIENT_SECRET}"
 
