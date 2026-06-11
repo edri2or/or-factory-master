@@ -27,8 +27,8 @@ follow-up מסגירת `google-door-cleanup`. היום יש **שני** OAuth cli
 
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
-| 0 | סיור קריאה-בלבד: מסך-ההסכמה הקיים + בתי-ה-clients (Or מדווח) | pending | — (קונסולת גוגל, קריאה בלבד) |
-| 1 | Or יוצר את ה-client המאוחד + מסך-consent ב-control | pending | — (קונסולת גוגל) |
+| 0 | סיור קריאה-בלבד: מסך-ההסכמה הקיים + בתי-ה-clients (Or מדווח) | completed | — (קונסולת גוגל, קריאה בלבד) |
+| 1 | Or יוצר את ה-client המאוחד + מסך-consent ב-control | in-progress | — (קונסולת גוגל) |
 | 2 | הרחבת זריעת-הסודות ב-deploy לכסות את שני זוגות-ה-clients | pending | `.github/workflows/deploy-mcp-server.yml` |
 | 3 | Or מזריק את מפתחות ה-client החדש ל-repo secrets + תיעוד rollback | pending | — (GitHub repo secrets) |
 | 4 | ההחלפה החיה: מיזוג→פריסה→consent→פריסה→smoke ירוק | pending | מיזוג ל-main (deploy) + control SM + קונסולה |
@@ -48,16 +48,21 @@ follow-up מסגירת `google-door-cleanup`. היום יש **שני** OAuth cli
 ‏Or פותח את קונסולת גוגל (קריאה בלבד, אפס כתיבה) ומדווח 4 קריאות שמכריעות את ההמשך.
 
 **Acceptance:**
-- [ ] ‏Or מדווח: **User Type** (Internal/External) + **Publishing status** (Testing/In production) של מסך-ההסכמה ב-`factory-test-7`.
-- [ ] ‏Or מאשר באיזה פרויקט יושב ה-LOGIN client (`google-oauth-client-*`) ומה תחילית ה-client_id שלו (פותר את אי-הוודאות — אין `copied-from` label).
-- [ ] ‏Or מדווח את ה-redirect URIs הקיימים על שני ה-clients הישנים (workspace: 2 כתובות consent + n8n מתה; login: `/oauth/callback` + 2 consent מיותרות).
-- [ ] **הכרעת ה-CRUX נרשמה:** אם Internal → מסלול-גיבוי "שני clients, שניהם ב-control" (שלבים 2+5 של המיזוג מבוטלים). אם External+In production → ממשיכים ל-client אחד.
+- [x] ‏Or דיווח: **User Type = External** + **Publishing status = In production** (מסך-ההסכמה של `factory-test-7`, מסך "Google Auth Platform / Audience"). OAuth user cap 1/100.
+- [x] בתי-ה-clients אומתו: ה-LOGIN client = `n8n MCP gateway` (`651677607847-cs19…`, נוצר Jun 3) **ב-factory-test-7** (מאשר ששני הארנקים ב-factory-test-7); ה-WORKSPACE client = `or-adhd-agent n8n` (`651677607847-s1f0…`, Jun 2).
+- [x] נקלטו שמות 3 ה-clients (כולל גילוי שלישי לא-קשור — ראה הערה). ה-redirect URIs הספציפיים של הישנים מיותרים — ה-client החדש נבנה נקי בשלב 1.
+- [x] **הכרעת ה-CRUX:** External + In production → **single-client GO** (לא צריך מסלול-גיבוי).
 
-**הוכחה תפקודית (באותו שלב):** שלב החלטה/קריאה — ההוכחה היא הקריאות המילוליות של Or, מצולבות
-מול ה-SM label `copied-from: factory-test-7` (כבר מאומת על `gmail-oauth-client-*`). הפלט המצופה:
-ורדיקט חד-משמעי (single-client או fallback) שנרשם ב"הערת התקדמות". **שום כתיבה עד שה-ורדיקט מאושר.**
+**הוכחה תפקודית (באותו שלב):** שלב החלטה/קריאה — ההוכחה היא הקריאות המילוליות של Or (2 צילומי-מסך),
+מצולבות מול ה-SM label `copied-from: factory-test-7` (מאומת על `gmail-oauth-client-*`). הפלט: ורדיקט
+**single-client GO**. בוצע 2026-06-11.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם (2026-06-11). Or דיווח מהקונסולה: מסך-ההסכמה של factory-test-7 הוא
+**External + In production** → ה-CRUX נפתר לטובת **client-אחד** (אותו client יכול לשרת login עם gmail
+רגיל וגם workspace עם טוקן ארוך-טווח; אין fallback). שלושה clients ב-factory-test-7: `or-adhd-agent n8n`
+(`…s1f0` = WORKSPACE), `n8n MCP gateway` (`…cs19`, Jun 3 = LOGIN — מאשר ששני הארנקים שם), ו-`Cloudflare
+Access - Nuriel` (`…pj46`, Jun 4) — **שלישי לא-קשור** (Cloudflare Access), נרשם לפירוק factory-test-7
+הנפרד. OAuth user cap 1/100 → אזהרת 'unverified app' צפויה בקליק ה-consent (כמו היום, תקין).
 
 **שינוי תוכנית:** —
 
@@ -80,7 +85,9 @@ follow-up מסגירת `google-door-cleanup`. היום יש **שני** OAuth cli
 לאשר HTTP 200 דף-גוגל, ו**לא** `redirect_uri_mismatch`/`invalid_client`. מוכיח שה-client קיים
 וה-redirect רשום — לפני שמחווטים סוד כלשהו. הפיך לגמרי (מחיקת ה-client).
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** in-progress (2026-06-11) — שלב 0 אישר single-client GO; הוראות צעד-צעד
+ל-Google Auth Platform (פרויקט `or-factory-master-control`) נמסרו ל-Or: מסך-consent External+publish,
+ואז client אחד מסוג Web עם 2 ה-redirect URIs. ממתין ש-Or יבצע וידווח client_id (+ ישמור את ה-secret לשלב 3).
 
 **שינוי תוכנית:** —
 
@@ -190,8 +197,10 @@ follow-up מסגירת `google-door-cleanup`. היום יש **שני** OAuth cli
 **הוכחה תפקודית (באותו שלב):** `google-mcp-smoke` ירוק + התחברות ירוקה אחרי הגיזום; `probe_endpoint
 …/workspace/consent/start` עדיין 302 עם ה-redirect הרשום הנכון. אז `status: completed`.
 
-**נשאר לפירוק factory-test-7 הנפרד (מחוץ להיקף):** ה-client(ים) הישנים + מסך-ה-consent + הפרויקט
-651677607847 + ה-IAM — נרשם כגבול בהערת-הסגירה.
+**נשאר לפירוק factory-test-7 הנפרד (מחוץ להיקף):** 2 הארנקים הישנים (`n8n MCP gateway` ‏`…cs19`,
+`or-adhd-agent n8n` ‏`…s1f0`) + מסך-ה-consent + הפרויקט 651677607847 + ה-IAM. **דגל:** קיים שם גם
+client שלישי **לא-קשור** `Cloudflare Access - Nuriel` (`…pj46`, Jun 4) — חייב בדיקה/העברה (Cloudflare
+Access) לפני כל פירוק של factory-test-7. נרשם כגבול בהערת-הסגירה.
 
 **הערת התקדמות אחרונה:** —
 
@@ -204,3 +213,4 @@ follow-up מסגירת `google-door-cleanup`. היום יש **שני** OAuth cli
 > שורה פשוטה אחת לכל שלב שהסתיים — בשפה ש-Or מבין, בלי ז'רגון.
 
 - הפיתוח נפתח (2026-06-11): מאחדים את שני "ארנקי גוגל" לאחד שיושב בבית הקבוע (פרויקט-הבקרה), מוכיחים חי, ומשאירים צרור-מפתחות אחד נקי — הכל בשערי ✅.
+- שלב 0 הושלם — הצצנו למסך-ההסכמה הישן: הוא "External + In production", בדיוק ההגדרה שמאפשרת ארנק אחד. אישור להמשיך לבנות ארנק אחד (בלי מסלול-גיבוי). גילינו גם ארנק שלישי לא-קשור (Cloudflare) שיטופל בנפרד בפירוק העתידי.
