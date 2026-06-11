@@ -50,7 +50,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
 | 0 | פתיחת-תוכנית + נעילת-תכן | completed | `devplans/button-send-outcome-trace.md` |
-| 1 | ניתוח-JSON: trace+גארד+תשובות נגזרות-תוצאה + הוכחה סטטית | in-progress | `request-write-action.json`, golden, changelog, devplan |
+| 1 | ניתוח-JSON: trace+גארד+תשובות נגזרות-תוצאה + הוכחה סטטית | completed | `request-write-action.json`, golden, changelog, devplan |
 | 2 | הוכחה חיה על מערכת-טסט זמנית **[עולה כסף — בגייט של Or]** | pending | מערכת-טסט (reuse-mode), אימות round-trip |
 | 3 | תיעוד + קידום (merge) + סגירה + teardown | pending | `docs/telegram-chat-bot.md`, devplan, changelog |
 
@@ -87,7 +87,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 - [x] `Tool Response` הסטטי הוסר; הוחלף ב-`Tool Response Sent` (status='sent') ו-`Tool Response Failed` (status='send_failed', הודעה כנה) — כל מסלול מסתיים בצומת-תשובה משלו.
 - [x] כל צמתי-ה-trace: `onError:continueRegularOutput`+`alwaysOutputData:true`.
 - [x] golden רוענן (`scripts/check-system-golden.sh --update`); fragment ב-`changelog.d/`; devplan עודכן.
-- [ ] שני שערי-ה-CI ירוקים: "Playground tests" + "Changelog gates" (ממתין ל-PR).
+- [x] שני שערי-ה-CI ירוקים: "Playground tests" + "Changelog gates" (PR #398 — כל 5 הבדיקות ירוקות).
 
 **הוכחה תפקודית (באותו שלב):** הוכחה סטטית — `jq empty` על ה-JSON; טענות-jq: 8 הצמתים החדשים
 קיימים, `Send Approval Buttons.onError=="continueErrorOutput"`, אין צומת בשם `"Tool Response"`,
@@ -96,9 +96,9 @@ error→Normalize Failure; Guard-true→OK→Sent; Guard-false→Normalize Failu
 שני ה-Code-nodes עברו `node --check`; golden רוענן (שורת MANIFEST אחת). ההוכחה ההתנהגותית
 (message_id אמיתי, תפיסת-כשל) — שלב 2.
 
-**הערת התקדמות אחרונה:** קוד הושלם והוכח סטטית (jq + גרף + `node --check` + golden מינימלי).
-ממתין לאישור CI על ה-PR לפני סימון completed. בידוד נשמר — רק `request-write-action.json` נגע
-(+ golden/changelog/devplan).
+**הערת התקדמות אחרונה:** הושלם. קוד הוכח סטטית (jq + גרף 16-קשתות + `node --check` + golden מינימלי)
+וכל 5 בדיקות ה-CI על PR #398 ירוקות. בידוד נשמר — רק `request-write-action.json` נגע
+(+ golden/changelog/devplan). ההוכחה ההתנהגותית החיה היא שלב 2 (בגייט של Or — עולה כסף).
 
 **שינוי תוכנית:** —
 
@@ -148,6 +148,7 @@ error→Normalize Failure; Guard-true→OK→Sent; Guard-false→Normalize Failu
 > שורה פשוטה אחת לכל שלב שהסתיים — בלי ז'רגון.
 
 - שלב 0 הושלם — פתחתי תוכנית-פיתוח מסודרת ונעלתי בדיוק מה משנים ואיך מאמתים, מול הקוד האמיתי.
+- שלב 1 הושלם — שיניתי את הבוט כך שיתעד אם כפתורי-האישור באמת נשלחו (במקום להגיד "שלחתי" בלי לבדוק). הכול עבר את כל הבדיקות האוטומטיות (PR #398). עוד לא הוכחתי על בוט חי — זה השלב הבא, ורק באישורך.
 
 ---
 
