@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "_doc": "E2E surface registry — the risk-tiered, per-surface generalization of the E2E verification gate. See docs/e2e-enforcement-standard.md. Paths are system-relative; in the factory repo a scope=system surface is matched/hashed under templates/system/. Only enforce=true surfaces become required status checks.",
+  "surfaces": [
+    {
+      "id": "telegram-bot",
+      "name_he": "בוט inbound (agent-router)",
+      "risk_tier": "critical",
+      "scope": "system",
+      "trigger_paths": [
+        "workflows/n8n/*.json",
+        ".github/workflows/configure-agent-router.yml"
+      ],
+      "proof_producer": "e2e-verify.yml",
+      "proof_glob": "e2e-proofs/*.json",
+      "hash_inputs": [
+        "workflows/n8n/*.json",
+        ".github/workflows/configure-agent-router.yml"
+      ],
+      "freshness_days": 14,
+      "enforce": true
+    }
+  ]
+}

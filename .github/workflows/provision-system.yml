@@ -721,6 +721,11 @@ jobs:
           cp "$CI_WF_SRC/bootstrap-gmail-oauth.yml" "$CLONE_DIR/.github/workflows/bootstrap-gmail-oauth.yml"
           [ -f "${GITHUB_WORKSPACE}/templates/system/.yamllint" ] || { echo "FAIL: templates/system/.yamllint not found" >&2; exit 1; }
           cp "${GITHUB_WORKSPACE}/templates/system/.yamllint" "$CLONE_DIR/.yamllint"
+          # E2E surface registry: the system inherits the risk-tiered E2E gate's surface
+          # list (read by the shipped scripts/lib.sh + scripts/check-e2e-proof.sh). System-
+          # relative paths, so it ships verbatim to the system root.
+          [ -f "${GITHUB_WORKSPACE}/e2e-surfaces.json" ] || { echo "FAIL: e2e-surfaces.json not found" >&2; exit 1; }
+          cp "${GITHUB_WORKSPACE}/e2e-surfaces.json" "$CLONE_DIR/e2e-surfaces.json"
           # Seed CHANGELOG.md only if absent (fresh repo: it is) so the doc gate has a baseline.
           [ -f "$CLONE_DIR/CHANGELOG.md" ] || cp "${GITHUB_WORKSPACE}/templates/system/CHANGELOG.md" "$CLONE_DIR/CHANGELOG.md"
           for sc in lib check-changelog-updated check-changelog-size compile-changelog scan-for-secrets \
@@ -764,7 +769,7 @@ jobs:
 
           git -C "$CLONE_DIR" config user.name "or-factory-master[bot]"
           git -C "$CLONE_DIR" config user.email "factory-master-broker@or-factory-master-control.iam.gserviceaccount.com"
-          git -C "$CLONE_DIR" add .claude workflows .github/workflows Caddyfile Dockerfile.caddy Dockerfile.worker caddy scripts templates docs .yamllint CHANGELOG.md changelog.d
+          git -C "$CLONE_DIR" add .claude workflows .github/workflows Caddyfile Dockerfile.caddy Dockerfile.worker caddy scripts templates docs .yamllint CHANGELOG.md changelog.d e2e-surfaces.json
           # Guard the commit: a reuse-mode re-provision with byte-identical files would
           # otherwise abort this step under `set -e` ("nothing to commit").
           git -C "$CLONE_DIR" diff --cached --quiet \

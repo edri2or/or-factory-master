@@ -23,7 +23,7 @@ registry-driven** שמכסה כל משטח-ריצה שדורש E2E — לא רק
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
 | 1 | מסמך הסטנדרט + מטריצת-סיכון | completed | `docs/e2e-enforcement-standard.md` |
-| 2 | תשתית הרשם (בוט=ערך #1, אפס שינוי התנהגות) | pending | `e2e-surfaces.json`, `scripts/lib.sh`, `scripts/check-e2e-proof.sh`, templates, golden |
+| 2 | תשתית הרשם (בוט=ערך #1, אפס שינוי התנהגות) | completed | `e2e-surfaces.json`, `scripts/lib.sh`, `scripts/check-e2e-proof.sh`, `provision-system.yml` |
 | 3 | משטח Deploy/Caddy-HMAC (enforce) | pending | `scripts/deploy-verify.sh`, רשם, workflows, ruleset/provision |
 | 4 | 3 שערי MCP (חובה+חתומים, factory-wide) | pending | smoke scripts → proof-producers, רשם, gates |
 | 5 | Day-0 + Observability + MCP health (מייעץ) | pending | drivers, רשם (enforce:false) |
@@ -66,7 +66,11 @@ registry-driven** שמכסה כל משטח-ריצה שדורש E2E — לא רק
 **הוכחת E2E (artifact):** תשתית-שער; הבוט החי כבר מוכח (לא נדרש proof חדש לשינוי תשתית
 שאינו משנה התנהגות — רגרסיה אפס מוכחת ב-fixtures).
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם — `e2e-surfaces.json` (בוט=ערך #1); `lib.sh` ו-
+`check-e2e-proof.sh` קוראים מהרשם (surface-aware) עם fallback מובנה לבוט אם הרשם חסר;
+`provision-system.yml` שולח את הרשם למערכות חדשות. **הוכחת אפס רגרסיה:** ה-hash זהה
+בּית-בּית לישן; כל 5 ה-fixtures עוברים בדיוק כמו קודם; shellcheck/yamllint/actionlint נקי.
+golden לא הושפע (אין שינוי ב-templates/system).
 
 **שינוי תוכנית:** —
 
@@ -136,3 +140,5 @@ registry-driven** שמכסה כל משטח-ריצה שדורש E2E — לא רק
 
 - שלב 1 הושלם — נכתב מסמך הסטנדרט: הבסיס המקצועי לאכיפת E2E בכל פיתוח שצריך, מטריצת-סיכון
   שמחליטה מתי זה חובה, ומפה של כל המקומות בפקטורי שבהם "ירוק" עדיין מתחזה ל"עובד".
+- שלב 2 הושלם — הפכתי את הבלם ל"מבוסס-רשם" (תשתית להכללה), בלי לשנות שום דבר בהתנהגות
+  שלו: ה-hash זהה בּית-בּית והבדיקות עוברות בדיוק כמו קודם. עכשיו אפשר להוסיף משטחים נוספים.
