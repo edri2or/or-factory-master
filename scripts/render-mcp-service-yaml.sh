@@ -26,9 +26,12 @@ WORKSPACE_ALLOWED_SYSTEMS="${WORKSPACE_ALLOWED_SYSTEMS:-*}"
 # /factory/<system>/mcp ("*" = any valid system name — each bearer is already
 # hard-bound to one system). Set empty to kill-switch the surface (all 404).
 FACTORY_TOOLS_ALLOWED_SYSTEMS="${FACTORY_TOOLS_ALLOWED_SYSTEMS:-*}"
-# Stable local key the sidecar files the shared credential under; the n8n agent
-# passes this exact string as user_google_email (Google auths by the token).
-WORKSPACE_GOOGLE_ACCOUNT_LABEL="${WORKSPACE_GOOGLE_ACCOUNT_LABEL:-shared-google@or-infra.com}"
+# The Google account the shared workspace token ACTUALLY belongs to. The sidecar
+# files the credential under "<this>.json" AND the rebuilt workspace-mcp enforces
+# that the token's authenticated account matches this label. The real or-infra
+# Workspace account is edriorp38@or-infra.com — a prior "shared-google@or-infra.com"
+# was a FICTIONAL label that never matched a real account (see docs/google-identities.md).
+WORKSPACE_GOOGLE_ACCOUNT_LABEL="${WORKSPACE_GOOGLE_ACCOUNT_LABEL:-edriorp38@or-infra.com}"
 # Tool groups the Workspace sidecar serves + the EXACT scopes of the shared
 # token's grant. The scopes list must equal the grant byte-for-byte or google-auth
 # fails refresh with "Scope has changed", AND must cover everything the sidecar's

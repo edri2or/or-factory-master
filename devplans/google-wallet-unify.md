@@ -176,7 +176,13 @@ Access - Nuriel` (`…pj46`, Jun 4) — **שלישי לא-קשור** (Cloudflare
 בשימוש), אבל ה-sidecar (`--tools calendar gmail drive docs`) דורש **17 scopes** וה-token החדש מחזיק רק את 6
 שהדלת ביקשה ("Authentication Needed"). הארנק הישן הסתיר זאת (צבר את ה-17). **תיקון בוצע** (אישור Or):
 `WORKSPACE_SCOPES`/`WORKSPACE_MCP_SCOPES`/`entrypoint default_scopes` הורחבו ל-17 (byte-equal), הבדיקות
-עודכנו — **92/92 ירוק מקומית**. נותר: מיזוג התיקון → deploy → **consent-מחדש כ-`shared-google`** → פריסה → smoke.
+עודכנו — **92/92 ירוק**, מוזג (PR #399, `0de1777`) ונפרס; Or עשה consent-מחדש — **אך ה-smoke עדיין נכשל
+(4 פעמים סה"כ)**, אותו "Authentication Needed for shared-google".
+**שורש מתוקן (אישר Or ישירות):** `shared-google@or-infra.com` הוא **חשבון בדוי** — תווית שסשן קודם המציא
+ושאני (בטעות) תיעדתי כעובדה. החשבון האמיתי של or-infra הוא **`edriorp38@or-infra.com`** והטוקן שייך לו;
+ה-mcp שנבנה-מחדש אוכף שחשבון-הטוקן תואם לתווית → הבדויה נכשלה. **תיקון (relabel, בלי consent):**
+‏`WORKSPACE_GOOGLE_ACCOUNT_LABEL`/`entrypoint LABEL`/`smoke GOOGLE_ACCOUNT_LABEL` → `edriorp38@or-infra.com`
++ תיקון התיעוד השגוי (`google-identities.md`+`CLAUDE.md`). נותר: מיזוג → deploy → smoke (אמור לעבור — הטוקן כבר edriorp38).
 
 **שינוי תוכנית:** נוסף תת-מסלול תיקון-scopes בתוך שלב 4 — פער שנחשף ע"י הארנק הנקי (באג חבוי). תבנית-המערכת
 (`bootstrap-gmail-oauth.yml`) לא נגעה (אין מערכות חיות) → follow-up; שומר על `/dev-stage` ללא golden gate.
