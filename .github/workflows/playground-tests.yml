@@ -71,6 +71,13 @@ jobs:
       - name: BATS tests
         run: ./scripts/tests/bats/bin/bats scripts/tests/*.bats
 
+      - name: db-setup verification gate (B1)
+        # Proves the db-setup table-verification verdict goes RED on a real table
+        # shortfall and stays "inconclusive" (loud WARN, never a false RED) on a
+        # foreign/unreadable execution — mirror of _db_verdict in the system
+        # configure-agent-router.yml. master-system-integrity B1.
+        run: bash scripts/tests/db-verify-gate-test.sh
+
       - name: Template validation
         run: bash scripts/tests/validate-templates.sh
 
