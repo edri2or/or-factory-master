@@ -845,7 +845,8 @@ jobs:
 
           # Enumerate generic secrets from factory SM. The EXCLUDE regex MUST stay
           # in sync with scripts/copy-generic-secrets.sh — same source of truth.
-          EXCLUDE='^(factory-master-broker-app-.*|.*-management-key|.*-provisioning-key|.*-master-key|n8n-telegram-bot-token-test)$'
+          # (preserved-* are per-system teardown backups — never bulk-copied.)
+          EXCLUDE='^(factory-master-broker-app-.*|.*-management-key|.*-provisioning-key|.*-master-key|n8n-telegram-bot-token-test|preserved-.*)$'
           GENERIC_SECRETS=$(gcloud secrets list \
             --project=or-factory-master-control \
             --format="value(name)" 2>/dev/null \
