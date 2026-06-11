@@ -2749,8 +2749,19 @@ jobs:
           echo "=== Phase D PR 3 end-to-end smoke on https://${DOMAIN} (now fronted by Caddy) ==="
 
           # n8n UI/API reachable through Caddy (non-webhook fallback proxies to n8n).
-          UH=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "https://${DOMAIN}/healthz" || echo 000)
-          [ "$UH" = "200" ] || { echo "FAIL: https://${DOMAIN}/healthz via Caddy = $UH (expected 200 — Caddy should proxy non-webhook paths to n8n)" >&2; exit 1; }
+          # The domain swap to Caddy just happened — Railway's edge + Caddy's first
+          # rollout need ~10-90s to start serving, so retry before declaring failure
+          # (a single-shot probe raced the swap and 404'd on the first adopt deploy).
+          # When Caddy is already up (re-runs) the first probe returns 200 and the
+          # loop breaks immediately, so this adds no delay to the steady state.
+          UH=000
+          for i in $(seq 1 12); do
+            UH=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "https://${DOMAIN}/healthz" || echo 000)
+            [ "$UH" = "200" ] && break
+            echo "INFO: /healthz via Caddy = $UH (attempt $i/12) — waiting 10s for Caddy to start serving..."
+            sleep 10
+          done
+          [ "$UH" = "200" ] || { echo "FAIL: https://${DOMAIN}/healthz via Caddy = $UH after retries (expected 200 — Caddy should proxy non-webhook paths to n8n)" >&2; exit 1; }
           echo "PASS: n8n reachable through Caddy (/healthz 200)."
 
           # /webhook without HMAC -> 401 (the gate is now on the PUBLIC domain).
