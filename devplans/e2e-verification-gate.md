@@ -22,8 +22,8 @@ status: active
 
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
-| 1 | מחקר + תיעוד הפער והסטנדרט | in-progress | `docs/e2e-verification-gate.md` |
-| 2 | ה-driver: הרצת התנהגות אמיתית דרך ה-inbound | pending | `scripts/e2e-verify-inbound.sh` |
+| 1 | מחקר + תיעוד הפער והסטנדרט | completed | `docs/e2e-verification-gate.md` |
+| 2 | ה-driver: הרצת התנהגות אמיתית דרך ה-inbound | completed | `scripts/e2e-verify-inbound.sh` |
 | 3 | workflow שמייצר הוכחה חתומה | pending | `.github/workflows/e2e-verify.yml`, `templates/system/.github/workflows/e2e-verify.yml` |
 | 4 | השער האכיף + חיווט ל-ruleset + פרופגציה | pending | `scripts/check-e2e-proof.sh`, `*/e2e-gate.yml`, `ensure-protect-main-ruleset.sh`, `provision-system.yml`, golden |
 | 5 | חיבור /dev-stage (שדה הוכחת-E2E + טקסט סגירה) | pending | `templates/devplan/DEVPLAN.template.md`, `.claude/commands/dev-stage*.md` |
@@ -46,7 +46,7 @@ status: active
 
 **הוכחת E2E (artifact):** לא-התנהגותי (שלב תוכן; לא נוגע בקבצי-התנהגות n8n).
 
-**הערת התקדמות אחרונה:** בכתיבה.
+**הערת התקדמות אחרונה:** הושלם — `docs/e2e-verification-gate.md` + התוכנית.
 
 **שינוי תוכנית:** —
 
@@ -64,9 +64,12 @@ status: active
 
 **הוכחת E2E (artifact):** הסקריפט עצמו אינו קובץ-התנהגות n8n; הוכחתו החיה היא שלב 6.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם — shellcheck נקי; נבדק מקומית על execution סינתטי:
+(א) קורלציה לפי nonce מוצאת את הריצה הנכונה ומחלצת את התשובה האמיתית; (ב) "כשל שקט"
+(node עם `error` / `status=error`) נתפס ומפיל. אימות חי מלא בשלב 6.
 
-**שינוי תוכנית:** —
+**שינוי תוכנית:** ה-driver אינו קורא SM בעצמו — ה-workflow (שלב 3) מזרים סודות ב-env
+(הפרדת אחריות, ומאפשר בדיקה מקומית). חישוב `content_hash`/חתימה עבר ל-workflow.
 
 ---
 
@@ -151,4 +154,6 @@ status: active
 
 > שורה פשוטה אחת לכל שלב שהסתיים.
 
-- (מתמלא תוך כדי)
+- שלב 1 הושלם — מסמך ייחוס שממפה איפה "ירוק" מתחזה ל"עובד" + הסטנדרט המקצועי + התוכנית.
+- שלב 2 הושלם — נכתב המנוע ששולח הודעה אמיתית דרך מסלול הבוט ובודק את התשובה בפועל;
+  נבדק שהוא תופס "כלי שמת בשקט".
