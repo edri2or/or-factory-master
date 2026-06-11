@@ -24,7 +24,9 @@ Linear OIL ticket (OTel JSON in body)
                  4. fix          — claude-code-action writes a fix + a bash reproducer in <code root>/scripts/tests/
                  5. lockdown     — commit candidate, mint a scoped broker token, REVOKE cloud creds
                  6. gate         — scripts/oil-autofix-validate.sh (deterministic; runs in the target tree)
-                 7. open DRAFT PR in the target repo (broker App) + add a CHANGELOG entry
+                 7. open DRAFT PR in the target repo (broker App) + write a changelog.d/ fragment
+                    (scripts/oil-changelog-fragment.sh — a dated fragment folded later by
+                    compile-changelog.sh, NOT the head of CHANGELOG.md, which broke the size gate)
                  8. POST /oil-approval-register {repo}  →  Telegram ✅/❌ to Or (shows which repo)
        └─ /telegram-webhook  →  handleTelegramCallback       services/mcp-server/src/oil-approval.ts
             └─ ✅  →  mergePullRequestAsApprover(repo) (native auto-merge; merges only on green CI)

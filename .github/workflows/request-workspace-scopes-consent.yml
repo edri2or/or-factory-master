@@ -1,38 +1,28 @@
-name: Request workspace scopes consent (one-shot, Drive+Docs expansion)
+name: Request workspace scopes consent (shared Google identity)
 
-# One-shot operator tool (mcp-birth-bundle Stage 4, PR-A). Re-runs the SHARED
-# Google identity's consent with an EXPANDED 6-scope set (the existing 4 +
-# auth/drive + auth/documents), so the central Workspace MCP sidecar can serve
-# Drive/Docs tools to every system.
+# Opens a fresh consent for the SHARED Google identity's 6 workspace scopes
+# (Gmail + Calendar + Drive + Docs) and Telegrams Or the one-click link.
 #
-# How: the shared Google OAuth client has exactly ONE redirect URI registered —
-# or-adhd-agent's n8n callback — so the re-consent must flow through THAT n8n.
-# This workflow logs into or-adhd-agent's n8n (creds from its own SM, project
-# factory-test-7), PATCHes the "Google OAuth2 API" credential's scope field to
-# the 6-scope set (WITHOUT pre-loading oauthTokenData — forcing a fresh consent),
-# and sends Or the one-click consent link via the FACTORY Telegram bot.
+# The consent door now lives in the GATEWAY (the permanent home), not on
+# or-adhd-agent's n8n. This workflow: auths as the broker SA (WIF), resolves the
+# live gateway URL, reads mcp-server-admin-secret from control SM (masked,
+# in-step), calls the gateway's admin-gated /workspace/consent/start to obtain the
+# accounts.google.com consent URL (a 302 Location — the workflow never follows
+# it), and sends Or that link via the factory Telegram bot. When Or clicks Allow,
+# Google redirects to the gateway's /workspace/consent/callback, which captures
+# the fresh 6-scope refresh_token and writes it to control SM
+# (gmail-oauth-refresh-token, new version; the old one stays as rollback).
 #
-# ⚠️ Known, deliberate side effect: or-adhd-agent's own n8n Gmail/Calendar tools
-# are unauthorized from this run until Or clicks Allow (minutes). The central
-# gateway is NOT affected — its 4-scope token in control SM keeps working until
-# the rotation lands (extract → copy rotate=true → PR-B).
-#
-# The exact scope strings were verified against workspace-mcp==1.21.1's
-# auth/scopes.py: SCOPE_HIERARCHY lets auth/drive cover drive.readonly +
-# drive.file, and auth/documents cover documents.readonly — so these 6 are the
-# minimal set whose grant satisfies the drive+docs tool groups. The credential
-# file the sidecar seeds (PR-B) must list EXACTLY these 6, or google-auth fails
-# refresh with "Scope has changed".
-#
-# Sequence after this run: Or clicks ✅ → dispatch or-adhd-agent's
-# extract-gmail-refresh-token.yml → dispatch copy-gmail-oauth-to-control.yml
-# with rotate=true → merge PR-B (gateway redeploy with the 6-scope env).
+# After Or clicks, redeploy/restart the gateway so the Workspace-MCP sidecar
+# loads the new token (deploy-mcp-server.yml), then verify with google-mcp-smoke.
+# No n8n, no per-system repo, no or-adhd-agent involvement — so this keeps working
+# after or-adhd-agent is decommissioned.
 
 on:
   workflow_dispatch:
     inputs:
       confirm:
-        description: 'Type "consent" to confirm re-running the shared Google consent with Drive+Docs scopes.'
+        description: 'Type "consent" to confirm re-opening the shared Google consent (6 scopes).'
         required: true
         type: string
 
@@ -40,18 +30,20 @@ permissions: {}
 
 jobs:
   request-consent:
-    name: Update scope on or-adhd-agent's credential + send the consent link
+    name: Get the gateway consent link + send it to Or
     runs-on: ubuntu-latest
+    environment: production
     if: github.ref == 'refs/heads/main'
     permissions:
       contents: read
       id-token: write
 
     env:
-      # The system that owns the ONLY registered redirect URI of the shared client.
-      SYSTEM_NAME: "or-adhd-agent"
-      SYSTEM_PROJECT: "factory-test-7"
-      CONTROL_PROJECT: "or-factory-master-control"
+      GCP_PROJECT: "or-factory-master-control"
+      GCP_REGION: "me-west1"
+      SERVICE: "factory-master-actions-mcp"
+      BROKER_SA: "factory-master-broker@or-factory-master-control.iam.gserviceaccount.com"
+      WIF_PROVIDER: "projects/140345952904/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
 
     steps:
       - name: Validate confirmation
@@ -65,101 +57,51 @@ jobs:
       - name: Authenticate to GCP via WIF
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093  # v3.0.0
         with:
-          workload_identity_provider: "projects/140345952904/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
-          service_account: "factory-master-broker@or-factory-master-control.iam.gserviceaccount.com"
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.BROKER_SA }}
 
-      - name: Update credential scope and send the consent link
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db  # v3.0.1
+
+      - name: Fetch the gateway consent link and send it to Or
         run: |
           set -euo pipefail
-          BASE="https://n8n-${SYSTEM_NAME}.or-infra.com"
-          # The 6-scope set: the 4 the shared token already carries + Drive + Docs.
-          # Space-separated, exactly as n8n passes it to Google's consent screen.
-          SCOPE="https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/gmail.settings.basic https://www.googleapis.com/auth/gmail.settings.sharing https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/documents"
+          # Resolve the live gateway URL + read the admin secret IN-STEP so the
+          # secret stays in this shell only (masked, never written to GITHUB_ENV).
+          GATEWAY_URL=$(gcloud run services describe "${SERVICE}" \
+            --region="${GCP_REGION}" --project="${GCP_PROJECT}" \
+            --format='value(status.url)')
+          [ -n "$GATEWAY_URL" ] || { echo "FAIL: could not resolve gateway URL" >&2; exit 1; }
 
-          _sm_sys() { gcloud secrets versions access latest --secret="$1" --project="$SYSTEM_PROJECT" 2>/dev/null; }
-          _sm_ctl() { gcloud secrets versions access latest --secret="$1" --project="$CONTROL_PROJECT" 2>/dev/null; }
+          ADMIN_SECRET=$(gcloud secrets versions access latest \
+            --secret="mcp-server-admin-secret" --project="${GCP_PROJECT}" | tr -d '\r\n')
+          echo "::add-mask::${ADMIN_SECRET}"
+          [ -n "$ADMIN_SECRET" ] || { echo "FAIL: could not read mcp-server-admin-secret" >&2; exit 1; }
 
-          # 1. Secrets: Gmail OAuth client (system SM) + n8n login (system SM) +
-          #    the FACTORY bot for the operator message (control SM).
-          CID=$(_sm_sys "gmail-oauth-client-id" || echo "")
-          CSEC=$(_sm_sys "gmail-oauth-client-secret" || echo "")
-          [ -n "$CID" ] && [ -n "$CSEC" ] || { echo "FAIL: gmail-oauth client id/secret missing in ${SYSTEM_PROJECT} SM" >&2; exit 1; }
-          echo "::add-mask::${CID}"; echo "::add-mask::${CSEC}"
+          TG_BOT_TOKEN=$(gcloud secrets versions access latest \
+            --secret="telegram-bot-token" --project="${GCP_PROJECT}" | tr -d '\r\n')
+          TG_CHAT_ID=$(gcloud secrets versions access latest \
+            --secret="telegram-chat-id" --project="${GCP_PROJECT}" | tr -d '\r\n')
+          [ -n "$TG_BOT_TOKEN" ] && echo "::add-mask::${TG_BOT_TOKEN}" \
+            || echo "WARN: factory bot token unreadable — the link will appear only in the step summary."
 
-          N8N_OWNER_EMAIL=$(_sm_sys "n8n-owner-email" || echo "")
-          N8N_OWNER_PASSWORD=$(_sm_sys "n8n-owner-password" || echo "")
-          [ -n "$N8N_OWNER_EMAIL" ] && [ -n "$N8N_OWNER_PASSWORD" ] || { echo "FAIL: n8n owner creds missing in ${SYSTEM_PROJECT} SM" >&2; exit 1; }
-          echo "::add-mask::${N8N_OWNER_PASSWORD}"
-
-          TG_BOT_TOKEN=$(_sm_ctl "telegram-bot-token" | tr -d '\r\n' || echo "")
-          TG_CHAT_ID=$(_sm_ctl "telegram-chat-id" | tr -d '\r\n' || echo "")
-          [ -n "$TG_BOT_TOKEN" ] && echo "::add-mask::${TG_BOT_TOKEN}" || echo "WARN: factory bot token unreadable — the link will appear only in the step summary."
-
-          # 2. n8n owner login (same retry dance as bootstrap-gmail-oauth).
-          COOKIE_JAR=$(mktemp)
-          trap 'rm -f "$COOKIE_JAR" /tmp/rwsc-*.json; curl -sS -o /dev/null -b "$COOKIE_JAR" -X POST "$BASE/rest/logout" 2>/dev/null || true' EXIT
-          _login() {
-            curl -sS -o /tmp/rwsc-login.json -w '%{http_code}' --max-time 15 \
-              -c "$COOKIE_JAR" -X POST "$BASE/rest/login" -H "Content-Type: application/json" \
-              -d "$(jq -cn --arg f "$1" --arg e "$N8N_OWNER_EMAIL" --arg p "$N8N_OWNER_PASSWORD" '{($f):$e, password:$p}')" || echo "000"
-          }
-          _napi() {
-            local method="$1" url="$2" out="$3" data="${4:-}" i http
-            for i in 1 2 3 4 5 6; do
-              if [ -n "$data" ]; then
-                http=$(curl -sS -o "$out" -w '%{http_code}' --max-time 30 -b "$COOKIE_JAR" -X "$method" -H "Content-Type: application/json" --data-binary "$data" "$url" || echo "000")
-              else
-                http=$(curl -sS -o "$out" -w '%{http_code}' --max-time 30 -b "$COOKIE_JAR" -X "$method" "$url" || echo "000")
-              fi
-              [ "$http" != "000" ] && { printf '%s' "$http"; return 0; }
-              sleep 5
-            done
-            printf '000'
-          }
-          HTTP="000"
-          for i in 1 2 3 4 5 6; do
-            HTTP=$(_login "emailOrLdapLoginId"); [ "$HTTP" = "200" ] || HTTP=$(_login "email")
-            [ "$HTTP" = "200" ] && break; sleep 5
-          done
-          [ "$HTTP" = "200" ] || { head -c 300 /tmp/rwsc-login.json >&2 || true; echo "FAIL: n8n login failed (HTTP $HTTP)" >&2; exit 1; }
-          echo "PASS: n8n owner login."
-
-          # 3. Find the live "Google OAuth2 API" credential.
-          HTTP=$(_napi GET "$BASE/rest/credentials" /tmp/rwsc-creds.json)
-          [ "$HTTP" = "200" ] || { echo "FAIL: GET /rest/credentials (HTTP $HTTP)" >&2; exit 1; }
-          CRED_ID=$(jq -r '[(.data // .) | .[]? | select(.name=="Google OAuth2 API")][0].id // empty' /tmp/rwsc-creds.json || echo "")
-          [ -n "$CRED_ID" ] && [ "$CRED_ID" != "null" ] || { echo "FAIL: 'Google OAuth2 API' credential not found on ${SYSTEM_NAME}" >&2; exit 1; }
-          echo "INFO: credential id=${CRED_ID}"
-
-          # 4. PATCH the scope to 6 WITHOUT oauthTokenData — n8n replaces the data
-          #    blob, dropping the stored token, so the next consent mints a fresh
-          #    6-scope refresh token (the deliberate side effect documented above).
-          DATA=$(jq -cn --arg cid "$CID" --arg csec "$CSEC" --arg sc "$SCOPE" \
-            '{clientId:$cid, clientSecret:$csec, scope:$sc, sendAdditionalBodyProperties:false, additionalBodyProperties:""}')
-          BODY=$(jq -cn --argjson d "$DATA" '{name:"Google OAuth2 API", type:"googleOAuth2Api", data:$d}')
-          HTTP=$(_napi PATCH "$BASE/rest/credentials/${CRED_ID}" /tmp/rwsc-upd.json "$BODY")
-          [ "$HTTP" = "200" ] || { head -c 300 /tmp/rwsc-upd.json >&2 || true; echo "FAIL: PATCH credential (HTTP $HTTP)" >&2; exit 1; }
-          echo "PASS: credential scope updated to the 6-scope set."
-
-          # 5. Fetch the GOOGLE consent URL itself, server-side, with the owner
-          #    cookie. The naive link ${BASE}/rest/oauth2-credential/auth?id=...
-          #    demands an n8n SESSION — the operator has none on phone OR desktop,
-          #    so it 401s (observed live on both). Called here WITH the cookie,
-          #    the endpoint returns the accounts.google.com URL; THAT link needs
-          #    no n8n session, and n8n's /rest/oauth2-credential/callback (where
-          #    Google redirects after Allow) is session-exempt by design — the
-          #    state token n8n embedded in the URL is the validation.
-          HTTP=$(_napi GET "$BASE/rest/oauth2-credential/auth?id=${CRED_ID}" /tmp/rwsc-auth.json)
-          [ "$HTTP" = "200" ] || { head -c 300 /tmp/rwsc-auth.json >&2 || true; echo "FAIL: GET oauth2-credential/auth (HTTP $HTTP)" >&2; exit 1; }
-          AUTH_URL=$(jq -r '.data // empty' /tmp/rwsc-auth.json)
+          # Ask the gateway's admin-gated consent-start for the Google consent URL.
+          # It replies 302 with Location = accounts.google.com/...; -w redirect_url
+          # captures that target WITHOUT following it (no n8n session needed — the
+          # link itself is session-exempt; the gateway's one-time state validates).
+          AUTH_URL=$(curl -sS -o /dev/null -w '%{redirect_url}' --max-time 20 \
+            -H "X-Admin-Secret: ${ADMIN_SECRET}" \
+            "${GATEWAY_URL}/workspace/consent/start" || echo "")
           case "$AUTH_URL" in
-            https://accounts.google.com/*) echo "PASS: got the direct Google consent URL (not echoed)." ;;
-            *) echo "FAIL: unexpected auth URL shape from n8n: $(printf '%s' "$AUTH_URL" | head -c 60)" >&2; exit 1 ;;
+            https://accounts.google.com/*)
+              echo "PASS: got the direct Google consent URL from the gateway (not echoed)." ;;
+            *)
+              echo "FAIL: gateway did not return a Google consent URL (got: $(printf '%s' "$AUTH_URL" | head -c 60)). Check the admin secret / that the gateway is deployed with the consent door." >&2
+              exit 1 ;;
           esac
-          # Single physical line via $'...\n...' so the embedded newlines can't
-          # break the YAML block (same trick as provision's SYSTEM_PURPOSE).
-          MSG=$'🔐 הרחבת חיבור Google ל-Drive ו-Docs — נדרש קליק אחד:\n'"${AUTH_URL}"$'\n\nמה זה עושה: מאשר מחדש את חשבון Google המשותף עם 6 הרשאות (Gmail, יומן, והפעם גם Drive ו-Docs).\nשים לב: עד הקליק, כלי ה-Gmail של or-adhd-agent מנותקים זמנית — הקליק מחזיר אותם + מוסיף את החדשים.'
-          if [ -n "$TG_BOT_TOKEN" ] && [ -n "$TG_CHAT_ID" ]; then
+
+          MSG=$'🔐 חידוש חיבור Google המשותף — נדרש קליק אחד:\n'"${AUTH_URL}"$'\n\nמה זה עושה: מאשר מחדש את חשבון Google המשותף עם 6 ההרשאות (Gmail, יומן, Drive, Docs). הטוקן החדש נלכד ונשמר אוטומטית במקום הקבוע — אין תופעות לוואי.'
+          if [ -n "${TG_BOT_TOKEN:-}" ] && [ -n "${TG_CHAT_ID:-}" ]; then
             curl -sS -o /dev/null --max-time 15 "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage" \
               --data-urlencode "chat_id=${TG_CHAT_ID}" --data-urlencode "text=${MSG}" \
               && echo "PASS: consent link sent to Or via the factory bot." \
@@ -167,12 +109,10 @@ jobs:
           fi
 
           {
-            echo "## 🔐 Drive+Docs consent requested"
+            echo "## 🔐 Shared Google consent requested (gateway door)"
             echo ""
-            echo "Credential \`${CRED_ID}\` on ${SYSTEM_NAME} now carries the 6-scope set."
+            echo "[One-click consent link](${AUTH_URL}) — Or clicks Allow; the gateway captures the fresh 6-scope refresh token into control SM."
             echo ""
-            echo "[One-click consent link](${AUTH_URL}) — until clicked, ${SYSTEM_NAME}'s own Gmail tools are temporarily unauthorized."
-            echo ""
-            echo "Next: extract-gmail-refresh-token (on ${SYSTEM_NAME}) → copy-gmail-oauth-to-control (rotate=true) → PR-B."
+            echo "Next: redeploy the gateway (deploy-mcp-server.yml) to load the new token, then verify with google-mcp-smoke."
           } >> "$GITHUB_STEP_SUMMARY"
           echo "DONE"

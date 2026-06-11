@@ -68,6 +68,40 @@ export async function getSecretValue(projectId: string, name: string): Promise<s
   return Buffer.from(b64, 'base64').toString('utf8');
 }
 
+// Pure helper (no network — exported for unit testing, mirroring
+// computeFreeUpDate): builds the Secret Manager `secrets.addVersion` request for
+// (projectId, name, value). Returns the exact endpoint URL and the base64-wrapped
+// payload body. addVersion ONLY — there is deliberately no :disable / :destroy
+// verb here, so writing a new version can never remove an older one (older
+// versions stay enabled as rollback targets).
+export function buildAddSecretVersionRequest(
+  projectId: string,
+  name: string,
+  value: string,
+): { url: string; body: { payload: { data: string } } } {
+  const url = `https://secretmanager.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/secrets/${encodeURIComponent(name)}:addVersion`;
+  return { url, body: { payload: { data: Buffer.from(value, 'utf8').toString('base64') } } };
+}
+
+// Adds a NEW enabled version to an EXISTING Secret Manager secret. Never creates
+// the secret, and never disables or destroys prior versions — the previous
+// version stays enabled in history as the rollback target (the same guarantee
+// copy-gmail-oauth-to-control.yml relies on when it rotates this very secret).
+// Auth: ADC + the runtime SA's resource-scoped
+// roles/secretmanager.secretVersionAdder on the target secret (granted by
+// deploy-mcp-server.yml). Add-only: that role grants neither read nor destroy,
+// so this path can never leak or delete a secret value. Returns the new
+// version's resource name (".../versions/N").
+export async function addSecretVersion(
+  projectId: string,
+  name: string,
+  value: string,
+): Promise<string> {
+  const { url, body } = buildAddSecretVersionRequest(projectId, name, value);
+  const data = (await gcpFetchPost(url, body)) as { name?: string };
+  return data.name ?? '';
+}
+
 export interface GcpProject {
   projectId: string;
   name?: string;

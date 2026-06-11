@@ -26,6 +26,18 @@ fail=0
 total=0
 while IFS=$'\t' read -r expected cmd; do
   total=$((total + 1))
+  if [[ "$expected" == "reject" ]]; then
+    # The classifier must REJECT this command (non-zero exit) before it can be
+    # tiered or sent to approval — e.g. a leading/doubled "gcloud" prefix (#8).
+    # `if out=$(...)` is safe under `set -e`: a failure in an if-condition does
+    # not abort the script.
+    if out="$(bash "$CLASSIFY" "$cmd" 2>/dev/null)"; then
+      printf 'FAIL  %-38s -> exited 0 want reject (out=%s)\n' "[$cmd]" "$out"; fail=1
+    else
+      printf 'PASS  %-38s -> rejected (non-zero exit)\n' "[$cmd]"
+    fi
+    continue
+  fi
   got="$(bash "$CLASSIFY" "$cmd" | sed -n 's/.*"tier":[[:space:]]*"\([^"]*\)".*/\1/p')"
   if [[ "$got" == "$expected" ]]; then
     printf 'PASS  %-38s -> %s\n' "[$cmd]" "$got"

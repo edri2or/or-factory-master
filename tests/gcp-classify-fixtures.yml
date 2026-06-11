@@ -19,3 +19,9 @@
   expected_tier: red
 - command: "run services describe my-svc"
   expected_tier: green
+# A leading / doubled "gcloud" prefix must be REJECTED (non-zero exit) before it can
+# be tiered or sent to Or's approval card — see follow-up #8.
+- command: "gcloud gcloud projects describe my-proj"
+  expected_tier: reject
+- command: "gcloud secrets list"
+  expected_tier: reject

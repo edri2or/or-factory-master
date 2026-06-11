@@ -510,29 +510,24 @@ jobs:
           git -C "$WORK" branch "$BRANCH" HEAD
           git -C "$WORK" checkout -q "$BRANCH"
 
-          # The fixer is forbidden from touching CHANGELOG.md (it would breach the
-          # 2-file safety cap). But the target repo's CI requires a CHANGELOG entry
+          # The fixer is forbidden from touching the changelog (it would breach the
+          # 2-file safety cap). But the target repo's CI requires a changelog entry
           # for any code change (the factory and every generated system carry the
-          # same gate), so the WORKFLOW prepends one deterministically here — on the
+          # same gate), so the WORKFLOW writes one deterministically here — on the
           # candidate branch only, AFTER the gate already vetted the AI-authored
-          # fix+test. CHANGELOG is documentation, not code, so a workflow-owned,
-          # templated entry is safer than an AI-authored one. Only prepend if the
-          # fixer didn't already add an entry (belt-and-suspenders).
-          if [ -f "$WORK/CHANGELOG.md" ] && ! git -C "$WORK" diff --name-only "${BASE_SHA}"..HEAD | grep -qxF CHANGELOG.md; then
-            TS=$(date -u +%Y-%m-%dT%H:%MZ)
-            TMPCL=$(mktemp)
-            {
-              printf '# Changelog\n\n'
-              printf '## OIL auto-fix — %s — %s\n\n' "${ISSUE_IDENT:-OIL}" "$TS"
-              printf '| PR | Type | Summary |\n|---|---|---|\n'
-              printf '| TBD | fix | Auto-fix proposed by oil-autofix for **%s** (repo `%s`). %s Root cause: %s. Opened as a DRAFT PR by the broker App; awaits human Telegram approval (merged by the separate oil-autofix-approver identity). The fix + repro test passed the deterministic safety gate (≤2 AI-authored files / ≤100 lines, no forbidden paths, no secrets, fail-before/pass-after). This CHANGELOG entry is appended by the workflow, not the AI. |\n\n' "${ISSUE_IDENT:-OIL}" "${TARGET_REPO}" "${SUMMARY:-fix}" "${ROOT:-n/a}"
-              tail -n +2 "$WORK/CHANGELOG.md"
-            } > "$TMPCL"
-            mv "$TMPCL" "$WORK/CHANGELOG.md"
-            git -C "$WORK" -c user.email="factory-master-broker[bot]@users.noreply.github.com" \
-                -c user.name="factory-master-broker[bot]" \
-                -c commit.gpgsign=false \
-                commit -q -m "oil-autofix: changelog entry for ${ISSUE_IDENT:-OIL}" -- CHANGELOG.md
+          # fix+test. It writes a dated changelog.d/ FRAGMENT (folded later by
+          # compile-changelog.sh), NOT the head of CHANGELOG.md: prepending to
+          # CHANGELOG.md grew the file and broke the 20 KB size gate (PR #374). The
+          # generation lives in scripts/oil-changelog-fragment.sh (unit-tested); skip
+          # only if the fixer already added some changelog entry (belt-and-suspenders).
+          if ! git -C "$WORK" diff --name-only "${BASE_SHA}"..HEAD | grep -qE '^(CHANGELOG\.md|changelog\.d/.+\.md)$'; then
+            if FRAG=$(bash scripts/oil-changelog-fragment.sh "$WORK" "${ISSUE_IDENT:-OIL}" "${TARGET_REPO}" "${SUMMARY:-fix}" "${ROOT:-n/a}") && [ -n "$FRAG" ]; then
+              git -C "$WORK" add "$FRAG"
+              git -C "$WORK" -c user.email="factory-master-broker[bot]@users.noreply.github.com" \
+                  -c user.name="factory-master-broker[bot]" \
+                  -c commit.gpgsign=false \
+                  commit -q -m "oil-autofix: changelog fragment for ${ISSUE_IDENT:-OIL}" -- "$FRAG"
+            fi
           fi
 
           if ! git -C "$WORK" push "https://x-access-token:${PR_TOKEN}@github.com/edri2or/${TARGET_REPO}.git" "$BRANCH:$BRANCH" >/dev/null 2>&1; then
