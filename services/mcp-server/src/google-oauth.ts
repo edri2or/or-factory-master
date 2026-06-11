@@ -58,6 +58,28 @@ export function googleAuthorizeUrl(serverState: string, callbackUrl: string): st
 // gateway's own callback, and persist it to control SM. Login (googleAuthorizeUrl
 // / exchangeGoogleCode, access_type=online) is deliberately untouched — it never
 // needs a refresh_token.
+//
+// TWO OAuth clients exist (proven live 2026-06-11): the gateway LOGIN client
+// (google-oauth-client-*, CLIENT_ID above) and the shared WORKSPACE client
+// (gmail-oauth-client-*) that minted the shared refresh token and that BOTH the
+// workspace-mcp sidecar AND every system's n8n credential refresh with. A
+// refresh token is bound to its issuing client — refreshing it with the other
+// client fails with `unauthorized_client` (the stage-5 smoke failure: the door
+// minted with the login client, the sidecar refreshed with the workspace one).
+// So the consent door MUST mint with the WORKSPACE client below.
+
+const WORKSPACE_CLIENT_ID = process.env.WORKSPACE_OAUTH_CLIENT_ID;
+const WORKSPACE_CLIENT_SECRET = process.env.WORKSPACE_OAUTH_CLIENT_SECRET;
+
+// The consent door is usable only when the WORKSPACE client creds are mounted
+// (and not the deploy placeholder) — same posture as googleConfigured().
+export function workspaceConsentConfigured(): boolean {
+  return Boolean(
+    WORKSPACE_CLIENT_ID && WORKSPACE_CLIENT_SECRET &&
+    WORKSPACE_CLIENT_ID !== '__NOT_CONFIGURED__' &&
+    WORKSPACE_CLIENT_SECRET !== '__NOT_CONFIGURED__',
+  );
+}
 
 // The exact 6 workspace scopes, in the SAME order/spelling as WORKSPACE_MCP_SCOPES
 // (scripts/render-mcp-service-yaml.sh) — the Workspace-MCP sidecar's google-auth
@@ -77,10 +99,11 @@ const WORKSPACE_SCOPE_STRING = WORKSPACE_SCOPES.join(' ');
 // Sibling of googleAuthorizeUrl for the WORKSPACE consent (not login): requests
 // the 6 workspace scopes with access_type=offline + prompt=consent so Google
 // ALWAYS returns a refresh_token, even on a re-consent. No openid/email — this
-// flow captures a workspace grant, it does not identify a user.
+// flow captures a workspace grant, it does not identify a user. Uses the
+// WORKSPACE client (not the login client) — see the two-client note above.
 export function workspaceConsentUrl(serverState: string, callbackUrl: string): string {
   const u = new URL(GOOGLE_AUTH_URL);
-  u.searchParams.set('client_id', CLIENT_ID!);
+  u.searchParams.set('client_id', WORKSPACE_CLIENT_ID!);
   u.searchParams.set('redirect_uri', callbackUrl);
   u.searchParams.set('response_type', 'code');
   u.searchParams.set('scope', WORKSPACE_SCOPE_STRING);
@@ -124,15 +147,16 @@ export function parseWorkspaceConsentResponse(json: {
 
 // Exchanges a workspace-consent authorization code for a refresh_token, validating
 // the response with parseWorkspaceConsentResponse. Mirrors exchangeGoogleCode but
-// returns the refresh_token (login uses access_type=online and never gets one).
+// returns the refresh_token (login uses access_type=online and never gets one)
+// and exchanges with the WORKSPACE client that started the consent.
 export async function exchangeWorkspaceConsentCode(
   code: string,
   callbackUrl: string,
 ): Promise<WorkspaceConsentResult> {
   const body = new URLSearchParams({
     code,
-    client_id: CLIENT_ID!,
-    client_secret: CLIENT_SECRET!,
+    client_id: WORKSPACE_CLIENT_ID!,
+    client_secret: WORKSPACE_CLIENT_SECRET!,
     redirect_uri: callbackUrl,
     grant_type: 'authorization_code',
   });

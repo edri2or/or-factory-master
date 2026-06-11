@@ -37,6 +37,7 @@ import {
   emailAllowed,
   workspaceConsentUrl,
   exchangeWorkspaceConsentCode,
+  workspaceConsentConfigured,
 } from './google-oauth.js';
 import { addSecretVersion } from './gcp-client.js';
 
@@ -658,8 +659,8 @@ app.get('/workspace/consent/start', (req: Request, res: Response) => {
     res.status(403).json({ error: 'unauthorized' });
     return;
   }
-  if (!googleConfigured()) {
-    res.status(503).json({ error: 'google_not_configured' });
+  if (!workspaceConsentConfigured()) {
+    res.status(503).json({ error: 'workspace_client_not_configured' });
     return;
   }
   const serverState = randomBytes(32).toString('hex');

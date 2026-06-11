@@ -44,6 +44,12 @@ GATEWAY_SECRETS=(
   "N8N_MCP_AUTH_TOKEN=n8n-mcp-internal-auth-token"
   "GOOGLE_OAUTH_CLIENT_ID=google-oauth-client-id"
   "GOOGLE_OAUTH_CLIENT_SECRET=google-oauth-client-secret"
+  # The WORKSPACE consent door must mint with the SHARED workspace client (the
+  # one the sidecar + every system's n8n refresh with) — NOT the login client
+  # above; a refresh token is bound to its issuing client (unauthorized_client
+  # otherwise — the 2026-06-11 stage-5 smoke failure).
+  "WORKSPACE_OAUTH_CLIENT_ID=gmail-oauth-client-id"
+  "WORKSPACE_OAUTH_CLIENT_SECRET=gmail-oauth-client-secret"
   "GITHUB_APP_ID=factory-master-broker-app-id"
   "GITHUB_APP_PRIVATE_KEY=factory-master-broker-app-private-key"
   "GITHUB_APP_INSTALLATION_ID=factory-master-broker-app-installation-id"
