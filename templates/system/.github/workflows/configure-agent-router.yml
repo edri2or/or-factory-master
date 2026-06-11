@@ -60,6 +60,30 @@ jobs:
               --secret="$name" --project="$PROJECT_ID" 2>/dev/null
           }
 
+          # Mask a secret value in this job's log. ::add-mask:: is a LINE-based
+          # workflow command: a raw `echo "::add-mask::$v"` of a MULTI-LINE value
+          # (the GitHub App PEM key) registers only the FIRST line as a mask and
+          # prints the rest of the value in plain text in the run log
+          # (actions/runner#161). So: empty → no-op; single-line → one mask;
+          # multi-line → mask every non-empty line. The value is never echoed
+          # outside an ::add-mask:: command, and the helper always returns 0
+          # (safe under set -e). Every secret in this file MUST be masked via
+          # this helper, never via a raw echo.
+          _mask_secret() {
+            local v="${1:-}" line
+            [ -n "$v" ] || return 0
+            case "$v" in
+              *$'\n'*)
+                while IFS= read -r line || [ -n "$line" ]; do
+                  [ -z "$line" ] || echo "::add-mask::${line}"
+                done <<< "$v"
+                ;;
+              *)
+                echo "::add-mask::${v}"
+                ;;
+            esac
+          }
+
           # Soft-fail: any n8n REST hiccup writes a Hebrew warning and exits 0 — wiring
           # the Agent Router must never fail an otherwise-successful run (non-negotiable).
           _soft_exit0() {
@@ -79,9 +103,9 @@ jobs:
           N8N_OWNER_PASSWORD=$(_sm_read "n8n-owner-password" || echo "")
           [ -n "$N8N_OWNER_EMAIL" ] && [ -n "$N8N_OWNER_PASSWORD" ] \
             || _soft_exit0 "n8n-owner-email/password חסרים ב-SM של המערכת (${PROJECT_ID})"
-          echo "::add-mask::${N8N_OWNER_PASSWORD}"
+          _mask_secret "$N8N_OWNER_PASSWORD"
           OR_KEY=$(_sm_read "openrouter-api-key" || echo "")
-          [ -n "$OR_KEY" ] && echo "::add-mask::${OR_KEY}" || true
+          _mask_secret "$OR_KEY"
 
           # 2. Fresh n8n login — its own cookie jar.
           COOKIE_JAR=$(mktemp)
@@ -145,7 +169,7 @@ jobs:
           # n8n and gives a definitive PASS/FAIL signal.
           OR_KEY=$(_sm_read "openrouter-api-key" || echo "")
           if [ -n "$OR_KEY" ]; then
-            echo "::add-mask::${OR_KEY}"
+            _mask_secret "$OR_KEY"
             OR_TEST_HTTP=$(curl -sS -o /tmp/ar-or-test.json -w '%{http_code}' --max-time 15 \
               -X POST "https://openrouter.ai/api/v1/chat/completions" \
               -H "Authorization: Bearer ${OR_KEY}" -H "Content-Type: application/json" \
@@ -179,7 +203,7 @@ jobs:
           N8N_DOMAIN="n8n-${SYSTEM_NAME}.or-infra.com"
           N8N_API_KEY=$(_sm_read "n8n-api-key" || echo "")
           [ -n "$N8N_API_KEY" ] || _soft_exit0 "n8n-api-key חסר ב-SM — הרץ קודם את deploy-railway-cloudflare.yml (הוא ממנט אותו)"
-          echo "::add-mask::${N8N_API_KEY}"
+          _mask_secret "$N8N_API_KEY"
           N8N_CRED_NAME="n8n Public API (X-N8N-API-KEY)"
           CRED_N8N_API_ID=$(jq -r --arg n "$N8N_CRED_NAME" '[(.data // .) | .[]? | select(.name==$n)][0].id // empty' /tmp/ar-creds.json)
           if [ -z "$CRED_N8N_API_ID" ]; then
@@ -199,7 +223,7 @@ jobs:
           # + chat bot fully working.
           RAILWAY_GQL="https://backboard.railway.com/graphql/v2"
           RAILWAY_TOKEN=$(_sm_read "railway-api-token" || echo "")
-          [ -n "$RAILWAY_TOKEN" ] && echo "::add-mask::${RAILWAY_TOKEN}" || true
+          _mask_secret "$RAILWAY_TOKEN"
           RW_PROJECT_ID=$(_sm_read "railway-project-id" || echo "")
           RW_PG_SVC_ID=$(_sm_read "railway-postgres-service-id" || echo "")
           CRED_POSTGRES_ID=""
@@ -225,8 +249,8 @@ jobs:
                 "$(jq -cn --arg pid "$RW_PROJECT_ID" --arg eid "$RW_ENV_ID" --arg sid "$RW_PG_SVC_ID" '{pid:$pid,eid:$eid,sid:$sid}')")
               PG_PASSWORD=$(printf '%s' "$RW_VARS" | jq -r '.data.variables.POSTGRES_PASSWORD // empty' 2>/dev/null || echo "")
               PG_HOST=$(printf '%s' "$RW_VARS" | jq -r '.data.variables.RAILWAY_PRIVATE_DOMAIN // empty' 2>/dev/null || echo "")
-              [ -n "$PG_PASSWORD" ] && echo "::add-mask::${PG_PASSWORD}" || true
-              [ -n "$PG_HOST" ] && echo "::add-mask::${PG_HOST}" || true
+              _mask_secret "$PG_PASSWORD"
+              _mask_secret "$PG_HOST"
             fi
             if [ -n "$PG_PASSWORD" ] && [ -n "$PG_HOST" ]; then
               PG_CRED_NAME="Postgres (n8n)"
@@ -279,7 +303,7 @@ jobs:
           # Additive + soft: a miss only strips the two search tools; the research agent
           # still answers from model knowledge.
           TAVILY_KEY=$(_sm_read "tavily-api-key" || echo "")
-          [ -n "$TAVILY_KEY" ] && echo "::add-mask::${TAVILY_KEY}" || true
+          _mask_secret "$TAVILY_KEY"
           CRED_TAVILY_ID=""
           if [ -n "$TAVILY_KEY" ]; then
             TV_CRED_NAME="Tavily (factory-master)"
@@ -305,7 +329,7 @@ jobs:
           # so the bearer never lands in the workflow JSON. Additive + soft: a miss only
           # strips the google_workspace tool (the router still configures).
           WS_BEARER=$(_sm_read "workspace-mcp-bearer" || echo "")
-          [ -n "$WS_BEARER" ] && echo "::add-mask::${WS_BEARER}" || true
+          _mask_secret "$WS_BEARER"
           CRED_GOOGLE_MCP_ID=""
           if [ -n "$WS_BEARER" ] && [ "$WS_BEARER" != "__NOT_CONFIGURED__" ]; then
             WS_CRED_NAME="Google Workspace MCP"
@@ -332,7 +356,7 @@ jobs:
           # JSON. Additive + soft: a miss only strips the factory_tools tool (the
           # router still configures).
           FT_BEARER=$(_sm_read "factory-mcp-bearer" || echo "")
-          [ -n "$FT_BEARER" ] && echo "::add-mask::${FT_BEARER}" || true
+          _mask_secret "$FT_BEARER"
           CRED_FACTORY_MCP_ID=""
           if [ -n "$FT_BEARER" ] && [ "$FT_BEARER" != "__NOT_CONFIGURED__" ]; then
             FT_CRED_NAME="Factory MCP"
@@ -356,7 +380,7 @@ jobs:
           # system's n8n-mcp-server-token (minted at provision). Additive + soft:
           # a miss only skips the mcp-server workflow (the router still configures).
           MCPSRV_TOKEN=$(_sm_read "n8n-mcp-server-token" || echo "")
-          [ -n "$MCPSRV_TOKEN" ] && echo "::add-mask::${MCPSRV_TOKEN}" || true
+          _mask_secret "$MCPSRV_TOKEN"
           CRED_N8N_MCP_SERVER_ID=""
           if [ -n "$MCPSRV_TOKEN" ] && [ "$MCPSRV_TOKEN" != "__NOT_CONFIGURED__" ]; then
             MS_CRED_NAME="n8n MCP Server"
@@ -379,7 +403,7 @@ jobs:
           #      from tg-inbound later. deepgram-api-key is copied from factory SM by
           #      copy-generic-secrets.sh automatically (not in EXCLUDE list).
           DEEPGRAM_KEY=$(_sm_read "deepgram-api-key" || echo "")
-          [ -n "$DEEPGRAM_KEY" ] && echo "::add-mask::${DEEPGRAM_KEY}" || true
+          _mask_secret "$DEEPGRAM_KEY"
           CRED_DEEPGRAM_ID=""
           if [ -n "$DEEPGRAM_KEY" ]; then
             DG_CRED_NAME="Deepgram (factory-master)"
@@ -407,7 +431,7 @@ jobs:
           GH_APP_ID=$(_sm_read "github-app-id" || echo "")
           GH_APP_INSTALL_ID=$(_sm_read "github-app-installation-id" || echo "")
           GH_APP_PRIVATE_KEY=$(_sm_read "github-app-private-key" || echo "")
-          [ -n "$GH_APP_PRIVATE_KEY" ] && echo "::add-mask::${GH_APP_PRIVATE_KEY}" || true
+          _mask_secret "$GH_APP_PRIVATE_KEY"
           CRED_GITHUB_JWT_ID=""
           if [ -n "$GH_APP_ID" ] && [ -n "$GH_APP_INSTALL_ID" ] && [ -n "$GH_APP_PRIVATE_KEY" ]; then
             GH_CRED_NAME="GitHub App JWT (RS256)"
@@ -433,7 +457,7 @@ jobs:
           CHAT_ID=$(_sm_read "n8n-telegram-chat-id" || echo "")
           [ -n "$CHAT_ID" ] || CHAT_ID=$(_sm_read "telegram-chat-id" || echo "")
           TG_BOT_TOKEN=$(_sm_read "n8n-telegram-bot-token" || echo "")
-          [ -n "$TG_BOT_TOKEN" ] && echo "::add-mask::${TG_BOT_TOKEN}" || true
+          _mask_secret "$TG_BOT_TOKEN"
           CRED_TELEGRAM_ID=""
           if [ -z "$TG_BOT_TOKEN" ] || [ -z "$CHAT_ID" ]; then
             SKIP_TELEGRAM=yes
@@ -479,7 +503,7 @@ jobs:
           # 2. Public API activate (X-N8N-API-KEY) — the 1.x programmatic path.
           # 3. PATCH active:true — last resort (1.x only; 2.x ignores it).
           N8N_PUB_API_KEY=$(_sm_read "n8n-api-key" 2>/dev/null || echo "")
-          [ -n "$N8N_PUB_API_KEY" ] && echo "::add-mask::${N8N_PUB_API_KEY}"
+          _mask_secret "$N8N_PUB_API_KEY"
           _upsert_wf() {
             local wf_name="$1" body_file="$2" activate="${3:-yes}" wid http vid
             _napi GET "$BASE/rest/workflows" /tmp/ar-wfs.json >/dev/null
@@ -1261,7 +1285,7 @@ jobs:
                 if [ "$ACT_HTTP" != "200" ]; then
                   N8N_API_KEY=$(_sm_read "n8n-api-key" || echo "")
                   if [ -n "$N8N_API_KEY" ]; then
-                    echo "::add-mask::${N8N_API_KEY}"
+                    _mask_secret "$N8N_API_KEY"
                     curl -sS -o /dev/null --max-time 30 -X POST \
                       "$BASE/api/v1/workflows/${MCPSRV_WF_ID}/deactivate" \
                       -H "X-N8N-API-KEY: ${N8N_API_KEY}" 2>/dev/null || true
@@ -1418,7 +1442,7 @@ jobs:
               echo "PASS: factory-master: tg-inbound → id=${TG_WF_ID}"
 
               TG_WH_SECRET=$(_sm_read "n8n-telegram-webhook-secret" || echo "")
-              [ -n "$TG_WH_SECRET" ] && echo "::add-mask::${TG_WH_SECRET}" || true
+              _mask_secret "$TG_WH_SECRET"
               if [ -n "$TG_WH_SECRET" ]; then
                 SW=$(curl -sS -o /tmp/ar-setwh.json -w '%{http_code}' --max-time 20 \
                   "https://api.telegram.org/bot${TG_BOT_TOKEN}/setWebhook" \
@@ -1573,7 +1597,7 @@ jobs:
               RW_PROJECT=$(_sm_read "railway-project-id" || echo "")
               RW_N8N=$(_sm_read "railway-n8n-service-id" || echo "")
               if [ -n "$RW_TOKEN" ] && [ -n "$RW_PROJECT" ] && [ -n "$RW_N8N" ]; then
-                echo "::add-mask::${RW_TOKEN}"
+                _mask_secret "$RW_TOKEN"
                 RWQ=$(jq -cn --arg p "$RW_PROJECT" '{query:"query($p:String!){project(id:$p){environments{edges{node{id name}}}}}",variables:{p:$p}}')
                 RW_ENV=$(curl -sS --max-time 30 -X POST "https://backboard.railway.com/graphql/v2" \
                   -H "Authorization: Bearer ${RW_TOKEN}" -H "Content-Type: application/json" \
