@@ -22,10 +22,24 @@
       "typeVersion": 2.5,
       "position": [440, 320],
       "credentials": { "postgres": { "id": "@@CRED_POSTGRES_ID@@", "name": "Postgres (n8n)" } }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT string_agg(table_name, ',' ORDER BY table_name) AS present_tables, count(*)::int AS present_count FROM information_schema.tables WHERE table_schema = 'public' AND table_name IN ('n8n_chat_histories','style_profile','audit_log','spend_log','tg_updates_seen','pending_actions','events','spend_track_state','file_catalog','agent_trace_events');",
+        "options": {}
+      },
+      "id": "40000000-0000-0000-0000-000000000003",
+      "name": "Verify Tables",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [660, 320],
+      "credentials": { "postgres": { "id": "@@CRED_POSTGRES_ID@@", "name": "Postgres (n8n)" } }
     }
   ],
   "connections": {
-    "Run Once": { "main": [[{ "node": "Create Tables", "type": "main", "index": 0 }]] }
+    "Run Once": { "main": [[{ "node": "Create Tables", "type": "main", "index": 0 }]] },
+    "Create Tables": { "main": [[{ "node": "Verify Tables", "type": "main", "index": 0 }]] }
   },
   "settings": { "executionOrder": "v1" }
 }
