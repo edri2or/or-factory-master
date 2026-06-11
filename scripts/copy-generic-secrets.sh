@@ -39,7 +39,10 @@ echo ""
 # n8n-telegram-bot-token-test is the durable default for the per-system test bot:
 # provision-system.yml reads it directly from control SM and seeds it into the
 # test system's n8n-telegram-bot-token, so it must never be bulk-copied here.
-EXCLUDE="^(factory-master-broker-app-.*|.*-management-key|.*-provisioning-key|.*-master-key|n8n-telegram-bot-token-test)$"
+# preserved-* are per-system teardown backups staged in control by
+# preserve-secret-to-control.yml and re-injected explicitly by
+# restore-secret-from-control.yml — never bulk-copy them into every new system.
+EXCLUDE="^(factory-master-broker-app-.*|.*-management-key|.*-provisioning-key|.*-master-key|n8n-telegram-bot-token-test|preserved-.*)$"
 
 # Secrets present in factory SM but intentionally NOT copied (shell + IAM only).
 # Empty for now — kept as a hook for future policy.
