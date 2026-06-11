@@ -55,6 +55,12 @@ import { inspectCert as tlsInspectCert, TlsAllowlistError } from './tls-helper.j
 import { n8nApiGet, N8nKeyMissingError } from './n8n-client.js';
 import { emitEvent, type EmitEventInput } from './observability-client.js';
 
+// The live factory control project — where the gateway and its Secret Manager
+// live. Centralized so tool `project` defaults can't drift back to the
+// decommissioned old control project `factory-control-9piybr` (the sibling
+// tail_cloud_run_logs already defaults to this value).
+const CONTROL_PROJECT = 'or-factory-master-control';
+
 export function registerTools(server: McpServer): void {
   // Shared owner/repo params for every GitHub-backed tool. Default to the
   // factory's own repo; pass repo (e.g. "factory-test-23") to read a system
@@ -927,10 +933,10 @@ export function registerTools(server: McpServer): void {
 
   server.tool(
     'inspect_cloud_run',
-    'Inspect a Cloud Run /v2 service: latest revision, image SHA, env-var names (values never returned), traffic split, conditions. Defaults to factory-actions-mcp on factory-control-9piybr (self-introspection).',
+    'Inspect a Cloud Run /v2 service: latest revision, image SHA, env-var names (values never returned), traffic split, conditions. Defaults to factory-master-actions-mcp on or-factory-master-control (self-introspection).',
     {
-      serviceName: z.string().describe('Cloud Run service name (e.g. factory-actions-mcp)'),
-      project: z.string().optional().default('factory-control-9piybr').describe('GCP project ID (default: factory-control-9piybr)'),
+      serviceName: z.string().describe('Cloud Run service name (e.g. factory-master-actions-mcp)'),
+      project: z.string().optional().default(CONTROL_PROJECT).describe(`GCP project ID (default: ${CONTROL_PROJECT})`),
       region: z.string().optional().default('me-west1').describe('Cloud Run region (default: me-west1)'),
     },
     async ({ serviceName, project, region }) => {
@@ -1279,9 +1285,9 @@ export function registerTools(server: McpServer): void {
 
   server.tool(
     'list_secret_metadata',
-    'List GCP Secret Manager secrets in a project with extended metadata: createTime, enabledVersionCount, labels, expireTime, rotation policy, ttl, etag, topic count. Values are never returned. Direct project ID (no manifest); defaults to factory-control-9piybr. Useful for the secret-inventory-audit skill.',
+    'List GCP Secret Manager secrets in a project with extended metadata: createTime, enabledVersionCount, labels, expireTime, rotation policy, ttl, etag, topic count. Values are never returned. Direct project ID (no manifest); defaults to or-factory-master-control. Useful for the secret-inventory-audit skill.',
     {
-      project: z.string().optional().default('factory-control-9piybr').describe('GCP project ID (default: factory-control-9piybr)'),
+      project: z.string().optional().default(CONTROL_PROJECT).describe(`GCP project ID (default: ${CONTROL_PROJECT})`),
     },
     async ({ project }) => {
       const secrets = await gcpListSecretsExtendedMetadata(project);
