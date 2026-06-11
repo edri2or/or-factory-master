@@ -32,3 +32,20 @@
   `jq` תקין; שני ה-Code-nodes החדשים עברו `node --check`; שערי "Playground tests" + "Changelog gates" ירוקים.
 - **מחוץ לסקופ (החלטת Or):** "כשל סוג-ב'" (הסוכן טוען ששלח בלי לקרוא לכלי) — שכבת-פרומפט נפרדת,
   לא ממומש כאן; מתועד כפער-ידוע ב-`docs/telegram-chat-bot.md` (שלב 3).
+
+### שלב 2 — הוכחה חיה (Day-0) על מערכת-טסט זמנית
+
+- הוקמה מערכת-טסט זמנית `factory-test-398` ב-reuse-mode (`shared_gcp_project=factory-test-25`, **0 מכסת-GCP**):
+  `provision-system.yml` → `register-system-app.yml` (2 הקלקות אופרטור) → `deploy-railway-cloudflare.yml` (n8n 2.25.7 + Postgres).
+- השינוי הוחל דרך `prove-on-test-system.yml` (off-branch, זהות-sandbox): עבר את ה-CI **של מערכת-הטסט עצמה**
+  (changelog/pipeline/secret/supply-chain) ומוזג דרך ה-PR המוגן; `configure-agent-router.yml` ייבא ופרסם את
+  `request-write-action.json` המעודכן ל-n8n החי (`PASS … request-write-action → id=…`).
+- **הוכחת Day-0:** n8n 2.25.7 אמיתי קלט את הגרף החדש (ענף-שגיאה, Guard, Code-nodes עם `?.`/`??`, צמתי-trace) — מה ש-jq סטטי לא יכול.
+- מגבלה (מתועדת בכנות ב-devplan): round-trip התנהגותי מלא (לחיצה→trace) לא בוצע אוטונומית — אין כלי הרצת/שאילתת-n8n בסשן +
+  בוט-הטסט חולק טוקן-טלגרם. הסיכון השיורי מוקטן: גארד-coalescing דו-מצבי, SQL זהה לדפוס שהוכח חי ב-#382, וניטור-עצמי (`claim_actual_mismatch`).
+
+### שלב 3 — תיעוד + קידום + פירוק
+
+- `docs/telegram-chat-bot.md` (§6): שורה חדשה ל-`button-send-outcome-trace` — תיאור השינוי + **מגבלת רינדור-לקוח
+  (Telegram desktop #29497)** (200 OK + `message_id` תקין ≠ כפתורים שרונדרו; לא ניתן-להוכחה ע"י trace) + **פער סוג-ב'** (מחוץ-לסקופ).
+- מערכת-הטסט `factory-test-398` פורקה דרך `decommission-test-system.yml` (Railway + Cloudflare DNS + ארכוב ריפו) בסגירה.

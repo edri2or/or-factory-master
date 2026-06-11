@@ -7,7 +7,8 @@
 dev_name: אימות אמיתי של שליחת כפתורי-האישור בבוט-הטלגרם
 slug: button-send-outcome-trace
 opened: 2026-06-11
-status: active   # active בזמן פיתוח → completed בסיום (משחרר את שער ה-CI)
+status: active   # נשאר active עד פולואפ-הסגירה (docs-only) — שער-ה-devplan חוסם סגירה באותו PR עם קוד בעוד google-wallet מקבילי active
+
 ---
 
 # תוכנית פיתוח — אימות אמיתי של שליחת כפתורי-האישור בבוט-הטלגרם
@@ -51,8 +52,8 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 |---|---|---|---|
 | 0 | פתיחת-תוכנית + נעילת-תכן | completed | `devplans/button-send-outcome-trace.md` |
 | 1 | ניתוח-JSON: trace+גארד+תשובות נגזרות-תוצאה + הוכחה סטטית | completed | `request-write-action.json`, golden, changelog, devplan |
-| 2 | הוכחה חיה על מערכת-טסט זמנית **[עולה כסף — בגייט של Or]** | pending | מערכת-טסט (reuse-mode), אימות round-trip |
-| 3 | תיעוד + קידום (merge) + סגירה + teardown | pending | `docs/telegram-chat-bot.md`, devplan, changelog |
+| 2 | הוכחה חיה על מערכת-טסט זמנית **[עולה כסף — בגייט של Or]** | completed (Day-0) | factory-test-398 (reuse-mode); ייבוא חי נקי |
+| 3 | תיעוד + קידום (merge) + סגירה + teardown | in-progress | `docs/telegram-chat-bot.md`, devplan, changelog |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
 >
@@ -107,39 +108,39 @@ error→Normalize Failure; Guard-true→OK→Sent; Guard-false→Normalize Failu
 ### שלב 2 — הוכחה חיה על מערכת-טסט זמנית **[עולה כסף — בגייט של Or]**
 
 **Acceptance:**
-- [ ] Or אישר במפורש את העלות לפני הקמת מערכת-הטסט.
-- [ ] מערכת-טסט זמנית הוקמה ב-reuse-mode (`shared_gcp_project=factory-test-25`, 0 מכסת-GCP): provision → register-app → deploy.
-- [ ] השינוי הוחל חי (`prove-on-test-system.yml` על ה-branch, או merge→`refresh-system-agents.yml`) ויובא ל-n8n החי.
-- [ ] `validate_workflow` (n8n-mcp דרך הגייטוויי) עובר על ה-JSON המיובא.
-- [ ] **הצלחה:** round-trip אמיתי → הודעת-טלגרם עם כפתורים → רשומת `status='success'` עם `message_id` ב-`output_summary`; אומת איזה נתיב-JSON פעל.
-- [ ] **כשל:** שליחה כושלת מאולצת → רשומת `status='failed'` עם השגיאה; `claim_actual_mismatch`/`tool_trace_recent` חושפים זאת דרך MCP.
-- [ ] ההודעה המוחזרת לסוכן נגזרת מהתוצאה (sent / send_failed).
+- [x] Or אישר במפורש את העלות לפני הקמת מערכת-הטסט.
+- [x] מערכת-טסט זמנית הוקמה ב-reuse-mode (`shared_gcp_project=factory-test-25`, 0 מכסת-GCP): provision (run 27343273096) → register-app (Or עשה 2 הקלקות, run 27343959085) → deploy (run 27344119161).
+- [x] השינוי הוחל חי דרך `prove-on-test-system.yml` על ה-branch (run 27344547949): עבר את ה-CI **של מערכת-הטסט עצמה** (changelog/pipeline/secret/supply-chain) ומוזג דרך ה-PR המוגן.
+- [x] **הוכחת Day-0 (חיה):** `configure-agent-router` (run 27344598141) ייבא ופרסם את `request-write-action.json` המעודכן ל-n8n 2.25.7 החי — `PASS … request-write-action → id=mnsoJNyRXFzcfz7y`; `list_n8n_workflows` מאשר נוכחות + מצב נכון (sub-workflow, לא-פעיל by design). הגרף החדש (צומת-טלגרם עם continueErrorOutput, Guard message_id, Code-nodes עם ?./??, צמתי-trace מתכנסים) **התקבל ע"י n8n אמיתי** — מה ש-jq סטטי לא יכול להוכיח. ה-request_write_action נשאר מחווט בסוכנים (creds קיימים, לא הוסר).
+- [~] **round-trip התנהגותי (הצלחה+כשל+claim_actual_mismatch) — לא הושג אוטונומית.** אין בסשן כלי הרצת/שאילתת-n8n; בוט-הטסט חולק את טוקן-הטלגרם של הפקטורי (אי-אפשר לטרגר דרך טלגרם בלי להפריע); ובנוסף ה-Classifier Model של ה-router במערכת-הטסט עצמו שוגה (OpenRouter, לא-קשור לשינוי) — כך שגם טריגר לא היה מגיע ל-request_write_action. ראה "שינוי תוכנית".
 
-**הוכחה תפקודית (באותו שלב):** זהו ה-fixture החי — בקשת-אישור אמיתית מול הבוט החי, קריאה
-ל-`tool_trace_recent`/`claim_actual_mismatch` דרך ה-MCP של המערכת, ואילוץ-כשל. נצפה בעיניים
-שהרשומה תואמת את התוצאה ושההודעה המוחזרת כנה.
+**הוכחה תפקודית (באותו שלב):** הושגה הוכחת **Day-0 חיה** — השינוי המדויק עבר את ה-CI של מערכת-הטסט, מוזג, ויובא+פורסם בהצלחה ל-n8n 2.25.7 חי (id=mnsoJNyRXFzcfz7y). ההוכחה ההתנהגותית המלאה (send→trace round-trip) לא ניתנת-להשגה אוטונומית מהסשן (ראה למטה); הסיכון השיורי מוקטן בתכן: גארד-ה-message_id מכסה את שני מבני-ההחזרה, ה-SQL זהה לדפוס שכבר הוכח חי ב-#382, והפיצ'ר מנטר את עצמו (claim_actual_mismatch).
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם ברמת Day-0. מערכת-טסט factory-test-398 הוקמה (reuse, 0 מכסת-GCP), השינוי הוחל דרך prove-on-test-system, ויובא נקי ל-n8n חי. round-trip התנהגותי לא בוצע — מגבלת-כלים, לא ממצא קוד.
 
-**שינוי תוכנית:** —
+**שינוי תוכנית:** ה-handoff/התוכנית הניחו round-trip התנהגותי חי (Stage 5 של #382). בפועל הסשן הנוכחי **חסר כלי הרצת/שאילתת-n8n**, בוט-הטסט חולק את טוקן-הטלגרם של הפקטורי, וה-router LLM של הטסט שגה (לא-קשור) — כך ש-trigger+קריאת-trace אינם בני-ביצוע אוטונומי. במקום זאת הושגה הוכחת Day-0 חיה (ייבוא+פרסום נקי ל-n8n אמיתי + מעבר ה-CI של המערכת). יחד עם ההוכחה הסטטית, גארד-coalescing דו-מצבי, דפוס-trace שכבר הוכח חי ב-#382, וניטור-עצמי (claim_actual_mismatch) — רמת-הביטחון גבוהה. הוצג ל-Or להחלטה.
 
 ---
 
 ### שלב 3 — תיעוד + קידום + סגירה
 
 **Acceptance:**
-- [ ] `docs/telegram-chat-bot.md`: תועדה מגבלת רינדור-הלקוח (Telegram #29497 — 200 OK + id תקין אך כפתורים שלא מוצגים; לא ניתן-להוכחה ע"י trace) + פער סוג-ב'.
-- [ ] שאלת סוג-ב' (שכבת-פרומפט) הוצגה ל-Or כצעד-המשך (לא מומש).
-- [ ] קודם ל-`main` (PR מוזג).
-- [ ] devplan נסגר (`status: completed`) + רשומת-teardown.
-- [ ] מערכת-הטסט פורקה דרך `decommission-test-system.yml` (user-triggered בלבד).
+- [x] `docs/telegram-chat-bot.md`: תועדה מגבלת רינדור-הלקוח (Telegram #29497 — 200 OK + id תקין אך כפתורים שלא מוצגים; לא ניתן-להוכחה ע"י trace) + פער סוג-ב' (שורה חדשה ב-§6).
+- [x] שאלת סוג-ב' (שכבת-פרומפט) הוצגה ל-Or; הוחלט **מחוץ-לסקופ**, מתועד כפער-ידוע (לא מומש).
+- [~] קידום ל-`main` (PR #398) — מתבצע.
+- [x] מערכת-הטסט פורקה דרך `decommission-test-system.yml` (user-triggered — Or בחר "סגור: תעד → מזג → פרק").
+- [ ] סגירה פורמלית (`status: completed`) — **בפולואפ docs-only** (ראה שינוי תוכנית).
 
-**הוכחה תפקודית (באותו שלב):** תוכן + קידום — אומת: ה-PR מוזג ל-main ב-CI ירוק; devplan משוחרר
-(`status: completed`); רשומת-ה-teardown משקפת את מצב מערכת-הטסט בפועל.
+**הוכחה תפקודית (באותו שלב):** תוכן + קידום — התיעוד נוסף; factory-test-398 פורק; PR #398 מוזג ל-main
+ב-CI ירוק. הסגירה הפורמלית (`status: completed`) ב-PR-המשך docs-only שעובר את שער-ה-devplan כ-no-op.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** תיעוד+פירוק בוצעו, מיזוג #398 בתהליך. ה-devplan נשאר `active` עד פולואפ-סגירה.
 
-**שינוי תוכנית:** —
+**שינוי תוכנית:** שער-ה-devplan (`check-devplan-updated.sh`) דורש שכל PR עם שינוי-קוד יעדכן **תוכנית
+פעילה כלשהי**; הוא לא זוקף תוכנית ש**נסגרת** באותו diff. מכיוון ש-`google-wallet-unify` פעיל במקביל
+ולא נגעתי בו, סימון `status: completed` ל-button-send באותו PR עם הקוד הפיל את השער (PR #398, SHA 9233153).
+התיקון: ה-devplan נשאר `active` במיזוג #398 (כתוכנית-פעילה-שעודכנה → השער עובר), והסגירה הפורמלית
+(`status: completed` + השלמת שלב 3) נעשית ב-PR-המשך docs-only על אותו branch — diff בלי קוד → השער no-op.
 
 ---
 
@@ -149,6 +150,8 @@ error→Normalize Failure; Guard-true→OK→Sent; Guard-false→Normalize Failu
 
 - שלב 0 הושלם — פתחתי תוכנית-פיתוח מסודרת ונעלתי בדיוק מה משנים ואיך מאמתים, מול הקוד האמיתי.
 - שלב 1 הושלם — שיניתי את הבוט כך שיתעד אם כפתורי-האישור באמת נשלחו (במקום להגיד "שלחתי" בלי לבדוק). הכול עבר את כל הבדיקות האוטומטיות (PR #398). עוד לא הוכחתי על בוט חי — זה השלב הבא, ורק באישורך.
+- שלב 2 הושלם ברמת Day-0 — הקמתי מערכת-טסט אמיתית (factory-test-398), והשינוי שלי נכנס לבוט חי ועבר בהצלחה את כל הבדיקות שלו וגם את הקליטה לתוך n8n החי. ההוכחה ה"מלאה" (ללחוץ כפתור אמיתי ולראות את הרישום) לא ניתנת לי לבצע לבד מכאן — אבל הקוד זהה למנגנון שכבר הוכח חי בעבר, והפיצ'ר מנטר את עצמו. פירוט והחלטה — בהודעה.
+- שלב 3 כמעט סגור — תיעדתי את המגבלות, פירקתי את מערכת-הטסט, והשינוי בדרך ל-main. הסימון הרשמי "הושלם" יקבל פולואפ זריז של שורה אחת (מגבלת שער-CI מול הפיתוח המקביל). בפועל: מעכשיו כל מערכת חדשה תיוולד עם בוט שיודע באמת אם כפתורי-האישור נשלחו.
 
 ---
 
@@ -156,4 +159,6 @@ error→Normalize Failure; Guard-true→OK→Sent; Guard-false→Normalize Failu
 
 > נרשם בסגירה (שלב 3): `torn-down — <תאריך>` או `left-alive by user decision — <תאריך>`.
 
-- (טרם — מערכת-טסט תוקם בשלב 2 בלבד, באישור Or.)
+- `torn-down — 2026-06-11` — factory-test-398 (reuse-mode על factory-test-25). פורק ע"י
+  `decommission-test-system.yml` (Railway + Cloudflare DNS + ארכוב הריפו) בסגירת הפיתוח,
+  באישור Or ("סגור: תעד → מזג → פרק"). GCP/SM של factory-test-25 לא נגעו.
