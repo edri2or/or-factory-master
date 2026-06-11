@@ -75,19 +75,21 @@ jobs:
           GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
         run: |
           set -euo pipefail
-          # Cost guard: a reuse/test system (its GCP backend is a shared test
-          # project, e.g. factory-test-25) is throwaway and does NOT need the HMAC
+          # Cost guard: a reuse/test system is throwaway and does NOT need the HMAC
           # Caddy edge. Skipping the Caddy provision + Docker build + smoke tests +
           # the n8n->Caddy domain swap is the single biggest deploy-minute saving,
           # and leaves n8n owning the public domain (so /healthz stays reachable).
-          # The signal mirrors provision-system.yml's reuse-mode validation
-          # (^(factory-test-|v2-test-|or-test-)) exactly — a REAL system's
-          # GCP_PROJECT_ID is its SYSTEM_NAME or an adopted id (never that prefix;
-          # adopt mode hard-refuses factory-test-25), so real deploys stay
-          # byte-identical in behavior.
+          # The ONLY throwaway backend is the shared reuse project factory-test-25:
+          # every reuse/test system deploys onto it. A REAL system's GCP_PROJECT_ID
+          # is either its SYSTEM_NAME (normal mode) or an ADOPTED project id — and an
+          # adopted id CAN look like factory-test-NN / v2-test-NN, because adopt mode
+          # recovers a soft-deleted test-named project for a REAL system (it only
+          # hard-refuses factory-test-25). So match factory-test-25 EXACTLY: a broad
+          # factory-test-*/v2-test-*/or-test-* prefix wrongly stripped the edge from
+          # every adopt-mode real system (e.g. or-edri-4 on factory-test-21).
           SKIP_EDGE=false
           case "${GCP_PROJECT_ID:-}" in
-            factory-test-*|v2-test-*|or-test-*) SKIP_EDGE=true ;;
+            factory-test-25) SKIP_EDGE=true ;;
           esac
           echo "INFO: GCP_PROJECT_ID='${GCP_PROJECT_ID:-<unset>}' -> SKIP_EDGE=${SKIP_EDGE} (test system skips the Caddy edge + domain swap)."
           echo "SKIP_EDGE=${SKIP_EDGE}" >> "$GITHUB_ENV"
