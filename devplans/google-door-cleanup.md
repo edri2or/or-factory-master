@@ -2,7 +2,7 @@
 dev_name: העברת "הדלת של גוגל" למקום קבוע + פירוק 5 מערכות ישנות
 slug: google-door-cleanup
 opened: 2026-06-10
-status: active   # active בזמן פיתוח → completed בסיום (משחרר את שער ה-CI)
+status: completed   # נסגר 2026-06-11 — הדלת הקבועה הוכחה חי + כל 5 המערכות הישנות פורקו ואומתו
 ---
 
 # תוכנית פיתוח — העברת "הדלת של גוגל" למקום קבוע + פירוק 5 מערכות ישנות
@@ -31,7 +31,7 @@ Gmail/יומן/Drive/Docs) "כתובת חזרה" אחת הרשומה אצל גו
 | 4 | חיווט-מחדש של workflow ההתחברות ל-gateway | completed | `.github/workflows/request-workspace-scopes-consent.yml` |
 | 5 | מיזוג → פריסה → רישום כתובת + consent חי + smoke (אבן-דרך חיה) | completed | מיזוג ל-main (‎#387 + תיקון ‎#391) + קונסולת גוגל + control SM |
 | 6 | פירוק or-adhd-agent + פרישת הצינורות הישנים | completed | dispatch `decommission-test-system.yml`; נמחקו `rotate-shared-gmail-token.yml` + `copy-gmail-oauth-to-control.yml` |
-| 7 | פירוק 4 הנותרות + סגירה | pending | dispatch `decommission-test-system.yml` ×4 |
+| 7 | פירוק 4 הנותרות + סגירה | completed | dispatch `decommission-test-system.yml` ×3 + `decommission-railway-projects.yml` (keep-list) + `propose-repo-delete.yml` (טלגרם ✅) |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
 >
@@ -195,16 +195,21 @@ consent → smoke ירוק.
 ### שלב 7 — פירוק 4 הנותרות + סגירה
 
 **Acceptance:**
-- [ ] `decommission-test-system.yml` רץ ל-`or-tok` (factory-test-25), `tokile` (factory-test-18), `or-edri-2` (factory-test-25), `project-life-130` — כל אחת עם ✅ נפרד; כל Railway נמחק + ריפו מאורכב.
-- [ ] לכל מערכת אומת ש-`GCP_PROJECT_ID` של הריפו == הפרויקט-הטסט המשותף (שער ה-reuse); אם project-life-130/or-edri-2 לא תואמות — מסלול ישיר ל-Railway+ריפו.
-- [ ] התוכנית נסגרה (`status: completed`).
+- [x] שלוש התקניות פורקו ב-`decommission-test-system.yml`, כל אחת באישור ✅ ייעודי של Or ועם `GCP_PROJECT_ID` מאומת מראש: `or-tok` (factory-test-23, run 27319419791), `tokile` (factory-test-18, run 27319469115), `or-edri-2` (factory-test-22, run 27319505611) — Railway נמחק + DNS הוסר + ריפו אורכב לכל אחת.
+- [x] `project-life-130` (שריד טרום-פקטורי, אין `GCP_PROJECT_ID` → שער-הפירוק סירב כצפוי) טופלה במסלול ייעודי באישור Or: ‏Railway נמחק ב-`decommission-railway-projects.yml` במצב keep-list — ‏dry-run אומת קודם (KEEP 3 / DELETE 1 בדיוק, run 27319312631) ואז ריצה אמיתית (run 27319361696); הריפו נמחק דרך `propose-repo-delete.yml` → כרטיס טלגרם → הקשת ✅ של Or → מחיקה ע"י ה-MCP.
+- [x] התוכנית נסגרה (`status: completed`).
 
-**הוכחה תפקודית (באותו שלב):** לכל מערכת — `list_railway_projects` לא מציג אותה +
-`get_repo` `archived:true`. קלט: 4 dispatches עם ✅ נפרד. נצפה: 4 פירוקים מאומתים.
+**הוכחה תפקודית (באותו שלב):** אומת בלתי-תלוי בסוף: `list_railway_projects` → **0 פרויקטים**
+(כל ה-5 נעלמו); `get_repo` → ‏`archived:true` ל-or-tok/tokile/or-edri-2 (+ or-adhd-agent משלב 6);
+‏`get_repo project-life-130` → ‏**404** (נמחק). קלט: 5 dispatches + הקשת-טלגרם, כולם בשערי ✅.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה (2026-06-11):** הושלם. הסדר היה: קודם ה-Railway של project-life-130
+(כשה-3 עדיין חיות כעוגני keep-list), אחר-כך 3 הפירוקים המסודרים בזה-אחר-זה, ולבסוף מחיקת
+הריפו של project-life-130 בהקשת ✅. כל המחיקות אומתו.
 
-**שינוי תוכנית:** —
+**שינוי תוכנית:** ‏project-life-130 התבררה כשריד טרום-פקטורי (Railway מ-20.4, אין מטא-דאטה)
+— הוסט למסלול keep-list + מחיקת-ריפו-בטלגרם במקום השער הרגיל, בבחירת Or ("Railway + מחיקת
+הריפו"). ‏or-tok התבררה על factory-test-23 (לא 25 כהערכה מוקדמת) — אומת מהריפו עצמו לפני השיגור.
 
 ---
 
@@ -219,3 +224,5 @@ consent → smoke ירוק.
 - שלב 4 הושלם — חיברתי מחדש את כפתור-ההפעלה של ההתחברות אל הדלת החדשה ב-gateway (כבר לא עובר דרך המערכת הישנה or-adhd-agent). בדיקות ה-lint ירוקות.
 - שלב 5 הושלם — הדלת הקבועה הוכחה חי! בדרך התגלה ותוקן באג אמיתי (היו שני "ארנקי גוגל" והדלת השתמשה בלא-נכון); אור עשה 2 קליקים בקונסולה + 2 קליקי אישור, והבדיקה הסופית ירוקה: החיבור המשותף של גוגל עובד דרך הבית הקבוע, בלי or-adhd-agent בכלל. אפשר לפרק.
 - שלב 6 הושלם — or-adhd-agent פורקה באישור אור (Railway נמחק, הריפו אורכב, ה-DNS הוסר) ואומתה כנעלמה. שני צינורות ישנים שהצביעו עליה נמחקו. פרויקט הענן והארנק של גוגל לא נגעו — שמורים להעברה המסודרת.
+- שלב 7 הושלם — שלוש מערכות-הטסט (or-tok, tokile, or-edri-2) פורקו באישורי אור, ו-project-life-130 (שריד ישן) נמחקה במסלול ייעודי: Railway אחרי תצוגה-מקדימה מאומתת, והריפו בהקשת ✅ בטלגרם. אומת בסוף: Railway ריק לגמרי (0 פרויקטים).
+- **הפיתוח נסגר (2026-06-11):** הדלת הקבועה של גוגל חיה ומוכחת ב-gateway, וכל 5 המערכות הישנות פונו. המשך מתוכנן בנפרד: העברת "הארנק" של גוגל מהפרויקט הישן (factory-test-7) אל פרויקט-הבקרה — באישור אור, כפיתוח חדש.
