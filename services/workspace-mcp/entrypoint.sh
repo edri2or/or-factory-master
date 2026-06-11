@@ -35,17 +35,30 @@ if not refresh or refresh == "__NOT_CONFIGURED__":
 # bootstrap-gmail-oauth.yml / request-workspace-scopes-consent.yml). Must match
 # the grant precisely: any superset/subset makes google-auth raise "Scope has
 # changed" on refresh. Env-driven (space-separated WORKSPACE_MCP_SCOPES) so a
-# scope rotation is a deploy-time change; the default is the 6-scope grant of
-# 2026-06-10 (the original 4 + Drive + Docs). These are write-capable scopes —
-# the server runs full mode (not --read-only); per-action write safety is the
-# system's HITL gate.
+# scope rotation is a deploy-time change; the default is the FULL set the --tools
+# calendar/gmail/drive/docs sidecar requires (rotated 2026-06-11 — a curated
+# 6-scope set only worked on the old client via accumulated grants; the fresh
+# unified client granted exactly 6 and the sidecar then reported "Authentication
+# Needed"). These are write-capable scopes — the server runs full mode (not
+# --read-only); per-action write safety is the system's HITL gate.
 default_scopes = (
+    "https://www.googleapis.com/auth/gmail.readonly "
+    "https://www.googleapis.com/auth/gmail.compose "
     "https://www.googleapis.com/auth/gmail.modify "
-    "https://www.googleapis.com/auth/calendar.events "
+    "https://www.googleapis.com/auth/gmail.send "
+    "https://www.googleapis.com/auth/gmail.labels "
     "https://www.googleapis.com/auth/gmail.settings.basic "
-    "https://www.googleapis.com/auth/gmail.settings.sharing "
+    "https://www.googleapis.com/auth/calendar "
+    "https://www.googleapis.com/auth/calendar.readonly "
+    "https://www.googleapis.com/auth/calendar.events "
     "https://www.googleapis.com/auth/drive "
-    "https://www.googleapis.com/auth/documents"
+    "https://www.googleapis.com/auth/drive.readonly "
+    "https://www.googleapis.com/auth/drive.file "
+    "https://www.googleapis.com/auth/documents "
+    "https://www.googleapis.com/auth/documents.readonly "
+    "openid "
+    "https://www.googleapis.com/auth/userinfo.email "
+    "https://www.googleapis.com/auth/userinfo.profile"
 )
 scopes = os.environ.get("WORKSPACE_MCP_SCOPES", "").split() or default_scopes.split()
 data = {

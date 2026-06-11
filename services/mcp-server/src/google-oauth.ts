@@ -81,26 +81,46 @@ export function workspaceConsentConfigured(): boolean {
   );
 }
 
-// The exact 6 workspace scopes, in the SAME order/spelling as WORKSPACE_MCP_SCOPES
+// The workspace scopes, in the SAME order/spelling as WORKSPACE_MCP_SCOPES
 // (scripts/render-mcp-service-yaml.sh) — the Workspace-MCP sidecar's google-auth
 // refuses to refresh a token whose grant differs ("Scope has changed"), so this
 // list MUST stay byte-equal to that env.
+//
+// This is the FULL set the workspace-mcp sidecar (--tools calendar gmail drive
+// docs) requires. Proven live 2026-06-11: a curated 6-scope grant only worked on
+// the OLD client because it had ACCUMULATED the broad grants over prior consents;
+// the fresh unified client granted exactly the 6 the door asked for, and the
+// sidecar refresh then returned "Authentication Needed" (insufficient scopes). So
+// the door must request the sidecar's full set — incl. openid/userinfo for account
+// identification. These are write-capable; per-action write safety is the system's
+// own HITL gate, not scope narrowing.
 export const WORKSPACE_SCOPES = [
+  'https://www.googleapis.com/auth/gmail.readonly',
+  'https://www.googleapis.com/auth/gmail.compose',
   'https://www.googleapis.com/auth/gmail.modify',
-  'https://www.googleapis.com/auth/calendar.events',
+  'https://www.googleapis.com/auth/gmail.send',
+  'https://www.googleapis.com/auth/gmail.labels',
   'https://www.googleapis.com/auth/gmail.settings.basic',
-  'https://www.googleapis.com/auth/gmail.settings.sharing',
+  'https://www.googleapis.com/auth/calendar',
+  'https://www.googleapis.com/auth/calendar.readonly',
+  'https://www.googleapis.com/auth/calendar.events',
   'https://www.googleapis.com/auth/drive',
+  'https://www.googleapis.com/auth/drive.readonly',
+  'https://www.googleapis.com/auth/drive.file',
   'https://www.googleapis.com/auth/documents',
+  'https://www.googleapis.com/auth/documents.readonly',
+  'openid',
+  'https://www.googleapis.com/auth/userinfo.email',
+  'https://www.googleapis.com/auth/userinfo.profile',
 ] as const;
 
 const WORKSPACE_SCOPE_STRING = WORKSPACE_SCOPES.join(' ');
 
 // Sibling of googleAuthorizeUrl for the WORKSPACE consent (not login): requests
-// the 6 workspace scopes with access_type=offline + prompt=consent so Google
-// ALWAYS returns a refresh_token, even on a re-consent. No openid/email — this
-// flow captures a workspace grant, it does not identify a user. Uses the
-// WORKSPACE client (not the login client) — see the two-client note above.
+// the full WORKSPACE_SCOPES with access_type=offline + prompt=consent so Google
+// ALWAYS returns a refresh_token, even on a re-consent. Includes openid/userinfo
+// so the sidecar can identify the authenticated account. Uses the WORKSPACE client
+// (not the login client) — see the two-client note above.
 export function workspaceConsentUrl(serverState: string, callbackUrl: string): string {
   const u = new URL(GOOGLE_AUTH_URL);
   u.searchParams.set('client_id', WORKSPACE_CLIENT_ID!);
@@ -121,7 +141,7 @@ export interface WorkspaceConsentResult {
 // Pure validator (no network — exported for unit testing): checks a Google token
 // response for the workspace consent flow. Throws if refresh_token is absent
 // (Google deduped the grant — caller must retry; prompt=consent normally prevents
-// this) OR if the granted scope set is not EXACTLY the 6 workspace scopes
+// this) OR if the granted scope set is not EXACTLY the workspace scopes
 // (order-insensitive). The strict check is the safety gate: a mismatched grant is
 // never persisted, because it would later fail the sidecar's refresh with
 // "Scope has changed".
@@ -139,7 +159,7 @@ export function parseWorkspaceConsentResponse(json: {
     granted.length === expected.length && expected.every((s, i) => granted[i] === s);
   if (!sameSet) {
     throw new Error(
-      `granted scopes are not the 6 workspace scopes (got: ${granted.join(' ') || '(none)'})`,
+      `granted scopes are not the expected workspace scopes (got: ${granted.join(' ') || '(none)'})`,
     );
   }
   return { refreshToken, scopes: granted };

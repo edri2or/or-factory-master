@@ -51,7 +51,7 @@ test('workspaceConsentConfigured: true when the workspace client creds are prese
   assert.equal(workspaceConsentConfigured(), true);
 });
 
-test('workspaceConsentUrl: requests the 6 workspace scopes, offline + forced consent', () => {
+test('workspaceConsentUrl: requests the full workspace scopes, offline + forced consent', () => {
   const u = new URL(workspaceConsentUrl('st8', 'https://gw.example/workspace/consent/callback'));
   assert.equal(u.origin + u.pathname, 'https://accounts.google.com/o/oauth2/v2/auth');
   // MUST be the WORKSPACE client — minting with the login client produces a
@@ -64,14 +64,14 @@ test('workspaceConsentUrl: requests the 6 workspace scopes, offline + forced con
   assert.equal(u.searchParams.get('state'), 'st8');
   assert.equal(
     u.searchParams.get('scope'),
-    'https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/gmail.settings.basic https://www.googleapis.com/auth/gmail.settings.sharing https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/documents',
+    'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.compose https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.labels https://www.googleapis.com/auth/gmail.settings.basic https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/documents https://www.googleapis.com/auth/documents.readonly openid https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile',
   );
 });
 
-test('workspaceConsentUrl: scope set is exactly the 6, byte-equal to WORKSPACE_SCOPES', () => {
+test('workspaceConsentUrl: scope set is byte-equal to WORKSPACE_SCOPES (the full sidecar set)', () => {
   const u = new URL(workspaceConsentUrl('s', 'https://gw/cb'));
   assert.equal(u.searchParams.get('scope'), WORKSPACE_SCOPES.join(' '));
-  assert.equal(WORKSPACE_SCOPES.length, 6);
+  assert.equal(WORKSPACE_SCOPES.length, 17);
 });
 
 test('login URL stays untouched while adding the consent door (openid email, online, login client)', () => {
@@ -81,10 +81,10 @@ test('login URL stays untouched while adding the consent door (openid email, onl
   assert.equal(login.searchParams.get('client_id'), 'test-client-id.apps.googleusercontent.com');
 });
 
-test('parseWorkspaceConsentResponse: 6 scopes + refresh_token → returns the token', () => {
+test('parseWorkspaceConsentResponse: full scopes + refresh_token → returns the token', () => {
   const r = parseWorkspaceConsentResponse({ refresh_token: 'rt-123', scope: WORKSPACE_SCOPES.join(' ') });
   assert.equal(r.refreshToken, 'rt-123');
-  assert.equal(r.scopes.length, 6);
+  assert.equal(r.scopes.length, 17);
 });
 
 test('parseWorkspaceConsentResponse: scope check is order-insensitive', () => {
@@ -104,7 +104,7 @@ test('parseWorkspaceConsentResponse: scope mismatch → throws (never persisted)
   // too few
   assert.throws(
     () => parseWorkspaceConsentResponse({ refresh_token: 'rt', scope: WORKSPACE_SCOPES.slice(0, 5).join(' ') }),
-    /6 workspace scopes/,
+    /expected workspace scopes/,
   );
   // an extra/unexpected scope
   assert.throws(
@@ -113,6 +113,6 @@ test('parseWorkspaceConsentResponse: scope mismatch → throws (never persisted)
         refresh_token: 'rt',
         scope: WORKSPACE_SCOPES.join(' ') + ' https://www.googleapis.com/auth/extra',
       }),
-    /6 workspace scopes/,
+    /expected workspace scopes/,
   );
 });
