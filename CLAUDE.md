@@ -252,4 +252,6 @@ The MCP server's source lives in `services/mcp-server/` and is deployed to Cloud
 | `list_railway_deployments` | recent deployment history (id/status/createdAt) |
 | `railway_graphql_read` | read-only passthrough — any `query { … }` document, mutations refused server-side. Forward-compatible escape hatch for any future Railway schema field. |
 
+**`probe_endpoint` is host-allowlisted** to `.or-infra.com` / `.up.railway.app` / `.run.app` (an intentional SSRF defense in `services/mcp-server/src/probe.ts` — **not** widened). External hosts like `accounts.google.com` are refused with `allowlist_rejected`, so **you cannot verify an external OAuth/redirect URL by probing it** — prove external endpoints via the live functional path (the consent flow + `google-mcp-smoke`) or `WebFetch` instead. The per-tenant `/factory/<system>` variant locks even tighter, to exactly `https://n8n-<system>.or-infra.com` (`factory-scope.ts`).
+
 The forward path: deprecate the old factory's MCP service in `factory-control-9piybr` once the new one is verified.
