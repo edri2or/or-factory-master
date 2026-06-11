@@ -30,11 +30,15 @@ FACTORY_TOOLS_ALLOWED_SYSTEMS="${FACTORY_TOOLS_ALLOWED_SYSTEMS:-*}"
 # passes this exact string as user_google_email (Google auths by the token).
 WORKSPACE_GOOGLE_ACCOUNT_LABEL="${WORKSPACE_GOOGLE_ACCOUNT_LABEL:-shared-google@or-infra.com}"
 # Tool groups the Workspace sidecar serves + the EXACT scopes of the shared
-# token's grant (rotated 2026-06-10 to 6: the original 4 + Drive + Docs). The
-# scopes list must equal the grant byte-for-byte or google-auth fails refresh
-# with "Scope has changed".
+# token's grant. The scopes list must equal the grant byte-for-byte or google-auth
+# fails refresh with "Scope has changed", AND must cover everything the sidecar's
+# enabled tool groups need or the sidecar reports "Authentication Needed". Rotated
+# 2026-06-11 to the FULL set the --tools calendar/gmail/drive/docs sidecar requires
+# (a curated 6-scope set only worked on the old client via accumulated grants; the
+# fresh unified client exposed the gap). MUST stay byte-equal to WORKSPACE_SCOPES
+# in services/mcp-server/src/google-oauth.ts.
 WORKSPACE_MCP_TOOLS="${WORKSPACE_MCP_TOOLS:-calendar gmail drive docs}"
-WORKSPACE_MCP_SCOPES="${WORKSPACE_MCP_SCOPES:-https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/gmail.settings.basic https://www.googleapis.com/auth/gmail.settings.sharing https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/documents}"
+WORKSPACE_MCP_SCOPES="${WORKSPACE_MCP_SCOPES:-https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.compose https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.labels https://www.googleapis.com/auth/gmail.settings.basic https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/documents https://www.googleapis.com/auth/documents.readonly openid https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile}"
 
 # Gateway env vars sourced from Secret Manager (ENV_NAME=secret-name). The
 # gateway already shipped these 19; N8N_MCP_AUTH_TOKEN is the only addition.

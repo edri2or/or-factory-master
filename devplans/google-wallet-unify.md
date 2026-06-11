@@ -31,7 +31,7 @@ follow-up מסגירת `google-door-cleanup`. היום יש **שני** OAuth cli
 | 1 | Or יוצר את ה-client המאוחד + מסך-consent ב-control | completed | — (קונסולת גוגל) |
 | 2 | הרחבת זריעת-הסודות ב-deploy לכסות את שני זוגות-ה-clients | completed | `.github/workflows/deploy-mcp-server.yml` |
 | 3 | Or מזריק את מפתחות ה-client החדש ל-repo secrets + תיעוד rollback | completed | — (GitHub repo secrets) |
-| 4 | ההחלפה החיה: מיזוג→פריסה→consent→פריסה→smoke ירוק | pending | מיזוג ל-main (deploy) + control SM + קונסולה |
+| 4 | ההחלפה החיה + תיקון scopes (6→17): מיזוג→פריסה→consent→פריסה→smoke ירוק | in-progress | deploy + control SM + `google-oauth.ts`/`render-mcp-service-yaml.sh`/`entrypoint.sh` |
 | 5 | פרישת הכפילות `google-oauth-client-*` → ארנק אחד + צרור-מפתחות אחד | pending | `scripts/render-mcp-service-yaml.sh`, `.github/workflows/deploy-mcp-server.yml` |
 | 6 | ניקוי: השארת רק 2 ה-redirect URIs החיים על ה-client המאוחד | pending | — (קונסולת גוגל) |
 
@@ -160,19 +160,26 @@ Access - Nuriel` (`…pj46`, Jun 4) — **שלישי לא-קשור** (Cloudflare
    כשהרוויזיה Ready. סה"כ ≈ קליק consent אחד + פריסה אחת ≈ דקות.
 
 **Acceptance:**
-- [ ] מיזוג שלב 2 + `deploy-mcp-server.yml` SUCCESS (כל 4 שמות-ה-SM = ה-client החדש).
-- [ ] `request-workspace-scopes-consent.yml` רץ; Or לחץ; `gmail-oauth-refresh-token` קיבל גרסה חדשה היום.
-- [ ] פריסה שנייה SUCCESS; ה-sidecar קורא את הטוקן החדש.
-- [ ] **`google-mcp-smoke` ירוק** (עם `system=unification-smoke`; הברירת-מחדל מפורקת).
+- [x] מיזוג שלב 2 + `deploy-mcp-server.yml` SUCCESS (כל 4 שמות-ה-SM = ה-client החדש; run 27339079527).
+- [x] `request-workspace-scopes-consent.yml` רץ; Or לחץ (×2); `gmail-oauth-refresh-token` קיבל גרסאות חדשות.
+- [x] פריסות-מחדש SUCCESS (27339465506, 27340017135).
+- [ ] **`google-mcp-smoke` ירוק** — נכשל ×2 (פער-scopes); ממתין למיזוג תיקון-ה-scopes + consent-מחדש + פריסה.
 
 **הוכחה תפקודית (באותו שלב — מכרעת):** `probe_endpoint …/workspace/consent/start` → 302 עם 6 ה-scopes;
 `list_secret_metadata gmail-oauth-refresh-token` → גרסה חדשה בתאריך היום; **`google-mcp-smoke` ירוק 6/6**
 (mint bearer → initialize → tools/list עם כלי-גוגל → `list_gmail_labels` אמיתי → קבוצות Drive+Docs →
 `search_drive_files` אמיתי). ירוק כאן = הארנק המאוחד עובד end-to-end.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** in-progress (2026-06-11). ההחלפה רצה end-to-end: מיזוג #397 → deploy הזריע את הארנק
+המאוחד (`140345952904-csqtb1…`) לכל 4 המגירות → Or עשה consent → פריסה-מחדש — **אך `google-mcp-smoke` נכשל ×2**.
+אבחון מלוגי ה-sidecar ב-Cloud Run (לא ניחוש): ה-plumbing ירוק (bearer, MCP init, 58 כלי-גוגל, ה-client החדש
+בשימוש), אבל ה-sidecar (`--tools calendar gmail drive docs`) דורש **17 scopes** וה-token החדש מחזיק רק את 6
+שהדלת ביקשה ("Authentication Needed"). הארנק הישן הסתיר זאת (צבר את ה-17). **תיקון בוצע** (אישור Or):
+`WORKSPACE_SCOPES`/`WORKSPACE_MCP_SCOPES`/`entrypoint default_scopes` הורחבו ל-17 (byte-equal), הבדיקות
+עודכנו — **92/92 ירוק מקומית**. נותר: מיזוג התיקון → deploy → **consent-מחדש כ-`shared-google`** → פריסה → smoke.
 
-**שינוי תוכנית:** —
+**שינוי תוכנית:** נוסף תת-מסלול תיקון-scopes בתוך שלב 4 — פער שנחשף ע"י הארנק הנקי (באג חבוי). תבנית-המערכת
+(`bootstrap-gmail-oauth.yml`) לא נגעה (אין מערכות חיות) → follow-up; שומר על `/dev-stage` ללא golden gate.
 
 ---
 
