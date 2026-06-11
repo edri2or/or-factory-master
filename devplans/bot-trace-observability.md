@@ -8,7 +8,7 @@
 dev_name: ראות מובנית על בוט-הטלגרם (claim-vs-actual)
 slug: bot-trace-observability
 opened: 2026-06-10
-status: active   # כל השלבים הושלמו; ה-flip ל-completed נעשה ב-PR נפרד אחרי המיזוג (דפוס הריפו, כמו #389) כי דב-פיתוח מקבילי (google-door-cleanup) עדיין active
+status: completed   # הושלם ונסגר — הקוד מוזג (#382), הוכח חי על factory-test-061, ומערכת-הטסט פורקה
 ---
 
 # תוכנית פיתוח — ראות מובנית על בוט-הטלגרם של כל מערכת
