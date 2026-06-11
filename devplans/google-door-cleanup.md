@@ -30,7 +30,7 @@ Gmail/יומן/Drive/Docs) "כתובת חזרה" אחת הרשומה אצל גו
 | 3 | לוכד ה-callback + שמירה ל-SM + שומרים | completed | `index.ts` (route callback), `services/mcp-server/src/google-oauth.ts` (exchange/parse +test) |
 | 4 | חיווט-מחדש של workflow ההתחברות ל-gateway | completed | `.github/workflows/request-workspace-scopes-consent.yml` |
 | 5 | מיזוג → פריסה → רישום כתובת + consent חי + smoke (אבן-דרך חיה) | completed | מיזוג ל-main (‎#387 + תיקון ‎#391) + קונסולת גוגל + control SM |
-| 6 | פירוק or-adhd-agent + פרישת הצינורות הישנים | pending | dispatch `decommission-test-system.yml`; retire `rotate-shared-gmail-token.yml` + נתיב rotate ב-`copy-gmail-oauth-to-control.yml` |
+| 6 | פירוק or-adhd-agent + פרישת הצינורות הישנים | completed | dispatch `decommission-test-system.yml`; נמחקו `rotate-shared-gmail-token.yml` + `copy-gmail-oauth-to-control.yml` |
 | 7 | פירוק 4 הנותרות + סגירה | pending | dispatch `decommission-test-system.yml` ×4 |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
@@ -176,14 +176,17 @@ consent → smoke ירוק.
 ### שלב 6 — פירוק or-adhd-agent + פרישת הצינורות הישנים
 
 **Acceptance:**
-- [ ] `decommission-test-system.yml` רץ ל-`or-adhd-agent` (`shared_gcp_project=factory-test-7`); Railway `fa36eab4-…` נמחק, `edri2or/or-adhd-agent` מאורכב, DNS `n8n-or-adhd-agent` הוסר.
-- [ ] `rotate-shared-gmail-token.yml` + נתיב ה-rotate ב-`copy-gmail-oauth-to-control.yml` פורשו (מצביעים לריפו מת).
+- [x] `decommission-test-system.yml` רץ ל-`or-adhd-agent` (`shared_gcp_project=factory-test-7`, ‏run 27319026790, SUCCESS ‏2026-06-11 02:07); Railway `fa36eab4-…` נמחק, `edri2or/or-adhd-agent` מאורכב, DNS הוסר.
+- [x] הצינורות המתים נמחקו: `rotate-shared-gmail-token.yml` (כל תפקידו — שיגור workflow בריפו המאורכב) וגם `copy-gmail-oauth-to-control.yml` כולו (השרשרת n8n→extract→copy הוחלפה כליל בדלת שכותבת ישר ל-control SM).
 
-**הוכחה תפקודית (באותו שלב):** `list_railway_projects` כבר לא מציג or-adhd-agent;
-`get_repo or-adhd-agent` → `archived:true`; `list_dns_records` — ה-CNAME נעלם. קלט: dispatch
-+ ✅ של Or. נצפה: שלושתם מאומתים.
+**הוכחה תפקודית (באותו שלב):** אומת בלתי-תלוי אחרי הריצה: `list_railway_projects` מציג
+4 פרויקטים בלבד (or-adhd-agent נעלם); `get_repo or-adhd-agent` → `archived:true`.
+פרויקט ה-GCP ‏factory-test-7 והארנק לא נגעו (by design — מחזיקים את ה-OAuth client עד ההעברה).
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה (2026-06-11):** הושלם. ‏dispatch אחרי ✅ ייעודי של Or; הריצה עברה את
+שערי-הקבלה (אימות `GCP_PROJECT_ID`==factory-test-7 + אימות שם-Railway) וסיימה SUCCESS;
+האימות הבלתי-תלוי ירוק. הרחבה מתועדת: נמחק גם `copy-gmail-oauth-to-control.yml` כולו (לא רק
+נתיב ה-rotate) — כל ייעודו היה שרשרת or-adhd-agent, והדלת החליפה אותו.
 
 **שינוי תוכנית:** —
 
@@ -215,3 +218,4 @@ consent → smoke ירוק.
 - שלב 3 הושלם — בניתי את ה"לוכד": הוא תופס את הטוקן החדש שחוזר מגוגל, מוודא שיש בו בדיוק 6 ההרשאות (אחרת לא שומר — בטיחות), ושומר אותו במקום הקבוע. בדיקה אוטומטית ירוקה.
 - שלב 4 הושלם — חיברתי מחדש את כפתור-ההפעלה של ההתחברות אל הדלת החדשה ב-gateway (כבר לא עובר דרך המערכת הישנה or-adhd-agent). בדיקות ה-lint ירוקות.
 - שלב 5 הושלם — הדלת הקבועה הוכחה חי! בדרך התגלה ותוקן באג אמיתי (היו שני "ארנקי גוגל" והדלת השתמשה בלא-נכון); אור עשה 2 קליקים בקונסולה + 2 קליקי אישור, והבדיקה הסופית ירוקה: החיבור המשותף של גוגל עובד דרך הבית הקבוע, בלי or-adhd-agent בכלל. אפשר לפרק.
+- שלב 6 הושלם — or-adhd-agent פורקה באישור אור (Railway נמחק, הריפו אורכב, ה-DNS הוסר) ואומתה כנעלמה. שני צינורות ישנים שהצביעו עליה נמחקו. פרויקט הענן והארנק של גוגל לא נגעו — שמורים להעברה המסודרת.
