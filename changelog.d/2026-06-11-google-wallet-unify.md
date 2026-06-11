@@ -42,3 +42,15 @@ follow-up מ-google-door-cleanup. מאחדים את שני ה-OAuth clients של
   (run 27344835076)** — bearer → init → 58 כלי → `list_gmail_labels` אמיתי (User: `edriorp38@or-infra.com`) →
   Drive+Docs → `search_drive_files` אמיתי. **הארנק המאוחד מוכח end-to-end.** (Follow-up: לתת לברוקר
   `serviceUsageAdmin` על control כדי שהפעלת-API תהיה אוטונומית.)
+- **שלב 5 — ארנק אחד → צרור-מפתחות אחד (פרישת הכפילות `google-oauth-client-*`):** ה-gateway קרא עד כה את
+  לקוח-הגוגל המאוחד משני זוגות-סוד שהחזיקו את *אותו* לקוח (`google-oauth-client-*` ל-login, `gmail-oauth-client-*`
+  ל-workspace). מיקדנו לזוג יחיד: ב-`scripts/render-mcp-service-yaml.sh` ה-LOGIN env (`GOOGLE_OAUTH_CLIENT_*`)
+  מצביע עכשיו על `gmail-oauth-client-*` (כמו ה-WORKSPACE env → שני ה-env נפתרים לזוג אחד); ב-
+  `.github/workflows/deploy-mcp-server.yml` הוסרו `google-oauth-client-*` מלולאת ה-placeholder ומקריאות ה-`seed`
+  (נשאר רק זוג ה-gmail, מאותו repo-secret `GOOGLE_OAUTH_CLIENT_{ID,SECRET}`). הערה לא-מדויקת ב-
+  `services/mcp-server/src/google-oauth.ts` ("TWO OAuth clients exist") תוקנה למציאות המאוחדת — **הערה-בלבד,
+  אפס שינוי-התנהגות**. **ערך-זהה:** שני הזוגות החזיקו את אותו לקוח, אז מיקוד ה-login שקוף (ה-login ממשיך לעבוד);
+  ‏`google-oauth-client-*` הופכים ליתומים לא-מחוברים (נשארים ב-SM כ-rollback — תמיד addVersion, לעולם לא destroy;
+  disable אופציונלי מאוחר יותר). אפס שינוי ב-`templates/system/**` → `/dev-stage` רגיל (בלי golden gate). הוכחה
+  אחרי מיזוג+פריסה: round-trip התחברות + `google-mcp-smoke` ירוק + `list_secret_metadata` מאשר ש-
+  `google-oauth-client-*` לא צבר גרסאות.

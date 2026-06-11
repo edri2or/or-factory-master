@@ -32,7 +32,7 @@ follow-up מסגירת `google-door-cleanup`. היום יש **שני** OAuth cli
 | 2 | הרחבת זריעת-הסודות ב-deploy לכסות את שני זוגות-ה-clients | completed | `.github/workflows/deploy-mcp-server.yml` |
 | 3 | Or מזריק את מפתחות ה-client החדש ל-repo secrets + תיעוד rollback | completed | — (GitHub repo secrets) |
 | 4 | ההחלפה החיה (scopes 6→17 + תווית-חשבון + הפעלת APIs): smoke ירוק 6/6 | completed | deploy + control SM + `google-oauth.ts`/`render-mcp-service-yaml.sh`/`entrypoint.sh`/`google-mcp-smoke.py` + GCP APIs |
-| 5 | פרישת הכפילות `google-oauth-client-*` → ארנק אחד + צרור-מפתחות אחד | pending | `scripts/render-mcp-service-yaml.sh`, `.github/workflows/deploy-mcp-server.yml` |
+| 5 | פרישת הכפילות `google-oauth-client-*` → ארנק אחד + צרור-מפתחות אחד | in-progress | `scripts/render-mcp-service-yaml.sh`, `.github/workflows/deploy-mcp-server.yml`, `services/mcp-server/src/google-oauth.ts` (הערה) |
 | 6 | ניקוי: השארת רק 2 ה-redirect URIs החיים על ה-client המאוחד | pending | — (קונסולת גוגל) |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
@@ -196,24 +196,30 @@ Access - Nuriel` (`…pj46`, Jun 4) — **שלישי לא-קשור** (Cloudflare
 
 ### שלב 5 — פרישת הכפילות `google-oauth-client-*` → ארנק אחד + צרור-מפתחות אחד (בחירת Or)
 
-1. ב-`scripts/render-mcp-service-yaml.sh:45-46` לכוון את ה-LOGIN env לזוג ששרד:
+1. ב-`scripts/render-mcp-service-yaml.sh:52-53` לכוון את ה-LOGIN env לזוג ששרד:
    `GOOGLE_OAUTH_CLIENT_ID=gmail-oauth-client-id`, `GOOGLE_OAUTH_CLIENT_SECRET=gmail-oauth-client-secret`.
-   כעת `GOOGLE_OAUTH_CLIENT_*` וגם `WORKSPACE_OAUTH_CLIENT_*` נפתרים לאותו זוג. **אפס שינוי TS / template.**
+   כעת `GOOGLE_OAUTH_CLIENT_*` וגם `WORKSPACE_OAUTH_CLIENT_*` נפתרים לאותו זוג. **אפס שינוי TS / template** (חוץ מהערה).
 2. ב-`deploy-mcp-server.yml` להוריד את ה-ensure+seed של `google-oauth-client-*` (להשאיר את זריעת ה-gmail משלב 2).
 3. אחרי שמיזוג+פריסה מוכיחים שההתחברות עובדת — **disable (לא destroy)** לגרסאות היתומות של `google-oauth-client-*`
    (בטוח רק כשהרוויזיה החדשה היא היחידה בתעבורה ולא ממפה אותן — לקח #2).
 
 **Acceptance:**
-- [ ] `render-mcp-service-yaml.sh` מכוון את ה-LOGIN ל-`gmail-oauth-client-*`; deploy בלי `google-oauth-client-*`.
-- [ ] פריסה SUCCESS; `google-oauth-client-*` יתומים (disabled, לא destroyed).
+- [x] `render-mcp-service-yaml.sh` מכוון את ה-LOGIN ל-`gmail-oauth-client-*`; `deploy-mcp-server.yml` בלי `google-oauth-client-*` (קוד נכתב — ממתין למיזוג+פריסה).
+- [ ] פריסה SUCCESS; round-trip התחברות ירוק + `google-mcp-smoke` ירוק; `google-oauth-client-*` יתומים (אופציונלי: disabled, לא destroyed).
 
 **הוכחה תפקודית (באותו שלב):** round-trip התחברות-מפעיל — Or מתחבר מחדש ל-gateway עם `edri2or@gmail.com`
 → מאומת (ההתחברות קוראת עכשיו `gmail-oauth-client-*`); `google-mcp-smoke` ירוק שוב; `inspect_cloud_run`
 מראה רוויזיה חדשה; `list_secret_metadata` מאשר ש-`google-oauth-client-*` לא צבר גרסאות.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** in-progress (2026-06-11) — הקוד נכתב בענף `claude/fervent-lovelace-m3tkyf`: ב-`render-mcp-service-yaml.sh`
+ה-LOGIN env (`GOOGLE_OAUTH_CLIENT_*`) מכוון עכשיו לזוג ששרד `gmail-oauth-client-*` (גם ה-WORKSPACE כבר שם → שני ה-env
+נפתרים לאותו זוג); ב-`deploy-mcp-server.yml` הוסרו `google-oauth-client-*` מלולאת ה-placeholder ומקריאות ה-`seed`
+(נשאר רק זוג ה-gmail); הערה לא-מדויקת ב-`google-oauth.ts` ("TWO OAuth clients") תוקנה למציאות המאוחדת (הערה-בלבד).
+**ערך-זהה:** שני הזוגות מחזיקים את אותו client → מיקוד ה-LOGIN ל-`gmail-oauth-client-*` שקוף; `google-oauth-client-*`
+הופכים ליתומים לא-מחוברים. ממתין לאישור Or למיזוג → פריסה → הוכחה (round-trip + smoke).
 
-**שינוי תוכנית:** —
+**שינוי תוכנית:** הורחב מעט מעבר ל-2 הקבצים המתוכננים: תוקנה גם הערה ב-`services/mcp-server/src/google-oauth.ts`
+(הערה-בלבד, בטוחה לבילד) כי "TWO OAuth clients exist" הפך לא-מדויק אחרי האיחוד — שמירה על אמינות-התיעוד.
 
 ---
 
@@ -250,3 +256,4 @@ Access) לפני כל פירוק של factory-test-7. נרשם כגבול בהע
 - שלב 2 הושלם — הכנתי בקוד (ב-workflow של הפריסה) שמפתח-ארנק אחד יזרום לכל ארבע מגירות-הסוד. עדיין לא נפרס — רק נבדק, וכל בדיקות ה-CI ירוקות.
 - שלב 3 הושלם — אור הזין את מפתחות הארנק החדש (ID + secret) ב-GitHub. אומת שנחת. עדיין שום דבר חי לא הוחלף (זה קורה רק בשלב 4).
 - שלב 4 הושלם — **הארנק המאוחד חי ומוכח (smoke ירוק 6/6)!** בדרך התגברנו על 3 מכשולים חבויים: הרשאות חסרות (6→17), שם-חשבון בדוי שתיקנתי שגוי בתיעוד (shared-google→edriorp38, אור תיקן אותי), ו-APIs של גוגל שלא היו מופעלים בפרויקט החדש (אור הפעיל ב-4 קליקים). הסוכנים קוראים Gmail/Drive חי דרך הארנק האחד שב-control.
+- שלב 5 (קוד נכתב, ממתין לאישורך למיזוג) — סידרתי שה-gateway יקרא את הארנק מ**מגירת-סוד אחת בלבד** במקום שתיים. שני הזוגות מחזיקים בדיוק את אותו ארנק, אז זו החלפה "שקופה" — ההתחברות תמשיך לעבוד, והמגירה הכפולה (`google-oauth-client-*`) פשוט תהפוך ל"יתומה" לא-מחוברת. אחרי המיזוג אוכיח לבד (התחברות + smoke), בלי פעולה שלך.
