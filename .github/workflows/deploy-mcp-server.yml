@@ -245,17 +245,20 @@ jobs:
             echo "PASS: n8n-mcp-internal-auth-token minted (no trailing newline)."
           fi
 
-      - name: Ensure google-oauth-client secrets exist (placeholder if missing)
+      - name: Ensure google-oauth-client + gmail-oauth-client secrets exist (placeholder if missing)
         run: |
           set -euo pipefail
-          # Google client id/secret for the operator "Login with Google" flow.
-          # Created once, manually, in Google Cloud Console (consent screen +
-          # OAuth Web client; the one step that can't be API-automated), then
-          # stored here. We seed __NOT_CONFIGURED__ placeholders if absent so the
-          # Cloud Run secret mount never fails — the gateway treats the placeholder
-          # as "Google not configured" and falls back to the admin-secret form
-          # until the real values are added. Never overwrites a real value.
-          for NAME in google-oauth-client-id google-oauth-client-secret; do
+          # The ONE unified Google OAuth client (consent screen + OAuth Web client,
+          # created once manually in the Cloud Console — the one step that can't be
+          # API-automated) backs BOTH the operator "Login with Google" flow
+          # (google-oauth-client-*) AND the shared workspace consent door
+          # (gmail-oauth-client-*); both pairs hold the SAME client. We seed
+          # __NOT_CONFIGURED__ placeholders if absent so the Cloud Run secret mount
+          # never fails — the gateway treats the placeholder as "not configured" and
+          # falls back to the admin-secret form until the real values are added.
+          # Never overwrites a real value.
+          for NAME in google-oauth-client-id google-oauth-client-secret \
+                      gmail-oauth-client-id gmail-oauth-client-secret; do
             if gcloud secrets describe "${NAME}" --project="${GCP_PROJECT}" >/dev/null 2>&1; then
               echo "INFO: ${NAME} exists; leaving as-is."
             else
@@ -269,18 +272,20 @@ jobs:
             fi
           done
 
-      - name: Seed google-oauth secrets from repo secrets (if provided)
+      - name: Seed the unified Google OAuth client into all four SM secrets (if provided)
         env:
           GH_GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
           GH_GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
         run: |
           set -euo pipefail
-          # Secure handoff of the operator's Google OAuth client: the values live
+          # Secure handoff of the ONE unified Google OAuth client: the values live
           # only as encrypted GitHub Actions repo secrets (masked here, never in a
           # chat or a plain log). If present, add them as real SM versions on top
           # of the placeholders; if absent, leave the placeholders (Google login
           # stays dormant, admin-form fallback). Idempotent — only writes a new
-          # version when the repo secret differs from what's already in SM.
+          # version when the repo secret differs from what's already in SM. The
+          # same id/secret is written to BOTH the login pair (google-oauth-client-*)
+          # AND the workspace pair (gmail-oauth-client-*) — one wallet, four slots.
           seed() {
             local sm_name="$1" val="$2"
             [ -n "${val}" ] || { echo "INFO: ${sm_name} repo secret not set; leaving SM as-is."; return 0; }
@@ -295,8 +300,12 @@ jobs:
               echo "PASS: ${sm_name} updated from repo secret."
             fi
           }
+          # Login pair (operator "Login with Google"):
           seed google-oauth-client-id "${GH_GOOGLE_CLIENT_ID}"
           seed google-oauth-client-secret "${GH_GOOGLE_CLIENT_SECRET}"
+          # Workspace pair (the shared consent door + sidecar) — SAME unified client:
+          seed gmail-oauth-client-id "${GH_GOOGLE_CLIENT_ID}"
+          seed gmail-oauth-client-secret "${GH_GOOGLE_CLIENT_SECRET}"
 
       - name: Ensure cloudflare-zones-read-token exists (placeholder if missing)
         run: |

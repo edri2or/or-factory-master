@@ -100,6 +100,18 @@ The previous factory (`edri2or/factory`) automated everything end-to-end. Failur
 | Shared test GCP project | `factory-test-25` (reuse-mode backend for test systems; 0 quota) |
 | Sandbox toy-key identity | `sandbox-tester-sa@factory-test-25` via `sandbox-pool`/`github-sandbox-provider` (CEL: factory repo, **any ref**); only power = conditioned `secretAccessor` on `factory-test-25`'s `github-app-*` secrets. The branch-runnable "prove → merge" identity; never the broker. Built by `bootstrap-sandbox-tester.yml`. |
 
+## Google identities (who is who) — never default to the personal Gmail
+
+There are **three distinct Google accounts**, each with one job. **Never conflate them; never assume `edri2or@gmail.com` for operator/console work.** Full reference + evidence: `docs/google-identities.md`.
+
+**Purpose frame (Or's WHY):** `or-infra.com` = the **infrastructure** being built (the means); **`edri2or@gmail.com` = Or's real personal life = the ultimate target the email/calendar agents exist to serve** (the end). Today those agents run on the `shared-google@or-infra.com` infra/sandbox mailbox; pointing them at Or's real `edri2or@gmail.com` is a **separate, deliberate step**, never silently bundled into a plumbing change.
+
+| Account | Role | Use it for |
+|---|---|---|
+| `edriorp38@or-infra.com` | Workspace **operator/admin** — `owner` of `or-factory-master-control`, `owner`+`oauthconfig.editor` of `factory-test-7` | **All Cloud Console clicks + OAuth client/consent-screen work.** This is Or's console account (`authuser=1`); when you hand Or a console link it is THIS account. Consent-screen support/contact email = this. |
+| `shared-google@or-infra.com` | The shared Workspace **DATA mailbox** the AI uses (Gmail/Calendar/Drive/Docs); identity of `gmail-oauth-refresh-token` | The workspace **consent "Allow"** is performed **signed in as this account**; it is `WORKSPACE_GOOGLE_ACCOUNT_LABEL`. |
+| `edri2or@gmail.com` | Or's **personal** Gmail — org creator, `billing.admin`, current `OAUTH_ALLOWED_EMAILS`, the Claude.ai Google session integration | Billing / super-admin of last resort only. **NOT** the cloud-operator account. |
+
 ## Skills available
 
 | Skill | Purpose |
