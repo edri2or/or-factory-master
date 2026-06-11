@@ -50,6 +50,106 @@ export function googleAuthorizeUrl(serverState: string, callbackUrl: string): st
   return u.toString();
 }
 
+// === Workspace consent door (separate from operator LOGIN above) ===
+//
+// The shared Google identity's interactive-consent flow used to live on
+// or-adhd-agent's n8n. These helpers move it into the gateway: request the 6
+// workspace scopes OFFLINE so Google returns a refresh_token, capture it at the
+// gateway's own callback, and persist it to control SM. Login (googleAuthorizeUrl
+// / exchangeGoogleCode, access_type=online) is deliberately untouched — it never
+// needs a refresh_token.
+
+// The exact 6 workspace scopes, in the SAME order/spelling as WORKSPACE_MCP_SCOPES
+// (scripts/render-mcp-service-yaml.sh) — the Workspace-MCP sidecar's google-auth
+// refuses to refresh a token whose grant differs ("Scope has changed"), so this
+// list MUST stay byte-equal to that env.
+export const WORKSPACE_SCOPES = [
+  'https://www.googleapis.com/auth/gmail.modify',
+  'https://www.googleapis.com/auth/calendar.events',
+  'https://www.googleapis.com/auth/gmail.settings.basic',
+  'https://www.googleapis.com/auth/gmail.settings.sharing',
+  'https://www.googleapis.com/auth/drive',
+  'https://www.googleapis.com/auth/documents',
+] as const;
+
+const WORKSPACE_SCOPE_STRING = WORKSPACE_SCOPES.join(' ');
+
+// Sibling of googleAuthorizeUrl for the WORKSPACE consent (not login): requests
+// the 6 workspace scopes with access_type=offline + prompt=consent so Google
+// ALWAYS returns a refresh_token, even on a re-consent. No openid/email — this
+// flow captures a workspace grant, it does not identify a user.
+export function workspaceConsentUrl(serverState: string, callbackUrl: string): string {
+  const u = new URL(GOOGLE_AUTH_URL);
+  u.searchParams.set('client_id', CLIENT_ID!);
+  u.searchParams.set('redirect_uri', callbackUrl);
+  u.searchParams.set('response_type', 'code');
+  u.searchParams.set('scope', WORKSPACE_SCOPE_STRING);
+  u.searchParams.set('access_type', 'offline');
+  u.searchParams.set('prompt', 'consent');
+  u.searchParams.set('state', serverState);
+  return u.toString();
+}
+
+export interface WorkspaceConsentResult {
+  refreshToken: string;
+  scopes: string[];
+}
+
+// Pure validator (no network — exported for unit testing): checks a Google token
+// response for the workspace consent flow. Throws if refresh_token is absent
+// (Google deduped the grant — caller must retry; prompt=consent normally prevents
+// this) OR if the granted scope set is not EXACTLY the 6 workspace scopes
+// (order-insensitive). The strict check is the safety gate: a mismatched grant is
+// never persisted, because it would later fail the sidecar's refresh with
+// "Scope has changed".
+export function parseWorkspaceConsentResponse(json: {
+  refresh_token?: string;
+  scope?: string;
+}): WorkspaceConsentResult {
+  const refreshToken = json.refresh_token;
+  if (!refreshToken) {
+    throw new Error('google token response missing refresh_token (consent deduped — retry)');
+  }
+  const granted = (json.scope ?? '').split(/\s+/).filter(Boolean).sort();
+  const expected = [...WORKSPACE_SCOPES].sort();
+  const sameSet =
+    granted.length === expected.length && expected.every((s, i) => granted[i] === s);
+  if (!sameSet) {
+    throw new Error(
+      `granted scopes are not the 6 workspace scopes (got: ${granted.join(' ') || '(none)'})`,
+    );
+  }
+  return { refreshToken, scopes: granted };
+}
+
+// Exchanges a workspace-consent authorization code for a refresh_token, validating
+// the response with parseWorkspaceConsentResponse. Mirrors exchangeGoogleCode but
+// returns the refresh_token (login uses access_type=online and never gets one).
+export async function exchangeWorkspaceConsentCode(
+  code: string,
+  callbackUrl: string,
+): Promise<WorkspaceConsentResult> {
+  const body = new URLSearchParams({
+    code,
+    client_id: CLIENT_ID!,
+    client_secret: CLIENT_SECRET!,
+    redirect_uri: callbackUrl,
+    grant_type: 'authorization_code',
+  });
+  const resp = await fetch(GOOGLE_TOKEN_URL, {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: body.toString(),
+  });
+  const text = await resp.text();
+  if (!resp.ok) {
+    throw new Error(`google token exchange ${resp.status}: ${text.slice(0, 200)}`);
+  }
+  return parseWorkspaceConsentResponse(
+    JSON.parse(text) as { refresh_token?: string; scope?: string },
+  );
+}
+
 interface GoogleIdentity {
   email: string;
   emailVerified: boolean;
