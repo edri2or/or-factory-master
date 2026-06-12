@@ -48,6 +48,11 @@ jobs:
         env:
           PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
           SYSTEM_NAME: ${{ vars.SYSTEM_NAME }}
+          # B3 — set by register-system-app.yml once the App is registered. Empty before
+          # registration. Lets configure tell "App not registered yet" (empty → soft) apart
+          # from "App registered but its github-app-* secrets never reached SM" (set but
+          # secrets missing → a real ordering break → CRITICAL damage-report row).
+          APP_ID_VAR: ${{ vars.APP_ID }}
         run: |
           set -euo pipefail
           BASE="https://n8n-${SYSTEM_NAME}.or-infra.com"
@@ -450,6 +455,18 @@ jobs:
           GH_APP_INSTALL_ID=$(_sm_read "github-app-installation-id" || echo "")
           GH_APP_PRIVATE_KEY=$(_sm_read "github-app-private-key" || echo "")
           _mask_secret "$GH_APP_PRIVATE_KEY"
+          # B3 — register→configure ordering preflight. APP_ID_VAR set (register-system-app
+          # ran) but any github-app-* secret missing in SM = a real ordering break: the App
+          # was registered yet its credentials never propagated → github_readonly is silently
+          # lost. This is distinct from the legitimate "App not registered yet" case
+          # (APP_ID_VAR empty → soft warning in the damage report). Detection only — no exit
+          # here, so configure still wires router/telegram/mcp (independent of github_readonly);
+          # the broken state becomes a CRITICAL damage-report row (RED + Telegram) at the end.
+          GH_APP_BROKEN=""
+          if [ -n "${APP_ID_VAR:-}" ] && { [ -z "$GH_APP_ID" ] || [ -z "$GH_APP_INSTALL_ID" ] || [ -z "$GH_APP_PRIVATE_KEY" ]; }; then
+            GH_APP_BROKEN="APP_ID=${APP_ID_VAR} מוגדר אך github-app-* חסרים ב-SM — register רץ אך הסודות לא הופצו"
+            echo "::warning::B3 preflight: ${GH_APP_BROKEN}" >&2
+          fi
           CRED_GITHUB_JWT_ID=""
           if [ -n "$GH_APP_ID" ] && [ -n "$GH_APP_INSTALL_ID" ] && [ -n "$GH_APP_PRIVATE_KEY" ]; then
             GH_CRED_NAME="GitHub App JWT (RS256)"
@@ -1842,7 +1859,10 @@ jobs:
           # very end so the router / Telegram / mcp-server wiring above still ran. Non-critical
           # degradations stay GREEN (a clean birth is never falsely RED'd) but are reported.
           [ -z "${CRED_POSTGRES_ID:-}" ] && DEGRADED+=("postgres|warning|Postgres credential absent — memory/style/trace off|run deploy, then re-run configure")
-          [ -z "${WF_GITHUB_READONLY_ID:-}" ] && DEGRADED+=("github_readonly|warning|github-app-* missing / tool not installed|register the system App, then re-run configure")
+          [ -z "${WF_GITHUB_READONLY_ID:-}" ] && [ -z "${GH_APP_BROKEN:-}" ] && DEGRADED+=("github_readonly|warning|github-app-* missing / tool not installed|register the system App, then re-run configure")
+          # B3 — App registered (APP_ID set) but its github-app-* secrets never reached SM:
+          # a real ordering break, not a pre-registration state → CRITICAL (RED + Telegram).
+          [ -n "${GH_APP_BROKEN:-}" ] && DEGRADED+=("github_readonly|critical|${GH_APP_BROKEN}|הרץ register-system-app מחדש או mirror-secret של github-app-* ל-SM, ואז configure שוב")
           [ -z "${WF_RAILWAY_READONLY_ID:-}" ] && DEGRADED+=("railway_readonly|warning|railway-api-token missing / tool not installed|add railway-api-token to SM, then re-run")
           [ "${SKIP_TELEGRAM:-}" = "yes" ] && DEGRADED+=("telegram-bot|warning|n8n-telegram-bot-token/chat-id missing|run deploy, then re-run configure")
           [ -n "${OR_DEAD:-}" ] && DEGRADED+=("openrouter|critical|${OR_DEAD} — the bot answers nothing|rotate openrouter-api-key / check OpenRouter credits")
