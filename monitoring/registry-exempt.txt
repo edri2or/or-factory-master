@@ -104,3 +104,6 @@ templates/system/.github/workflows/bootstrap-gmail-oauth.yml
 .github/workflows/propose-repo-delete.yml
 # Verification helper: creates a zz-* throwaway repo via broker (name-guarded).
 .github/workflows/create-throwaway-repo.yml
+
+# Temporary Stage-3 vision diagnostic (removed after diagnosis):
+.github/workflows/diag-vision-oredri4.yml

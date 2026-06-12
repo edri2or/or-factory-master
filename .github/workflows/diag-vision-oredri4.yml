@@ -1,0 +1,76 @@
+name: DIAG vision or-edri-4 (temporary)
+
+# TEMPORARY diagnostic (master-system-integrity Stage 3). or-edri-4's own Actions are
+# rate-limited right now, so this runs on the FACTORY (whose CI works) and reads
+# or-edri-4's openrouter-api-key from its project SM (factory-test-21) as the broker SA via
+# WIF (masked, never printed), reproducing the tg-vision OpenRouter call to capture the raw
+# error that tg-vision's onError path swallows. Read-only; deleted after diagnosis.
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  diag:
+    name: diag-vision-oredri4
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Authenticate to GCP via WIF (broker)
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093  # v3.0.0
+        with:
+          workload_identity_provider: "projects/140345952904/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
+          service_account: "factory-master-broker@or-factory-master-control.iam.gserviceaccount.com"
+
+      - name: Reproduce or-edri-4's tg-vision OpenRouter call
+        env:
+          SYS_PROJECT: factory-test-21
+        run: |
+          set +e
+          set -u
+          OR_KEY=$(gcloud secrets versions access latest --secret=openrouter-api-key --project="$SYS_PROJECT" 2>/tmp/sm-err.txt)
+          if [ -z "$OR_KEY" ]; then echo "could not read openrouter-api-key (broker access?):"; head -c 400 /tmp/sm-err.txt; exit 1; fi
+          echo "::add-mask::${OR_KEY}"
+          echo "key length: ${#OR_KEY} (value masked)"
+
+          curl -sL --max-time 30 "https://picsum.photos/1024/1365.jpg" -o /tmp/img.jpg
+          BYTES=$(wc -c < /tmp/img.jpg 2>/dev/null || echo 0)
+          echo "test image bytes: ${BYTES}"
+          printf 'data:image/jpeg;base64,' > /tmp/uri.txt
+          base64 -w0 /tmp/img.jpg >> /tmp/uri.txt
+          echo "data-uri length: $(wc -c < /tmp/uri.txt)"
+
+          SYS="You are a vision assistant. Describe the image briefly in Hebrew and OCR any visible text."
+          USR="תאר לי מה בתמונה"
+
+          _call() {
+            local model="$1"
+            jq -cn --arg m "$model" --arg sys "$SYS" --arg usr "$USR" --rawfile uri /tmp/uri.txt \
+              '{model:$m, messages:[{role:"system",content:$sys},{role:"user",content:[{type:"text",text:$usr},{type:"image_url",image_url:{url:($uri|rtrimstr("\n"))}}]}]}' > /tmp/body.json
+            local code
+            code=$(curl -s -o /tmp/resp.json -w '%{http_code}' --max-time 90 \
+              -X POST https://openrouter.ai/api/v1/chat/completions \
+              -H "Authorization: Bearer ${OR_KEY}" \
+              -H "Content-Type: application/json" \
+              -H "HTTP-Referer: https://n8n-or-edri-4.or-infra.com" \
+              -H "X-Title: tg-vision-diag" \
+              --data-binary @/tmp/body.json 2>/dev/null || echo "000")
+            echo "===== MODEL: ${model} ====="
+            echo "HTTP: ${code}"
+            echo "content present: $(jq -r '(.choices[0].message.content // "") | (if (type=="array") then (map(.text//"")|join("")) else . end) | (if (.|length)>0 then "YES (" + ((.|length)|tostring) + " chars)" else "EMPTY" end)' /tmp/resp.json 2>/dev/null || echo '?')"
+            echo "--- response body (first 1500 chars; key not present) ---"
+            head -c 1500 /tmp/resp.json; echo ""
+          }
+
+          _call "qwen/qwen3-vl-30b-a3b-instruct"
+          _call "google/gemini-2.5-flash"
+          # also test a plain TEXT call (no image) to isolate whether the key works at all for these models
+          echo "===== TEXT-ONLY control (qwen3-vl, no image) ====="
+          jq -cn '{model:"qwen/qwen3-vl-30b-a3b-instruct", messages:[{role:"user",content:"say ok"}]}' > /tmp/t.json
+          tcode=$(curl -s -o /tmp/tr.json -w '%{http_code}' --max-time 60 -X POST https://openrouter.ai/api/v1/chat/completions \
+            -H "Authorization: Bearer ${OR_KEY}" -H "Content-Type: application/json" --data-binary @/tmp/t.json 2>/dev/null || echo "000")
+          echo "TEXT HTTP: ${tcode}"; head -c 600 /tmp/tr.json; echo ""
+          echo "DIAG DONE"
