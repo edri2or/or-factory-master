@@ -78,6 +78,12 @@ jobs:
         # configure-agent-router.yml. master-system-integrity B1.
         run: bash scripts/tests/db-verify-gate-test.sh
 
+      - name: configure damage-report gate (B4)
+        # Proves the configure "damage report" turns the job RED only on a critical
+        # DEGRADED member and stays green on warnings — mirror of the final block in
+        # the system configure-agent-router.yml. master-system-integrity B4.
+        run: bash scripts/tests/damage-report-test.sh
+
       - name: Template validation
         run: bash scripts/tests/validate-templates.sh
 
