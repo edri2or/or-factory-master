@@ -117,6 +117,16 @@
       "enabled": true
     },
     {
+      "id": "hook-capability-session-start",
+      "name_he": "Hook — מודעות-יכולות מערכת (SessionStart)",
+      "type": "hook",
+      "layer": "factory",
+      "proof_method": "static-integrity",
+      "evidence": { "repo": "edri2or/or-factory-master", "path": "scripts/capability-session-start-hook.sh", "wired_in": "templates/system/.claude/settings.json" },
+      "stage": 2,
+      "enabled": true
+    },
+    {
       "id": "hook-factory-session-start",
       "name_he": "Hook — התקנת תלויות (SessionStart)",
       "type": "hook",

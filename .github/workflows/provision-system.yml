@@ -732,13 +732,15 @@ jobs:
                     check-actions-pinned check-workflow-permissions \
                     check-no-pull-request-target check-no-privileged-pr-workflows \
                     check-devplan-updated check-agent-single-voice devplan-session-start-hook \
+                    capability-session-start-hook \
                     check-e2e-proof e2e-verify-inbound deploy-verify; do
             [ -f "${GITHUB_WORKSPACE}/scripts/${sc}.sh" ] || { echo "FAIL: scripts/${sc}.sh not found" >&2; exit 1; }
             cp "${GITHUB_WORKSPACE}/scripts/${sc}.sh" "$CLONE_DIR/scripts/${sc}.sh"
           done
-          # The devplan SessionStart hook (registered in .claude/settings.json) is invoked
-          # as a command, so it must be executable in the system repo.
+          # The SessionStart hooks (registered in .claude/settings.json) are invoked as
+          # commands, so they must be executable in the system repo.
           chmod +x "$CLONE_DIR/scripts/devplan-session-start-hook.sh"
+          chmod +x "$CLONE_DIR/scripts/capability-session-start-hook.sh"
           # Seed the /dev-stage plan template so the system's own /dev-stage can instantiate
           # devplans/<slug>.md from it (single source of truth — same template the factory uses).
           [ -f "${GITHUB_WORKSPACE}/templates/devplan/DEVPLAN.template.md" ] || { echo "FAIL: templates/devplan/DEVPLAN.template.md not found" >&2; exit 1; }
@@ -761,7 +763,8 @@ jobs:
             "templates/agent-design-spec.md|templates/agent-design-spec.md" \
             "docs/agent-isolation-testing.md|docs/agent-isolation-testing.md" \
             "docs/research/agent-role-decomposition-planning.md|docs/research/agent-role-decomposition-planning.md" \
-            "docs/capability-first.md|docs/capability-first.md"; do
+            "docs/capability-first.md|docs/capability-first.md" \
+            "templates/system/docs/CAPABILITIES.md|docs/CAPABILITIES.md"; do
             src="${pair%%|*}"; dst="${pair##*|}"
             [ -f "${GITHUB_WORKSPACE}/${src}" ] || { echo "FAIL: ${src} not found" >&2; exit 1; }
             cp "${GITHUB_WORKSPACE}/${src}" "$CLONE_DIR/${dst}"
