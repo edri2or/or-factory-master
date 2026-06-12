@@ -589,8 +589,12 @@ jobs:
                 _db_verdict() {
                   local f="$1" n=""
                   [ -s "$f" ] || { echo inconclusive; return; }
-                  grep -qE 'lastNodeExecuted.{0,8}Verify Tables' "$f" 2>/dev/null || { echo inconclusive; return; }
-                  n=$(grep -oE 'present_count[^0-9]{0,6}[0-9]+' "$f" 2>/dev/null | grep -oE '[0-9]+' | tail -1 || true)
+                  # present_count IS the output of the Verify Tables node — its presence proves
+                  # the Create->Verify chain ran, so it is the primary (and sufficient) signal.
+                  # B1.3: an earlier 'lastNodeExecuted near "Verify Tables"' pre-gate over-strictly
+                  # blocked the count on the real n8n execution-detail shape even though the count
+                  # was right there (DIAG proved exec2 carried present_count":10). Trust the count.
+                  n=$(grep -oE 'present_count[^0-9]{0,8}[0-9]+' "$f" 2>/dev/null | grep -oE '[0-9]+' | tail -1 || true)
                   [ -n "$n" ] || { echo inconclusive; return; }
                   if [ "$n" -ge "$DB_EXPECTED_TABLES" ]; then echo ok; else echo "fail:$n"; fi
                 }

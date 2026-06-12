@@ -20,8 +20,9 @@ DB_EXPECTED_TABLES=10
 _db_verdict() {
   local f="$1" n=""
   [ -s "$f" ] || { echo inconclusive; return; }
-  grep -qE 'lastNodeExecuted.{0,8}Verify Tables' "$f" 2>/dev/null || { echo inconclusive; return; }
-  n=$(grep -oE 'present_count[^0-9]{0,6}[0-9]+' "$f" 2>/dev/null | grep -oE '[0-9]+' | tail -1 || true)
+  # B1.3: present_count is the Verify Tables output — its presence is the primary, sufficient
+  # signal (the over-strict lastNodeExecuted pre-gate was removed; it blocked the real shape).
+  n=$(grep -oE 'present_count[^0-9]{0,8}[0-9]+' "$f" 2>/dev/null | grep -oE '[0-9]+' | tail -1 || true)
   [ -n "$n" ] || { echo inconclusive; return; }
   if [ "$n" -ge "$DB_EXPECTED_TABLES" ]; then echo ok; else echo "fail:$n"; fi
 }
