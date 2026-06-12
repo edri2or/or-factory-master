@@ -53,14 +53,19 @@
     },
     {
       "parameters": {
-        "toolDescription": "Call the system's own n8n Public API to get the live list of workflows and their active/inactive status. Use this to answer which workflows are active, automation/deployment status, or overall system status. Returns JSON.",
+        "toolDescription": "Call the system's own n8n Public API to get the live list of workflows (trimmed to id, name, and active status only). Use this to find a workflow's id, or to answer which workflows are active / overall automation status. Returns JSON.",
         "method": "GET",
         "url": "https://@@N8N_DOMAIN@@/api/v1/workflows",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "httpHeaderAuth",
         "sendQuery": false,
         "sendHeaders": false,
-        "sendBody": false
+        "sendBody": false,
+        "optimizeResponse": true,
+        "responseType": "json",
+        "dataField": "data",
+        "fieldsToInclude": "selected",
+        "fields": "id, name, active"
       },
       "id": "b0000000-0000-0000-0000-000000000005",
       "name": "n8n API",
