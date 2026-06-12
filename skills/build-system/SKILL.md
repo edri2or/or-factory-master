@@ -14,7 +14,7 @@ Before doing anything:
    - Lowercase ASCII letters, digits, hyphens only.
    - 6–30 characters.
    - Starts with a letter, ends with `[a-z0-9]`.
-   - Regex: `^[a-z][a-z0-9-]{4,28}[a-z0-9]$`
+   - Regex: `^[a-z][a-z0-9-]{4,28}[a-z0-9]$` (the effective 6–30 rule; the workflow implements the same bound as `^[a-z][a-z0-9-]{2,28}[a-z0-9]$` plus a length ≥ 6 check).
    - If the user proposed an uppercase or out-of-range name, suggest a normalized version and ask before continuing.
 
 3. Verify state via read-only MCP tools:

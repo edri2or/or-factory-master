@@ -13,7 +13,8 @@ set -euo pipefail
 SYSTEM_NAME="${1:-}"
 [ -n "$SYSTEM_NAME" ] || { echo "Usage: $0 <system-name>" >&2; exit 1; }
 
-# Validate system-name format — same rule the workflow enforces upstream.
+# Validate system-name format (shape only) — the workflow additionally enforces
+# the 6-char GCP-project-ID minimum upstream.
 [[ "$SYSTEM_NAME" =~ ^[a-z][a-z0-9-]{2,28}[a-z0-9]$ ]] || {
   echo "FAIL: system-name '$SYSTEM_NAME' must match ^[a-z][a-z0-9-]{2,28}[a-z0-9]\$" >&2
   exit 1
