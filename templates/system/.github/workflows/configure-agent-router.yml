@@ -717,22 +717,33 @@ jobs:
           N8N_LIVE_VER=$(curl -sS --max-time 10 "$BASE/rest/settings" 2>/dev/null \
             | jq -r '.data.versionCli // .versionCli // empty' 2>/dev/null || echo "")
           RUNTIME_DESC="Railway (n8n ${N8N_LIVE_VER:-unknown-version} + Postgres + Caddy)"
+          # B5 — capabilities reflect REALITY. A tool is installed iff its CRED_* is non-empty
+          # (every install gates on exactly that), so build live_read_sources + a `degraded` list
+          # from the gating vars — the bot never advertises a source it does not actually have.
+          LIVE_SOURCES=("n8n workflows + recent executions/errors (n8n Public API)")
+          DEGRADED_CAPS=()
+          if [ -n "${CRED_POSTGRES_ID:-}" ]; then LIVE_SOURCES+=("Postgres fixed-query set: style profile, audit log, pending actions, 24h executions, conversation transcript, tool-trace"); else DEGRADED_CAPS+=("postgres memory/style/trace"); fi
+          if [ -n "${CRED_GITHUB_JWT_ID:-}" ]; then LIVE_SOURCES+=("GitHub for THIS repo (edri2or/${SYSTEM_NAME}): recent CI runs, recent commits, open PRs, and file contents via read_file:<path>"); else DEGRADED_CAPS+=("github_readonly"); fi
+          if [ -n "${CRED_RAILWAY_ID:-}" ]; then LIVE_SOURCES+=("Railway: latest deploy status + recent deployment logs"); else DEGRADED_CAPS+=("railway_readonly"); fi
+          [ -n "${CRED_GOOGLE_MCP_ID:-}" ] || DEGRADED_CAPS+=("google_workspace (gmail/calendar/drive/docs)")
+          [ -n "${OR_DEAD:-}" ] && DEGRADED_CAPS+=("openrouter LLM — answers may be a fallback")
+          [ "${SKIP_TELEGRAM:-}" = "yes" ] && DEGRADED_CAPS+=("telegram chat bot")
+          SRC_JSON=$(printf '%s\n' "${LIVE_SOURCES[@]}" | jq -R . | jq -sc . 2>/dev/null || echo '[]')
+          DEG_JSON=$(printf '%s\n' "${DEGRADED_CAPS[@]+"${DEGRADED_CAPS[@]}"}" | jq -R 'select(length>0)' | jq -sc . 2>/dev/null || echo '[]')
           SYSTEM_INFO_JSON=$(jq -cn \
             --arg sys "$SYSTEM_NAME" \
             --arg dom "$N8N_DOMAIN" \
             --arg proj "$PROJECT_ID" \
             --arg rt "$RUNTIME_DESC" \
+            --argjson src "$SRC_JSON" \
+            --argjson deg "$DEG_JSON" \
             '{system_name:$sys, n8n_domain:$dom, gcp_project_id:$proj,
               gcp_region:"me-west1",
               runtime:$rt,
               capabilities:{
                 read_only:false, write:"approved-only",
-                live_read_sources:[
-                  "n8n workflows + recent executions/errors (n8n Public API)",
-                  "Postgres fixed-query set: style profile, audit log, pending actions, 24h executions",
-                  "GitHub for THIS repo (edri2or/\($sys)): recent CI runs, recent commits, open PRs, and file contents via read_file:<path>",
-                  "Railway: latest deploy status + recent deployment logs"
-                ],
+                live_read_sources:$src,
+                degraded:$deg,
                 write_actions:[
                   "n8n activate/deactivate AND GitHub Actions workflow_dispatch, both via the request_write_action tool — each request sends the operator Telegram ✅/❌ buttons and runs ONLY after they approve"
                 ],
