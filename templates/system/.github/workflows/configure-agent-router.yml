@@ -53,6 +53,18 @@ jobs:
           BASE="https://n8n-${SYSTEM_NAME}.or-infra.com"
           CRED_NAME="OpenRouter (factory-master)"
           WF_DIR="${GITHUB_WORKSPACE}/workflows/n8n"
+          # B4 — damage report: collect every soft-degradation, report once at the end
+          # (STEP_SUMMARY table + ONE Telegram/Axiom/Linear alert + RED only on a critical
+          # member). DEGRADED rows are "component|severity|reason|fix". "green != works".
+          DEGRADED=()
+          # _emit <name> <severity> <action_required> <body-json> — fire-and-forget; emit-event.sh
+          # always exits 0 and is shipped into every system at provision (scripts/emit-event.sh).
+          _emit() {
+            EMIT_SM_PROJECT="${PROJECT_ID:-}" bash "${GITHUB_WORKSPACE}/scripts/emit-event.sh" \
+              --name="$1" --severity="$2" --layer="system" \
+              --workflow="configure-agent-router.yml" --run-id="${GITHUB_RUN_ID:-0}" \
+              --system="${SYSTEM_NAME:-}" --action-required="$3" --body="${4:-{}}" 2>/dev/null || true
+          }
 
           _sm_read() {
             local name="$1"
@@ -94,6 +106,10 @@ jobs:
               echo "אפשר להריץ מחדש את ה-workflow (השלב אידמפוטנטי)."
             } >> "$GITHUB_STEP_SUMMARY"
             echo "WARN: agent-router wiring skipped — ${reason} (run still succeeds)" >&2
+            # B4 — tell Or the router did NOT build (visibility; the exit code stays 0 so a
+            # not-yet-deployed system isn't falsely RED'd before its first deploy).
+            _emit "factory.configure.skipped" "error" "true" \
+              "$(jq -nc --arg r "$reason" '{component:"agent-router",reason:$r}' 2>/dev/null || echo '{}')"
             [ -n "${COOKIE_JAR:-}" ] && curl -sS -o /dev/null -b "$COOKIE_JAR" -X POST "$BASE/rest/logout" 2>/dev/null || true
             exit 0
           }
@@ -189,10 +205,12 @@ jobs:
                 echo "2. ב-\`https://openrouter.ai/credits\` — האם יש יתרה חיובית."
               } >> "$GITHUB_STEP_SUMMARY"
               echo "WARN: OpenRouter live test failed (HTTP ${OR_TEST_HTTP}, msg='${OR_ERR_MSG}') — bot will return fallback responses for every message" >&2
+              OR_DEAD="live chat/completions HTTP ${OR_TEST_HTTP}"  # B4: critical — bot answers nothing
             fi
             rm -f /tmp/ar-or-test.json
           else
             echo "WARN: openrouter-api-key empty in SM — skipping live test" >&2
+            OR_DEAD="openrouter-api-key empty in SM"  # B4: critical — bot answers nothing
           fi
 
           # Stage 51b: the ops-agent has an HTTP Request tool that calls this system's
@@ -1807,12 +1825,35 @@ jobs:
             rm -f /tmp/ar-mcp-hdr /tmp/ar-mcp-init /tmp/ar-mcp-note /tmp/ar-mcp-tl /tmp/ar-mcp-call
           fi
 
-          # B1 — fail the job RED (non-destructively) if db-setup verification definitively
-          # failed: Postgres is configured but fewer than the expected tables exist. Placed at the
-          # very end so the router / Telegram / mcp-server wiring above still ran. "green != works":
-          # an inconclusive verification stays a loud WARN (never a false-positive RED that would
-          # block a clean birth); only a confirmed shortfall turns the configure RED.
-          if [ -n "${DB_VERIFY_FAILED:-}" ]; then
-            echo "::error::Configure finished but db-setup verification failed: ${DB_VERIFY_FAILED}. The bot's Postgres memory/style/trace tables are incomplete — fix db-setup and re-run." >&2
-            exit 1
+          # B4 — DAMAGE REPORT. Derive the soft-degradations from the end-of-run state (no need to
+          # instrument every WARN inline), render a STEP_SUMMARY table, fire ONE alert, and turn the
+          # job RED only on a CRITICAL member. Subsumes the B1 DB_VERIFY_FAILED guard. Placed at the
+          # very end so the router / Telegram / mcp-server wiring above still ran. Non-critical
+          # degradations stay GREEN (a clean birth is never falsely RED'd) but are reported.
+          [ -z "${CRED_POSTGRES_ID:-}" ] && DEGRADED+=("postgres|warning|Postgres credential absent — memory/style/trace off|run deploy, then re-run configure")
+          [ -z "${WF_GITHUB_READONLY_ID:-}" ] && DEGRADED+=("github_readonly|warning|github-app-* missing / tool not installed|register the system App, then re-run configure")
+          [ -z "${WF_RAILWAY_READONLY_ID:-}" ] && DEGRADED+=("railway_readonly|warning|railway-api-token missing / tool not installed|add railway-api-token to SM, then re-run")
+          [ "${SKIP_TELEGRAM:-}" = "yes" ] && DEGRADED+=("telegram-bot|warning|n8n-telegram-bot-token/chat-id missing|run deploy, then re-run configure")
+          [ -n "${OR_DEAD:-}" ] && DEGRADED+=("openrouter|critical|${OR_DEAD} — the bot answers nothing|rotate openrouter-api-key / check OpenRouter credits")
+          [ -n "${DB_VERIFY_FAILED:-}" ] && DEGRADED+=("db-setup|critical|${DB_VERIFY_FAILED} — memory/style/trace tables incomplete|fix db-setup and re-run")
+
+          if [ "${#DEGRADED[@]}" -gt 0 ]; then
+            CRIT=0
+            {
+              echo ""; echo "## 🩺 דוח נזק (Damage Report)"; echo ""
+              echo "| רכיב | חומרה | סיבה | תיקון |"; echo "|---|---|---|---|"
+              for row in "${DEGRADED[@]}"; do
+                IFS='|' read -r c s r f <<< "$row"
+                echo "| ${c} | ${s} | ${r} | ${f} |"
+                [ "$s" = "critical" ] && CRIT=1
+              done
+            } >> "$GITHUB_STEP_SUMMARY"
+            BODY=$(printf '%s\n' "${DEGRADED[@]}" | jq -R 'split("|")|{component:.[0],severity:.[1],reason:.[2],fix:.[3]}' 2>/dev/null | jq -sc '{degraded:.}' 2>/dev/null || echo '{}')
+            if [ "$CRIT" = 1 ]; then
+              _emit "factory.configure.degraded" "error" "true" "$BODY"
+              echo "::error::Configure finished with CRITICAL degradation(s) — see the Damage Report in the job summary." >&2
+              exit 1
+            fi
+            _emit "factory.configure.degraded" "warning" "false" "$BODY"
+            echo "WARN: configure finished with non-critical degradation(s) — see the Damage Report." >&2
           fi
