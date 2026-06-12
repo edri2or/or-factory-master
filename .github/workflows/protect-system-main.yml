@@ -20,11 +20,6 @@ on:
         required: false
         type: string
         default: '["Changelog gates","shellcheck + yamllint","Scan for committed secrets","Supply chain gates"]'
-      write_bootstrap_marker:
-        description: 'Also write .bootstrap-complete to the system repo root (flips verify_github_system bootstrap-complete-marker to PASS).'
-        required: false
-        type: boolean
-        default: true
 
 permissions: {}
 
@@ -67,7 +62,6 @@ jobs:
       - name: Mint broker App token scoped to ${{ inputs.system_repo }}
         env:
           SYSTEM_REPO: ${{ inputs.system_repo }}
-          WRITE_MARKER: ${{ inputs.write_bootstrap_marker }}
         run: |
           set -euo pipefail
           APP_ID=$(gcloud secrets versions access latest \
@@ -81,15 +75,8 @@ jobs:
             --project="or-factory-master-control" > /tmp/broker-app-key.pem
           chmod 600 /tmp/broker-app-key.pem
 
-          # Permissions: administration:write is always required (rulesets API).
-          # When also writing .bootstrap-complete we go through a PR (the broker
-          # is not a ruleset bypass actor), so we need contents:write to push the
-          # branch + pull_requests:write to open and merge the PR.
-          if [ "${WRITE_MARKER}" = "true" ]; then
-            PERMS='{"administration":"write","contents":"write","pull_requests":"write"}'
-          else
-            PERMS='{"administration":"write"}'
-          fi
+          # Only the rulesets API is needed now (administration:write).
+          PERMS='{"administration":"write"}'
           REPOS=$(jq -cn --arg r "${SYSTEM_REPO}" '[$r]')
 
           TOKEN=$(bash scripts/generate-app-token.sh /tmp/broker-app-key.pem "$APP_ID" "$INSTALL_ID" \
@@ -104,94 +91,3 @@ jobs:
           TARGET_REPO: edri2or/${{ inputs.system_repo }}
           REQUIRED_CONTEXTS_JSON: ${{ inputs.required_contexts_json }}
         run: bash scripts/ensure-protect-main-ruleset.sh
-
-      - name: Write .bootstrap-complete marker (via PR)
-        # The broker App is NOT a repo admin on system repos, so it does not
-        # match the protect-main ruleset's bypass_actors — a direct push to main
-        # is rejected with 409 once the ruleset is active. So we land the marker
-        # the same way every other change does: branch -> PR -> retry the merge
-        # until the system's own CI is green. The merge endpoint enforces the
-        # ruleset itself (refuses until required checks pass), so a successful
-        # merge IS the proof CI passed — no checks:read permission needed. Same
-        # pattern as prove-on-test-system.yml / refresh-system-agents.yml.
-        if: ${{ inputs.write_bootstrap_marker }}
-        env:
-          SYSTEM_REPO: ${{ inputs.system_repo }}
-          RUN_ID: ${{ github.run_id }}
-        run: |
-          set -euo pipefail
-          REPO="edri2or/${SYSTEM_REPO}"
-          BASE="https://api.github.com/repos/${REPO}"
-          BRANCH="bootstrap-complete-${RUN_ID}"
-          _api() {
-            curl -sS -o /tmp/marker-resp.json -w '%{http_code}' \
-              -H "Authorization: Bearer ${APP_TOKEN}" \
-              -H "Accept: application/vnd.github+json" \
-              -H "X-GitHub-Api-Version: 2022-11-28" \
-              "$@"
-          }
-
-          # 1. Idempotent: if the marker already exists on the default branch, stop.
-          STATUS=$(_api "${BASE}/contents/.bootstrap-complete")
-          if [ "${STATUS}" = "200" ]; then
-            echo "PASS: .bootstrap-complete already present on ${REPO}"
-            exit 0
-          fi
-          if [ "${STATUS}" != "404" ]; then
-            echo "FAIL: unexpected status ${STATUS} probing marker" >&2
-            cat /tmp/marker-resp.json >&2; exit 1
-          fi
-
-          # 2. Resolve the default branch + its head sha.
-          STATUS=$(_api "${BASE}")
-          [ "${STATUS}" = "200" ] || { echo "FAIL: cannot read repo (${STATUS})" >&2; cat /tmp/marker-resp.json >&2; exit 1; }
-          DEFAULT_BRANCH=$(jq -r '.default_branch' /tmp/marker-resp.json)
-          STATUS=$(_api "${BASE}/git/ref/heads/${DEFAULT_BRANCH}")
-          [ "${STATUS}" = "200" ] || { echo "FAIL: cannot read ${DEFAULT_BRANCH} ref (${STATUS})" >&2; cat /tmp/marker-resp.json >&2; exit 1; }
-          BASE_SHA=$(jq -r '.object.sha' /tmp/marker-resp.json)
-
-          # 3. Create the work branch off the default branch.
-          BODY=$(jq -cn --arg ref "refs/heads/${BRANCH}" --arg sha "${BASE_SHA}" '{ref: $ref, sha: $sha}')
-          STATUS=$(_api -X POST -d "${BODY}" "${BASE}/git/refs")
-          [ "${STATUS}" = "201" ] || { echo "FAIL: cannot create branch ${BRANCH} (${STATUS})" >&2; cat /tmp/marker-resp.json >&2; exit 1; }
-
-          # 4. Commit .bootstrap-complete onto the work branch (not main -> not blocked).
-          CONTENT=$(printf 'bootstrap-complete\nsystem: %s\nmarked-at: %s\n' \
-            "${SYSTEM_REPO}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" | base64 -w0)
-          BODY=$(jq -cn --arg msg "chore: mark bootstrap complete" \
-                       --arg content "${CONTENT}" --arg branch "${BRANCH}" \
-                       '{message: $msg, content: $content, branch: $branch}')
-          STATUS=$(_api -X PUT -d "${BODY}" "${BASE}/contents/.bootstrap-complete")
-          { [ "${STATUS}" = "201" ] || [ "${STATUS}" = "200" ]; } || { echo "FAIL: cannot commit marker (${STATUS})" >&2; cat /tmp/marker-resp.json >&2; exit 1; }
-
-          # 5. Open the PR against the default branch.
-          BODY=$(jq -cn --arg title "chore: mark bootstrap complete" \
-                       --arg head "${BRANCH}" --arg base "${DEFAULT_BRANCH}" \
-                       --arg body "Adds .bootstrap-complete to finish system hardening. Opened by protect-system-main.yml." \
-                       '{title: $title, head: $head, base: $base, body: $body}')
-          STATUS=$(_api -X POST -d "${BODY}" "${BASE}/pulls")
-          [ "${STATUS}" = "201" ] || { echo "FAIL: cannot open PR (${STATUS})" >&2; cat /tmp/marker-resp.json >&2; exit 1; }
-          PR_NUM=$(jq -r '.number' /tmp/marker-resp.json)
-          echo "Opened PR #${PR_NUM} on ${REPO} (branch ${BRANCH})."
-
-          # 6. Retry the protected merge: the endpoint refuses (405/409) until the
-          #    ruleset's required checks are green, so a 200 IS the CI gate.
-          MERGED=0
-          for i in $(seq 1 40); do
-            BODY=$(jq -cn '{merge_method: "squash"}')
-            STATUS=$(_api -X PUT -d "${BODY}" "${BASE}/pulls/${PR_NUM}/merge")
-            if [ "${STATUS}" = "200" ]; then
-              MERGED=1; break
-            fi
-            if [ "${STATUS}" = "405" ] || [ "${STATUS}" = "409" ]; then
-              echo "INFO: waiting for ${SYSTEM_REPO} CI before merge (attempt ${i}/40, status ${STATUS})..."
-              sleep 15; continue
-            fi
-            echo "FAIL: unexpected merge status ${STATUS}" >&2
-            cat /tmp/marker-resp.json >&2; exit 1
-          done
-          if [ "${MERGED}" != "1" ]; then
-            echo "FAIL: marker PR #${PR_NUM} not merged after 40 attempts (CI never went green)" >&2
-            exit 1
-          fi
-          echo "PASS: .bootstrap-complete merged to ${REPO} via PR #${PR_NUM}"
