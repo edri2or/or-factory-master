@@ -25,7 +25,7 @@ registry-driven** שמכסה כל משטח-ריצה שדורש E2E — לא רק
 | 1 | מסמך הסטנדרט + מטריצת-סיכון | completed | `docs/e2e-enforcement-standard.md` |
 | 2 | תשתית הרשם (בוט=ערך #1, אפס שינוי התנהגות) | completed | `e2e-surfaces.json`, `scripts/lib.sh`, `scripts/check-e2e-proof.sh`, `provision-system.yml` |
 | 3 | משטח Deploy/Caddy-HMAC (enforce) | completed | `scripts/deploy-verify.sh`, `*/deploy-verify.yml`, רשם, provision |
-| 4 | 3 שערי MCP (deploy-gate) | in-progress | `e2e-surfaces.json`, `deploy-mcp-server.yml`, doc |
+| 4 | 3 שערי MCP (deploy-gate) | completed | `e2e-surfaces.json`, `deploy-mcp-server.yml`, doc |
 | 5 | Day-0 + Observability + MCP health (מייעץ) | pending | drivers, רשם (enforce:false) |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
@@ -121,7 +121,9 @@ dispatch `deploy-verify.yml`, run 27384892330, success): התעודה `deploy-ed
 השרת שזה-עתה נפרס; כשל → ה-deploy נכשל. 3 ערכי רשם (`factory/n8n/workspace-mcp`,
 `gate:"deploy"`, `enforce:false` → `check-e2e-proof` לא נוגע). input `smoke_target`
 (default or-edri-4). מתועד ב-`docs/e2e-enforcement-standard.md`. yamllint/actionlint נקי.
-נשאר: לאשר ש-3 ה-smokes עוברים חי (רץ עכשיו) + ה-redeploy האוטומטי במיזוג.
+**הושלם — 3 ה-smokes עברו חי מול or-edri-4** (runs 27385453195/454296/455407, all success):
+factory tenant, n8n live-write, google shared-read. ההרצה המלאה של ה-gate = ה-redeploy
+האוטומטי כשמתמזג (control-plane).
 
 **שינוי תוכנית:** v1 = post-deploy detection שמפיל את ה-job (blue-green pre-traffic =
 הקשחה עתידית, שלב 5). הוכחת ה-deploy-gate המלאה היא post-merge (control-plane רץ רק על main).
@@ -160,3 +162,5 @@ dispatch `deploy-verify.yml`, run 27384892330, success): התעודה `deploy-ed
 - שלב 3 הושלם — הוספתי הגנה אמיתית שנייה: קצה האבטחה (Caddy/HMAC). הוכח **חי על or-edri-4**
   שהקצה באמת חוסם webhook לא-חתום (401) ומגביל קצב (429), ונוצרה תעודה. רגרסיה ששוברת את
   ההגנה בשקט תיתפס ותחסום מיזוג.
+- שלב 4 הושלם — שערי ה-MCP (שירות משותף) מוגנים ב**שער-deploy**: אם בדיקה נכשלת אחרי פריסה,
+  ה-deploy נכשל. 3 הבדיקות עברו חי מול or-edri-4; ההרצה המלאה תקרה אוטומטית בפריסה הבאה.
