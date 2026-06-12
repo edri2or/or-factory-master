@@ -1,0 +1,14 @@
+{
+  "schema": "e2e-proof/v1",
+  "slug": "master-system-integrity-b1-3",
+  "repo": "edri2or/or-factory-master",
+  "run_id": "27387044000",
+  "content_hash": "sha256:610283c353db99edfbc71fabac9a90e81f77ab9519a3d8940211aaf3f4c6c642",
+  "system": "or-edri-4",
+  "domain": "n8n-or-edri-4.or-infra.com",
+  "execution_id": "126",
+  "reply_excerpt": "שם המערכת שלך הוא `or-edri-4`.",
+  "result": "pass",
+  "executed_at": "2026-06-12T00:47:44Z",
+  "signature": "hmac-sha256:7523bfc2ae83ddc249f2fdd459924bbfd3459c3d49576e2768ddd47cb443b3be"
+}
