@@ -21,7 +21,7 @@ Manual dispatch only. From the Actions tab:
 3. Enter `system_name` — lowercase, 6-30 chars, `[a-z][a-z0-9-]*[a-z0-9]`.
 4. Watch the run. ~3 minutes if nothing fails.
 
-What you get: a fresh GCP project, two SAs with WIF, a private GitHub repo with protected `main`, 16 generic secrets, and 4 repo variables. The system can authenticate to its own GCP project from any workflow inside it.
+What you get: a fresh GCP project, two SAs with WIF, a private GitHub repo with protected `main`, the generic secrets copied from the control project, and 5 repo variables. The system can authenticate to its own GCP project from any workflow inside it.
 
 ## After provisioning
 

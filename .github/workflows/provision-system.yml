@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       system_name:
-        description: "Lowercase, 4-30 chars, [a-z0-9-]. Becomes the repo name (and, in normal mode, the GCP project ID). e.g. factory-test-26."
+        description: "Lowercase, 6-30 chars, [a-z0-9-]. Becomes the repo name (and, in normal mode, the GCP project ID). e.g. factory-test-26."
         required: true
         type: string
       shared_gcp_project:
