@@ -84,6 +84,13 @@ jobs:
         # the system configure-agent-router.yml. master-system-integrity B4.
         run: bash scripts/tests/damage-report-test.sh
 
+      - name: SYSTEM-INFO reality gate (B5)
+        # Proves the injected SYSTEM-INFO capabilities reflect the installed tools
+        # (live_read_sources only lists present CRED_* sources; degraded lists the
+        # absent ones) — mirror of the SYSTEM_INFO_JSON builder in the system
+        # configure-agent-router.yml. master-system-integrity B5.
+        run: bash scripts/tests/system-info-test.sh
+
       - name: Template validation
         run: bash scripts/tests/validate-templates.sh
 
