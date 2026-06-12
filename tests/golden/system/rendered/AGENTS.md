@@ -146,6 +146,9 @@ single voice are unchanged, and `unknown` never participates in fan-out.
 | `tg_updates_seen` | `update_id` (PK), `seen_at` | Telegram update dedup |
 | `pending_actions` | `chat_id`, `description`, `tool`, `args`, `status` | HITL approval queue (see Deferred) |
 | `events` | `ts`, `chat_id`, `action`, `dow`, `hour` | Activity events for future pattern analysis |
+| `agent_trace_events` | `session_id`, `tool_name`, `tool_call_id`, `status` (`attempted`/`ok`/`error`), `input_summary`/`output_summary` (JSONB), `duration_ms` | Per-tool **attempt→result** trace — the bot's "black box"; the source behind the `tool_trace_recent` and `claim_actual_mismatch` named queries |
+| `file_catalog` | `chat_id` (PK), `paths` (JSONB), `refreshed_at` | Hourly snapshot of this repo's file paths, for the Agent Router's file resolver |
+| `spend_track_state` | `id` (singleton PK), `last_cum_usd`, `updated_at` | Cumulative-spend watermark for incremental LLM-spend tracking |
 
 ### System-aware tools (read-only)
 
@@ -220,6 +223,9 @@ The runtime and deploy service accounts have `secretAccessor` on all of them.
 - `n8n-telegram-webhook-secret`
 - `caddy-railway-service-id`
 - `caddy-railway-url`
+- `workspace-mcp-bearer` *(minted at provision — the bot's Google Workspace MCP bearer; empty → `google_workspace` stripped)*
+- `factory-mcp-bearer` *(minted at provision — the ops-agent's `factory_tools` telemetry bearer; empty → `factory_tools` stripped)*
+- `n8n-mcp-server-token` *(minted at provision — Bearer for this system's own outward `/mcp/system-tools` endpoint)*
 - `redis-password` *(queue mode only)*
 - `railway-redis-service-id` *(queue mode only)*
 - `railway-redis-volume-id` *(queue mode only)*
