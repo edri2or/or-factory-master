@@ -610,23 +610,30 @@ jobs:
                 for RUN_BODY in "${WF_FULL_BODY:-SKIP}" '{"triggerToStartFrom":{"name":"Run Once"}}' ; do
                   { [ -n "$RUN_BODY" ] && [ "$RUN_BODY" != "SKIP" ]; } || continue
                   HTTP=$(_napi POST "$BASE/rest/workflows/${DB_SETUP_ID}/run" /tmp/ar-db-run.json "$RUN_BODY")
-                  # B1.1 — the /run response returns the executionId of the run it just
-                  # started; pull THAT execution directly (deterministic). The filtered
-                  # executions list (_db_check) is flaky on a live system (it was the
-                  # original false-negative source) — keep it only as a secondary fallback.
+                  # B1.2 — _db_verdict is a RAW-TEXT grep (not a JSON path), so it works on
+                  # ANY response that contains the result text. Verdict EVERY available source
+                  # in order; the first non-inconclusive wins — robust to whatever shape n8n
+                  # returns: (1) the /run response itself (often carries the runData inline),
+                  # (2) the execution fetched by the id the /run returned, (3) the flaky
+                  # filtered-list lookup, last.
                   EID=$(jq -r '(.data.executionId) // (.executionId) // (.data.id) // empty' /tmp/ar-db-run.json 2>/dev/null || echo "")
                   { [ -n "$EID" ] && [ "$EID" != "null" ]; } || EID=$(grep -oE '"executionId"[^0-9]{0,4}[0-9]+' /tmp/ar-db-run.json 2>/dev/null | grep -oE '[0-9]+' | tail -1 || true)
-                  # poll up to ~30s for the execution to finish
                   for _i in 1 2 3 4 5 6 7 8 9 10 ; do
                     sleep 3
-                    if [ -n "$EID" ] && [ "$EID" != "null" ]; then
+                    DB_VERDICT="$(_db_verdict /tmp/ar-db-run.json)"
+                    if [ "$DB_VERDICT" = "inconclusive" ] && [ -n "$EID" ] && [ "$EID" != "null" ]; then
                       _napi GET "$BASE/rest/executions/${EID}?includeData=true" /tmp/ar-db-exec2.json >/dev/null 2>&1 || true
                       DB_VERDICT="$(_db_verdict /tmp/ar-db-exec2.json)"
-                    else
-                      DB_VERDICT="$(_db_check)"
                     fi
+                    if [ "$DB_VERDICT" = "inconclusive" ]; then DB_VERDICT="$(_db_check)"; fi
                     if [ "$DB_VERDICT" != "inconclusive" ]; then break; fi
                   done
+                  if [ "$DB_VERDICT" = "inconclusive" ]; then
+                    # Safe diagnostic (key-paths + count probes only, never values): if a round
+                    # STILL can't read the result, reveal the n8n response SHAPE so the lookup
+                    # can be fixed precisely next time instead of guessed.
+                    echo "DIAG(db): eid='${EID:-}' run_keypaths=[$(jq -r 'paths|join(".")' /tmp/ar-db-run.json 2>/dev/null | grep -iE 'exec|present_count|lastNode|runData|table_name' | head -12 | tr '\n' ',' || echo '?')] run_count=$(grep -oE 'present_count[^0-9]{0,8}[0-9]+' /tmp/ar-db-run.json 2>/dev/null | head -1 || echo none) exec2_count=$(grep -oE 'present_count[^0-9]{0,8}[0-9]+' /tmp/ar-db-exec2.json 2>/dev/null | head -1 || echo none) run_verifytables=$(grep -oE 'lastNodeExecuted.{0,12}' /tmp/ar-db-run.json 2>/dev/null | head -1 || echo none)" >&2
+                  fi
                   if [ "$DB_VERDICT" = "ok" ]; then
                     echo "PASS: db-setup verified — ${DB_EXPECTED_TABLES}/${DB_EXPECTED_TABLES} Postgres tables present (Verify Tables ran, HTTP ${HTTP})"
                     break
