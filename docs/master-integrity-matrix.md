@@ -6,6 +6,32 @@
 **סיכום:** 35 template-touching, 15 factory-only (50 סה"כ) · **0 פערי-תפוצה לריפו** · 0 חתימות-לא-ידועות.
 המשמעות: הקוד של כל פיתוח הגיע ל-or-edri-4. הפערים הם **תפקודיים/תיעודיים בזמן-ריצה**, לא תפוצה-לריפו.
 
+---
+
+## ✅ מצב נוכחי — Stage 2+3 סגורים (כל הפערים תוקנו, מוכחים חי, מסונכרנים לפקטורי)
+
+> זה המצב **העדכני** (2026-06-12). הטבלאות שמתחת הן תמונת-Stage-1 ההיסטורית (לפני התיקונים) — נשמרות לתיעוד. כל פער ב-Stage 1 → תוקן, הוכח חי על or-edri-4 (הוכחה תפקודית, לא ✅ של job), ומוטמע byte-for-byte בקוד-יצירת-המערכות.
+
+| פער Stage 1 | תיקון | הוכחה חיה |
+|---|---|---|
+| db-setup אימות לא-אמין | **B1/1.1/1.2/1.3** — צומת `Verify Tables` + `_db_verdict` raw-grep | configure → "PASS: db-setup verified — 10/10 tables present" |
+| google_workspace כתובת פיקטיבית | **B2** — `edriorp38@or-infra.com` + CI-guard נגד `shared-google@` | cred Google Workspace MCP מותקן; 0 הופעות `shared-google@` |
+| github_readonly כבוי (סדר-פעולות) | **B3** — preflight: APP_ID קיים+secrets חסרים → critical RED+טלגרם | github_readonly חי ב-`tools/list`; configure ירוק על or-edri-4 |
+| אין דוח-נזק (ירוק≠עובד) | **B4** — `DEGRADED[]` → STEP_SUMMARY+טלגרם+exit1 על critical | `damage-report-test.sh` 4/4; configure ללא critical |
+| SYSTEM-INFO קשיח | **B5** — `live_read_sources` נגזר מ-`CRED_*` + `degraded[]` | `system-info-test.sh` 13/13; הבוט מונה מקורות אמיתיים |
+| ניתוב קריאת-קובץ | **B6** — בלם `entity_mention`→ops ב-agent-router | הבוט מחזיר תוכן AGENTS.md בטלגרם |
+| refresh לא מפיק הוכחה | **B7** — refresh מדליק e2e-verify + נדנוד | החלת תיקונים חיה על or-edri-4 |
+| מודעות-עצמית | **C** — 3 טבלאות+3 סודות ב-AGENTS, `CAPABILITIES.md`, capability-hook, ship-list | קבצים זהים-בייט; hook עובד |
+| כפתור-אישור (HITL) מת | **B8** — `request-write-action` `activate=yes` | הבוט שלח כרטיס ✅/❌, Or לחץ, הפעולה רצה |
+| תמונה לא נותחה | **B9** — `getBinaryDataBuffer` (לא `.data`=מצביע-filesystem) | הבוט תיאר תמונה ששלח Or (exec 262 הוכיח שורש) |
+| Ops Agent קרס על 769KB | **B10** — n8n API tool `optimizeResponse` (id/name/active) | הבוט שלח כרטיס במקום "אין לי תשובה" (exec 284 הוכיח שורש) |
+
+**הוכחת-סנכרון (5 שכבות, read-only, 2026-06-12):** ‏(1) **24/24 n8n JSONs + `configure-agent-router.yml` זהים-בייט** template↔or-edri-4; ‏(2) `capability-hook`+`CAPABILITIES.md`+`settings.json` זהים-בייט, ‏AGENTS.md מכיל את כל תוכן-C; ‏(3) golden==template (committed) + guard נגד `shared-google@`; ‏(4) `provision-system.yml` שולח את C למערכות חדשות; ‏(5) configure success + הוכחות-E2E + בדיקות-Or חיות. → **כל מערכת חדשה תיוולד עם כל התיקונים.**
+
+**שיטה שהוכחה (3 הבאגים האינטראקטיביים):** לכל באג — שליפת ה-**execution החי** שנכשל (לא ניחוש), מחקר-אינטרנט עם מקורות, ואז תיקון+אימות חי. זה הפריך 2 ניחושים מוקדמים (octet-stream MIME; גודל-תמונה) שהראיה החיה סתרה.
+
+**נותר:** Stage 4 — הוכחת-לידה Day-0 על מערכת-טסט טרייה (עולה כסף — אישור Or נפרד).
+
 ## אימות חי (Stage 1 live pass) — ממצאים
 
 | נושא | מצב חי | ראיה |
