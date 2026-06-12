@@ -814,9 +814,15 @@ jobs:
                   -e "s#@@CRED_TELEGRAM_ID@@#${CRED_TELEGRAM_ID}#g" \
                   -e "s#@@CHAT_ID@@#${CHAT_ID}#g" \
                   "$RWA_SRC" > /tmp/ar-prep-request-write-action.json
-              WF_REQUEST_WRITE_ID=$(_upsert_wf "factory-master: request-write-action" /tmp/ar-prep-request-write-action.json no) || WF_REQUEST_WRITE_ID=""
+              # Publish (activate=yes) like its sibling production-invoked tool sub-workflows
+              # (github/railway/postgres-named-queries): on n8n 2.x a toolWorkflow call from
+              # ops/unknown-agent loads only the PUBLISHED activeVersion, so an unpublished
+              # request-write-action made the request_write_action tool a no-op (the bot could
+              # not send the ✅/❌ approval card). executeWorkflowTrigger's trigger() is a no-op,
+              # so a published sub-workflow never self-fires. (Was `no` — a pre-2.x assumption.)
+              WF_REQUEST_WRITE_ID=$(_upsert_wf "factory-master: request-write-action" /tmp/ar-prep-request-write-action.json yes) || WF_REQUEST_WRITE_ID=""
               { [ -n "$WF_REQUEST_WRITE_ID" ] && [ "$WF_REQUEST_WRITE_ID" != "null" ]; } \
-                && echo "PASS: factory-master: request-write-action → id=${WF_REQUEST_WRITE_ID} (לא-פעיל by design — subworkflow)" \
+                && echo "PASS: factory-master: request-write-action → id=${WF_REQUEST_WRITE_ID} (published — נקרא ב-production דרך toolWorkflow מ-ops/unknown-agent)" \
                 || { echo "WARN: request-write-action install failed" >&2; WF_REQUEST_WRITE_ID=""; }
             else
               echo "WARN: request-write-action.json not found in repo — HITL request tool skipped" >&2
