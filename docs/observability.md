@@ -1,9 +1,9 @@
-# Observability — תשתית התיעוד וההתראות (Phase A)
+# Observability — תשתית התיעוד וההתראות (Observability Phase A)
 
 מסמך זה מתאר את שכבת ה-Observability של ה-factory: איך נפלטים אירועים, לאן הם
-זורמים, ואיך סוכן (Claude Code) חוקר אותם. **Phase A** היא התשתית בלבד —
+זורמים, ואיך סוכן (Claude Code) חוקר אותם. **Observability Phase A** היא התשתית בלבד —
 ה-emitter המשותף ופיילוט מבודד שמוכיח שהצינור עובד. אף workflow קיים לא נוגעים בו;
-ההטמעה ב-workflows הקיימים היא Phase B ואילך (ראו בסוף).
+ההטמעה ב-workflows הקיימים היא Observability Phase B ואילך (ראו בסוף).
 
 המנגנון היחיד לפליטת אירועים הוא `scripts/emit-event.sh`. כל קורא עתידי משתמש בו,
 וכל יעד נכשל בנפרד (**soft-fail**) — יעד מת לעולם לא מפיל את ה-workflow הקורא.
@@ -214,16 +214,16 @@ read_github_actions_run_logs(job_id=<id>, grep="\[linear\]")  # תוצאת Linea
 
 ---
 
-## 9. מתווה Phase B/C/D
+## 9. מתווה Observability Phase B/C/D
 
-- **Phase B — Coverage** (✅ הושלם):
+- **Observability Phase B — Coverage** (✅ הושלם):
   - ✅ `audit-openrouter-orphan-keys.yml` פולט `factory.openrouter_audit.{clean,action_needed,deletions}`
     בכל ריצה (Axiom תמיד; Linear על ממצא שדורש פעולה). ה-Telegram העשיר בעברית נשמר כפי שהיה;
     ה-emit ב-severity `info` כדי לא לשלוח Telegram כפול.
   - ✅ חדש `factory-health-audit.yml` — heartbeat ברמת ה-factory כל 6 שעות:
     `factory.health.ok` (info → Axiom) או `factory.health.degraded` (error+action → Axiom+Telegram+Linear).
   - ✅ קריאות emit ב-`provision-system.yml` (`factory.provision.{started,completed,failed}`, soft-fail).
-- **Phase C — Generated systems visibility** (בעבודה):
+- **Observability Phase C — Generated systems visibility** (בעבודה):
   - ✅ חדש `system-runtime-audit.yml` — heartbeat runtime למערכות פרוסות כל 6 שעות: probe ל-`/healthz`
     הציבורי, ופליטת `factory.runtime_audit.{ok,failed,summary}` (per-system, `layer=system`).
   - ✅ קריאות emit ב-`deploy-railway-cloudflare.yml` (`factory.deploy.{started,completed,failed}`,
@@ -232,7 +232,7 @@ read_github_actions_run_logs(job_id=<id>, grep="\[linear\]")  # תוצאת Linea
   - ✅ Better Stack monitor אוטומטי לכל מערכת חדשה — ב-`provision-system.yml` דרך `scripts/create-uptime-monitor.sh`,
     soft-fail, idempotent (לא יוצר כפול אם כבר קיים), עם הגנה על תקרת free tier (10 monitors). Email-only alerts;
     SMS/Telegram נשארים דרך `system-runtime-audit.yml`. (הטוקן `better-stack-api-key` אומת מול ה-Uptime API ב-Stage 77.)
-- **Phase D — Refinement** (בעבודה):
+- **Observability Phase D — Refinement** (בעבודה):
   - ✅ כלי MCP `emit_event` — הסוכן פולט event ישירות לצינור. כלי write ב-MCP server
     (`services/mcp-server/src/tools.ts`) מעל פורט TypeScript של ה-fan-out (`observability-client.ts`),
     parity מלא עם `scripts/emit-event.sh`: Axiom (תמיד), Telegram (`warning\|error\|critical`),
@@ -259,4 +259,4 @@ read_github_actions_run_logs(job_id=<id>, grep="\[linear\]")  # תוצאת Linea
     קורא את ה-event בחזרה מ-Sentry API (סוד `sentry-auth-token` — read-only, נפרד מה-DSN שהוא
     write-only), ומוודא שה-event נחת ושה-Authorization/body נוקו. פלט: `[verify-sentry] result='pass'`.
 
-per-system runtime health שייך ל-Phase C, לא ל-Phase B.
+per-system runtime health שייך ל-Observability Phase C, לא ל-Observability Phase B.
