@@ -86,6 +86,9 @@ templates/system/.github/workflows/bootstrap-gmail-oauth.yml
 # Twin of prove-on-test-system.yml: drives a real inbound E2E against a live system
 # and emits the signed E2E proof. workflow_dispatch only (on the MCP allowlist); no cadence.
 .github/workflows/e2e-verify.yml
+# Proof producer for the deploy-edge surface: drives the live Caddy/HMAC edge and
+# emits the signed proof. workflow_dispatch only (on the MCP allowlist); no cadence.
+.github/workflows/deploy-verify.yml
 .github/workflows/cleanup-orphan-linear-webhooks.yml
 .github/workflows/n8n-mcp-smoke.yml
 # Manual smoke: proves the central Google Workspace MCP gateway live (mint bearer
