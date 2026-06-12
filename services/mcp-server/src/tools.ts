@@ -536,7 +536,7 @@ export function registerTools(server: McpServer): void {
 
   registerVerifier(
     'verify_github_system',
-    'Verify the generated system\'s GitHub state: repo private, branch ruleset active, production env exists, scaffold files present.',
+    'Verify the generated system\'s GitHub state: repo private, branch ruleset active, orientation docs (AGENTS.md) + .mcp.json present.',
     'GithubReady',
     'GitHub',
     async (m) => {
@@ -544,11 +544,18 @@ export function registerTools(server: McpServer): void {
         return [{ name: 'manifest-has-githubRepo', status: 'fail', evidence: 'missing githubRepo in manifest' }];
       }
       const [owner, name] = m.githubRepo.split('/');
-      const [repoR, rulesetsR, envR, bootR] = await Promise.allSettled([
+      // The last two probe real birth artifacts every newborn IS guaranteed
+      // (provision-system.yml pushes AGENTS.md + .mcp.json to the repo root before
+      // applying the ruleset). They replaced two stale checks inherited from the old
+      // factory — a GitHub `production` environment (no system workflow uses one) and a
+      // cosmetic `.bootstrap-complete` marker (no functional role) — which always
+      // false-failed a perfectly healthy newborn. apiGetRepo throws on 404 → rejected → fail,
+      // so a half-built repo (orientation docs never pushed) still fails loudly.
+      const [repoR, rulesetsR, agentsR, mcpR] = await Promise.allSettled([
         apiGetRepo(owner, name, '') as Promise<{ private?: boolean }>,
         apiGetRepo(owner, name, '/rulesets') as Promise<Array<{ name: string; enforcement: string }>>,
-        apiGetRepo(owner, name, '/environments/production'),
-        apiGetRepo(owner, name, '/contents/.bootstrap-complete'),
+        apiGetRepo(owner, name, '/contents/AGENTS.md'),
+        apiGetRepo(owner, name, '/contents/.mcp.json'),
       ]);
       const checks: Check[] = [];
       checks.push(
@@ -566,8 +573,8 @@ export function registerTools(server: McpServer): void {
       } else {
         checks.push({ name: 'ruleset-protect-main-active', status: 'skip', evidence: String(rulesetsR.reason).slice(0, 150) });
       }
-      checks.push({ name: 'production-env-exists', status: envR.status === 'fulfilled' ? 'pass' : 'fail', evidence: envR.status === 'rejected' ? '404' : undefined });
-      checks.push({ name: 'bootstrap-complete-marker', status: bootR.status === 'fulfilled' ? 'pass' : 'fail', evidence: bootR.status === 'rejected' ? '404' : undefined });
+      checks.push({ name: 'scaffold-agents-md', status: agentsR.status === 'fulfilled' ? 'pass' : 'fail', evidence: agentsR.status === 'fulfilled' ? 'present' : '404' });
+      checks.push({ name: 'scaffold-mcp-config', status: mcpR.status === 'fulfilled' ? 'pass' : 'fail', evidence: mcpR.status === 'fulfilled' ? 'present' : '404' });
       return checks;
     },
   );

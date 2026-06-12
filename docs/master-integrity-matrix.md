@@ -30,7 +30,7 @@
 
 **שיטה שהוכחה (3 הבאגים האינטראקטיביים):** לכל באג — שליפת ה-**execution החי** שנכשל (לא ניחוש), מחקר-אינטרנט עם מקורות, ואז תיקון+אימות חי. זה הפריך 2 ניחושים מוקדמים (octet-stream MIME; גודל-תמונה) שהראיה החיה סתרה.
 
-**נותר:** Stage 4 — הוכחת-לידה Day-0 על מערכת-טסט טרייה (עולה כסף — אישור Or נפרד).
+**Stage 4 — הוכחת-לידה Day-0 (הושלם, 2026-06-12):** מערכת-טסט טרייה `factory-test-060` (reuse, factory-test-25, 0 quota) — provision→register→deploy→configure כולם ירוקים, **נולדה עם כל התיקונים** (אומת בקוד d11a01b + לוג configure run 27441633625: db 10/10, **github_readonly live מהלידה**, google כתובת נכונה, B8/B9/B10/C, mcp self-verify 4/4, דוח-נזק נקי). Or הריץ את בדיקות-הטלגרם — כולן עברו. **ממצא-לוואי שתוקן:** `verify_github_system` החזיר "2/4 נכשלו" על לידה מושלמת בגלל 2 בדיקות-שווא ישנות (`production-env-exists`/`bootstrap-complete-marker`) → הוחלפו ב-2 בדיקות-לידה אמיתיות (`scaffold-agents-md`/`scaffold-mcp-config`) ב-`services/mcp-server/src/tools.ts`. נותר: Stage 5 (סגירה).
 
 ## אימות חי (Stage 1 live pass) — ממצאים
 
