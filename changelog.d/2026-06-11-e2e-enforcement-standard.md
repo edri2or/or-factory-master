@@ -62,3 +62,16 @@ healthz 200, no_signature 401, bad_signature 401, good_signature 404, rate_limit
 
 **Changes:** `e2e-surfaces.json`, `.github/workflows/deploy-mcp-server.yml`,
 `docs/e2e-enforcement-standard.md`.
+
+## שלב 5 — סגירה: Day-0 birth check + השלמת מפת-המשטחים (מייעץ)
+
+סוגר את הפיתוח. **Day-0 birth check** ללא producer חדש: כיוון ש-`e2e-verify.yml` כבר נשלח
+לכל מערכת ומוכח חי, בדיקת-הלידה היא תהליך — אחרי הפריסה הראשונה מדיחים `e2e-verify` על
+המערכת החדשה כדי להוכיח שהבוט עונה. מתועד ב-`docs/e2e-enforcement-standard.md` + הופך את
+צעד ה"verify live" ב-`docs/live-test-loop.md` משער-`/healthz`-אופציונלי לשער-E2E התנהגותי.
+`observability-delivery` נרשם כמשטח advisory (`enforce:false`, `gate:"advisory"`, producer
+עתידי = emit סינתטי → Axiom read-back). אין merge-gate חדש; enforced נשאר בוט+קצה
+(`check-e2e-proof.sh` לא נגעו). blue-green ל-MCP + observability-verify מתועדים כ-future.
+
+**Changes:** `e2e-surfaces.json` (advisory surface), `docs/e2e-enforcement-standard.md`
+(rollout 1–5 + Day-0), `docs/live-test-loop.md` (Day-0 verify-live step).

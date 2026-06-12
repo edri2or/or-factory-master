@@ -143,19 +143,37 @@ the layer where it can be proven safely.
 
 ## Rollout (risk-ordered, each proven live before promote)
 
-- **Stage 1** — this document + the risk rubric.
-- **Stage 2** — registry infrastructure: `e2e-surfaces.json` + generalize
+- **Stage 1 ✅** — this document + the risk rubric.
+- **Stage 2 ✅** — registry infrastructure: `e2e-surfaces.json` + generalize
   `lib.sh`/`check-e2e-proof.sh`, with the bot as entry #1 (zero behavior change, proven by
   the existing local fixtures + the live bot still blocking/passing).
-- **Stage 3** — Deploy/Caddy-HMAC surface (`enforce: true`): `deploy-verify.sh` drives the
-  edge live (401/200/429), highest ROI of the missing gates.
-- **Stage 4** — the three MCP gateway surfaces: promote the existing smokes to signed,
-  required proof producers (factory-wide, since the gateway is shared).
-- **Stage 5** — Provisioning Day-0 + observability delivery + post-deploy MCP health, as
-  **advisory** (`enforce: false`) checks, so they never choke delivery.
+- **Stage 3 ✅** — Deploy/Caddy-HMAC surface (`enforce: true`, merge-gate): `deploy-verify.sh`
+  drives the edge live (no-sig 401, bad-sig 401, valid-sig passes, 429 rate-limit). Proven
+  live on or-edri-4.
+- **Stage 4 ✅** — the three MCP gateway surfaces as a **deploy-gate** (`gate: "deploy"`):
+  `deploy-mcp-server.yml` runs the three smokes against the freshly-deployed gateway and
+  fails the deploy if any fails (shared service → gate at deploy, not merge). Smokes proven
+  live against or-edri-4.
+- **Stage 5 ✅ (advisory/closure)** — **Day-0 birth check** (below) wired via the existing
+  `e2e-verify`; `observability-delivery` registered as an advisory surface (`enforce: false`,
+  future producer). The remaining medium surfaces stay in the gap map as documented future
+  work.
 
-**Policy:** only `critical/high` surfaces become required contexts (Stages 3–4). `medium`
-surfaces (Stage 5) are advisory/observational — risk-based, not a blanket gate.
+### The Day-0 birth check
+A freshly provisioned system is *created* but, classically, never *proven to work*. Because
+`e2e-verify.yml` is shipped into every new system and already drives a real inbound message,
+the birth check needs **no new producer** — it is a process step: after a new system's first
+`deploy-railway-cloudflare.yml` + `configure-agent-router.yml`, dispatch `e2e-verify.yml`
+(ref=main, `target_ref`=a branch, `slug`) to prove the bot actually answers before the system
+is trusted. This closes the "provisioned but never proven" gap with the tool that already
+works live. (See `docs/live-test-loop.md` — it is the loop's "verify live" step, now a real
+E2E rather than an optional `/healthz` probe.)
+
+**Policy:** only `critical/high` per-system surfaces become required merge contexts (Stages
+3); shared-service surfaces are deploy-gated (Stage 4); `medium` surfaces are
+advisory/observational (Stage 5) — risk-based, never a blanket gate. Future hardening
+(documented, not built): blue-green `--no-traffic` candidate smoke for the MCP deploy-gate,
+and a synthetic-emit → Axiom read-back producer for `observability-delivery`.
 
 ## The generalized super-test
 

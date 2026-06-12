@@ -50,6 +50,13 @@ faithful, and self-cleaning.
      Caddy HMAC edge) and/or a real Telegram round-trip. Iterate fix → apply → verify
      until green. Because the system is live and stateful, this catches both clean-install
      (Day-0) and stateful (Day-2) breakage.
+   - **Day-0 birth check (enforced behavioral proof, not optional).** "verify live" is no
+     longer a `/healthz`-or-maybe-Telegram judgement call — for a behavior change it is the
+     E2E gate: dispatch `e2e-verify.yml` (the bot drives a real inbound message and asserts
+     on the reply) and `deploy-verify.yml` (the Caddy/HMAC edge), which emit signed proofs
+     the `E2E verification gate` requires before merge. A freshly born system gets the same
+     treatment — run `e2e-verify` against it to prove the bot answers before trusting it.
+     See `docs/e2e-enforcement-standard.md`.
 
 4. **Promote** = merge to `main`.
 

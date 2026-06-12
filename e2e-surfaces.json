@@ -79,6 +79,18 @@
       "deploy_smoke": "scripts/google-mcp-smoke.py",
       "freshness_days": 30,
       "enforce": false
+    },
+    {
+      "id": "observability-delivery",
+      "name_he": "מסירת אירועים (Axiom/Telegram/Linear)",
+      "risk_tier": "medium",
+      "scope": "factory",
+      "gate": "advisory",
+      "trigger_paths": ["scripts/emit-event.sh", "scripts/lib/*.sh"],
+      "proof_producer": "(future)",
+      "_note": "emit-event.sh is soft-fail by design (a dead sink never fails the caller), so delivery is never proven. ADVISORY/future: a synthetic emit -> Axiom read-back (see services/mcp-server/src/observability-client.ts) would prove delivery. Not enforced; documented in docs/e2e-enforcement-standard.md as a future producer.",
+      "freshness_days": 30,
+      "enforce": false
     }
   ]
 }
