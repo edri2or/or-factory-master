@@ -43,6 +43,42 @@
       ],
       "freshness_days": 30,
       "enforce": true
+    },
+    {
+      "id": "factory-mcp",
+      "name_he": "שער MCP טלמטריה (/factory)",
+      "risk_tier": "high",
+      "scope": "factory",
+      "gate": "deploy",
+      "trigger_paths": ["services/mcp-server/src/factory-scope.ts", "services/mcp-server/src/tools.ts"],
+      "proof_producer": "factory-mcp-smoke.yml",
+      "deploy_smoke": "scripts/factory-mcp-smoke.py",
+      "freshness_days": 30,
+      "enforce": false
+    },
+    {
+      "id": "n8n-mcp",
+      "name_he": "שער MCP n8n live (/n8n)",
+      "risk_tier": "high",
+      "scope": "factory",
+      "gate": "deploy",
+      "trigger_paths": ["services/mcp-server/src/n8n-client.ts"],
+      "proof_producer": "n8n-mcp-smoke.yml",
+      "deploy_smoke": "scripts/n8n-mcp-smoke.py",
+      "freshness_days": 30,
+      "enforce": false
+    },
+    {
+      "id": "workspace-mcp",
+      "name_he": "שער MCP Google Workspace (/workspace)",
+      "risk_tier": "high",
+      "scope": "factory",
+      "gate": "deploy",
+      "trigger_paths": ["services/mcp-server/src/google-oauth.ts"],
+      "proof_producer": "google-mcp-smoke.yml",
+      "deploy_smoke": "scripts/google-mcp-smoke.py",
+      "freshness_days": 30,
+      "enforce": false
     }
   ]
 }

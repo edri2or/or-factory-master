@@ -104,6 +104,29 @@ diff touched, it requires a valid, fresh proof (the same run+artifact+content_ha
 cross-check that already works for the bot); `enforce: false` surfaces only warn. The bot
 is registry **entry #1** — unchanged behavior, zero regression.
 
+## Gate placement — merge-gate vs deploy-gate
+
+Not every surface is gated at the same point. A surface carries a `gate` field:
+
+- **`gate: "merge"` (default)** — per-system surfaces (the bot, the deploy-edge) where a
+  branch's change can be proven on a live system *before* merging. These are `enforce: true`
+  and blocked by the `E2E verification gate` required check (`check-e2e-proof.sh`): no fresh
+  proof in the diff → no merge.
+- **`gate: "deploy"`** — a **shared service** (the MCP gateway: one Cloud Run service for
+  *all* systems, `services/mcp-server/`). You cannot safely prove a branch's gateway change
+  without deploying it to everyone, so the right place to block is at **deploy time**, not
+  merge time — the can-i-deploy model. These surfaces are `enforce: false` (so
+  `check-e2e-proof.sh` ignores them at merge — never forcing a risky branch deploy), and are
+  enforced instead by a **post-deploy smoke gate** inside `deploy-mcp-server.yml`: after the
+  new revision deploys, the three smokes (`scripts/{factory,n8n,google}-mcp-smoke.py`) drive
+  `/factory`, `/n8n`, `/workspace` against it; any failure **fails the deploy** so the broken
+  revision is not trusted. (v1 fails the job post-deploy; the documented hardening is a
+  blue-green `--no-traffic` candidate smoked before promoting traffic — pre-traffic prevention.)
+
+This split is deliberate: a single shared E2E merge-gate across independent units is the
+anti-pattern (it couples them and slows delivery). Per-surface placement keeps each gate at
+the layer where it can be proven safely.
+
 ## The factory's E2E surfaces — gap map (2026-06)
 
 | Surface | Enforced E2E today? | Gap (where green ≠ working) | Proposed tier |

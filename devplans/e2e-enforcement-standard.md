@@ -25,7 +25,7 @@ registry-driven** שמכסה כל משטח-ריצה שדורש E2E — לא רק
 | 1 | מסמך הסטנדרט + מטריצת-סיכון | completed | `docs/e2e-enforcement-standard.md` |
 | 2 | תשתית הרשם (בוט=ערך #1, אפס שינוי התנהגות) | completed | `e2e-surfaces.json`, `scripts/lib.sh`, `scripts/check-e2e-proof.sh`, `provision-system.yml` |
 | 3 | משטח Deploy/Caddy-HMAC (enforce) | completed | `scripts/deploy-verify.sh`, `*/deploy-verify.yml`, רשם, provision |
-| 4 | 3 שערי MCP (חובה+חתומים, factory-wide) | pending | smoke scripts → proof-producers, רשם, gates |
+| 4 | 3 שערי MCP (deploy-gate) | in-progress | `e2e-surfaces.json`, `deploy-mcp-server.yml`, doc |
 | 5 | Day-0 + Observability + MCP health (מייעץ) | pending | drivers, רשם (enforce:false) |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
@@ -110,17 +110,21 @@ dispatch `deploy-verify.yml`, run 27384892330, success): התעודה `deploy-ed
 - [ ] ערכי רשם factory-wide; שערים אכיפים
 - [ ] הוכחה חיה לכל שער
 
-**הוכחה תפקודית (באותו שלב):** הרצת ה-smokes החיים → proofs; שער חוסם בלי proof.
+**הוכחה תפקודית (באותו שלב):** 3 ה-smokes עוברים חי מול or-edri-4 (הלוגיקה שה-gate מריץ);
+ההרצה המלאה של ה-gate = ה-redeploy האוטומטי כשמתמזג (control-plane → post-merge).
 
-**הוכחת E2E (artifact):** proofs מ-3 ה-smokes.
+**הוכחת E2E (artifact):** ריצות ה-smoke החיות (factory/n8n/google) מול or-edri-4 +
+ריצת ה-deploy-gate ב-redeploy.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** בנייה הושלמה — **deploy-gate** (לא merge-gate, כי ה-gateway
+משותף): צעד "Post-deploy MCP smoke gate" ב-`deploy-mcp-server.yml` מריץ את 3 ה-smokes מול
+השרת שזה-עתה נפרס; כשל → ה-deploy נכשל. 3 ערכי רשם (`factory/n8n/workspace-mcp`,
+`gate:"deploy"`, `enforce:false` → `check-e2e-proof` לא נוגע). input `smoke_target`
+(default or-edri-4). מתועד ב-`docs/e2e-enforcement-standard.md`. yamllint/actionlint נקי.
+נשאר: לאשר ש-3 ה-smokes עוברים חי (רץ עכשיו) + ה-redeploy האוטומטי במיזוג.
 
-**שינוי תוכנית:** —
-
----
-
-### שלב 5 — Day-0 + Observability + MCP health (מייעץ)
+**שינוי תוכנית:** v1 = post-deploy detection שמפיל את ה-job (blue-green pre-traffic =
+הקשחה עתידית, שלב 5). הוכחת ה-deploy-gate המלאה היא post-merge (control-plane רץ רק על main).
 
 **Acceptance:**
 - [ ] בדיקת-לידה Day-0; הוכחת מסירת-אירוע סינתטית; probe אחרי deploy של ה-MCP

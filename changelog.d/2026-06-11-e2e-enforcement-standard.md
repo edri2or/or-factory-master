@@ -47,3 +47,18 @@ healthz 200, webhook לא-חתום 401).
 **הוכחה חיה (or-edri-4):** retrofit (PR #9, merged) → dispatch `deploy-verify.yml`
 (run 27384892330, success) → תעודת `deploy-edge-or-edri-4.json` עם checks אמיתיים:
 healthz 200, no_signature 401, bad_signature 401, good_signature 404, rate_limit_429s 33.
+
+## שלב 4 — שערי MCP כ-deploy-gate
+
+3 שערי ה-MCP הם שירות אחד משותף, לכן ההגנה היא **בזמן deploy**, לא במיזוג (מודל can-i-deploy;
+מכבד את אנטי-דפוס "שער-יחיד"). צעד **"Post-deploy MCP smoke gate"** ב-`deploy-mcp-server.yml`
+מריץ את 3 ה-smokes הקיימים (`scripts/{factory,n8n,google}-mcp-smoke.py`, stdlib בלבד) מול
+השרת שזה-עתה נפרס; כשל באחד → ה-deploy job נכשל (השרת השבור לא נחשב תקין). input חדש
+`smoke_target` (default `or-edri-4`). 3 ערכים ב-`e2e-surfaces.json`
+(`factory/n8n/workspace-mcp`, `scope:factory`, `gate:"deploy"`, `enforce:false`) — מתעדים את
+המשטחים בלי לגעת ב-`check-e2e-proof.sh` (אפס סיכון לבלם המוכח). מתועד ב-
+`docs/e2e-enforcement-standard.md` (מודל merge-gate מול deploy-gate). הוכחה: 3 ה-smokes
+עוברים חי מול or-edri-4; ההרצה המלאה של ה-gate = ה-redeploy האוטומטי במיזוג (control-plane).
+
+**Changes:** `e2e-surfaces.json`, `.github/workflows/deploy-mcp-server.yml`,
+`docs/e2e-enforcement-standard.md`.

@@ -28,6 +28,11 @@ on:
         description: "Optional: CSV of Telegram numeric user id(s) allowed to use the factory chat bot (e.g. 5786217215). Seeded into factory-telegram-chat-allowlist. Leave blank to keep the current value."
         required: false
         type: string
+      smoke_target:
+        description: "Live system the post-deploy MCP smoke gate drives (default or-edri-4)."
+        required: false
+        type: string
+        default: "or-edri-4"
 
 concurrency:
   group: deploy-mcp-server
@@ -728,6 +733,42 @@ jobs:
           done
           echo "::error::Service did not return 200 on /health within 10 minutes"
           exit 1
+
+      - name: Post-deploy MCP smoke gate (factory / n8n / workspace)
+        env:
+          SMOKE_SYSTEM: ${{ github.event.inputs.smoke_target || 'or-edri-4' }}
+        run: |
+          set -uo pipefail
+          # Deployment gate (can-i-deploy at deploy time) for the SHARED MCP gateway.
+          # The three runtime surfaces (/factory, /n8n, /workspace) are proven against
+          # the just-deployed service via the existing smoke scripts (stdlib-only). Any
+          # smoke failure fails the deploy job -> the broken gateway revision is not
+          # trusted. This is the enforcement model for shared-service surfaces (they are
+          # gate:deploy, not merge-gated). See docs/e2e-enforcement-standard.md.
+          GATEWAY_URL=$(gcloud run services describe "${SERVICE}" \
+            --region="${GCP_REGION}" --project="${GCP_PROJECT}" \
+            --format='value(status.url)')
+          ADMIN_SECRET=$(gcloud secrets versions access latest \
+            --secret="mcp-server-admin-secret" --project="${GCP_PROJECT}" | tr -d '\r\n')
+          echo "::add-mask::${ADMIN_SECRET}"
+          export GATEWAY_URL ADMIN_SECRET SMOKE_SYSTEM
+          echo "Post-deploy MCP smoke gate against ${GATEWAY_URL} (target system: ${SMOKE_SYSTEM})"
+          rc=0
+          for smoke in factory-mcp-smoke n8n-mcp-smoke google-mcp-smoke; do
+            echo "::group::${smoke}"
+            if python3 "scripts/${smoke}.py"; then
+              echo "PASS: ${smoke}"
+            else
+              echo "::error::deploy-gate: ${smoke} FAILED against the freshly-deployed gateway"
+              rc=1
+            fi
+            echo "::endgroup::"
+          done
+          if [ "$rc" -ne 0 ]; then
+            echo "::error::Post-deploy MCP smoke gate failed — the new gateway revision did not pass all surface smokes. The deploy is rejected."
+            exit 1
+          fi
+          echo "PASS: all 3 MCP surface smokes passed against the deployed gateway."
 
       - name: Register Linear webhook (idempotent, soft-fail)
         if: success()
