@@ -91,6 +91,13 @@ jobs:
         # configure-agent-router.yml. master-system-integrity B5.
         run: bash scripts/tests/system-info-test.sh
 
+      - name: GitHub-App preflight gate (B3)
+        # Proves the register→configure ordering preflight: APP_ID set + github-app-*
+        # missing in SM is CRITICAL (RED), while APP_ID empty is a clean pre-registration
+        # warning (green) — mirror of the github-app preflight + the two github_readonly
+        # DEGRADED rows in the system configure-agent-router.yml. master-system-integrity B3.
+        run: bash scripts/tests/github-app-preflight-test.sh
+
       - name: Template validation
         run: bash scripts/tests/validate-templates.sh
 
