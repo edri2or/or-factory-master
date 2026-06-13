@@ -1,0 +1,14 @@
+{
+  "schema": "e2e-proof/v1",
+  "slug": "liveness-bot-test-2026-06-13",
+  "repo": "edri2or/or-factory-master",
+  "run_id": "27476200401",
+  "content_hash": "sha256:85d6f0ebff747085f451a4afd12121e2822023c74ebf752bb8ca6b1ea651ae68",
+  "system": "or-edri-4",
+  "domain": "n8n-or-edri-4.or-infra.com",
+  "execution_id": "436",
+  "reply_excerpt": "שם המערכת שלך הוא `or-edri-4`.",
+  "result": "pass",
+  "executed_at": "2026-06-13T19:05:18Z",
+  "signature": "hmac-sha256:d30c3ee2ca0a2689a2d5584a7aaeb7a9117c9d44de1ddbb7b46a4752763acb08"
+}
