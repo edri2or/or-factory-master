@@ -1,0 +1,14 @@
+{
+  "schema": "e2e-proof/v1",
+  "slug": "fix-jsonb-upsert",
+  "repo": "edri2or/or-factory-master",
+  "run_id": "27469018303",
+  "content_hash": "sha256:85d6f0ebff747085f451a4afd12121e2822023c74ebf752bb8ca6b1ea651ae68",
+  "system": "or-edri-4",
+  "domain": "n8n-or-edri-4.or-infra.com",
+  "execution_id": "405",
+  "reply_excerpt": "שם המערכת שלך הוא `or-edri-4`.",
+  "result": "pass",
+  "executed_at": "2026-06-13T14:08:26Z",
+  "signature": "hmac-sha256:2e50ce6c56bfeefb6f543e3ba97a61c0ea7242a5b39ef4a100cb114adb73220f"
+}

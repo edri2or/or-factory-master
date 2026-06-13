@@ -236,7 +236,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "INSERT INTO file_catalog (chat_id, paths, refreshed_at)\nVALUES ({{ '@@CHAT_ID@@' }}, {{ JSON.stringify(JSON.stringify($json.paths)) }}::jsonb, NOW())\nON CONFLICT (chat_id) DO UPDATE SET paths = EXCLUDED.paths, refreshed_at = NOW();",
+        "query": "INSERT INTO file_catalog (chat_id, paths, refreshed_at)\nVALUES ({{ '@@CHAT_ID@@' }}, {{ \"'\" + JSON.stringify($json.paths || []).split(\"'\").join(\"''\") + \"'\" }}::jsonb, NOW())\nON CONFLICT (chat_id) DO UPDATE SET paths = EXCLUDED.paths, refreshed_at = NOW();",
         "options": {}
       },
       "id": "80000000-0000-0000-0000-00000000000b",
