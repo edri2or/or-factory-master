@@ -26,10 +26,10 @@ status: active
 
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
-| 1 | הוכחת שליחת מייל (send_gmail_message) + תיקון ברירת-מחדל ל-or-edri-4 | in-progress | `scripts/google-mcp-smoke.py`, `.github/workflows/google-mcp-smoke.yml` |
-| 2 | תיקון+הוכחה של הפערים: DB Vacuum, style-refresh, ותיעוד google_workspace ב-AGENTS.md | pending | `or-edri-4/AGENTS.md`, הרצות חיות |
-| 3 | נעילת or-edri-4: מעבר liveness מלא על כל אוטומציה (ריצה מוצלחת טרייה + כלים מחוברים) | pending | טבלת ראיות |
-| 4 | מנגנון אנטי-דריפט (skill + הרחבת e2e-surfaces/system-runtime-audit) — מחקר מקטעי + אינטרנט | pending | `e2e-surfaces.json`, `system-runtime-audit.yml`, skill חדש |
+| 1 | הוכחת שליחת מייל (send_gmail_message) + תיקון ברירת-מחדל ל-or-edri-4 | completed | `scripts/google-mcp-smoke.py`, `.github/workflows/google-mcp-smoke.yml` |
+| 2 | הוכחת DB Vacuum (exec 427) + style-refresh (exec 428) חיים דרך trigger-system-workflow.yml | completed | הרצות חיות |
+| 3 | תיעוד google_workspace + תיקון הערת HITL ישנה ב-AGENTS template + golden | in-progress | `templates/system/AGENTS.md.template`, `or-edri-4/AGENTS.md`, `tests/golden/system/` |
+| 4 | מנגנון אנטי-דריפט (skill + הרחבת watchdog ל-per-workflow) — מחקר הושלם, תכנון נפרד | pending | `monitoring/watchdog-registry.json`, `system-runtime-audit.yml`, skill חדש |
 
 > **הוכחה בכל שלב:** שלב נסגר רק כשהוכח על קלט אמיתי — לא "CI ירוק" בלבד.
 > שלב 1 נסגר כשמייל אמיתי נחת ב-edri2or@gmail.com (הרצת smoke עם send_test_to).
