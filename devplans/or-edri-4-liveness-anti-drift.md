@@ -29,8 +29,8 @@ status: active
 | 1 | הוכחת שליחת מייל (send_gmail_message) + תיקון ברירת-מחדל ל-or-edri-4 | completed | `scripts/google-mcp-smoke.py`, `.github/workflows/google-mcp-smoke.yml` |
 | 2 | הוכחת DB Vacuum (exec 427) + style-refresh (exec 428) חיים דרך trigger-system-workflow.yml | completed | הרצות חיות |
 | 3 | תיעוד google_workspace + תיקון הערת HITL ישנה ב-AGENTS template + golden | completed | `templates/system/AGENTS.md.template`, `or-edri-4/AGENTS.md`, `tests/golden/system/` |
-| 4a | skill `/system-liveness` — דוח-אמת per-workflow על דרישה (מה באמת עובד?) | in-progress | `.claude/commands/system-liveness.md` |
-| 4b | שדרוג שומר-העל ל-per-workflow liveness (תופס "מעולם לא רץ"/"נפל" אוטומטית) | pending | `scripts/run-watchdog.sh`, `monitoring/watchdog-registry.json` |
+| 4a | skill `/system-liveness` — דוח-אמת per-workflow על דרישה (מה באמת עובד?) | completed | `.claude/commands/system-liveness.md` |
+| 4b | שדרוג שומר-העל ל-per-workflow liveness (תופס "מעולם לא רץ"/"נפל" אוטומטית) | in-progress | `scripts/run-watchdog.sh`, `monitoring/watchdog-registry.json`, `scripts/tests/run-watchdog.bats` |
 
 > **הוכחה בכל שלב:** שלב נסגר רק כשהוכח על קלט אמיתי — לא "CI ירוק" בלבד.
 > שלב 1 נסגר כשמייל אמיתי נחת ב-edri2or@gmail.com (הרצת smoke עם send_test_to).

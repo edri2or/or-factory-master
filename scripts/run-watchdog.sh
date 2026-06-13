@@ -375,6 +375,122 @@ proof_n8n_execution() {
   fi
 }
 
+# --- proof: n8n-workflow-liveness ------------------------------------------
+# PER-WORKFLOW liveness (the granular sibling of n8n-execution, which only checks
+# ONE latest execution per system). For each real system, list every workflow and
+# check each ACTIVE one's latest execution. Flags 🔴: an active workflow whose
+# latest execution errored/crashed, OR an active SCHEDULE-triggered workflow that
+# NEVER ran (zero executions — exactly how DB Vacuum hid). An active webhook/other
+# workflow with no executions is NOT flagged (legitimately may be unused, e.g. on a
+# fresh deploy). Inactive workflows (sub-workflows / disabled) are skipped. Tests
+# inject the workflows list via WATCHDOG_FIXTURE_DIR/n8n_workflows_<sys>.json and a
+# per-workflow latest execution via n8n_wfexec_<sys>_<wfid>.json (no gcloud/network).
+
+# Fetch one system's workflows-list JSON (fixture or live). Echoes JSON or "".
+_n8n_workflows_json() {
+  local sys="$1"
+  if [ -n "${WATCHDOG_FIXTURE_DIR:-}" ]; then
+    local fx="${WATCHDOG_FIXTURE_DIR}/n8n_workflows_${sys}.json"
+    [ -f "$fx" ] && cat "$fx" || echo ""
+    return
+  fi
+  local key body http
+  key=$(gcloud secrets versions access latest --secret="n8n-api-key" --project="$sys" 2>/dev/null) || { echo ""; return; }
+  [ -n "$key" ] || { echo ""; return; }
+  body=$(mktemp)
+  http=$(curl -sS -m 20 -o "$body" -w '%{http_code}' \
+    -H "X-N8N-API-KEY: ${key}" -H "accept: application/json" \
+    "https://n8n-${sys}.or-infra.com/api/v1/workflows?limit=250" 2>/dev/null) || http="000"
+  case "$http" in 2*) cat "$body" ;; *) echo "" ;; esac
+  rm -f "$body"
+}
+
+# Echo one workflow's latest-execution token: success | error | none | unresolvable
+_n8n_wf_exec_status() {
+  local sys="$1" wfid="$2" resp st cnt
+  if [ -n "${WATCHDOG_FIXTURE_DIR:-}" ]; then
+    local fx="${WATCHDOG_FIXTURE_DIR}/n8n_wfexec_${sys}_${wfid}.json"
+    [ -f "$fx" ] || { echo "unresolvable"; return; }
+    resp=$(cat "$fx")
+  else
+    local key body http
+    key=$(gcloud secrets versions access latest --secret="n8n-api-key" --project="$sys" 2>/dev/null) || { echo "unresolvable"; return; }
+    [ -n "$key" ] || { echo "unresolvable"; return; }
+    body=$(mktemp)
+    http=$(curl -sS -m 15 -o "$body" -w '%{http_code}' \
+      -H "X-N8N-API-KEY: ${key}" -H "accept: application/json" \
+      "https://n8n-${sys}.or-infra.com/api/v1/executions?workflowId=${wfid}&limit=1" 2>/dev/null) || http="000"
+    case "$http" in 2*) resp=$(cat "$body") ;; *) rm -f "$body"; echo "unresolvable"; return ;; esac
+    rm -f "$body"
+  fi
+  cnt=$(jq -r '.data | length' <<<"$resp" 2>/dev/null || echo "0")
+  [ "$cnt" = "0" ] && { echo "none"; return; }
+  st=$(jq -r '.data[0].status // empty' <<<"$resp" 2>/dev/null)
+  case "$st" in
+    success)       echo "success" ;;
+    error|crashed) echo "error" ;;
+    *)             echo "running" ;;
+  esac
+}
+
+# Per-system per-workflow verdict. Echoes: ok | bad:<names> | none(unresolvable)
+_n8n_workflow_liveness_per_system() {
+  local sys="$1" wfjson checked=0 badnames="" id name active sched est
+  wfjson=$(_n8n_workflows_json "$sys")
+  [ -n "$wfjson" ] || { echo "none"; return; }
+  while IFS=$'\t' read -r id name active sched; do
+    [ -n "$id" ] || continue
+    [ "$active" = "true" ] || continue
+    checked=$((checked + 1))
+    est=$(_n8n_wf_exec_status "$sys" "$id")
+    case "$est" in
+      error) badnames="${badnames}${name} " ;;
+      none)  [ "$sched" = "true" ] && badnames="${badnames}${name}(never) " ;;
+      *)     : ;;
+    esac
+  done < <(jq -r '.data[]? | [ (.id|tostring), (.name // "?"), (.active|tostring), ([.nodes[]?.type] | map(test("scheduleTrigger";"i")) | any | tostring) ] | @tsv' <<<"$wfjson" 2>/dev/null)
+  if [ -n "$badnames" ]; then echo "bad:${badnames% }"; return; fi
+  [ "$checked" -gt 0 ] && { echo "ok"; return; }
+  echo "none"
+}
+
+proof_n8n_workflow_liveness() {
+  local entry="$1" folder
+  folder=$(jq -r '.evidence.systems_folder // "123180924297"' <<<"$entry")
+  R_URL="https://github.com/edri2or/or-factory-master/blob/main/monitoring/watchdog-registry.json"
+
+  local systems
+  if [ -n "${WATCHDOG_SYSTEMS_OVERRIDE:-}" ]; then
+    systems="$WATCHDOG_SYSTEMS_OVERRIDE"
+  elif [ -n "${WATCHDOG_FIXTURE_DIR:-}" ]; then
+    systems=""
+  else
+    systems=$(gcloud projects list --filter="parent.id=${folder}" --format='value(projectId)' 2>/dev/null || echo "")
+  fi
+
+  local total=0 okc=0 redc=0 unkc=0 redlist="" sys concl
+  for sys in $systems; do
+    [ "$sys" = "factory-test-25" ] && continue
+    total=$((total + 1))
+    concl=$(_n8n_workflow_liveness_per_system "$sys")
+    case "$concl" in
+      ok)    okc=$((okc + 1)) ;;
+      bad:*) redc=$((redc + 1)); redlist="${redlist}${sys}[${concl#bad:}] " ;;
+      *)     unkc=$((unkc + 1)) ;;
+    esac
+  done
+
+  if [ "$total" -eq 0 ]; then
+    R_STATUS="unknown"; R_DETAIL_HE="אין מערכות פרוסות תחת התיקייה"
+  elif [ "$redc" -gt 0 ]; then
+    R_STATUS="red"; R_DETAIL_HE="${total} מערכות: ${okc} ✅ · ${redc} 🚨 workflows לא-חיים (${redlist%% }) · ${unkc} ❓"
+  elif [ "$okc" -gt 0 ]; then
+    R_STATUS="ok"; R_DETAIL_HE="${total} מערכות: כל ה-workflows הפעילים עם ריצה תקינה · ${unkc} ❓"
+  else
+    R_STATUS="unknown"; R_DETAIL_HE="${total} מערכות — workflows לא ניתנים-לאימות (❓)"
+  fi
+}
+
 # Echo the space-separated real-system list for the per-system GitHub fan-out
 # proof methods below. Mirrors proof_n8n_execution's discovery: tests inject the
 # list via WATCHDOG_SYSTEMS_OVERRIDE (no gcloud); otherwise enumerate GCP
@@ -603,6 +719,7 @@ while [ "$i" -lt "$ENTRY_COUNT" ]; do
       gh-last-run)          proof_gh_last_run "$entry" ;;
       static-integrity)     proof_static_integrity "$entry" ;;
       n8n-execution)        proof_n8n_execution "$entry" ;;
+      n8n-workflow-liveness) proof_n8n_workflow_liveness "$entry" ;;
       system-branch-protection) proof_system_branch_protection "$entry" ;;
       system-ci-runs)           proof_system_ci_runs "$entry" ;;
       *) R_STATUS="unknown"; R_DETAIL_HE="שיטת הוכחה לא נתמכת בשלב זה (${method})" ;;

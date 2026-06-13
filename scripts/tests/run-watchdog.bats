@@ -351,6 +351,98 @@ run_n8n() {
   assert_output --partial "red=1"
 }
 
+# --- n8n-workflow-liveness (stage 4, per-workflow fan-out) -------------------
+# A one-entry n8n-workflow-liveness registry; systems via WATCHDOG_SYSTEMS_OVERRIDE,
+# the workflows list via fx/n8n_workflows_<sys>.json and each workflow's latest
+# execution via fx/n8n_wfexec_<sys>_<wfid>.json.
+make_n8nwf_dir() {
+  local dir
+  dir="$(make_tmpdir)"
+  mkdir -p "$dir/fx"
+  cat > "$dir/registry.json" <<'EOF'
+{ "version": 1, "entries": [
+  { "id": "nwf", "name_he": "חיות n8n לפי Workflow", "type": "n8n-workflows", "layer": "system",
+    "proof_method": "n8n-workflow-liveness",
+    "evidence": { "systems_folder": "123180924297" },
+    "stage": 4, "enabled": true } ] }
+EOF
+  printf '%s\n' "$dir"
+}
+
+run_n8nwf() {
+  local dir="$1" systems="$2"
+  REGISTRY_FILE="$dir/registry.json" \
+  WATCHDOG_FIXTURE_DIR="$dir/fx" \
+  WATCHDOG_SYSTEMS_OVERRIDE="$systems" \
+  WATCHDOG_EMIT=0 TG_TOKEN="" TG_CHAT="" HEARTBEAT_URL="" \
+    bash "$WATCHDOG"
+}
+
+@test "n8nwf unknown: zero deployed systems is ❓, not 🚨" {
+  dir="$(make_n8nwf_dir)"
+  run run_n8nwf "$dir" ""
+  assert_success
+  assert_output --partial "unknown=1"
+  refute_output --partial "red=1"
+}
+
+@test "n8nwf ok: an active scheduled workflow with a successful latest run is green" {
+  dir="$(make_n8nwf_dir)"
+  printf '%s' '{"data":[{"id":"w1","name":"DB Vacuum","active":true,"nodes":[{"type":"n8n-nodes-base.scheduleTrigger"}]}]}' > "$dir/fx/n8n_workflows_sys-a.json"
+  printf '%s' '{"data":[{"status":"success"}]}' > "$dir/fx/n8n_wfexec_sys-a_w1.json"
+  run run_n8nwf "$dir" "sys-a"
+  assert_success
+  assert_output --partial "ok=1 warn=0 red=0 unknown=0"
+}
+
+@test "n8nwf red: an active workflow whose latest run errored is 🚨" {
+  dir="$(make_n8nwf_dir)"
+  printf '%s' '{"data":[{"id":"w1","name":"style-refresh","active":true,"nodes":[{"type":"n8n-nodes-base.scheduleTrigger"}]}]}' > "$dir/fx/n8n_workflows_sys-a.json"
+  printf '%s' '{"data":[{"status":"error"}]}' > "$dir/fx/n8n_wfexec_sys-a_w1.json"
+  run run_n8nwf "$dir" "sys-a"
+  assert_success
+  assert_output --partial "red=1"
+}
+
+@test "n8nwf red: an active SCHEDULED workflow that never ran is 🚨 (the DB Vacuum gap)" {
+  dir="$(make_n8nwf_dir)"
+  printf '%s' '{"data":[{"id":"w1","name":"DB Vacuum","active":true,"nodes":[{"type":"n8n-nodes-base.scheduleTrigger"}]}]}' > "$dir/fx/n8n_workflows_sys-a.json"
+  printf '%s' '{"data":[]}' > "$dir/fx/n8n_wfexec_sys-a_w1.json"
+  run run_n8nwf "$dir" "sys-a"
+  assert_success
+  assert_output --partial "red=1"
+}
+
+@test "n8nwf ok: an active WEBHOOK workflow that never ran is NOT 🚨 (may be unused)" {
+  dir="$(make_n8nwf_dir)"
+  printf '%s' '{"data":[{"id":"w1","name":"tg-inbound","active":true,"nodes":[{"type":"n8n-nodes-base.webhook"}]}]}' > "$dir/fx/n8n_workflows_sys-a.json"
+  printf '%s' '{"data":[]}' > "$dir/fx/n8n_wfexec_sys-a_w1.json"
+  run run_n8nwf "$dir" "sys-a"
+  assert_success
+  assert_output --partial "ok=1"
+  refute_output --partial "red=1"
+}
+
+@test "n8nwf ❓: a system with only inactive workflows is unresolvable, not 🚨" {
+  dir="$(make_n8nwf_dir)"
+  printf '%s' '{"data":[{"id":"w1","name":"sub-agent","active":false,"nodes":[{"type":"n8n-nodes-base.executeWorkflowTrigger"}]}]}' > "$dir/fx/n8n_workflows_sys-a.json"
+  run run_n8nwf "$dir" "sys-a"
+  assert_success
+  assert_output --partial "unknown=1"
+  refute_output --partial "red=1"
+}
+
+@test "n8nwf red: one dead workflow among healthy systems makes the aggregate 🚨" {
+  dir="$(make_n8nwf_dir)"
+  printf '%s' '{"data":[{"id":"w1","name":"ok-wf","active":true,"nodes":[{"type":"n8n-nodes-base.scheduleTrigger"}]}]}' > "$dir/fx/n8n_workflows_ok-sys.json"
+  printf '%s' '{"data":[{"status":"success"}]}' > "$dir/fx/n8n_wfexec_ok-sys_w1.json"
+  printf '%s' '{"data":[{"id":"w9","name":"DB Vacuum","active":true,"nodes":[{"type":"n8n-nodes-base.scheduleTrigger"}]}]}' > "$dir/fx/n8n_workflows_bad-sys.json"
+  printf '%s' '{"data":[]}' > "$dir/fx/n8n_wfexec_bad-sys_w9.json"
+  run run_n8nwf "$dir" "ok-sys bad-sys"
+  assert_success
+  assert_output --partial "red=1"
+}
+
 # --- system-branch-protection (stage 4, dynamic per-system fan-out) ----------
 # A one-entry system-branch-protection registry requiring two CI contexts;
 # systems are injected via WATCHDOG_SYSTEMS_OVERRIDE and each system's branch
