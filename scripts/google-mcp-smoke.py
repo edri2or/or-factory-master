@@ -33,7 +33,7 @@ import urllib.error
 
 GATEWAY = os.environ["GATEWAY_URL"].rstrip("/")
 ADMIN = os.environ["ADMIN_SECRET"]
-SYSTEM = os.environ.get("SMOKE_SYSTEM", "or-adhd-agent")
+SYSTEM = os.environ.get("SMOKE_SYSTEM", "or-edri-4")
 LABEL = os.environ.get("GOOGLE_ACCOUNT_LABEL", "edriorp38@or-infra.com")
 MCP_URL = f"{GATEWAY}/workspace/{SYSTEM}/mcp"
 PROTO = "2025-03-26"
@@ -182,5 +182,35 @@ if not ok or needs_auth:
 print(f"PASS [6/6] search_drive_files returned real Drive data "
       f"({len(text)} bytes) — the Drive+Docs scopes are live")
 
-print("\nSMOKE PASS 6/6: full loop proven (gateway bearer -> Workspace MCP sidecar -> "
-      "live Google reads incl. Drive), no secret in session.")
+# ── 7. OPTIONAL real send — proves Gmail WRITE (gmail.send) end to end ──
+# Gated on SEND_TEST_TO so routine smoke runs never email anyone; set it via the
+# workflow's send_test_to input to fire a single real proof email. This is the
+# write counterpart to steps 4/6 (reads) — it closes the "email-send was never
+# proven" gap (see devplans/or-edri-4-liveness-anti-drift.md).
+SEND_TO = os.environ.get("SEND_TEST_TO", "").strip()
+if SEND_TO:
+    import datetime
+    stamp = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+    subject = f"בדיקת מערכת {SYSTEM} — שליחת מייל ({stamp})"
+    body = (
+        f"זהו מייל בדיקה אוטומטי שנשלח דרך שער ה-Google Workspace MCP של הפקטורי, "
+        f"בשם החשבון המשותף {LABEL}, עבור המערכת {SYSTEM}.\n\n"
+        f"אם קיבלת אותו — שליחת המייל עובדת מקצה לקצה. (חותמת: {stamp})"
+    )
+    ok, text = tool_call("send_gmail_message", {
+        "user_google_email": LABEL,
+        "to": SEND_TO,
+        "subject": subject,
+        "body": body,
+    })
+    needs_auth = ("ACTION REQUIRED" in text) or ("Authentication Needed" in text) \
+        or ("authorize" in text.lower() and "oauth" in text.lower())
+    if not ok or needs_auth:
+        _fail("send_gmail_message did not send — the shared token lacks gmail.send, "
+              "or the sidecar is read-only", text)
+    print(f"PASS [7/7] send_gmail_message: real email sent to {SEND_TO} "
+          f"({len(text)} bytes response)")
+    print(f"\nSMOKE PASS 7/7: full loop proven INCLUDING a real Gmail SEND to {SEND_TO}.")
+else:
+    print("\nSMOKE PASS 6/6: full loop proven (gateway bearer -> Workspace MCP sidecar -> "
+          "live Google reads incl. Drive), no secret in session.")
