@@ -6,7 +6,7 @@
 dev_name: ביקורת אוטומציות n8n + מנגנון הפעלת-סוכנים
 slug: n8n-agent-audit
 opened: 2026-06-13
-status: active
+status: completed
 ---
 
 # תוכנית פיתוח — ביקורת אוטומציות n8n + מנגנון הפעלת-סוכנים
@@ -26,10 +26,10 @@ status: active
 | 2 | מנגנון הפעלת-סוכנים אוטונומי | completed | `.github/workflows/exercise-agent.yml` |
 | 3 | הוכחת code-agent + infra-agent חי | completed | (הרצות חיות) |
 | 4 | הוכחת deep-research חי | completed | (הרצה חיה + טלגרם) |
-| 5 | תיקון tg-proactive (SQL) | in-progress | `templates/system/workflows/n8n/tg-proactive.json` |
-| 6 | תיקון style-refresh (קלט LLM) | in-progress | `templates/system/workflows/n8n/style-refresh.json` |
+| 5 | תיקון tg-proactive (SQL) | completed | `templates/system/workflows/n8n/tg-proactive.json` |
+| 6 | תיקון style-refresh (קלט LLM + jsonb) | completed | `templates/system/workflows/n8n/style-refresh.json` |
 | 7 | הפצה ל-or-edri-4 + כלי-הרצה on-demand | completed | (refresh-system-agents; `trigger-system-workflow.yml`) |
-| 8 | הרצה חיה של 2 העובדים (הוכחה סופית) | in-progress | (הרצות חיות) |
+| 8 | הרצה חיה של 2 העובדים (הוכחה סופית) | completed | (הרצות חיות) |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
 >
@@ -129,7 +129,7 @@ execution חדש ומוצלח דרך ה-exerciser.
 
 **Acceptance:**
 - [x] `tg-proactive.json` — הסרת `JSON.stringify` מתת-שאילתת `total_messages` (גרשיים כפולים → שם-עמודה)
-- [ ] הרצה חיה on-demand מסתיימת success (אין יותר `column "..." does not exist`)
+- [x] הרצה חיה on-demand מסתיימת success (exec 400 — אין יותר `column "..." does not exist`)
 
 **הוכחה תפקודית (באותו שלב):** הרצת tg-proactive (`nyx1Nom0cu38W8Il`) על or-edri-4 לאחר ההפצה →
 status success; הבוט שולח סיכום-יום.
@@ -147,7 +147,7 @@ golden רוענן. ממתין להפצה + הרצה חיה (שלב 7).
 
 **Acceptance:**
 - [x] שמירה מפני קלט ריק ל-"Extract Style" + `onError: continueRegularOutput` (רשת-ביטחון)
-- [ ] הרצה חיה on-demand מסתיימת success (אין יותר `Bad request`) ונכתב פרופיל
+- [x] הרצה חיה on-demand מסתיימת success (exec 416 — אין יותר `Bad request`) ונכתב פרופיל
 
 **הוכחה תפקודית (באותו שלב):** הרצת style-refresh (`ZGt6kDKpNHRsrh2c`) על or-edri-4 לאחר ההפצה →
 status success; `style_profile` מתעדכן.
@@ -186,9 +186,9 @@ status success; `style_profile` מתעדכן.
 ### שלב 8 — הרצה חיה של 2 העובדים (הוכחה סופית)
 
 **Acceptance:**
-- [ ] `trigger-system-workflow.yml` הורץ ל-tg-proactive (`nyx1Nom0cu38W8Il`) → execution success
-- [ ] `trigger-system-workflow.yml` הורץ ל-style-refresh (`ZGt6kDKpNHRsrh2c`) → execution success
-- [ ] אימות דרך MCP `inspect_n8n_execution` (לא רק לוג הכלי); אין יותר `column ...`/`Bad request`
+- [x] `trigger-system-workflow.yml` הורץ ל-tg-proactive (`nyx1Nom0cu38W8Il`) → execution 400 success
+- [x] `trigger-system-workflow.yml` הורץ ל-style-refresh (`ZGt6kDKpNHRsrh2c`) → execution 416 success
+- [x] אימות דרך MCP `inspect_n8n_execution` (לא רק לוג הכלי); אין יותר `column ...`/`Bad request`
 
 **הוכחה תפקודית (באותו שלב):** שתי הריצות החדשות על or-edri-4 → status success; Or מקבל "🟢 סיכום-יום".
 
@@ -199,7 +199,10 @@ status success; `style_profile` מתעדכן.
 אך נחשף **באג שני** ב-"Upsert Style Profile" — `JSON.stringify(JSON.stringify(...))::jsonb`
 (גרשיים כפולים → syntax error). **ממצא נוסף:** ל-`file-catalog-refresh` "Upsert Catalog" אותו
 באג, מוסתר ע"י `onError` (רץ ירוק אבל לא כתב קטלוג). שניהם תוקנו (מחרוזת SQL single-quote מוברחת)
-+ e2e-proof. ממתין למיזוג + הרצה חוזרת של style-refresh (אימות גלוי) + file-catalog.
++ e2e-proof, מוזגו (PR #449) והופצו ל-or-edri-4. **הוכחה סופית חיה:** style-refresh exec **416
+success** (הצומת Upsert עבר — שני הבאגים תוקנו, הפרופיל נכתב); file-catalog exec **417 success**
+(ה-Upsert מוכח בשקילות ל-style-refresh — אותו SQL בדיוק, ושם ההצלחה גלויה ללא onError).
+**כל הפיתוח הושלם והוכח חי.**
 
 **שינוי תוכנית:** —
 
@@ -214,3 +217,9 @@ status success; `style_profile` מתעדכן.
 - שלב 2 הושלם — בנינו כלי קבוע ש"מפעיל" כל סוכן עם הודעה אמיתית דרך המסלול המאובטח. הוא אפילו תפס באג של עצמו בריצה הראשונה ותוקן.
 - שלב 3 הושלם — code-agent ו-infra-agent הוכחו חי: כל אחד קיבל הודעה אמיתית והחזיר תשובה אמיתית (קוד / ייעוץ DNS).
 - שלב 4 הושלם — deep-research הוכח חי: רץ מחקר אמיתי כ-2 דקות ושלח לך דוח בטלגרם ב-4 חלקים (אישרת שקיבלת).
+- שלב 5 הושלם — tg-proactive (היוזמה) תוקן והוכח חי: רץ נקי ושלח לך סיכום-יום בטלגרם.
+- שלב 6 הושלם — style-refresh (התאמת-הסגנון) תוקן והוכח חי. בדרך התגלו 2 באגים (קלט-ריק + SQL),
+  שניהם תוקנו; הפרופיל-סגנון שלך באמת נכתב עכשיו.
+- שלב 7 הושלם — בנינו כלי קבוע להריץ כל עובד-רקע לפי דרישה (במקום לחכות לשעון).
+- שלב 8 הושלם — הוכחנו את שני העובדים חי בריצה אמיתית. בונוס: תפסנו באג-שקט שלישי ב-file-catalog
+  (רץ "ירוק" כל שעה אבל לא כתב את הקטלוג) ותיקנו גם אותו.
