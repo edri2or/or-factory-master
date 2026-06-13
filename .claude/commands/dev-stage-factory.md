@@ -1,6 +1,6 @@
 ---
 audience: factory-only
-description: Run a provisioning-process development through live-test-system validation — prove the change on a cheap, throwaway, LIVE test system before it's promoted, as documented, gated stages in a living devplans/<slug>.md. Use when a development changes the factory's provisioning output — templates/system/**, provision-system.yml, or the deploy workflow. A factory-only superset of /dev-stage.
+description: Run a provisioning-process development through live validation on the standing proving system or-edri-4 — prove the change live on or-edri-4 first, then lock it into the factory template, as documented, gated stages in a living devplans/<slug>.md. Use when a development changes the factory's provisioning output — templates/system/**, provision-system.yml, or the deploy workflow. A factory-only superset of /dev-stage.
 ---
 
 # Dev Stage Factory — Provisioning-Process Development, Live-Test-System Validated
@@ -14,43 +14,49 @@ under `templates/system/**`, `.github/workflows/provision-system.yml`, or the sy
 `devplans/<slug>.md`, per-stage commit + changelog fragment, stop-for-approval at every
 boundary, plain-Hebrew reporting, the plan file is your memory not Or's reading). This
 command **adds the teeth that a template change is actually proven on a live system
-before it's trusted** — via a cheap, throwaway, *live* test system, not a permanent one.
+before it's trusted** — on the standing proving system `or-edri-4`: prove there first,
+then lock into the factory template.
 
 The trigger is invoking this command. Invoking `/dev-stage-factory` declares "this
 development changes provisioning output — validate it on a live test system."
 
-## The method — validate on a live test system (the heart of this skill)
+## The method — prove on `or-edri-4` first, then lock into the template (the heart of this skill)
 
 A provisioning-process change is only trustworthy once it has run on a **real, live
-system** — not just passed static checks. We do that on a **cheap, throwaway** test
-system, not a permanent "reference" one (that approach was retired — see
-`docs/live-test-loop.md` for why). The loop:
+system** — not just passed static checks. The factory's standing proving ground is
+**`or-edri-4`** (GCP `factory-test-21`, adopt): every provisioning-process change is
+**first applied and proven live on `or-edri-4`, and only then locked into the factory
+template** (merge to `main`). This is a *permanent* proving system — see
+`docs/live-test-loop.md` for why it is **not** the retired "reference system" trap (it is
+now mandatory + CI-enforced, proven fresh per change, and heartbeat-audited). The loop:
 
 1. **Static gates green first** — the **System golden gate** ("Playground tests") and
    **Check template golden in sync** ("Changelog gates"). A mould change MUST ship with a
    refreshed golden (`bash scripts/check-system-golden.sh --update`, committed in the same
    PR) or the twin gate fails.
-2. **Stand up a live test system** — provision a throwaway system in **reuse mode**
-   (`shared_gcp_project=factory-test-25`, **0 quota**): `provision-system.yml` →
-   `register-system-app.yml` → `deploy-railway-cloudflare.yml`. This is a fresh Day-0
-   build and costs no project-quota.
-3. **Apply the change to it and prove it live:**
-   - **Template-file changes** (`templates/system/**`) → `refresh-system-agents.yml`
-     (pass `paths=` for the touched subtree and `post_merge_workflow=` for whatever
-     applies it live, e.g. `configure-agent-router.yml`). It's in place in ~1–2 min, no
-     re-provision.
-   - **Deeper changes** (the deploy workflow itself) → re-run the system's
+2. **Apply the change to `or-edri-4` and prove it live:**
+   - **Template-file changes** (`templates/system/**`) → apply to `or-edri-4`'s live n8n
+     (`refresh-system-agents.yml` with `system_name=or-edri-4`, `paths=` for the touched
+     subtree, `post_merge_workflow=` for whatever applies it live, e.g.
+     `configure-agent-router.yml`). In place in ~1–2 min, no re-provision.
+   - **Deeper changes** (the deploy workflow itself) → re-run `or-edri-4`'s
      `deploy-railway-cloudflare.yml`.
    - **Verify live**: `probe_endpoint` (`/healthz`, the UI, the HMAC edge) and/or a real
      Telegram round-trip. If it fails, read the logs, fix, re-apply, re-verify — iterate
-     until green. This live iteration is what catches the bugs CI is green on.
-4. **Promote** = merge to `main`.
-5. **Tear down** the throwaway via `decommission-test-system.yml` (user-triggered;
-   never auto-chained) once the change is promoted.
+     until green. This live iteration on a stateful system is what catches the Day-2 bugs
+     CI is green on.
+3. **Promote** = merge to `main` — the change is now **locked into the factory template**.
 
-Because the test system is built fresh **and** can be iterated on with real state, this
-single loop catches both clean-install (Day-0) and stateful (Day-2) breakage — the live
-system is the source of truth, not a static fixture.
+**`or-edri-4` is permanent — do NOT tear it down.** It is Or's running system and the
+factory's proving ground; the teardown ledger / `decommission-test-system.yml` applies only
+to a *throwaway* Day-0 system (below), never to `or-edri-4`.
+
+**Day-0 birth check (only when a change must also be proven from birth).** `or-edri-4` is a
+Day-2 system; it cannot prove a *fresh* system is born correct. For that, stand up a
+**throwaway** system in reuse mode (`shared_gcp_project=factory-test-25`, **0 quota**:
+`provision-system.yml` → `register-system-app.yml` → `deploy-railway-cloudflare.yml`), run
+`e2e-verify.yml` against it, then tear it down (`decommission-test-system.yml`,
+user-triggered). Complementary to — not a replacement for — the `or-edri-4` loop.
 
 ## Context — Read First
 
@@ -58,8 +64,8 @@ Before anything, read:
 1. `templates/devplan/DEVPLAN.template.md` — the plan template you instantiate.
 2. `devplans/*.md`, if any exist — other active developments (coordinate; keep the
    devplan CI gate satisfied).
-3. `docs/live-test-loop.md` — the live-test-system method in full (and why the standing
-   reference system was retired).
+3. `docs/live-test-loop.md` — the standing-proving-system method in full (`or-edri-4` first,
+   then lock into the template; and how it avoids the retired reference-system's decay).
 
 ## Instructions
 
@@ -89,22 +95,25 @@ For each stage, in order:
   (`--update`, committed in the same PR) or the twin gate fails. Fix and re-push until
   green before continuing.
 
-- **(a.2) Live proof** (for the stage(s) that change provisioning output):
-  - **Ask Or before any costed move.** Provisioning a throwaway test system (reuse mode,
-    0-quota but a real Railway project + DNS) and re-deploying it are real moves. State the
-    scope and wait for his explicit OK.
-  - Stand up / reuse the live test system, apply the change (`refresh-system-agents.yml`
-    for template files, or the deploy workflow for deeper changes), and verify it live
-    (`probe_endpoint` / Telegram). Iterate fix→apply→verify until green.
+- **(a.2) Live proof on `or-edri-4`** (for the stage(s) that change provisioning output):
+  - Apply the change to `or-edri-4`'s live n8n (`refresh-system-agents.yml` with
+    `system_name=or-edri-4` for template files, or `or-edri-4`'s deploy workflow for deeper
+    changes) and verify it live (`probe_endpoint` / Telegram). Iterate fix→apply→verify
+    until green. **`or-edri-4` is permanent — never tear it down.**
   - **E2E proof is mandatory when the change touches bot behavior**
     (`templates/system/workflows/n8n/*.json` or the system `configure-agent-router.yml`).
     After the change is applied live, dispatch `e2e-verify.yml` (ref=main, inputs
-    `system_name=<test system>`, `target_ref=<branch>`, `slug`): it drives a REAL message
-    through the test system's inbound path, asserts on the reply, and commits
+    `system_name=or-edri-4`, `target_ref=<branch>`, `slug`): it drives a REAL message
+    through `or-edri-4`'s inbound path, asserts on the reply, and commits
     `e2e-proofs/<slug>.json` onto the branch. The "E2E verification gate" required check
-    then blocks merge until that fresh proof is present and valid — `probe_endpoint`/
+    then blocks merge until that fresh proof is present, valid, **and from `or-edri-4`**
+    (the gate's `proof_systems` rejects a proof from any other system) — `probe_endpoint`/
     `/healthz`/"config imported" do NOT satisfy it. Record the proof path in the stage's
     `הוכחת E2E (artifact)` field.
+  - **Only if a Day-0 birth check is also needed** (proving a *fresh* system is born correct —
+    `or-edri-4` cannot show that): **ask Or before this costed move** (a throwaway in reuse
+    mode is 0-quota but a real Railway project + DNS). Stand it up, prove with `e2e-verify.yml`,
+    then tear it down (`decommission-test-system.yml`, user-triggered).
 
 - **(b) Update the bookkeeping** in the same commit (keep the CI gates green):
   - **Plan file**: stage status (`in-progress` → `completed`), the "הערת התקדמות אחרונה"
@@ -126,10 +135,12 @@ calm Hebrew summary (which stage, what's done, what remains, last live-proof res
 Never show him a raw file.
 
 ### Step 5: Closure
-When every stage is `completed` and the change is **proven live**, the development may be
-closed (`status: completed`) — **independently of whether the throwaway test system is torn
-down**. Closing with the test system still alive is a complete, legitimate outcome, not a
-dangling task. Before closing:
+When every stage is `completed` and the change is **proven live on `or-edri-4`**, the
+development may be closed (`status: completed`). `or-edri-4` is permanent — it is **never**
+torn down, so closing it requires no teardown.
+
+**If (and only if) a throwaway Day-0 test system was stood up** during the development, account
+for it before closing — never tear it down silently:
 - Record a **Teardown ledger** line in the plan (a section `## מצב מערכת-הטסט (Teardown
   ledger)`) with exactly one state: `torn-down — <date/session>` **or** `left-alive by user
   decision — <date/session>`. Never leave the teardown state undocumented.
@@ -138,8 +149,9 @@ dangling task. Before closing:
   "not torn down" once it has been.
 
 Then set `status: completed`, give Or a short closing summary in Hebrew, state the recorded
-teardown state, offer to tear down now if still alive (`decommission-test-system.yml`,
-user-triggered), and stop. Promotion is the `main` merge.
+teardown state of any throwaway (or "no throwaway used — `or-edri-4` is permanent"), offer to
+tear down a still-alive throwaway (`decommission-test-system.yml`, user-triggered), and stop.
+Promotion is the `main` merge.
 
 > **Closing while another development is active → do it in a docs-only follow-up PR.** The devplan
 > gate (`check-devplan-updated.sh`) credits only plans that are *still* `status: active` AND updated
@@ -159,9 +171,12 @@ user-triggered), and stop. Promotion is the `main` merge.
 3. **Never touch `factory-test-25`'s role.** Use it only as the sanctioned reuse-mode
    backend for the throwaway live test system; never repurpose it.
 4. **A mould change is not done until the golden is refreshed** (`--update`, committed in
-   the same PR), the static gates are green, **and** the change is proven on a live test
-   system.
-5. **Account for what you stand up — and never tear down silently.** Either decommission the
+   the same PR), the static gates are green, **and** the change is proven live on `or-edri-4`
+   (with a fresh `or-edri-4` E2E proof when it touches bot behavior).
+5. **`or-edri-4` is permanent — never tear it down** (it is Or's running system and the
+   factory's standing proving ground; the teardown machinery below applies ONLY to a
+   throwaway Day-0 system). For a *throwaway* Day-0 system: account for what you stand up — and
+   never tear down silently. Either decommission the
    throwaway (`decommission-test-system.yml`, user-triggered), **or** record an explicit
    user decision to keep it alive in the plan's Teardown ledger (Step 5). Never leave the
    teardown state undocumented or as a dangling task — leaving a system alive by a recorded
@@ -181,13 +196,13 @@ user-triggered), and stop. Promotion is the `main` merge.
 
 **Agent behaviour:**
 Restates in Hebrew ("הבנתי — שינוי בגרסת n8n שכל מערכת חדשה מקבלת; זה שינוי בתהליך-ההקמה,
-אז נוכיח אותו על מערכת-טסט חיה לפני שמקדמים, נכון?") and waits. On OK, writes
-`devplans/<slug>.md` with the live-proof stage baked in, then stops for plan approval — no
-code yet.
+אז נוכיח אותו חי על or-edri-4 לפני שמקבעים בקוד, נכון?") and waits. On OK, writes
+`devplans/<slug>.md` with the live-proof-on-`or-edri-4` stage baked in, then stops for plan
+approval — no code yet.
 
 **User:** "מה קורה עם זה?"
 
 **Agent behaviour:**
 Reads the active plan, answers only in Hebrew: "אנחנו בשלב 2 מתוך 3. שינינו את הגרסה בתבנית
-והזהב עודכן (שערים ירוקים). עכשיו מקימים מערכת-טסט חיה זולה, מחילים עליה את השינוי ובודקים
-חי שהיא עולה תקין. נשאר אחר כך רק לקדם ולפרק את מערכת-הטסט."
+והזהב עודכן (שערים ירוקים). עכשיו מחילים את השינוי על or-edri-4 (מערכת-הניסוי הקבועה) ובודקים
+חי שהוא עובד. נשאר אחר כך רק לקדם — מיזוג ל-main מקבע בקוד; את or-edri-4 לא מפרקים."
