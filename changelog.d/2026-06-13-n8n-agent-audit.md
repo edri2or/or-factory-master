@@ -1,0 +1,6 @@
+## feat: on-demand agent-exerciser + live n8n automation audit (n8n-agent-audit)
+
+| Type | Summary |
+|---|---|
+| feat | New `.github/workflows/exercise-agent.yml` — on-demand behavioral probe that drives a REAL custom message through a live system's secured inbound (telegram-in → Caddy → tg-inbound → agent-router → routed specialist) via WIF + Secret Manager, reusing `scripts/e2e-verify-inbound.sh` with a custom `PROBE_TEXT`, and prints the agent's actual reply. Unlike `e2e-verify.yml` it writes no proof and commits nothing — a pure "does this agent actually answer?" tool to PROVE any agent (code/infra/research/deep-research) end-to-end or reproduce a silent failure. Pinned actions, `permissions:{}` + job `id-token:write`, `if: refs/heads/main`. |
+| docs | Live audit of all 25 n8n workflows on or-edri-4 (`devplans/n8n-agent-audit.md`): core conversational path + tools + voice/vision + write-approval + maintenance are proven; `tg-proactive` and `style-refresh` fail silently daily (`column "<chat_id>" does not exist`; LLM "Bad request"); `code-agent`/`infra-agent`/`deep-research` had zero executions; `DB Vacuum` is healthy but its weekly schedule hasn't fired yet. |
