@@ -150,8 +150,9 @@ jobs:
           # does not re-trigger workflows on commits pushed with the automatic
           # GITHUB_TOKEN, so a GITHUB_TOKEN push would leave the PR's required checks
           # un-run on the new head (needing a manual re-trigger). An App-token push
-          # fires pull_request:synchronize → the checks re-run automatically. The
-          # per-system App is installed on just this repo, so the token is repo-scoped.
+          # fires a fresh 'synchronize' event on the open PR → the checks re-run
+          # automatically. The per-system App is installed on just this repo, so the
+          # token is repo-scoped.
           _sm() { gcloud secrets versions access latest --secret="$1" --project="$PROJECT_ID" 2>/dev/null; }
           b64url() { base64 -w0 | tr '+/' '-_' | tr -d '='; }
           APP_ID=$(_sm github-app-id || true)

@@ -158,9 +158,9 @@ jobs:
           # Push as the broker App, NOT the ambient GITHUB_TOKEN: GitHub does not
           # re-trigger workflows on commits pushed with the automatic GITHUB_TOKEN,
           # so a GITHUB_TOKEN push would leave the PR's required checks un-run on the
-          # new head (needing a manual re-trigger). An App-token push fires
-          # pull_request:synchronize → the checks re-run automatically. Pattern
-          # mirrors refresh-system-agents.yml; the job already WIF-auths as the broker.
+          # new head (needing a manual re-trigger). An App-token push fires a fresh
+          # 'synchronize' event on the open PR → the checks re-run automatically.
+          # Pattern mirrors refresh-system-agents.yml; the job already WIF-auths as broker.
           APP_ID=$(gcloud secrets versions access latest --secret=factory-master-broker-app-id --project="$CONTROL_PROJECT" 2>/dev/null || true)
           INSTALL_ID=$(gcloud secrets versions access latest --secret=factory-master-broker-app-installation-id --project="$CONTROL_PROJECT" 2>/dev/null || true)
           echo "::add-mask::$APP_ID"; echo "::add-mask::$INSTALL_ID"
