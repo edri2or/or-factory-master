@@ -48,6 +48,7 @@ jobs:
     timeout-minutes: 10
     if: github.ref == 'refs/heads/main'
     permissions:
+      contents: read     # actions/checkout needs read on this repo (a permissions: block defaults the rest to none)
       id-token: write    # WIF OIDC token (workflow_dispatch only — never on PR)
     steps:
       - name: Checkout
