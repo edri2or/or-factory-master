@@ -2,7 +2,7 @@
 dev_name: נעילת or-edri-4 (אמת מול טענה) + מנגנון אנטי-דריפט
 slug: or-edri-4-liveness-anti-drift
 opened: 2026-06-13
-status: active
+status: completed
 ---
 
 # תוכנית פיתוח — נעילת or-edri-4 ומנגנון אנטי-דריפט
@@ -30,7 +30,9 @@ status: active
 | 2 | הוכחת DB Vacuum (exec 427) + style-refresh (exec 428) חיים דרך trigger-system-workflow.yml | completed | הרצות חיות |
 | 3 | תיעוד google_workspace + תיקון הערת HITL ישנה ב-AGENTS template + golden | completed | `templates/system/AGENTS.md.template`, `or-edri-4/AGENTS.md`, `tests/golden/system/` |
 | 4a | skill `/system-liveness` — דוח-אמת per-workflow על דרישה (מה באמת עובד?) | completed | `.claude/commands/system-liveness.md` |
-| 4b | שדרוג שומר-העל ל-per-workflow liveness (תופס "מעולם לא רץ"/"נפל" אוטומטית) | in-progress | `scripts/run-watchdog.sh`, `monitoring/watchdog-registry.json`, `scripts/tests/run-watchdog.bats` |
+| 4b | שדרוג שומר-העל ל-per-workflow liveness (תופס "מעולם לא רץ"/"נפל" אוטומטית) | completed | `scripts/run-watchdog.sh`, `monitoring/watchdog-registry.json`, `scripts/tests/run-watchdog.bats` |
+
+> **נסגר 2026-06-13.** כל 4 השלבים הוכחו חי: מייל נחת (smoke 7/7), DB Vacuum (exec 427) + style-refresh (exec 428), google_workspace מתועד (2 PR מוזגו), `/system-liveness` הוכח חי, ושומר-העל per-workflow הוכח בריצה אמיתית (ok=18/red=0) + 48/48 bats.
 
 > **הוכחה בכל שלב:** שלב נסגר רק כשהוכח על קלט אמיתי — לא "CI ירוק" בלבד.
 > שלב 1 נסגר כשמייל אמיתי נחת ב-edri2or@gmail.com (הרצת smoke עם send_test_to).
