@@ -243,7 +243,7 @@ The gateway also serves two per-system runtime surfaces, minted at provision (**
 
 The same Express service also hosts the factory's inbound webhook: the **unified** `/telegram-webhook` on the factory's **single** Telegram bot (`telegram-bot-token`). It both sends alerts and is **bidirectional** — Or asks about an alert and gets a factory-aware Hebrew answer. `index.ts` routes by update kind: OIL approval callbacks (`oilapprove:`/`oilreject:`) → the approval bridge; a text message or a chat HITL callback (`cdo:`/`cno:`) → the chat handler (read-only by construction; any write action is gated behind a Telegram ✅, the same AI-proposes/human-approves invariant as OIL). Full reference: `docs/telegram-chat-bot-factory.md`.
 
-The MCP server's source lives in `services/mcp-server/` and is deployed to Cloud Run in `or-factory-master-control` via `deploy-mcp-server.yml`. Railway visibility tools (extended beyond the old factory's set):
+The MCP server's source lives in `services/mcp-server/` and is deployed to Cloud Run in `or-factory-master-control` via `deploy-mcp-server.yml`. The Workspace sidecar's source lives alongside it in `services/workspace-mcp/` (see `services/workspace-mcp/README.md`). Railway visibility tools (extended beyond the old factory's set):
 
 | Tool | Returns |
 |---|---|

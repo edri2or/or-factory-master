@@ -40,7 +40,7 @@ High-level map — browse the directories for the full contents (this overview i
 | `scripts/` | ~50 helper scripts (provision, secret-copy, App-token mint, CI `check-*.sh`) + `scripts/lib/` + `scripts/tests/` (bats) |
 | `skills/` | The 5 factory skills (below) |
 | `docs/` | Reference docs (see [Documentation](#documentation)) + `research/` + `changelog-archive/` |
-| `services/` | The MCP server (`services/mcp-server/`), deployed to Cloud Run |
+| `services/` | `mcp-server/` — the factory gateway / MCP server (Cloud Run); `workspace-mcp/` — the Google Workspace MCP sidecar fronted by the gateway at `/workspace/<system>/mcp` |
 | `changelog.d/` | Per-development changelog fragments (compiled into `CHANGELOG.md`) |
 | `devplans/` | Living `/dev-stage` development plans |
 | `monitoring/` · `policy/` | Monitoring config · risk-tier / governance policy |
