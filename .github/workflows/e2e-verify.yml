@@ -56,6 +56,10 @@ jobs:
         with:
           ref: ${{ github.event.inputs.target_ref }}
           fetch-depth: 2
+          # Do NOT persist the ambient GITHUB_TOKEN in git's http.extraheader — the
+          # proof commit is pushed under the broker App below, and a persisted
+          # GITHUB_TOKEN would override that App credential on push.
+          persist-credentials: false
 
       - name: Authenticate to GCP via WIF (broker)
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093  # v3.0.0
@@ -139,6 +143,7 @@ jobs:
         env:
           TARGET_REF: ${{ github.event.inputs.target_ref }}
           SLUG: ${{ github.event.inputs.slug }}
+          CONTROL_PROJECT: or-factory-master-control
         run: |
           set -euo pipefail
           git config user.name "e2e-verify[bot]"
@@ -146,7 +151,28 @@ jobs:
           git add "e2e-proofs/${SLUG}.json"
           if git diff --cached --quiet; then
             echo "Proof unchanged — nothing to commit."
-          else
-            git commit -q -m "e2e: proof for ${SLUG} (run ${GITHUB_RUN_ID})"
-            git push origin "HEAD:${TARGET_REF}"
+            exit 0
           fi
+          git commit -q -m "e2e: proof for ${SLUG} (run ${GITHUB_RUN_ID})"
+
+          # Push as the broker App, NOT the ambient GITHUB_TOKEN: GitHub does not
+          # re-trigger workflows on commits pushed with the automatic GITHUB_TOKEN,
+          # so a GITHUB_TOKEN push would leave the PR's required checks un-run on the
+          # new head (needing a manual re-trigger). An App-token push fires a fresh
+          # 'synchronize' event on the open PR → the checks re-run automatically.
+          # Pattern mirrors refresh-system-agents.yml; the job already WIF-auths as broker.
+          APP_ID=$(gcloud secrets versions access latest --secret=factory-master-broker-app-id --project="$CONTROL_PROJECT" 2>/dev/null || true)
+          INSTALL_ID=$(gcloud secrets versions access latest --secret=factory-master-broker-app-installation-id --project="$CONTROL_PROJECT" 2>/dev/null || true)
+          echo "::add-mask::$APP_ID"; echo "::add-mask::$INSTALL_ID"
+          gcloud secrets versions access latest --secret=factory-master-broker-app-private-key --project="$CONTROL_PROJECT" > /tmp/broker-key.pem 2>/dev/null || true
+          TOKEN=""
+          if [ -s /tmp/broker-key.pem ] && [ -n "$APP_ID" ] && [ -n "$INSTALL_ID" ]; then
+            TOKEN=$(bash scripts/generate-app-token.sh /tmp/broker-key.pem "$APP_ID" "$INSTALL_ID" "" '{"contents":"write"}' '["or-factory-master"]' 2>/dev/null || true)
+          fi
+          rm -f /tmp/broker-key.pem
+          [ -n "$TOKEN" ] || { echo "FAIL: could not mint a broker App token to push the proof" >&2; exit 1; }
+          echo "::add-mask::$TOKEN"
+          if ! perr=$(git push "https://x-access-token:${TOKEN}@github.com/edri2or/or-factory-master.git" "HEAD:${TARGET_REF}" 2>&1); then
+            echo "FAIL: proof push failed: $(printf '%s' "$perr" | sed "s/${TOKEN}/***/g")" >&2; exit 1
+          fi
+          echo "Proof pushed to ${TARGET_REF} as the broker App — the PR's required checks will re-run."
