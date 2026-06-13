@@ -47,6 +47,10 @@ jobs:
         with:
           ref: ${{ github.event.inputs.target_ref }}
           fetch-depth: 2
+          # Do NOT persist the ambient GITHUB_TOKEN in git's http.extraheader — the
+          # proof commit is pushed under this system's own App below, and a persisted
+          # GITHUB_TOKEN would override that App credential on push.
+          persist-credentials: false
 
       - name: Authenticate to GCP via WIF
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093  # v3.0.0
@@ -129,6 +133,8 @@ jobs:
         env:
           TARGET_REF: ${{ github.event.inputs.target_ref }}
           SLUG: ${{ github.event.inputs.slug }}
+          PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          SYSTEM_NAME: ${{ vars.SYSTEM_NAME }}
         run: |
           set -euo pipefail
           git config user.name "e2e-verify[bot]"
@@ -136,7 +142,42 @@ jobs:
           git add "e2e-proofs/${SLUG}.json"
           if git diff --cached --quiet; then
             echo "Proof unchanged — nothing to commit."
-          else
-            git commit -q -m "e2e: proof for ${SLUG} (run ${GITHUB_RUN_ID})"
-            git push origin "HEAD:${TARGET_REF}"
+            exit 0
           fi
+          git commit -q -m "e2e: proof for ${SLUG} (run ${GITHUB_RUN_ID})"
+
+          # Push as THIS system's own GitHub App, NOT the ambient GITHUB_TOKEN: GitHub
+          # does not re-trigger workflows on commits pushed with the automatic
+          # GITHUB_TOKEN, so a GITHUB_TOKEN push would leave the PR's required checks
+          # un-run on the new head (needing a manual re-trigger). An App-token push
+          # fires pull_request:synchronize → the checks re-run automatically. The
+          # per-system App is installed on just this repo, so the token is repo-scoped.
+          _sm() { gcloud secrets versions access latest --secret="$1" --project="$PROJECT_ID" 2>/dev/null; }
+          b64url() { base64 -w0 | tr '+/' '-_' | tr -d '='; }
+          APP_ID=$(_sm github-app-id || true)
+          INSTALL_ID=$(_sm github-app-installation-id || true)
+          echo "::add-mask::$APP_ID"; echo "::add-mask::$INSTALL_ID"
+          _sm github-app-private-key > /tmp/sys-app-key.pem 2>/dev/null || true
+          TOKEN=""
+          if [ -s /tmp/sys-app-key.pem ] && [ -n "$APP_ID" ] && [ -n "$INSTALL_ID" ]; then
+            now=$(date +%s); iat=$((now - 60)); exp=$((now + 540))
+            header=$(printf '{"alg":"RS256","typ":"JWT"}' | b64url)
+            payload=$(printf '{"iat":%d,"exp":%d,"iss":"%s"}' "$iat" "$exp" "$APP_ID" | b64url)
+            sig=$(printf '%s' "${header}.${payload}" | openssl dgst -sha256 -sign /tmp/sys-app-key.pem | b64url)
+            jwt="${header}.${payload}.${sig}"
+            TOKEN=$(curl -sf -X POST \
+              -H "Authorization: Bearer ${jwt}" \
+              -H "Accept: application/vnd.github+json" \
+              -H "Content-Type: application/json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              -d '{"permissions":{"contents":"write"}}' \
+              "https://api.github.com/app/installations/${INSTALL_ID}/access_tokens" \
+              | jq -r '.token // empty' || true)
+          fi
+          rm -f /tmp/sys-app-key.pem
+          [ -n "$TOKEN" ] || { echo "FAIL: could not mint this system's App token to push the proof" >&2; exit 1; }
+          echo "::add-mask::$TOKEN"
+          if ! perr=$(git push "https://x-access-token:${TOKEN}@github.com/edri2or/${SYSTEM_NAME}.git" "HEAD:${TARGET_REF}" 2>&1); then
+            echo "FAIL: proof push failed: $(printf '%s' "$perr" | sed "s/${TOKEN}/***/g")" >&2; exit 1
+          fi
+          echo "Proof pushed to ${TARGET_REF} as this system's App — the PR's required checks will re-run."
