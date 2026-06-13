@@ -103,7 +103,8 @@ For each stage, in order:
   - **E2E proof is mandatory when the change touches bot behavior**
     (`templates/system/workflows/n8n/*.json` or the system `configure-agent-router.yml`).
     After the change is applied live, dispatch `e2e-verify.yml` (ref=main, inputs
-    `system_name=or-edri-4`, `target_ref=<branch>`, `slug`): it drives a REAL message
+    `system_name=or-edri-4`, `gcp_project=factory-test-21` — where or-edri-4's secrets
+    live, `target_ref=<branch>`, `slug`): it drives a REAL message
     through `or-edri-4`'s inbound path, asserts on the reply, and commits
     `e2e-proofs/<slug>.json` onto the branch. The "E2E verification gate" required check
     then blocks merge until that fresh proof is present, valid, **and from `or-edri-4`**

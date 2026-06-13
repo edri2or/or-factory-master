@@ -19,7 +19,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
 | 1 | הדוקטרינה בכתב | completed | `CLAUDE.md`, `docs/live-test-loop.md`, `.claude/commands/dev-stage-factory.md` |
-| 2 | בלם ה-CI עם השיניים | pending | `e2e-surfaces.json`, `scripts/check-e2e-proof.sh` |
+| 2 | בלם ה-CI עם השיניים | completed | `e2e-surfaces.json`, `scripts/check-e2e-proof.sh`, `scripts/lib.sh`, `scripts/tests/e2e-proof-systems.bats` |
 | 3 | דופק בריאות נגד ריקבון | pending | `.github/workflows/system-runtime-audit.yml`, `monitoring/watchdog-registry.json` |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
@@ -55,9 +55,9 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 
 **הוכחת E2E (artifact):** לא-התנהגותי (משנה את לוגיקת השער עצמו, לא קובץ-התנהגות בוט; אין נתיב-טריגר E2E מושפע).
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם והוכח. הוספתי 2 עוזרים ב-`lib.sh` (`e2e_surface_proof_systems` + העוזר הטהור `e2e_proof_system_allowed`), חיווט ב-`check-e2e-proof.sh` (`verify_proof` קורא `.system` ומאמת מול `proof_systems`), `proof_systems:["or-edri-4"]` ב-2 המשטחים האכופים. **הוכחות:** (1) bats חדש 7/7 (`e2e-proof-systems.bats`) כולל ש-10 ה-proofs הקיימים עוברים; (2) **מבחן-אינטגרציה על השער עצמו** ב-repo-fixture: שינוי בקובץ-טריגר + proof עם `factory-test-099` → השער נדחה (exit 1, הודעה ברורה); אותו שינוי + proof `or-edri-4` (hash תואם) → השער עבר דרך `verify_proof` (exit 0). (3) `bash -n` + shellcheck נקיים (רק 2 הערות קודמות בשורות שלא נגעתי). מנגנון ההפקה אומת קיים: כל 10 ה-proofs הם מ-or-edri-4. הוספתי `gcp_project=factory-test-21` לתיעוד (שם סודות or-edri-4). Playground: ירוץ ב-CI (bats auto-discovery).
 
-**שינוי תוכנית:** —
+**שינוי תוכנית:** הנקודה שצוינה בשלב 1 נסגרה — הבלם בר-קיום: e2e-verify תומך ב-`system_name=or-edri-4`+`gcp_project=factory-test-21`, וקיומם של 10 proofs מ-or-edri-4 מוכיח שהמסלול עובד. לא נדרשה מכונת-החלה חדשה.
 
 ---
 
@@ -83,3 +83,4 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 > שורה פשוטה אחת לכל שלב שהסתיים — בשפה ש-Or מבין, בלי ז'רגון.
 
 - שלב 1 הושלם — כתבנו בכל מקום שהדוקטרינה חיה (CLAUDE.md, מסמך השיטה, הסקיל) ש-or-edri-4 היא מערכת-הניסוי הקבועה, והכלל "קודם מוכיחים עליה חי, ואז מקבעים בקוד".
+- שלב 2 הושלם — הוספנו את "השיניים": שער ה-CI עכשיו דורש שההוכחה החיה תבוא דווקא מ-or-edri-4, אחרת המיזוג חסום. הוכחנו על השער עצמו שהוא דוחה מערכת אחרת ומקבל את or-edri-4.

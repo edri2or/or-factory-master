@@ -111,9 +111,9 @@ idempotent, refuses any project but `factory-test-25`).
 > satisfy the `E2E verification gate`, whose `proof_systems` pins the required proof to
 > `or-edri-4` (a proof from any other system is rejected for the enforced surfaces). Before
 > merging a bot-behavior / deploy-edge change, apply the branch to **`or-edri-4`** as the
-> broker and run `e2e-verify.yml` (`system_name=or-edri-4`, `target_ref=<branch>`) to produce
-> the proof the gate requires. The throwaway proves the branch *quickly*; `or-edri-4` proves
-> it *for the merge*.
+> broker and run `e2e-verify.yml` (`system_name=or-edri-4`, `gcp_project=factory-test-21`,
+> `target_ref=<branch>`) to produce the proof the gate requires. The throwaway proves the
+> branch *quickly*; `or-edri-4` proves it *for the merge*.
 
 ## What stayed, what went
 

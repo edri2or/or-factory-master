@@ -13,7 +13,11 @@
 #   2. its content_hash equals a freshly recomputed hash of the surface's hash_inputs
 #      (edit a behavior file AFTER proving -> mismatch -> red);
 #   3. it is fresh (executed_at within the surface's freshness_days);
-#   4. (CI) its run_id is a SUCCESSFUL run of the surface's proof_producer on THIS
+#   4. its `system` is one of the surface's `proof_systems` (when that field is set):
+#      the factory pins the live proof to the standing proving system `or-edri-4`
+#      ("prove on or-edri-4 first, then lock into the template"). Absent field -> any
+#      system (backward compatible);
+#   5. (CI) its run_id is a SUCCESSFUL run of the surface's proof_producer on THIS
 #      repo, and the e2e-proof artifact that run uploaded matches the committed proof.
 #
 # Wired into the dedicated "E2E verification gate" CI job (e2e-gate.yml), a required
@@ -66,21 +70,26 @@ _verify_artifact_matches() {
   rm -rf "$tmp"; return 1
 }
 
-# verify_proof <proof_path> <expected_hash> <max_age_days> <proof_producer>
+# verify_proof <proof_path> <expected_hash> <max_age_days> <proof_producer> [allowed_systems]
+# allowed_systems: newline-separated list (from e2e_surface_proof_systems); empty = any.
 verify_proof() {
-  local p="$1" exp_hash="$2" max_age="$3" producer="$4"
+  local p="$1" exp_hash="$2" max_age="$3" producer="$4" allowed="${5:-}"
   [ -f "$p" ] || { echo "  $p: file missing"; return 1; }
   jq -e . "$p" >/dev/null 2>&1 || { echo "  $p: not valid JSON"; return 1; }
 
-  local schema result chash at run_id
+  local schema result chash at run_id system
   schema=$(jq -r '.schema // ""' "$p")
   result=$(jq -r '.result // ""' "$p")
   chash=$(jq -r '.content_hash // ""' "$p")
   at=$(jq -r '.executed_at // ""' "$p")
   run_id=$(jq -r '.run_id // ""' "$p")
+  system=$(jq -r '.system // ""' "$p")
 
   [ "$schema" = "e2e-proof/v1" ] || { echo "  $p: schema='$schema' (want e2e-proof/v1)"; return 1; }
   [ "$result" = "pass" ] || { echo "  $p: result='$result' (want pass)"; return 1; }
+  e2e_proof_system_allowed "$system" "$allowed" || {
+    echo "  $p: system='$system' — this surface requires the live proof from the standing proving system: $(echo "$allowed" | tr '\n' ' ')."
+    echo "       (prove the change on or-edri-4 and commit its e2e-verify proof — a proof from another system does not satisfy the gate.)"; return 1; }
   [ "$chash" = "$exp_hash" ] || {
     echo "  $p: content_hash mismatch — proof attests '$chash' but the surface now hashes '$exp_hash'."
     echo "       (a behavior file was edited after the proof was produced — re-run the proof producer.)"; return 1; }
@@ -143,12 +152,14 @@ while IFS= read -r id; do
   exp_hash=$(e2e_surface_hash "$id")
   max_age=$(e2e_surface_get "$id" freshness_days); max_age=${max_age:-14}
   producer=$(e2e_surface_get "$id" proof_producer)
+  allowed_systems=$(e2e_surface_proof_systems "$id")
   echo "  expected content_hash: ${exp_hash}"
+  [ -n "$allowed_systems" ] && echo "  required proof system(s): $(echo "$allowed_systems" | tr '\n' ' ')"
 
   valid=0
   while IFS= read -r p; do
     [ -n "$p" ] || continue
-    if verify_proof "$p" "$exp_hash" "$max_age" "$producer"; then valid=1; break; fi
+    if verify_proof "$p" "$exp_hash" "$max_age" "$producer" "$allowed_systems"; then valid=1; break; fi
   done <<< "$PROOFS_IN_DIFF"
 
   if [ "$valid" -ne 1 ]; then

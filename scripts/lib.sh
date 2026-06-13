@@ -57,6 +57,28 @@ e2e_enforced_surface_ids() {
   _e2e_registry | jq -r '.surfaces[]|select(.enforce==true)|.id'
 }
 
+# Allowed proof systems for a surface (proof_systems[]), one per line; empty (no
+# constraint) when the field is absent — keeps the gate backward-compatible.
+# Pins the live proof to a specific standing proving system (e.g. or-edri-4): the
+# factory's rule is "prove on or-edri-4 first, then lock into the template".
+e2e_surface_proof_systems() {
+  _e2e_registry | jq -r --arg id "$1" \
+    '.surfaces[]|select(.id==$id)|.proof_systems[]? // empty'
+}
+
+# True (0) when a proof's system satisfies a surface's proof_systems constraint:
+# allowed empty -> any system passes; else the system must be one of the listed.
+# Pure helper (no I/O) — unit-testable in isolation.
+e2e_proof_system_allowed() {
+  local system="$1" allowed="$2" a
+  [ -n "$allowed" ] || return 0
+  while IFS= read -r a; do
+    [ -n "$a" ] || continue
+    [ "$system" = "$a" ] && return 0
+  done <<< "$allowed"
+  return 1
+}
+
 # The default surface = the first enforced surface (the bot). Back-compat anchor.
 _e2e_default_surface() {
   local id; id="$(e2e_enforced_surface_ids | head -n1)"; echo "${id:-telegram-bot}"
