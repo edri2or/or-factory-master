@@ -28,7 +28,7 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "// Collapse the up-to-50 history rows into a single text blob for the model.\nconst rows = $input.all();\nconst lines = [];\nfor (const r of rows) {\n  const m = r.json.message;\n  let content = '';\n  try {\n    const obj = (typeof m === 'string') ? JSON.parse(m) : m;\n    content = (obj && obj.data && obj.data.content) ? obj.data.content : '';\n  } catch (e) { content = String(m || ''); }\n  if (content) { lines.push(String(content)); }\n}\nreturn [{ json: { transcript: lines.join('\\n') } }];"
+        "jsCode": "// Collapse the up-to-50 history rows into a single text blob for the model.\nconst rows = $input.all();\nconst lines = [];\nfor (const r of rows) {\n  const m = r.json.message;\n  let content = '';\n  try {\n    const obj = (typeof m === 'string') ? JSON.parse(m) : m;\n    content = (obj && obj.data && obj.data.content) ? obj.data.content : '';\n  } catch (e) { content = String(m || ''); }\n  if (content) { lines.push(String(content)); }\n}\nif (lines.length === 0) { return []; } return [{ json: { transcript: lines.join('\\n') } }];"
       },
       "id": "30000000-0000-0000-0000-000000000003",
       "name": "Collect Messages",
