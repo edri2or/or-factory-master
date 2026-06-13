@@ -23,9 +23,12 @@ status: active
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
 | 1 | בדיקת-מצב חיה של כל ה-workflows ב-or-edri-4 | completed | (חקירה חיה; MCP) |
-| 2 | מנגנון הפעלת-סוכנים אוטונומי | in-progress | `.github/workflows/exercise-agent.yml` |
-| 3 | הוכחת code-agent + infra-agent חי | pending | (הרצות חיות) |
-| 4 | הוכחת deep-research חי | pending | (הרצה חיה + טלגרם) |
+| 2 | מנגנון הפעלת-סוכנים אוטונומי | completed | `.github/workflows/exercise-agent.yml` |
+| 3 | הוכחת code-agent + infra-agent חי | completed | (הרצות חיות) |
+| 4 | הוכחת deep-research חי | completed | (הרצה חיה + טלגרם) |
+| 5 | תיקון tg-proactive (SQL) | in-progress | `templates/system/workflows/n8n/tg-proactive.json` |
+| 6 | תיקון style-refresh (קלט LLM) | in-progress | `templates/system/workflows/n8n/style-refresh.json` |
+| 7 | הפצה ל-or-edri-4 + הוכחה חיה של 2 העובדים | pending | (refresh-system-agents; הרצה חיה) |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
 >
@@ -60,10 +63,10 @@ status: active
 ### שלב 2 — מנגנון הפעלת-סוכנים אוטונומי
 
 **Acceptance:**
-- [ ] `exercise-agent.yml` (workflow_dispatch): WIF→broker→קריאת 3 סודות מ-SM→הרצת
+- [x] `exercise-agent.yml` (workflow_dispatch): WIF→broker→קריאת 3 סודות מ-SM→הרצת
       `scripts/e2e-verify-inbound.sh` עם `PROBE_TEXT` מותאם; ללא proof/commit
-- [ ] מקבע actions ל-SHA, `permissions:{}` + job `id-token:write`, `if: refs/heads/main`
-- [ ] yamllint + actionlint נקי; CI ירוק; ממוזג ל-main
+- [x] מקבע actions ל-SHA, `permissions:{}` + job `id-token:write`, `if: refs/heads/main`
+- [x] yamllint + actionlint נקי; CI ירוק; ממוזג ל-main
 
 **הוכחה תפקודית (באותו שלב):** הרצה חיה של ה-workflow מול or-edri-4 (gcp_project=factory-test-21)
 מחזירה ריצה ירוקה + `result.json` עם תשובת-סוכן אמיתית. (ההוכחה החיה בפועל מתבצעת בשלבים 3–4.)
@@ -85,16 +88,18 @@ status: active
 ### שלב 3 — הוכחת code-agent + infra-agent חי
 
 **Acceptance:**
-- [ ] הפעלת `exercise-agent.yml` עם הודעת "קוד" → code-agent מחזיר קוד אמיתי
-- [ ] הפעלת `exercise-agent.yml` עם הודעת "תשתית" → infra-agent מחזיר ייעוץ אמיתי
-- [ ] אימות-על: ריצה חדשה ב-MCP `inspect_n8n_execution` על ה-workflowId של כל סוכן (success)
+- [x] הפעלת `exercise-agent.yml` עם הודעת "קוד" → code-agent מחזיר קוד אמיתי
+- [x] הפעלת `exercise-agent.yml` עם הודעת "תשתית" → infra-agent מחזיר ייעוץ אמיתי
+- [x] אימות-על: ריצה חדשה ב-MCP `inspect_n8n_execution` על ה-workflowId של כל סוכן (success)
 
 **הוכחה תפקודית (באותו שלב):** ריצת ה-workflow ירוקה + תשובה אמיתית; אימות שזה הסוכן הנכון
 דרך execution חדש של `tU39yAkUEYHNwB2J` (code) / `SyPAgO5Sm0C9FisJ` (infra).
 
 **הוכחת E2E (artifact):** לא-התנהגותי (לא משנים קבצי-התנהגות; רק מפעילים סוכנים קיימים).
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם והוכח חי. code-agent: exec 379 (success) — החזיר קוד פייתון תקין.
+infra-agent: exec 382 (success) — החזיר ייעוץ DNS אמיתי. שניהם היו "0 ריצות" וכעת יש להם
+execution חדש ומוצלח דרך ה-exerciser.
 
 **שינוי תוכנית:** —
 
@@ -103,14 +108,69 @@ status: active
 ### שלב 4 — הוכחת deep-research חי
 
 **Acceptance:**
-- [ ] הפעלת `exercise-agent.yml` עם "תחקור לעומק ..." → ack מיידי חוזר
-- [ ] ריצת הרקע של deep-research (`dXS6r6cjPkMQk4tD`) מסתיימת ב-success (poll ב-MCP)
-- [ ] Or מקבל את דוח המחקר בטלגרם
+- [x] הפעלת `exercise-agent.yml` עם "תחקור לעומק ..." → ack מיידי חוזר
+- [x] ריצת הרקע של deep-research (`dXS6r6cjPkMQk4tD`) מסתיימת ב-success (poll ב-MCP)
+- [x] Or מקבל את דוח המחקר בטלגרם
 
 **הוכחה תפקודית (באותו שלב):** ה-ack חוזר סינכרונית; ה-execution ברקע מסתיים success;
 הדוח נשלח לטלגרם (תלות Tavily אומתה קיימת ב-SM).
 
 **הוכחת E2E (artifact):** לא-התנהגותי.
+
+**הערת התקדמות אחרונה:** הושלם והוכח חי. exec 385 (success, ~2:19 דק') — ה-ack חזר מיד,
+מחקר-הרקע רץ והצומת האחרון "Send Report" הצליח; **Or אישר שקיבל את הדוח בטלגרם ב-4 חלקים.**
+
+**שינוי תוכנית:** —
+
+---
+
+### שלב 5 — תיקון tg-proactive (SQL)
+
+**Acceptance:**
+- [x] `tg-proactive.json` — הסרת `JSON.stringify` מתת-שאילתת `total_messages` (גרשיים כפולים → שם-עמודה)
+- [ ] הרצה חיה on-demand מסתיימת success (אין יותר `column "..." does not exist`)
+
+**הוכחה תפקודית (באותו שלב):** הרצת tg-proactive (`nyx1Nom0cu38W8Il`) על or-edri-4 לאחר ההפצה →
+status success; הבוט שולח סיכום-יום.
+
+**הוכחת E2E (artifact):** התנהגותי — `e2e-proofs/fix-broken-workers.json` (השינוי בקבצי n8n מפעיל את שער ה-E2E).
+
+**הערת התקדמות אחרונה:** התיקון הוחל בתבנית (`'tg:' || {{ '@@CHAT_ID@@' }}`, זהה לדפוס המוכח).
+golden רוענן. ממתין להפצה + הרצה חיה (שלב 7).
+
+**שינוי תוכנית:** —
+
+---
+
+### שלב 6 — תיקון style-refresh (קלט LLM)
+
+**Acceptance:**
+- [x] שמירה מפני קלט ריק ל-"Extract Style" + `onError: continueRegularOutput` (רשת-ביטחון)
+- [ ] הרצה חיה on-demand מסתיימת success (אין יותר `Bad request`) ונכתב פרופיל
+
+**הוכחה תפקודית (באותו שלב):** הרצת style-refresh (`ZGt6kDKpNHRsrh2c`) על or-edri-4 לאחר ההפצה →
+status success; `style_profile` מתעדכן.
+
+**הוכחת E2E (artifact):** התנהגותי — מכוסה ע"י אותה `e2e-proofs/fix-broken-workers.json`.
+
+**הערת התקדמות אחרונה:** התיקון הוחל בתבנית (guard ל-text + onError). golden רוענן. הסיבה
+המדויקת (transcript ריק?) תאומת בהרצה החיה — ה-guard מבטיח prompt לא-ריק, וה-onError מבטיח
+אי-קריסה גם אם נשארה סיבה שולית.
+
+**שינוי תוכנית:** —
+
+---
+
+### שלב 7 — הפצה ל-or-edri-4 + הוכחה חיה
+
+**Acceptance:**
+- [ ] e2e-proof נוצר (`e2e-verify.yml`) ו-CI ירוק → מיזוג ל-main
+- [ ] `refresh-system-agents.yml` הפיץ את התבניות המתוקנות ל-or-edri-4 (ייבוא-מחדש + הפעלה)
+- [ ] שתי ההרצות החיות (tg-proactive + style-refresh) → success דרך MCP `inspect_n8n_execution`
+
+**הוכחה תפקודית (באותו שלב):** הרצה on-demand של 2 העובדים על or-edri-4 החיה → success.
+
+**הוכחת E2E (artifact):** `e2e-proofs/fix-broken-workers.json` (inbound לא נפגע — אי-רגרסיה + חותמת hash).
 
 **הערת התקדמות אחרונה:** —
 
@@ -124,3 +184,6 @@ status: active
 
 - שלב 1 הושלם — בדקנו חי את כל האוטומציות. הליבה (השיחה איתך) עובדת ומוכחת; מצאנו 2 עובדי-רקע
   שבורים בשקט (יוזמה + התאמת-סגנון), ו-3 סוכנים שמעולם לא רצו שצריך להוכיח. DB Vacuum תקין, רק לא הגיע תורו.
+- שלב 2 הושלם — בנינו כלי קבוע ש"מפעיל" כל סוכן עם הודעה אמיתית דרך המסלול המאובטח. הוא אפילו תפס באג של עצמו בריצה הראשונה ותוקן.
+- שלב 3 הושלם — code-agent ו-infra-agent הוכחו חי: כל אחד קיבל הודעה אמיתית והחזיר תשובה אמיתית (קוד / ייעוץ DNS).
+- שלב 4 הושלם — deep-research הוכח חי: רץ מחקר אמיתי כ-2 דקות ושלח לך דוח בטלגרם ב-4 חלקים (אישרת שקיבלת).

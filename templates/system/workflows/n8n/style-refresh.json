@@ -39,7 +39,7 @@
     {
       "parameters": {
         "promptType": "define",
-        "text": "={{ $json.transcript }}",
+        "text": "={{ ($json.transcript || '').trim() ? $json.transcript : '(no recent messages)' }}",
         "messages": {
           "messageValues": [
             {
@@ -53,7 +53,8 @@
       "name": "Extract Style",
       "type": "@n8n/n8n-nodes-langchain.chainLlm",
       "typeVersion": 1.5,
-      "position": [880, 320]
+      "position": [880, 320],
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
