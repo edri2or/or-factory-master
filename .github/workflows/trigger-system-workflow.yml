@@ -2,12 +2,14 @@ name: Trigger System Workflow
 
 # On-demand runner for a system's n8n workflow — the missing piece for verifying
 # SCHEDULED workers (tg-proactive, style-refresh, DB Vacuum, ...) live without
-# waiting for their cron. The n8n PUBLIC API cannot execute a workflow, so this
+# waiting for their cron. The n8n PUBLIC API cannot execute a workflow (405), so this
 # logs in with the system's n8n owner creds (the proven configure-agent-router
-# pattern) and calls the internal "Execute Workflow" endpoint. It is robust to the
-# (undocumented) /run response shape: it records the workflow's latest execution id
-# BEFORE running, then polls the PUBLIC executions API for a NEW finished execution
-# and reports its real status — so success/failure is read from n8n itself.
+# pattern) and calls the internal "Execute Workflow" endpoint. n8n 2.x needs the
+# trigger node to start from (triggerToStartFrom) — we extract it from the workflow
+# and try a few documented-by-behavior body shapes. It is robust to the (undocumented)
+# /run response shape: it records the workflow's latest execution id BEFORE running,
+# then polls the PUBLIC executions API for a NEW finished execution and reports its
+# real status — so success/failure is read from n8n itself.
 #
 # Secrets are read from the system's Secret Manager via WIF, masked, never printed.
 # WIF note: the broker WIF CEL pins ref=refs/heads/main, so this runs on main.
@@ -100,27 +102,33 @@ jobs:
           BASE_EXEC=$(jq -r '(.data[0].id // 0)|tonumber? // 0' /tmp/tw-base.json 2>/dev/null || echo 0)
           echo "baseline latest execution id: ${BASE_EXEC}"
 
-          # --- 3. Fetch the workflow (for the /run body) ---
+          # --- 3. Fetch the workflow (for /run body) + extract the trigger node name ---
           curl -sS -o /tmp/tw-wf.json --max-time 30 -b "$COOKIE" "$BASE/rest/workflows/${WID}" || true
           WF=$(jq -c '.data // .' /tmp/tw-wf.json 2>/dev/null || echo "")
+          TRIG=$(printf '%s' "$WF" | jq -r '[.nodes[]? | select((.type|test("trigger|cron";"i")))][0].name // (.nodes[0].name // "")' 2>/dev/null || echo "")
+          echo "trigger node to start from: '${TRIG}'"
 
-          # --- 4. Trigger (try mechanisms in order; each attempt is logged) ---
+          # --- 4. Trigger (try mechanisms in order; each attempt is logged). n8n 2.x needs
+          #        the trigger node (triggerToStartFrom); we also try startNodes shapes. ---
           _run_try() {  # desc method url body auth(cookie|key)
             local desc="$1" method="$2" url="$3" body="$4" auth="$5" out=/tmp/tw-run.json http
-            local -a a=(-sS -o "$out" -w '%{http_code}' --max-time 60 -X "$method" -H 'Content-Type: application/json')
+            local -a a=(-sS -o "$out" -w '%{http_code}' --max-time 90 -X "$method" -H 'Content-Type: application/json')
             if [ "$auth" = "key" ]; then a+=(-H "X-N8N-API-KEY: $API_KEY"); else a+=(-b "$COOKIE"); fi
             [ -n "$body" ] && a+=(--data-binary "$body")
             http=$(curl "${a[@]}" "$url" || echo "000")
             echo "RUN-ATTEMPT [$desc]: HTTP $http"; head -c 200 "$out" 2>/dev/null || true; echo
             case "$http" in 200|201) return 0;; *) return 1;; esac
           }
-          if [ -n "$WF" ] && [ "$WF" != "null" ]; then
-            _run_try "rest run {workflowData}" POST "$BASE/rest/workflows/${WID}/run" "$(jq -cn --argjson wf "$WF" '{workflowData:$wf}')" cookie \
-              || _run_try "rest run {workflowData,startNodes}" POST "$BASE/rest/workflows/${WID}/run" "$(jq -cn --argjson wf "$WF" '{workflowData:$wf,startNodes:[]}')" cookie \
+          RUN_URL="$BASE/rest/workflows/${WID}/run"
+          if [ -n "$WF" ] && [ "$WF" != "null" ] && [ -n "$TRIG" ]; then
+            _run_try "triggerToStartFrom" POST "$RUN_URL" "$(jq -cn --argjson wf "$WF" --arg t "$TRIG" '{workflowData:$wf, runData:{}, triggerToStartFrom:{name:$t}}')" cookie \
+              || _run_try "startNodes name+sourceData" POST "$RUN_URL" "$(jq -cn --argjson wf "$WF" --arg t "$TRIG" '{workflowData:$wf, startNodes:[{name:$t, sourceData:null}]}')" cookie \
+              || _run_try "startNodes nodeName" POST "$RUN_URL" "$(jq -cn --argjson wf "$WF" --arg t "$TRIG" '{workflowData:$wf, startNodes:[{nodeName:$t, sourceData:null}]}')" cookie \
+              || _run_try "workflowData only" POST "$RUN_URL" "$(jq -cn --argjson wf "$WF" '{workflowData:$wf}')" cookie \
               || _run_try "public run" POST "$BASE/api/v1/workflows/${WID}/run" "" key \
               || echo "WARN: all /run attempts returned non-2xx — will still poll for a new execution (it may have started)."
           else
-            echo "WARN: could not fetch workflow body; trying public run only." >&2
+            echo "WARN: could not fetch workflow/trigger; trying public run only." >&2
             _run_try "public run" POST "$BASE/api/v1/workflows/${WID}/run" "" key || true
           fi
 
@@ -143,7 +151,7 @@ jobs:
           {
             echo "## Trigger result"
             echo ""
-            echo "- system: \`${SYSTEM_NAME}\` · workflow_id: \`${WID}\`"
+            echo "- system: \`${SYSTEM_NAME}\` · workflow_id: \`${WID}\` · trigger: \`${TRIG}\`"
             echo "- baseline exec: \`${BASE_EXEC}\` · new exec: \`${NEWID:-none}\` · status: \`${STATUS}\`"
           } >> "$GITHUB_STEP_SUMMARY"
 

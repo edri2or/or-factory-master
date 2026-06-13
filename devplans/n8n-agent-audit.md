@@ -194,7 +194,10 @@ status success; `style_profile` מתעדכן.
 
 **הוכחת E2E (artifact):** לא-התנהגותי (כלי-הרצה; לא קובץ-התנהגות n8n).
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** ריצה ראשונה של הכלי חשפה שה-login עובד אבל
+`POST /rest/workflows/{id}/run` ב-n8n 2.x מחזיר 500 (`reading 'nodeName'`) בלי לציין trigger,
+וה-Public API `/run` הוא 405 (לא נתמך). הכלי עודכן לחלץ את צומת-ה-trigger ולשלוח
+`triggerToStartFrom` (+ fallbacks). ממתין למיזוג והרצה חוזרת.
 
 **שינוי תוכנית:** —
 
