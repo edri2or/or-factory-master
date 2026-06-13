@@ -10,7 +10,10 @@ name: System Runtime Audit
 # Plus a factory.runtime_audit.summary (info -> Axiom) with per-run counts.
 # Probes /healthz (universal: Caddy proxies it to n8n; pre-Caddy systems serve
 # it directly). Reuse-mode TEST systems share factory-test-25 and are not
-# folder-listed — a known v1 limitation.
+# folder-listed — a known v1 limitation. EXCEPTION: the standing proving system
+# or-edri-4 lives on a test project (factory-test-21, adopt) outside the Systems
+# folder, so it is ALWAYS probed (ALWAYS_PROBE) — it must have a heartbeat, since
+# its silent decay is exactly what retired the old reference system.
 
 on:
   schedule:
@@ -44,9 +47,11 @@ jobs:
       - name: Probe deployed systems and emit
         env:
           FOLDER: "123180924297"
+          ALWAYS_PROBE: "or-edri-4"   # standing proving system on factory-test-21 (adopt) — outside the folder, must still be probed
         run: |
           set -uo pipefail
-          SYSTEMS=$(gcloud projects list --filter="parent.id=${FOLDER}" --format='value(projectId)' 2>/dev/null || echo "")
+          # Folder-listed systems PLUS the always-probe standing proving system(s).
+          SYSTEMS=$(bash scripts/runtime-audit-targets.sh)
           TOTAL=0; HEALTHY=0; UNHEALTHY=0; NOTDEPLOYED=0; UNHEALTHY_LIST=""
 
           for sys in $SYSTEMS; do
