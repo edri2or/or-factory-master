@@ -71,9 +71,12 @@ status: active
 **הוכחת E2E (artifact):** לא-התנהגותי — זהו כלי-תשתית (workflow), לא קובץ-התנהגות n8n
 (`workflows/n8n/*.json` / `configure-agent-router.yml`). שער ה-E2E נשאר no-op.
 
-**הערת התקדמות אחרונה:** בבנייה — מוסיף `exercise-agent.yml` שמשתמש מחדש בדרייבר הקיים
-והמוכח. הצנרת אומתה: ל-broker `roles/owner` על factory-test-21, ותעודת
-`e2e-proofs/master-system-integrity-b10.json` מוכיחה ש-`e2e-verify` כבר רץ מול or-edri-4 (PASS).
+**הערת התקדמות אחרונה:** `exercise-agent.yml` נוסף ומוזג (PR #442). הצנרת אומתה: ל-broker
+`roles/owner` על factory-test-21, ותעודת `e2e-proofs/master-system-integrity-b10.json`
+מוכיחה ש-`e2e-verify` כבר רץ מול or-edri-4 (PASS). **באג שנתפס בהרצה החיה הראשונה:** ה-checkout
+נכשל ב-`Repository not found` כי בלוק ה-`permissions` ברמת ה-job ציין רק `id-token: write`,
+ובלוק permissions מאפס את כל השאר ל-`none` — כולל `contents`. תוקן בהוספת `contents: read`
+(PR-תיקון). זו בדיוק לולאת ה-live-test: הכלי החדש חשף את הבאג של עצמו בריצה אמיתית.
 
 **שינוי תוכנית:** —
 
