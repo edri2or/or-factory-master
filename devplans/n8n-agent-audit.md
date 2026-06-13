@@ -28,7 +28,8 @@ status: active
 | 4 | הוכחת deep-research חי | completed | (הרצה חיה + טלגרם) |
 | 5 | תיקון tg-proactive (SQL) | in-progress | `templates/system/workflows/n8n/tg-proactive.json` |
 | 6 | תיקון style-refresh (קלט LLM) | in-progress | `templates/system/workflows/n8n/style-refresh.json` |
-| 7 | הפצה ל-or-edri-4 + הוכחה חיה של 2 העובדים | pending | (refresh-system-agents; הרצה חיה) |
+| 7 | הפצה ל-or-edri-4 + כלי-הרצה on-demand | completed | (refresh-system-agents; `trigger-system-workflow.yml`) |
+| 8 | הרצה חיה של 2 העובדים (הוכחה סופית) | in-progress | (הרצות חיות) |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
 >
@@ -171,6 +172,27 @@ status success; `style_profile` מתעדכן.
 **הוכחה תפקודית (באותו שלב):** הרצה on-demand של 2 העובדים על or-edri-4 החיה → success.
 
 **הוכחת E2E (artifact):** `e2e-proofs/fix-broken-workers.json` (inbound לא נפגע — אי-רגרסיה + חותמת hash).
+
+**הערת התקדמות אחרונה:** ה-fix מוזג (PR #446) והופץ ל-or-edri-4 (`refresh-system-agents` →
+`configure-agent-router` הצליחו — התבניות המתוקנות יובאו ל-n8n החי). להוכחה חיה של עובדי-הרקע
+(מתוזמנים — אי-אפשר להריץ דרך ה-Public API) נבנה כלי-הרצה חדש
+`.github/workflows/trigger-system-workflow.yml` (login פנימי → Execute-Workflow → קריאת status
+מה-Public API). נותרה ההרצה בפועל של 2 העובדים + אימות success (שלב 8).
+
+**שינוי תוכנית:** ההוכחה החיה דרשה כלי-הרצה ייעודי (ה-Public API לא מריץ workflows) — נבנה כשלב-משנה.
+
+---
+
+### שלב 8 — הרצה חיה של 2 העובדים (הוכחה סופית)
+
+**Acceptance:**
+- [ ] `trigger-system-workflow.yml` הורץ ל-tg-proactive (`nyx1Nom0cu38W8Il`) → execution success
+- [ ] `trigger-system-workflow.yml` הורץ ל-style-refresh (`ZGt6kDKpNHRsrh2c`) → execution success
+- [ ] אימות דרך MCP `inspect_n8n_execution` (לא רק לוג הכלי); אין יותר `column ...`/`Bad request`
+
+**הוכחה תפקודית (באותו שלב):** שתי הריצות החדשות על or-edri-4 → status success; Or מקבל "🟢 סיכום-יום".
+
+**הוכחת E2E (artifact):** לא-התנהגותי (כלי-הרצה; לא קובץ-התנהגות n8n).
 
 **הערת התקדמות אחרונה:** —
 
