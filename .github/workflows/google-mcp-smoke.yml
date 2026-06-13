@@ -12,7 +12,12 @@ on:
       system:
         description: "System to smoke-test (must be on the gateway allowlist)"
         required: false
-        default: "or-adhd-agent"
+        default: "or-edri-4"
+        type: string
+      send_test_to:
+        description: "Optional: send a REAL proof email to this address (leave empty for read-only smoke)"
+        required: false
+        default: ""
         type: string
 
 concurrency:
@@ -50,6 +55,7 @@ jobs:
       - name: Run the shared Google read smoke
         env:
           SMOKE_SYSTEM: ${{ inputs.system }}
+          SEND_TEST_TO: ${{ inputs.send_test_to }}
         run: |
           set -euo pipefail
           # Resolve the live gateway URL and read the admin secret IN-STEP so the
