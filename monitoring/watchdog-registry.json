@@ -197,6 +197,16 @@
       "enabled": true
     },
     {
+      "id": "system-n8n-workflow-liveness",
+      "name_he": "חיות n8n לפי Workflow",
+      "type": "n8n-workflows",
+      "layer": "system",
+      "proof_method": "n8n-workflow-liveness",
+      "evidence": { "systems_folder": "123180924297" },
+      "stage": 4,
+      "enabled": true
+    },
+    {
       "id": "system-branch-protection",
       "name_he": "הגנת-ענף במערכות",
       "type": "system-github",
