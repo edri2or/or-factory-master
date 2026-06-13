@@ -89,6 +89,9 @@ templates/system/.github/workflows/bootstrap-gmail-oauth.yml
 # Proof producer for the deploy-edge surface: drives the live Caddy/HMAC edge and
 # emits the signed proof. workflow_dispatch only (on the MCP allowlist); no cadence.
 .github/workflows/deploy-verify.yml
+# On-demand behavioral probe: drives a real custom message through a live system's
+# secured inbound to prove a specific agent answers. workflow_dispatch only; no cadence.
+.github/workflows/exercise-agent.yml
 .github/workflows/cleanup-orphan-linear-webhooks.yml
 .github/workflows/n8n-mcp-smoke.yml
 # Manual smoke: proves the central Google Workspace MCP gateway live (mint bearer
