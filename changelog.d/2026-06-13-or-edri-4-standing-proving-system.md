@@ -38,3 +38,23 @@ merge until it has been proven on `or-edri-4`. Backward compatible: a surface wi
   itself (rejects `factory-test-099`, accepts `or-edri-4`).
 - Docs: `e2e-verify` on or-edri-4 needs `gcp_project=factory-test-21` (added to the skill + loop doc).
 
+## or-edri-4-standing-proving-system — Stage 3: anti-decay heartbeat for or-edri-4
+
+Ensure the standing proving system can't decay silently (the failure that retired the old
+reference system): the 6-hourly `system-runtime-audit.yml` now ALWAYS probes `or-edri-4`, even
+though it lives on a test project (`factory-test-21`, adopt) outside the Systems folder and so is
+not returned by `gcloud projects list`. Its `/healthz` probe + `factory.runtime_audit.*` events
+(incl. an `error`+`action_required` alert on failure) now cover it.
+
+- `scripts/runtime-audit-targets.sh` — new: merges the folder listing with `ALWAYS_PROBE`
+  (default `or-edri-4`), de-duplicated, blanks removed; testable without gcloud via
+  `RUNTIME_AUDIT_FOLDER_LIST`.
+- `.github/workflows/system-runtime-audit.yml` — builds its probe set from that script
+  (`ALWAYS_PROBE=or-edri-4`); documented the exception in the header.
+- `monitoring/watchdog-registry.json` — recorded `always_probe:["or-edri-4"]` in the existing
+  `system-runtime-audit` entry's evidence (no new entry → no unsupported-method noise in the
+  watchdog report).
+- `scripts/tests/runtime-audit-targets.bats` — 5 unit tests (always-include, dedup, empty list,
+  no blanks, multi-system).
+
+

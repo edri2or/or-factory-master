@@ -20,7 +20,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 |---|---|---|---|
 | 1 | הדוקטרינה בכתב | completed | `CLAUDE.md`, `docs/live-test-loop.md`, `.claude/commands/dev-stage-factory.md` |
 | 2 | בלם ה-CI עם השיניים | completed | `e2e-surfaces.json`, `scripts/check-e2e-proof.sh`, `scripts/lib.sh`, `scripts/tests/e2e-proof-systems.bats` |
-| 3 | דופק בריאות נגד ריקבון | pending | `.github/workflows/system-runtime-audit.yml`, `monitoring/watchdog-registry.json` |
+| 3 | דופק בריאות נגד ריקבון | completed | `.github/workflows/system-runtime-audit.yml`, `scripts/runtime-audit-targets.sh`, `monitoring/watchdog-registry.json`, `scripts/tests/runtime-audit-targets.bats` |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
 >
@@ -68,13 +68,13 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 - [ ] `monitoring/watchdog-registry.json`: רשומת-תיעוד אחת למערכת-הניסוי הקבועה.
 - [ ] קבוצת ה-probe כוללת את or-edri-4; dispatch ידני (read-only) מראה אירוע `factory.runtime_audit.ok/failed` עבורה.
 
-**הוכחה תפקודית (באותו שלב):** סטטית — `grep`/קריאה שמראה ש-or-edri-4 בקבוצת ה-probe והלוגיקה מדדפת אותה ללא כפילות. אימות חי (read-only) של dispatch ל-`system-runtime-audit.yml` נעשה לאחר מיזוג (לא ניתן להריץ gcloud לוקאלית).
+**הוכחה תפקודית (באותו שלב):** חילצתי את הרכבת רשימת-המערכות ל-`scripts/runtime-audit-targets.sh` (ניתן-לבדיקה בלי gcloud דרך `RUNTIME_AUDIT_FOLDER_LIST`), והוספתי 5 בדיקות bats (`runtime-audit-targets.bats`) — **5/5 עוברות**: or-edri-4 תמיד נכלל, dedup אם הוא גם בתיקייה, אין שורות ריקות, ריבוי מערכות. בנוסף: `jq empty` על שני ה-JSON תקין, shellcheck נקי על הסקריפט החדש, ו-`run-watchdog.sh` עדיין רץ תקין מול הרשומה המעודכנת. אימות חי (read-only) של dispatch ל-`system-runtime-audit.yml` יבוצע לאחר מיזוג (gcloud אינו זמין לוקאלית).
 
 **הוכחת E2E (artifact):** לא-התנהגותי.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם. `system-runtime-audit.yml` קורא עכשיו ל-`runtime-audit-targets.sh` עם `ALWAYS_PROBE=or-edri-4`, כך ש-or-edri-4 (על factory-test-21, מחוץ לתיקיית-המערכות) תמיד נבדקת — ה-probe הקיים ל-`/healthz` + אירועי `factory.runtime_audit.*` (כולל התראת error+action_required על כשל) מכסים אותה. רשומת `system-runtime-audit` ב-watchdog-registry תועדה עם `always_probe`.
 
-**שינוי תוכנית:** —
+**שינוי תוכנית:** במקום רשומת-registry חדשה (proof_method לא-נתמך היה מופיע כ-❓ לנצח ב-run-watchdog), תיעדתי את ה-always_probe בתוך ה-evidence של רשומת `system-runtime-audit` הקיימת — מכסה את אותה מטרה בלי רעש וללא סיכון לרץ. הוספתי גם `scripts/runtime-audit-targets.sh` כדי שהלוגיקה תהיה ניתנת-לבדיקת-יחידה.
 
 ---
 
@@ -84,3 +84,4 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 
 - שלב 1 הושלם — כתבנו בכל מקום שהדוקטרינה חיה (CLAUDE.md, מסמך השיטה, הסקיל) ש-or-edri-4 היא מערכת-הניסוי הקבועה, והכלל "קודם מוכיחים עליה חי, ואז מקבעים בקוד".
 - שלב 2 הושלם — הוספנו את "השיניים": שער ה-CI עכשיו דורש שההוכחה החיה תבוא דווקא מ-or-edri-4, אחרת המיזוג חסום. הוכחנו על השער עצמו שהוא דוחה מערכת אחרת ומקבל את or-edri-4.
+- שלב 3 הושלם — בדיקת-הבריאות התקופתית בודקת מעכשיו תמיד גם את or-edri-4, כך שאם היא תיפול נדע מיד (דופק נגד ריקבון). הפיתוח הושלם.

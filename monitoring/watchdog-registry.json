@@ -19,7 +19,7 @@
       "layer": "factory",
       "proof_method": "gh-run-freshness",
       "cadence": { "cron": "15 6 * * *", "tolerance_hours": 30 },
-      "evidence": { "repo": "edri2or/or-factory-master", "workflow_file": "system-runtime-audit.yml" },
+      "evidence": { "repo": "edri2or/or-factory-master", "workflow_file": "system-runtime-audit.yml", "always_probe": ["or-edri-4"], "always_probe_note": "or-edri-4 is the standing proving system on factory-test-21 (adopt), outside the Systems folder; runtime-audit-targets.sh always includes it so it has a heartbeat (anti-decay)." },
       "stage": 1,
       "enabled": true
     },
