@@ -2,7 +2,7 @@
 dev_name: קיבוע or-edri-4 כמערכת-הניסוי הקבועה
 slug: or-edri-4-standing-proving-system
 opened: 2026-06-13
-status: active   # active בזמן פיתוח → completed בסיום (משחרר את שער ה-CI)
+status: completed   # active בזמן פיתוח → completed בסיום (משחרר את שער ה-CI)
 ---
 
 # תוכנית פיתוח — קיבוע or-edri-4 כמערכת-הניסוי הקבועה
