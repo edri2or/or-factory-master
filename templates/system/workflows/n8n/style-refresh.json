@@ -82,7 +82,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "INSERT INTO style_profile (chat_id, profile, refreshed_at)\nVALUES ({{ '@@CHAT_ID@@' }}, {{ JSON.stringify(JSON.stringify($json.profile)) }}::jsonb, NOW())\nON CONFLICT (chat_id) DO UPDATE SET profile = EXCLUDED.profile, refreshed_at = NOW();",
+        "query": "INSERT INTO style_profile (chat_id, profile, refreshed_at)\nVALUES ({{ '@@CHAT_ID@@' }}, {{ \"'\" + JSON.stringify($json.profile || {}).split(\"'\").join(\"''\") + \"'\" }}::jsonb, NOW())\nON CONFLICT (chat_id) DO UPDATE SET profile = EXCLUDED.profile, refreshed_at = NOW();",
         "options": {}
       },
       "id": "30000000-0000-0000-0000-000000000007",

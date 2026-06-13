@@ -194,10 +194,12 @@ status success; `style_profile` מתעדכן.
 
 **הוכחת E2E (artifact):** לא-התנהגותי (כלי-הרצה; לא קובץ-התנהגות n8n).
 
-**הערת התקדמות אחרונה:** ריצה ראשונה של הכלי חשפה שה-login עובד אבל
-`POST /rest/workflows/{id}/run` ב-n8n 2.x מחזיר 500 (`reading 'nodeName'`) בלי לציין trigger,
-וה-Public API `/run` הוא 405 (לא נתמך). הכלי עודכן לחלץ את צומת-ה-trigger ולשלוח
-`triggerToStartFrom` (+ fallbacks). ממתין למיזוג והרצה חוזרת.
+**הערת התקדמות אחרונה:** הכלי עודכן (triggerToStartFrom) ומוזג. **הרצה חיה:** tg-proactive →
+**exec 400 success** (תוקן, הבוט שלח סיכום-יום). style-refresh עבר את Extract Style (ה-fix עבד!)
+אך נחשף **באג שני** ב-"Upsert Style Profile" — `JSON.stringify(JSON.stringify(...))::jsonb`
+(גרשיים כפולים → syntax error). **ממצא נוסף:** ל-`file-catalog-refresh` "Upsert Catalog" אותו
+באג, מוסתר ע"י `onError` (רץ ירוק אבל לא כתב קטלוג). שניהם תוקנו (מחרוזת SQL single-quote מוברחת)
++ e2e-proof. ממתין למיזוג + הרצה חוזרת של style-refresh (אימות גלוי) + file-catalog.
 
 **שינוי תוכנית:** —
 
