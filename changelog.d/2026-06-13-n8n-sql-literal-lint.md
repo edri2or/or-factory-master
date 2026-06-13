@@ -1,0 +1,5 @@
+## feat: CI lint — n8n postgres queries must quote interpolated values (n8n-sql-literal-lint)
+
+| Type | Summary |
+|---|---|
+| feat | New `scripts/check-n8n-sql-literals.sh` (+ `scripts/tests/check-n8n-sql-literals.bats`, wired into the **Changelog gates** job) blocks the `JSON.stringify`-in-SQL antipattern that silently killed three scheduled workers this session (tg-proactive `column "<chat_id>" does not exist`; style-refresh + file-catalog `Syntax error` on `::jsonb`, the latter masked by `onError`). A `{{ }}` value interpolated into a postgres `query` must be a single-quoted SQL literal (`'{{ … }}'` or `{{ "'" + expr + "'" }}`); `JSON.stringify` emits **double** quotes, which Postgres parses as an identifier. The check is precise — it inspects only `n8n-nodes-base.postgres` query strings, so the many legitimate `JSON.stringify` uses (httpRequest jsonBody, jwt claimsJson, chainLlm prompts, code jsCode) are untouched. Proven by bats: the two historical bug shapes fail, both correct quoting forms pass, and the committed templates are clean. Factory-level gate. |
