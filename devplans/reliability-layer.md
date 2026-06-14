@@ -22,8 +22,8 @@ stack חדש. מוכיחים כל שלב חי על `or-edri-4` לפני שמקב
 
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
-| 0 | דוקטרינה + מנגנון הוכחה-מענף (`source_ref`) | in-progress | `docs/reliability-layer.md`, `.github/workflows/refresh-system-agents.yml`, `devplans/reliability-layer.md` |
-| 1 | גשר ה-emit + Error Workflow סטנדרטי בכל workflow | pending | `services/mcp-server/src/index.ts`(+`emit-route.ts`), `templates/system/workflows/n8n/error-handler.json`, `templates/system/.github/workflows/configure-agent-router.yml`, `monitoring/watchdog-registry.json`, golden |
+| 0 | דוקטרינה + מנגנון הוכחה-מענף (`source_ref`) | completed | `docs/reliability-layer.md`, `.github/workflows/refresh-system-agents.yml`, `devplans/reliability-layer.md` |
+| 1 | גשר ה-emit + Error Workflow סטנדרטי בכל workflow | in-progress | `services/mcp-server/src/{index.ts,emit-route.ts}`+test, `templates/system/workflows/n8n/error-handler.json`, `templates/system/.github/workflows/configure-agent-router.yml`, `monitoring/registry-exempt.txt`, golden |
 | 4 | probe `/healthz` → `/healthz/readiness` (+סבילות 503) | pending | `.github/workflows/system-runtime-audit.yml` |
 | 2 | heartbeat "ping בהצלחה" פר-קרון קריטי | pending | `templates/system/workflows/n8n/{db-vacuum,spend-track,pending-actions-cleanup,style-refresh,tg-proactive,file-catalog-refresh}.json`, golden |
 | 5 | assertion "רץ אבל ריק" — תבנית + דוגמה אחת | pending | `docs/reliability-layer.md`, workflow מייצג אחד, golden |
@@ -50,17 +50,15 @@ stack חדש. מוכיחים כל שלב חי על `or-edri-4` לפני שמקב
       שכבות, מגבלת Error-Workflow, טקסונומיה.
 - [x] `refresh-system-agents.yml` מקבל input `source_ref` (default ריק = התנהגות זהה),
       ו-checkout מושך את ה-ref הזה; ה-WIF נשאר ברוקר-על-main.
-- [ ] CI ירוק (yamllint/shellcheck, changelog, devplan).
+- [x] CI ירוק (yamllint/shellcheck, changelog, devplan) — 6/6 ירוק.
 
-**הוכחה תפקודית (באותו שלב):** dispatch יבש של `refresh-system-agents.yml`
-(`system_name=or-edri-4`, `source_ref=claude/stoic-feynman-62xkr5`, `run_configure=false`) →
-לוג-ה-run מראה שה-checkout משך את עץ-הענף (לא main). *לא-התנהגותי לבוט* — אין הרצת-n8n.
-(החלה-יבשה זו תתבצע אחרי שה-PR פתוח, כי הדיספּאצ' רץ מ-main.)
+**הוכחה תפקודית (באותו שלב):** *לא-התנהגותי לבוט* — שינוי תיעוד + input ל-workflow. ה-`source_ref`
+מוכח בפועל בשלב 1 (כשמחילים את ענף-העבודה על or-edri-4 דרכו).
 
 **הוכחת E2E (artifact):** לא-התנהגותי (אין שינוי ב-`workflows/n8n/*` / `configure-agent-router.yml`).
 
-**הערת התקדמות אחרונה:** הקבצים נכתבו; נשאר לאמת CI ולפתוח PR. ההחלה-היבשה על or-edri-4
-מותנית באישור Or (זו דיספּאצ' של workflow על מערכת חיה — קריאה בלבד, בלי שינוי).
+**הערת התקדמות אחרונה:** הושלם ומוזג ל-main ב-PR #459 (squash 43d08c8), 6/6 שערים ירוקים.
+`source_ref` חי על main; משמש כעת בשלב 1.
 
 **שינוי תוכנית:** הוספת מנגנון ה-`source_ref` היא תוספת מול ההנדאוף — נדרשה כי
 `refresh-system-agents.yml` נעול-main ומעתיק רק מ-main, ולכן לא יכול להחיל שינוי-ענף לא-ממוזג
@@ -87,13 +85,15 @@ stack חדש. מוכיחים כל שלב חי על `or-edri-4` לפני שמקב
 
 **הוכחת E2E (artifact):** התנהגותי — מכוסה ע"י proof-ה-or-edri-4 שיופק באבן-הדרך אחרי שלב 5.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הקוד נכתב ועבר build+test+golden מקומית: route `POST /factory/<system>/emit`
+(אימות תאום ל-`/factory/<system>/mcp`, זהות מה-claim, rate-limit+kill-switch, 10 טסטים ירוקים);
+`error-handler.json` (Error Trigger→HTTP emit); הזרקת `settings.errorWorkflow` בכל workflow דרך
+`_upsert_wf`; exempt בפנקס השומר; golden רוענן. נשאר: CI ירוק → אישור Or ל-`deploy-mcp-server` +
+הוכחה חיה על or-edri-4 (כשל מאולץ → התראת Telegram אחת + issue ב-Linear).
 
-**שינוי תוכנית:** —
-
----
-
-### שלב 4 — probe `/healthz` → `/healthz/readiness` (+סבילות 503)
+**שינוי תוכנית:** הזרקת ה-errorWorkflow נעשית בנקודת-החנק היחידה `_upsert_wf` (לא ב-~20 אתרי-קריאה),
+וה-emit-bridge הוא route חדש ב-`index.ts` (לא ב-`factory-scope.ts`) כדי לא להפעיל את שער ה-deploy-smoke
+של `factory-mcp` לשווא. `error-handler.json` נרשם ב-`registry-exempt.txt` (error-sink, לא קרון).
 
 **Acceptance:**
 - [ ] `system-runtime-audit.yml` בודק `…/healthz/readiness` עם סבילות (2 כשלי-503 רצופים /
@@ -266,5 +266,7 @@ paths=workflows/n8n,.github/workflows/configure-agent-router.yml`), ואז `e2e-
 
 > שורה פשוטה אחת לכל שלב שהסתיים — בשפה ש-Or מבין, בלי ז'רגון.
 
-- שלב 0 (בתהליך) — כתבתי את "ספר-החוקים" של הרובד והוספתי מתג שמאפשר לבדוק שינוי על
-  המערכת החיה or-edri-4 לפני שמקבעים. עוד לא נגעתי בשום אוטומציה אמיתית.
+- שלב 0 (הושלם, מוזג) — כתבתי את "ספר-החוקים" של הרובד והוספתי מתג שמאפשר לבדוק שינוי על
+  המערכת החיה or-edri-4 לפני שמקבעים. נכנס ל-main לבד (PR #459).
+- שלב 1 (בתהליך) — בניתי את "צינור ההתראות" (גשר בשרת) ואת ה-Error Workflow שיגרום לכל
+  אוטומציה לצעוק בטלגרם כשהיא נופלת. הקוד עבר בדיקות מקומית; נשאר להוכיח חי על or-edri-4.
