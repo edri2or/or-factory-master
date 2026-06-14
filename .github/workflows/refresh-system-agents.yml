@@ -15,9 +15,16 @@ name: Refresh System (apply current factory templates to a live system)
 # live (e.g. in Telegram): fix template on main -> dispatch this -> ~40s later the live
 # system is updated. A round is ~1-2 minutes, no new Railway project, no manual clicks.
 #
+# Branch-prove mode (`source_ref`): set `source_ref=<work-branch>` to copy the templates
+# FROM that branch instead of main, so a provisioning-process change can be proven live on
+# a standing system (e.g. or-edri-4) BEFORE it is merged to main — the apply step of the
+# /dev-stage-factory live-proof loop for a not-yet-merged change.
+#
 # Scope & safety:
 #   - Syncs ONLY paths under templates/system/, copied from the factory's trusted `main`
-#     (the `paths` input is validated to be relative, no absolute paths, no `..`).
+#     by default — or from `source_ref` when set (to prove a work-branch change live before
+#     merge). The `paths` input is validated to be relative (no absolute paths, no `..`);
+#     WIF still authenticates as the broker on `main` (only the template SOURCE ref changes).
 #   - Template files carry @@PLACEHOLDERS@@; the post-merge system workflow substitutes
 #     them at apply time (same as provision's scaffold), so the system repo stores the
 #     templated files verbatim — exactly what provision pushes.
@@ -50,6 +57,11 @@ on:
         required: false
         default: "true"
         type: string
+      source_ref:
+        description: "Optional git ref (branch/tag/SHA) in or-factory-master to copy the templates FROM, instead of the default checked-out main tree. Use to prove a NOT-YET-MERGED work-branch change live on a standing system (e.g. or-edri-4) before merging. Empty = normal behaviour (copy main). WIF still authenticates as the broker on main — only the template SOURCE changes."
+        required: false
+        default: ""
+        type: string
 
 permissions: {}
 
@@ -71,6 +83,11 @@ jobs:
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
         with:
+          # Default ('') checks out the triggering ref (main, per the `if` guard above),
+          # preserving the original behaviour. When source_ref is set, copy the templates
+          # from that work-branch instead — the broker WIF auth below still keys off
+          # github.ref (main), so only the template SOURCE ref changes, not the identity.
+          ref: ${{ inputs.source_ref }}
           persist-credentials: false
 
       - name: Validate system_name
