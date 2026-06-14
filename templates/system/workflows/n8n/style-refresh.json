@@ -15,7 +15,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT message FROM n8n_chat_histories WHERE session_id = 'tg:' || {{ '@@CHAT_ID@@' }} ORDER BY id DESC LIMIT 50;",
+        "query": "SELECT message FROM n8n_chat_histories WHERE session_id = 'tg:' || '@@CHAT_ID@@' ORDER BY id DESC LIMIT 50;",
         "options": {}
       },
       "id": "30000000-0000-0000-0000-000000000002",
@@ -71,7 +71,7 @@
     {
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "// Parse the model's JSON robustly; fall back to a safe default profile.\nconst raw = String($input.first().json.text != null ? $input.first().json.text : ($input.first().json.output != null ? $input.first().json.output : ''));\nconst fallback = { language_primary: 'he', formality: 'casual', avg_reply_length_words: 35, emoji_use: 'moderate', humor: 'dry', technical_depth: 'high', address_form: 'second person, informal', anti_patterns: ['verbose preambles', 'corporate hedging'] };\nlet profile = fallback;\ntry {\n  const m = raw.match(/\\{[\\s\\S]*\\}/);\n  if (m) {\n    const parsed = JSON.parse(m[0]);\n    if (parsed && typeof parsed === 'object') { profile = parsed; }\n  }\n} catch (e) { profile = fallback; }\nreturn [{ json: { profile: profile } }];"
+        "jsCode": "// Parse the model's JSON robustly; fall back to a safe default profile.\nconst raw = String($input.first().json.text != null ? $input.first().json.text : ($input.first().json.output != null ? $input.first().json.output : ''));\nconst fallback = { language_primary: 'he', formality: 'casual', avg_reply_length_words: 35, emoji_use: 'moderate', humor: 'dry', technical_depth: 'high', address_form: 'second person, informal', anti_patterns: ['verbose preambles', 'corporate hedging'] };\nlet profile = fallback;\ntry {\n  const m = raw.match(/\\{[\\s\\S]*\\}/);\n  if (m) {\n    const parsed = JSON.parse(m[0]);\n    if (parsed && typeof parsed === 'object') { profile = parsed; }\n  }\n} catch (e) { profile = fallback; }\nconst profile_sql = JSON.stringify(profile || {}).split(\"'\").join(\"''\");\nreturn [{ json: { profile: profile, profile_sql: profile_sql } }];"
       },
       "id": "30000000-0000-0000-0000-000000000006",
       "name": "Validate JSON",
@@ -82,7 +82,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "INSERT INTO style_profile (chat_id, profile, refreshed_at)\nVALUES ({{ '@@CHAT_ID@@' }}, {{ \"'\" + JSON.stringify($json.profile || {}).split(\"'\").join(\"''\") + \"'\" }}::jsonb, NOW())\nON CONFLICT (chat_id) DO UPDATE SET profile = EXCLUDED.profile, refreshed_at = NOW();",
+        "query": "INSERT INTO style_profile (chat_id, profile, refreshed_at)\nVALUES (@@CHAT_ID@@, '{{ $('Validate JSON').first().json.profile_sql }}'::jsonb, NOW())\nON CONFLICT (chat_id) DO UPDATE SET profile = EXCLUDED.profile, refreshed_at = NOW();",
         "options": {}
       },
       "id": "30000000-0000-0000-0000-000000000007",

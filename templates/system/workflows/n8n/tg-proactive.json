@@ -15,7 +15,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT\n  (SELECT COUNT(*) FROM audit_log WHERE ts > NOW() - INTERVAL '24 hours') AS actions_24h,\n  (SELECT COALESCE(SUM(cost_usd), 0) FROM spend_log WHERE ts > NOW() - INTERVAL '24 hours') AS spend_24h,\n  (SELECT COUNT(*) FROM n8n_chat_histories WHERE session_id = 'tg:' || {{ '@@CHAT_ID@@' }}) AS total_messages,\n  (SELECT profile FROM style_profile WHERE chat_id = {{ '@@CHAT_ID@@' }}) AS style;",
+        "query": "SELECT\n  (SELECT COUNT(*) FROM audit_log WHERE ts > NOW() - INTERVAL '24 hours') AS actions_24h,\n  (SELECT COALESCE(SUM(cost_usd), 0) FROM spend_log WHERE ts > NOW() - INTERVAL '24 hours') AS spend_24h,\n  (SELECT COUNT(*) FROM n8n_chat_histories WHERE session_id = 'tg:' || '@@CHAT_ID@@') AS total_messages,\n  (SELECT profile FROM style_profile WHERE chat_id = @@CHAT_ID@@) AS style;",
         "options": {}
       },
       "id": "20000000-0000-0000-0000-000000000002",
