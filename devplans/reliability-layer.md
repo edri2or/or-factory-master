@@ -26,7 +26,7 @@ stack חדש. מוכיחים כל שלב חי על `or-edri-4` לפני שמקב
 | 1 | גשר ה-emit + Error Workflow סטנדרטי בכל workflow | completed ✅ proven-live | `services/mcp-server/src/{index.ts,emit-route.ts}`+test, `templates/system/workflows/n8n/error-handler.json`, `templates/system/.github/workflows/configure-agent-router.yml`, `monitoring/registry-exempt.txt`, golden |
 | 4 | probe `/healthz` → `/healthz/readiness` (+סבילות 503) | completed ✅ proven-live | `.github/workflows/system-runtime-audit.yml` |
 | 2 | "אות חיות" → **מוזג לשלב 3** (refinement factory-native) | folded | — (אפס ניתוח-workflow; השומר קורא executions) |
-| 5 | assertion "רץ אבל ריק" — תבנית + דוגמה אחת | pending | `docs/reliability-layer.md`, workflow מייצג אחד, golden |
+| 5 | assertion "רץ אבל ריק" — תבנית + דוגמה אחת | in-progress | `spend-track.json`, `configure-agent-router.yml`, `docs/reliability-layer.md`, golden |
 | — | **אבן-דרך E2E** (קפיאת קבצי-n8n) → proof על or-edri-4 | pending | `e2e-proofs/reliability-layer.json` |
 | 3 | watchdog `n8n-workflow-cadence` (dead-man) | completed ✅ proven | `scripts/run-watchdog.sh`, `monitoring/watchdog-registry.json`, `run-watchdog.bats` |
 | 7 | אימות Task-Runner/queue (verify-only) | pending | `docs/reliability-layer.md` |
@@ -145,12 +145,15 @@ E2E re-proof). אבל ה-watchdog **כבר** קורא executions (`n8n-workflow-
 **הוכחה תפקודית (באותו שלב):** אילוץ תנאי ריק/שגוי על variant `dev-` ב-or-edri-4 → התראת
 `warning` אחת; ריצה בריאה — שקט.
 
-**הוכחת E2E (artifact):** התנהגותי — מכוסה ע"י proof-ה-or-edri-4 (אבן-הדרך הבאה).
+**הוכחת E2E (artifact):** התנהגותי — proof טרי מ-or-edri-4 לפני מיזוג (telegram-bot surface).
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** מומש — `docs §8` (תבנית) + `spend-track.json` (Assert Spend Read על
+`ok===false` → Emit Empty Result warning) + substitution גלובלי ב-`_upsert_wf`; golden רוענן, jq/yaml נקי.
+נשאר: CI → החלה על or-edri-4 → אילוץ ok:false (warning יחיד) → proof → מיזוג.
 
 **שינוי תוכנית:** ההנדאוף הניח כלי-MCP `claim_actual_mismatch` — הוא **לא קיים**. לכן השלב
-הופך לתבנית מתועדת + דוגמה (emit `warning`), לא כלי חדש.
+הופך לתבנית מתועדת + דוגמה (emit `warning`), לא כלי חדש. ה-substitution הגלובלי ב-`_upsert_wf`
+מאפשר את צומת-ה-emit בכל workflow (לא רק בדוגמה).
 
 ---
 

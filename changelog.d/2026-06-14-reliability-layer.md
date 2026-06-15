@@ -60,3 +60,19 @@ spend-track/pending-actions-cleanup/file-catalog-refresh 3ש; style-refresh/tg-p
 
 **Changes:** `scripts/run-watchdog.sh`, `monitoring/watchdog-registry.json`,
 `scripts/tests/run-watchdog.bats`.
+
+## שלב 5 — assertion "רץ אבל ריק" (תבנית + דוגמה)
+
+הפער שלא נתפס: צומת עם `onError:continueRegularOutput` נכשל אך "ממשיך" עם פלט ריק → הביצוע
+status=success למרות שלא עשה כלום (לא ה-Error-Workflow ולא ה-watchdog תופסים). **התבנית**
+(מתועדת ב-`docs/reliability-layer.md` §8): צומת IF על אינווריאנט-פלט → צומת HTTP-Request פולט
+`factory.automation.empty_result` (warning) לאותו route emit. **דוגמה מחווטת** ב-`spend-track.json`:
+`Compute Delta` כבר מחשב `ok` (=false כשקריאת ה-usage מ-OpenRouter נכשלה); נוספו `Assert Spend Read`
+(IF על `$json.ok === false`) → `Emit Empty Result` (warning + reason). `configure-agent-router.yml`:
+ה-`_upsert_wf` קיבל substitution גלובלי ל-`@@CRED_FACTORY_MCP_ID@@`/`@@SYSTEM_NAME@@` (no-op
+לקיימים; מאפשר את צומת-ה-emit בכל workflow). golden רוענן. הוכחה חיה: אילוץ ok:false על or-edri-4
+→ warning יחיד.
+
+**Changes:** `templates/system/workflows/n8n/spend-track.json`,
+`templates/system/.github/workflows/configure-agent-router.yml`, `docs/reliability-layer.md`,
+`tests/golden/system/MANIFEST.sha256`.

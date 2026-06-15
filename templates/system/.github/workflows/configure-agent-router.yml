@@ -541,6 +541,15 @@ jobs:
           _mask_secret "$N8N_PUB_API_KEY"
           _upsert_wf() {
             local wf_name="$1" body_file="$2" activate="${3:-yes}" wid http vid
+            # Reliability layer: resolve the gateway-emit placeholders for ANY workflow
+            # that POSTs to /factory/<system>/emit (the error-handler + the assertion /
+            # heartbeat nodes). A no-op on workflows that don't carry them (and on those
+            # whose per-workflow sed already resolved @@SYSTEM_NAME@@); an empty CRED just
+            # leaves a soft (onError:continueRegularOutput) node, never a cascade.
+            sed -i \
+              -e "s#@@CRED_FACTORY_MCP_ID@@#${CRED_FACTORY_MCP_ID}#g" \
+              -e "s#@@SYSTEM_NAME@@#${SYSTEM_NAME}#g" \
+              "$body_file" 2>/dev/null || true
             # Reliability layer: set the standard Error Workflow on EVERY workflow
             # (settings.errorWorkflow = the error-handler) so a node failure emits a
             # real factory.n8n.workflow_failed alert instead of being swallowed by the

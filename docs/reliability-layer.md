@@ -122,13 +122,29 @@ n8n לא יוצר ביצוע ולא מפעיל את ה-Error Workflow. לכן:
 
 ---
 
-## 8. השלבים והסדר
+## 8. תבנית "רץ אבל ריק" (assertion)
+
+Stage 1 (Error Workflow) תופס כשל **לא-נתפס** (צומת שזרק). אבל הדפוס הנפוץ בקרונים הוא
+`onError: "continueRegularOutput"` — הצומת נכשל אך "ממשיך" עם פלט ריק, ולכן הביצוע
+**status=success** למרות שלא עשה כלום. את הפער הזה לא תופס לא ה-Error-Workflow (אין כשל) ולא
+ה-watchdog (הריצה האחרונה "הצליחה"). **התבנית:** מיד אחרי העבודה, צומת **IF** בודק
+**אינווריאנט-פלט** ("האם באמת קרה משהו?"); על הפרה — צומת **HTTP-Request** פולט
+`factory.automation.empty_result` (`severity:warning`) לאותו route emit, עם
+`onError:continueRegularOutput` (לעולם לא מפיל את הקרון). על ריצה בריאה — שקט.
+
+**דוגמה מחווטת (`spend-track.json`):** הצומת `Compute Delta` כבר מחשב `ok` (=`false` כשקריאת
+ה-usage מ-OpenRouter נכשלה). צומת `Assert Spend Read` (IF על `$json.ok === false`) → צומת
+`Emit Empty Result` (warning עם `reason`). כך "spend-track רץ אבל לא הצליח לקרוא את ההוצאה"
+מתריע — במקום להיבלע. כל קרון יכול לאמץ את אותה תבנית עם האינווריאנט שלו.
+
+---
+
+## 9. השלבים והסדר
 
 ראו `devplans/reliability-layer.md`. סדר-התלות:
 `0 → (1,4) → (2,5) → 3 → 7 → 6 → 8 → 9`.
 
 הפרקים הבאים יושלמו במסמך זה ע"י השלבים המאוחרים:
-- **תבנית ה-assertion "רץ אבל ריק"** (שלב 5).
 - **אימות queue/Task-Runner** של צמתי-הרובד (שלב 7).
 - **rollup-צי מעל Axiom** + אופציית **Grafana הדחויה** (שלב 6).
 - **runbook ה-retrofit** למערכות קיימות (שלב 8).

@@ -101,15 +101,57 @@
       "position": [1540, 240],
       "credentials": { "postgres": { "id": "@@CRED_POSTGRES_ID@@", "name": "Postgres (n8n)" } },
       "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose", "version": 2 },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "62100000-0000-0000-0000-000000000001",
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": "",
+              "operator": { "type": "boolean", "operation": "false", "singleValue": true }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "62000000-0000-0000-0000-000000000001",
+      "name": "Assert Spend Read",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1320, 480]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://factory-master-actions-mcp-140345952904.me-west1.run.app/factory/@@SYSTEM_NAME@@/emit",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpBearerAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ name: 'factory.automation.empty_result', severity: 'warning', body: { automation: 'spend-track', reason: String($json.reason || 'spend usage unreadable') } }) }}",
+        "options": { "timeout": 10000 }
+      },
+      "id": "62000000-0000-0000-0000-000000000002",
+      "name": "Emit Empty Result",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1540, 480],
+      "credentials": { "httpBearerAuth": { "id": "@@CRED_FACTORY_MCP_ID@@", "name": "Factory MCP" } },
+      "onError": "continueRegularOutput"
     }
   ],
   "connections": {
     "Hourly": { "main": [[{ "node": "Read State", "type": "main", "index": 0 }]] },
     "Read State": { "main": [[{ "node": "Get Key Usage", "type": "main", "index": 0 }]] },
     "Get Key Usage": { "main": [[{ "node": "Compute Delta", "type": "main", "index": 0 }]] },
-    "Compute Delta": { "main": [[{ "node": "Upsert State", "type": "main", "index": 0 }]] },
+    "Compute Delta": { "main": [[{ "node": "Upsert State", "type": "main", "index": 0 }, { "node": "Assert Spend Read", "type": "main", "index": 0 }]] },
     "Upsert State": { "main": [[{ "node": "Delta > 0?", "type": "main", "index": 0 }]] },
-    "Delta > 0?": { "main": [[{ "node": "Insert Spend", "type": "main", "index": 0 }], []] }
+    "Delta > 0?": { "main": [[{ "node": "Insert Spend", "type": "main", "index": 0 }], []] },
+    "Assert Spend Read": { "main": [[{ "node": "Emit Empty Result", "type": "main", "index": 0 }], []] }
   },
   "settings": { "executionOrder": "v1" }
 }
