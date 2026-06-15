@@ -4,7 +4,7 @@ A single-container sidecar that exposes the [`workspace-mcp`](https://pypi.org/p
 
 ## Purpose
 
-Gives systems Gmail / Calendar / Drive / Docs tools over MCP, served under the shared `or-infra` Google identity (`edriorp38@or-infra.com`). The gateway injects auth server-side; this sidecar holds no public surface.
+Gives systems Gmail / Calendar / Drive / Docs tools over MCP. The shared token authenticates as Or's personal **`edri2or@gmail.com`** account (proven 2026-06-15); `edriorp38@or-infra.com` is only the credential storage-key label (`WORKSPACE_GOOGLE_ACCOUNT_LABEL` / `user_google_email`), not the data account — see `docs/google-identities.md`. The gateway injects auth server-side; this sidecar holds no public surface.
 
 ## How it's served
 
