@@ -37,6 +37,15 @@ on:
         default: "configure-agent-router.yml"
         type: string
 
+concurrency:
+  # Serialize every factory run that acts on one live system into a FIFO queue (shared
+  # `live-system-<system>` group with refresh / e2e-verify / deploy-verify), so two
+  # parallel developments never overwrite each other on the same system. queue:max keeps
+  # up to 100 runs queued and REQUIRES cancel-in-progress:false.
+  group: live-system-${{ inputs.system_name }}
+  cancel-in-progress: false
+  queue: max
+
 permissions: {}
 
 jobs:
