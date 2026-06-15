@@ -9,7 +9,8 @@ import { registerOrgReadTools } from './org-read-tools.js';
 import { verifyGitHubOidc } from './oidc-verifier.js';
 import { signBearer, verifyBearer, revokeBearer, type BearerPayload, type BearerKind } from './bearer.js';
 import { registerFactoryScopedTools, isAllowedFactorySystem } from './factory-scope.js';
-import { sendTelegramMessage } from './observability-client.js';
+import { sendTelegramMessage, emitEvent } from './observability-client.js';
+import { validateEmitBody, isEmitAllowedSystem, createRateLimiter } from './emit-route.js';
 import { handleLinearWebhook, registerLinearWebhook } from './oil-autofix.js';
 import { registerApproval, handleTelegramCallback } from './oil-approval.js';
 import {
@@ -102,6 +103,11 @@ const WORKSPACE_RUNTIME_TTL_SEC = Math.floor(WORKSPACE_RUNTIME_TTL_MS / 1000);
 // unattended; refreshed idempotently by a re-provision.
 const FACTORY_RUNTIME_TTL_MS = 365 * 24 * 60 * 60 * 1000;  // 1 year
 const FACTORY_RUNTIME_TTL_SEC = Math.floor(FACTORY_RUNTIME_TTL_MS / 1000);
+
+// Reliability-layer emit route: a per-system circuit-breaker so an n8n error-storm
+// can't fan unbounded emits at Telegram (emitEvent already dedups Linear + gates
+// Telegram to warning+). Tunable via FACTORY_EMIT_RATE_LIMIT (events/min/system).
+const emitRateLimiter = createRateLimiter(Number(process.env.FACTORY_EMIT_RATE_LIMIT ?? 60));
 
 // A system-scoped route accepts exactly ONE system-scoped bearer kind — bound
 // to the path's system — plus the operator-grade kinds ('oauth' = claude.ai /
@@ -960,6 +966,69 @@ app.all('/factory/:system/mcp', async (req: Request, res: Response) => {
   } finally {
     await server.close().catch(() => undefined);
   }
+});
+
+// POST /factory/<system>/emit — the reliability layer's n8n -> observability bridge.
+// A system's n8n (the standard Error Workflow + the per-cron heartbeat nodes) POSTs a
+// small event here with its factory-runtime bearer; the gateway injects system + layer
+// from the SIGNED bearer claim (never the body) and fans out via emitEvent() (Axiom
+// always; Telegram on warning+; Linear on error+/action_required) — every sink secret
+// stays server-side. Same auth chain as /factory/<system>/mcp above; an isolated single
+// handler that constructs no McpServer and exposes no tool surface.
+app.post('/factory/:system/emit', async (req: Request, res: Response) => {
+  const system = req.params.system;
+  if (!isAllowedFactorySystem(system)) {
+    res.status(404).json({ error: 'unknown_system' });
+    return;
+  }
+  const authHeader = req.headers['authorization'] ?? '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
+  const payload = token ? verifyBearer(token) : null;
+  if (!token || payload === null) {
+    res
+      .status(401)
+      .set('WWW-Authenticate', `Bearer realm="${BASE_URL}"`)
+      .json({ error: 'unauthorized' });
+    return;
+  }
+  // Hard tenant isolation: only THIS system's factory-runtime bearer (or an
+  // operator-grade bearer) may emit for this system — identical lock to the
+  // telemetry route, so a runtime token can never emit for a sibling.
+  if (!systemRouteAllows(payload, 'factory-runtime', system)) {
+    res.status(403).json({ error: 'system_mismatch' });
+    return;
+  }
+  // Emit-specific kill-switch (independent of the read-tool allowlist).
+  if (!isEmitAllowedSystem(system)) {
+    res.status(503).json({ error: 'emit_disabled' });
+    return;
+  }
+  const parsed = validateEmitBody(req.body);
+  if (!parsed.ok) {
+    res.status(400).json({ error: 'bad_request', message: parsed.error });
+    return;
+  }
+  if (!emitRateLimiter.allow(system)) {
+    res.status(429).json({ error: 'rate_limited' });
+    return;
+  }
+  const { name, severity, actionRequired, workflow, runId, body } = parsed.value;
+  const result = await emitEvent({
+    name,
+    severity,
+    layer: 'system', // forced server-side — a tenant can never emit a factory-layer event
+    system, // from the path/claim, never the body
+    workflow,
+    runId,
+    actionRequired,
+    body,
+  });
+  res.status(200).json({
+    ok: true,
+    axiom: result.axiom.status,
+    telegram: result.telegram.status,
+    linear: result.linear.status,
+  });
 });
 
 // Must be registered after all routes so it sees errors thrown by handlers.

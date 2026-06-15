@@ -541,6 +541,22 @@ jobs:
           _mask_secret "$N8N_PUB_API_KEY"
           _upsert_wf() {
             local wf_name="$1" body_file="$2" activate="${3:-yes}" wid http vid
+            # Reliability layer: set the standard Error Workflow on EVERY workflow
+            # (settings.errorWorkflow = the error-handler) so a node failure emits a
+            # real factory.n8n.workflow_failed alert instead of being swallowed by the
+            # node-level onError:continueRegularOutput. Skipped for the handler itself,
+            # and a no-op until its id is known (it is imported FIRST below, so
+            # ERROR_HANDLER_ID is still empty on its own upsert). Soft: a jq miss leaves
+            # the body untouched rather than failing the import.
+            if [ -n "${ERROR_HANDLER_ID:-}" ] && [ "$wf_name" != "factory-master: error-handler" ]; then
+              if jq --arg eid "$ERROR_HANDLER_ID" \
+                   '.settings = ((.settings // {}) + {errorWorkflow: $eid})' \
+                   "$body_file" > "${body_file}.ew" 2>/dev/null; then
+                mv "${body_file}.ew" "$body_file"
+              else
+                rm -f "${body_file}.ew"
+              fi
+            fi
             _napi GET "$BASE/rest/workflows" /tmp/ar-wfs.json >/dev/null
             wid=$(jq -r --arg n "$wf_name" '[(.data // .) | .[]? | select(.name==$n)][0].id // empty' /tmp/ar-wfs.json)
             if [ -n "$wid" ]; then
@@ -590,6 +606,33 @@ jobs:
             fi
             printf '%s' "$wid"
           }
+
+          # --- Reliability layer: the standard Error Workflow (imported FIRST) ---
+          # One error-handler workflow (Error Trigger -> HTTP Request) is set as
+          # settings.errorWorkflow on EVERY other workflow (injected in _upsert_wf above),
+          # so a node failure in any workflow POSTs factory.n8n.workflow_failed to the
+          # gateway's /factory/<system>/emit route (-> Axiom + Telegram + Linear) instead
+          # of being silently swallowed. Imported before any other workflow so its id is
+          # known. Reuses the SAME Factory MCP credential (factory-mcp-bearer) as the
+          # factory_tools node; if that credential is absent the layer soft-degrades —
+          # ERROR_HANDLER_ID stays empty, _upsert_wf injects nothing, zero regression.
+          ERROR_HANDLER_ID=""
+          if [ -n "$CRED_FACTORY_MCP_ID" ] && [ "$CRED_FACTORY_MCP_ID" != "null" ]; then
+            EH_SRC="${WF_DIR}/error-handler.json"
+            if [ -f "$EH_SRC" ]; then
+              sed -e "s#@@CRED_FACTORY_MCP_ID@@#${CRED_FACTORY_MCP_ID}#g" \
+                  -e "s#@@SYSTEM_NAME@@#${SYSTEM_NAME}#g" \
+                  "$EH_SRC" > /tmp/ar-prep-error-handler.json
+              ERROR_HANDLER_ID=$(_upsert_wf "factory-master: error-handler" /tmp/ar-prep-error-handler.json yes) || ERROR_HANDLER_ID=""
+              { [ -n "$ERROR_HANDLER_ID" ] && [ "$ERROR_HANDLER_ID" != "null" ]; } \
+                && echo "INFO: error-handler workflow id=${ERROR_HANDLER_ID} — set as errorWorkflow on all workflows" \
+                || { echo "WARN: error-handler upsert failed — errorWorkflow not set this run" >&2; ERROR_HANDLER_ID=""; }
+            else
+              echo "WARN: error-handler.json not found in repo — reliability error-workflow skipped" >&2
+            fi
+          else
+            echo "WARN: no Factory MCP credential — reliability error-workflow skipped (no emit path)" >&2
+          fi
 
           # Phase F follow-up: create the per-system Postgres tables. Only n8n can reach
           # the Railway-private Postgres, so install a tiny db-setup workflow (manual

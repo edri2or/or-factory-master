@@ -11,3 +11,25 @@
 
 **Changes:** `docs/reliability-layer.md` (חדש), `.github/workflows/refresh-system-agents.yml`,
 `devplans/reliability-layer.md` (חדש).
+
+## שלב 1 — גשר ה-emit (n8n→Observability) + Error Workflow סטנדרטי
+
+הלב של הרובד: כל workflow מקבל `settings.errorWorkflow` שמצביע על workflow יחיד חדש
+(`error-handler.json`: Error Trigger → HTTP-Request) שפולט `factory.n8n.workflow_failed`
+(error+action_required → Axiom+Telegram+Linear) במקום שהכשל ייבלע ב-`onError:continueRegularOutput`.
+ההזרקה נעשית בנקודת-החנק היחידה `_upsert_wf` ב-`configure-agent-router.yml` (פעם אחת, לא ב-~20
+אתרי-קריאה), וה-error-handler מיובא ראשון כדי שה-id שלו ידוע. הגשר עצמו: route חדש
+`POST /factory/<system>/emit` בשער (`services/mcp-server/src/index.ts` + מודול טהור `emit-route.ts`)
+המשתמש מחדש **בדיוק** בשרשרת-האימות של `/factory/<system>/mcp` (`isAllowedFactorySystem`→404,
+`verifyBearer`→401, `systemRouteAllows`→403), גוזר `system`+`layer` מה-claim החתום (לא מהגוף),
+מאמת גוף קטן (`name` ב-namespace `factory.*`, severity, body מוגבל) → 400, מגביל-קצב פר-מערכת (429),
+ופולט דרך `emitEvent()` הקיים (כל הסודות בצד-השרת). n8n מאמת עם ה-credential הקיים `Factory MCP`
+(`factory-mcp-bearer`). soft-degrade: בלי ה-credential — אין הזרקה, אפס רגרסיה. 10 טסטי-יחידה
+(`emit-route.test.mjs`) + build נקי; golden רוענן; `error-handler.json` ב-`registry-exempt.txt`
+(error-sink). הוכחה חיה על or-edri-4 (deploy-mcp-server + כשל מאולץ) אחרי אישור Or.
+
+**Changes:** `services/mcp-server/src/index.ts`, `services/mcp-server/src/emit-route.ts` (חדש),
+`services/mcp-server/test/emit-route.test.mjs` (חדש),
+`templates/system/workflows/n8n/error-handler.json` (חדש),
+`templates/system/.github/workflows/configure-agent-router.yml`, `monitoring/registry-exempt.txt`,
+`tests/golden/system/MANIFEST.sha256`.
