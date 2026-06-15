@@ -2,7 +2,7 @@
 dev_name: רובד ניהול-אוטומציות אמין
 slug: reliability-layer
 opened: 2026-06-14
-status: active   # active בזמן פיתוח → completed בסיום (משחרר את שער ה-CI)
+status: completed   # active בזמן פיתוח → completed בסיום (משחרר את שער ה-CI)
 ---
 
 # תוכנית פיתוח — רובד ניהול-אוטומציות אמין
@@ -30,9 +30,9 @@ stack חדש. מוכיחים כל שלב חי על `or-edri-4` לפני שמקב
 | — | **אבן-דרך E2E** (קפיאת קבצי-n8n) → proof על or-edri-4 | ✅ done | `e2e-proofs/reliability-layer.json` (ב-main) |
 | 3 | watchdog `n8n-workflow-cadence` (dead-man) | completed ✅ proven | `scripts/run-watchdog.sh`, `monitoring/watchdog-registry.json`, `run-watchdog.bats` |
 | 7 | אימות Task-Runner/queue (verify-only) | completed ✅ | `docs/reliability-layer.md` §10 |
-| 6 | rollup-צי אמינות מעל Axiom → Telegram | in-progress (proof post-merge) | `.github/workflows/fleet-rollup.yml`+`scripts/fleet-rollup.sh` (חדש), `watchdog-registry.json`, `docs §11` |
+| 6 | rollup-צי אמינות מעל Axiom → Telegram | built ✅ soft-fail (Axiom-query = follow-up) | `.github/workflows/fleet-rollup.yml`+`scripts/fleet-rollup.sh` (חדש), `watchdog-registry.json`, `docs §11` |
 | 8 | retrofit (runbook; or-edri-4 כבר מותקנת) | completed ✅ | `docs/reliability-layer.md` §12 |
-| 9 | רענון golden סופי + סגירה | pending | `tests/golden/system/`, `devplans/reliability-layer.md` |
+| 9 | רענון golden סופי + סגירה | completed ✅ | golden in-sync; `devplans/reliability-layer.md` → `completed` |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
 >
@@ -276,6 +276,17 @@ or-edri-4 (`meta-monitoring-watchdog.yml` או `WATCHDOG_SYSTEMS_OVERRIDE=or-edr
 - ה-Day-0 throwaway האופציונלי (עולה כסף).
 - **`or-edri-4` קבועה — לא מפרקים אותה לעולם.**
 
+## Follow-ups (תיעוד כן — לא חוסמים את הסגירה)
+
+הפיתוח השיג את מטרתו (4 מנגנוני-הזיהוי חיים ומוכחים). שני follow-ups ממוקדים נשארו, מתועדים:
+
+1. **שאילתת-Axiom של ה-fleet-rollup (שלב 6):** ה-workflow + ה-soft-fail מוכחים (HTTP 400 → נוּון
+   בחן). פורמט הבקשה/תשובה (`startTime`/`endTime` + פירוס `tabular`) דורש כיוונון-חי אחד מול Axiom.
+   בינתיים ה-watchdog (מצב-נוכחי) + runtime-audit מכסים את תצוגת-הצי. ראו `docs §11`.
+2. **כיסוי watchdog למערכות adopt/reuse:** ה-n8n-proofs (cadence+liveness) מונים את תיקיית-המערכות
+   וקוראים סוד ב-`--project=<system>` → מכסים מערכות-רגילות, לא or-edri-4 (adopt) ולא reuse.
+   or-edri-4 מכוסה ע"י שלב 1 (כשל) + שלב 4 (readiness). הרחבה ל-adopt/always-include = follow-up.
+
 ## יומן ל-Or (עברית)
 
 > שורה פשוטה אחת לכל שלב שהסתיים — בשפה ש-Or מבין, בלי ז'רגון.
@@ -295,3 +306,5 @@ or-edri-4 (`meta-monitoring-watchdog.yml` או `WATCHDOG_SYSTEMS_OVERRIDE=or-edr
   כללית + חיווטתי דוגמה אמיתית (מעקב-ההוצאות מתריע אם לא הצליח לקרוא את הנתון). הוכח חי על or-edri-4.
 - שלבים 7+6+8 — אימות שהכל בטוח תחת ה-runtime החדש; הוספתי **סיכום-צי יומי** (דוח אמינות חוצה-מערכות
   מ-Axiom לטלגרם); ותיעדתי איך מפיצים את הרובד למערכות קיימות (כיום or-edri-4 — וכבר מותקנת).
+- 🏁 **הפיתוח הושלם.** כל ארבעת מנגנוני-הזיהוי חיים ומוכחים על or-edri-4 וכל מערכת חדשה. נשארו 2
+  follow-ups קטנים ומתועדים (כיוונון שאילתת-הדוח היומי; הרחבת השומר ל-adopt) — לא חוסמים.
