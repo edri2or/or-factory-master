@@ -26,12 +26,12 @@ stack חדש. מוכיחים כל שלב חי על `or-edri-4` לפני שמקב
 | 1 | גשר ה-emit + Error Workflow סטנדרטי בכל workflow | completed ✅ proven-live | `services/mcp-server/src/{index.ts,emit-route.ts}`+test, `templates/system/workflows/n8n/error-handler.json`, `templates/system/.github/workflows/configure-agent-router.yml`, `monitoring/registry-exempt.txt`, golden |
 | 4 | probe `/healthz` → `/healthz/readiness` (+סבילות 503) | completed ✅ proven-live | `.github/workflows/system-runtime-audit.yml` |
 | 2 | "אות חיות" → **מוזג לשלב 3** (refinement factory-native) | folded | — (אפס ניתוח-workflow; השומר קורא executions) |
-| 5 | assertion "רץ אבל ריק" — תבנית + דוגמה אחת | in-progress | `spend-track.json`, `configure-agent-router.yml`, `docs/reliability-layer.md`, golden |
-| — | **אבן-דרך E2E** (קפיאת קבצי-n8n) → proof על or-edri-4 | pending | `e2e-proofs/reliability-layer.json` |
+| 5 | assertion "רץ אבל ריק" — תבנית + דוגמה אחת | completed ✅ proven | `spend-track.json`, `configure-agent-router.yml`, `docs/reliability-layer.md`, golden |
+| — | **אבן-דרך E2E** (קפיאת קבצי-n8n) → proof על or-edri-4 | ✅ done | `e2e-proofs/reliability-layer.json` (ב-main) |
 | 3 | watchdog `n8n-workflow-cadence` (dead-man) | completed ✅ proven | `scripts/run-watchdog.sh`, `monitoring/watchdog-registry.json`, `run-watchdog.bats` |
-| 7 | אימות Task-Runner/queue (verify-only) | pending | `docs/reliability-layer.md` |
-| 6 | rollup-צי מעל Axiom → Telegram/Linear | pending | `.github/workflows/fleet-rollup.yml`(חדש), סקריפט שאילתה, `docs/observability.md` |
-| 8 | retrofit למערכות קיימות (post-merge, Or-gated) | pending | `docs/reliability-layer.md` (runbook) |
+| 7 | אימות Task-Runner/queue (verify-only) | completed ✅ | `docs/reliability-layer.md` §10 |
+| 6 | rollup-צי אמינות מעל Axiom → Telegram | in-progress (proof post-merge) | `.github/workflows/fleet-rollup.yml`+`scripts/fleet-rollup.sh` (חדש), `watchdog-registry.json`, `docs §11` |
+| 8 | retrofit (runbook; or-edri-4 כבר מותקנת) | completed ✅ | `docs/reliability-layer.md` §12 |
 | 9 | רענון golden סופי + סגירה | pending | `tests/golden/system/`, `devplans/reliability-layer.md` |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
@@ -291,3 +291,7 @@ or-edri-4 (`meta-monitoring-watchdog.yml` או `WATCHDOG_SYSTEMS_OVERRIDE=or-edr
   הרבה פחות סיכון. (מתממש בשלב 3.)
 - שלב 3 (הושלם + הוכח ✅) — ה"שומר" יודע עכשיו לזהות קרון שהפסיק לרוץ בשקט. 51/51 בדיקות עוברות,
   והרצתי אותו חי על הצי — נקי, אפס אזעקות-שווא. (יחד עם שלב 1 שתופס נפילות — הצי מכוסה.)
+- שלב 5 (הושלם + הוכח ✅) — תופס "רץ אבל לא עשה כלום" (כשל שנבלע ונראה כהצלחה). תיעדתי תבנית
+  כללית + חיווטתי דוגמה אמיתית (מעקב-ההוצאות מתריע אם לא הצליח לקרוא את הנתון). הוכח חי על or-edri-4.
+- שלבים 7+6+8 — אימות שהכל בטוח תחת ה-runtime החדש; הוספתי **סיכום-צי יומי** (דוח אמינות חוצה-מערכות
+  מ-Axiom לטלגרם); ותיעדתי איך מפיצים את הרובד למערכות קיימות (כיום or-edri-4 — וכבר מותקנת).

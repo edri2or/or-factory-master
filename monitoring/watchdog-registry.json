@@ -35,6 +35,17 @@
       "enabled": true
     },
     {
+      "id": "fleet-reliability-rollup",
+      "name_he": "סיכום-צי אמינות (Axiom)",
+      "type": "cron-workflow",
+      "layer": "factory",
+      "proof_method": "gh-run-freshness",
+      "cadence": { "cron": "30 6 * * *", "tolerance_hours": 30 },
+      "evidence": { "repo": "edri2or/or-factory-master", "workflow_file": "fleet-rollup.yml" },
+      "stage": 1,
+      "enabled": true
+    },
+    {
       "id": "bs-incidents-to-telegram",
       "name_he": "תקריות Better Stack לטלגרם",
       "type": "cron-workflow",

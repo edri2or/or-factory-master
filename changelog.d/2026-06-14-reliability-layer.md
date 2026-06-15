@@ -76,3 +76,19 @@ status=success למרות שלא עשה כלום (לא ה-Error-Workflow ולא 
 **Changes:** `templates/system/workflows/n8n/spend-track.json`,
 `templates/system/.github/workflows/configure-agent-router.yml`, `docs/reliability-layer.md`,
 `tests/golden/system/MANIFEST.sha256`.
+
+## שלבים 7+6+8 — אימות runner, סיכום-צי (Axiom), ו-retrofit runbook
+
+**שלב 7 (verify-only):** כל צמתי-הרובד הם HTTP-Request (לא Code/env), רצים ירוק תחת ה-Task-Runner
+החי של n8n 2.x על or-edri-4 (error-handler בשלב 1, assertion בשלב 5), binary ב-DB. אין שינוי deploy.
+מתועד ב-`docs/reliability-layer.md §10`. **שלב 6 (fleet-rollup):** `fleet-rollup.yml` (יומי 06:30 UTC
++ manual) + `scripts/fleet-rollup.sh` שואלים את Axiom (read-only) על אירועי-האמינות בחלון חוצה-מערכות
+ופולטים דייג'סט יחיד דרך `emit-event.sh` (צי-נקי=info→Axiom; אירועים=warning→Telegram). soft-fail מלא
+(token בלי query-scope / תשובה לא-נפרסת → note מנוון, לעולם לא נכשל). המשלים ההיסטורי ל-watchdog
+(מצב-נוכחי) ול-runtime-audit. נרשם ב-`watchdog-registry.json` (gh-run-freshness). Grafana = אופציה דחויה.
+**שלב 8 (retrofit):** runbook ב-`docs §12`: מערכות חדשות נולדות עם הרובד (תבניות מקובעות ב-main);
+מערכת קיימת מקבלת אותו בלי re-provision דרך `refresh-system-agents.yml` (Or-gated). or-edri-4 (היחידה
+החיה כיום) כבר מותקנת (הוכחות שלבים 1+5).
+
+**Changes:** `.github/workflows/fleet-rollup.yml` (חדש), `scripts/fleet-rollup.sh` (חדש),
+`monitoring/watchdog-registry.json`, `docs/reliability-layer.md`.
