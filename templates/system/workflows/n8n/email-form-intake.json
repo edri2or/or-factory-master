@@ -18,8 +18,8 @@
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
       "position": [
-        220,
-        280
+        200,
+        300
       ]
     },
     {
@@ -29,16 +29,53 @@
       "type": "n8n-nodes-base.manualTrigger",
       "typeVersion": 1,
       "position": [
-        220,
+        200,
         460
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://oauth2.googleapis.com/token",
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "client_id",
+              "value": "={{ $env.GMAIL_OAUTH_CLIENT_ID }}"
+            },
+            {
+              "name": "client_secret",
+              "value": "={{ $env.GMAIL_OAUTH_CLIENT_SECRET }}"
+            },
+            {
+              "name": "refresh_token",
+              "value": "={{ $env.GMAIL_OAUTH_REFRESH_TOKEN }}"
+            },
+            {
+              "name": "grant_type",
+              "value": "refresh_token"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "e0000000-0000-0000-0000-000000000012",
+      "name": "Mint Gmail Token",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        420,
+        380
       ]
     },
     {
       "parameters": {
         "method": "GET",
         "url": "https://gmail.googleapis.com/gmail/v1/users/me/messages",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "googleOAuth2Api",
         "sendQuery": true,
         "queryParameters": {
           "parameters": [
@@ -52,6 +89,15 @@
             }
           ]
         },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Mint Gmail Token').first().json.access_token }}"
+            }
+          ]
+        },
         "options": {}
       },
       "id": "e0000000-0000-0000-0000-000000000003",
@@ -59,15 +105,9 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        440,
-        360
-      ],
-      "credentials": {
-        "googleOAuth2Api": {
-          "id": "@@CRED_GMAIL_OAUTH_ID@@",
-          "name": "Google OAuth2 API"
-        }
-      }
+        640,
+        380
+      ]
     },
     {
       "parameters": {
@@ -79,16 +119,23 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        640,
-        360
+        840,
+        380
       ]
     },
     {
       "parameters": {
         "method": "GET",
         "url": "=https://gmail.googleapis.com/gmail/v1/users/me/messages/{{ $json.message_id }}?format=full",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "googleOAuth2Api",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Mint Gmail Token').first().json.access_token }}"
+            }
+          ]
+        },
         "options": {}
       },
       "id": "e0000000-0000-0000-0000-000000000005",
@@ -96,15 +143,9 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        840,
-        360
-      ],
-      "credentials": {
-        "googleOAuth2Api": {
-          "id": "@@CRED_GMAIL_OAUTH_ID@@",
-          "name": "Google OAuth2 API"
-        }
-      }
+        1040,
+        380
+      ]
     },
     {
       "parameters": {
@@ -116,8 +157,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1040,
-        360
+        1240,
+        380
       ]
     },
     {
@@ -148,16 +189,23 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        1240,
-        360
+        1440,
+        380
       ]
     },
     {
       "parameters": {
         "method": "GET",
         "url": "=https://gmail.googleapis.com/gmail/v1/users/me/messages/{{ $json.message_id }}/attachments/{{ $json.attachment_id }}",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "googleOAuth2Api",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Mint Gmail Token').first().json.access_token }}"
+            }
+          ]
+        },
         "options": {}
       },
       "id": "e0000000-0000-0000-0000-000000000008",
@@ -165,15 +213,9 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1460,
-        280
-      ],
-      "credentials": {
-        "googleOAuth2Api": {
-          "id": "@@CRED_GMAIL_OAUTH_ID@@",
-          "name": "Google OAuth2 API"
-        }
-      }
+        1660,
+        300
+      ]
     },
     {
       "parameters": {
@@ -185,8 +227,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1660,
-        280
+        1860,
+        300
       ]
     },
     {
@@ -207,8 +249,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1860,
-        260
+        2060,
+        280
       ],
       "credentials": {
         "openRouterApi": {
@@ -236,8 +278,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        2060,
-        420
+        2260,
+        440
       ],
       "credentials": {
         "openRouterApi": {
@@ -257,8 +299,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2260,
-        280
+        2460,
+        300
       ]
     },
     {
@@ -279,8 +321,8 @@
       "type": "@n8n/n8n-nodes-langchain.chainLlm",
       "typeVersion": 1.5,
       "position": [
-        2480,
-        280
+        2680,
+        300
       ]
     },
     {
@@ -295,8 +337,8 @@
       "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
       "typeVersion": 1,
       "position": [
-        2420,
-        480
+        2620,
+        500
       ],
       "credentials": {
         "openRouterApi": {
@@ -315,8 +357,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2700,
-        280
+        2900,
+        300
       ]
     },
     {
@@ -329,8 +371,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1460,
-        480
+        1660,
+        500
       ]
     },
     {
@@ -348,8 +390,8 @@
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
       "position": [
-        2920,
-        360
+        3120,
+        380
       ],
       "credentials": {
         "telegramApi": {
@@ -364,7 +406,7 @@
       "main": [
         [
           {
-            "node": "List Form Emails",
+            "node": "Mint Gmail Token",
             "type": "main",
             "index": 0
           }
@@ -372,6 +414,17 @@
       ]
     },
     "Manual Run": {
+      "main": [
+        [
+          {
+            "node": "Mint Gmail Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mint Gmail Token": {
       "main": [
         [
           {

@@ -82,25 +82,14 @@ jobs:
 
           # 2. Validate the shared refresh token DIRECTLY against Google (the real
           #    "will it work" signal — independent of n8n's opaque internal state).
-          #    Capture the freshly-minted access_token + its lifetime so the credential
-          #    is stored ALREADY-CONNECTED (real access_token + correct expiry_date), not
-          #    a refresh_token with an empty token. n8n's OAuth2 helper (used by both the
-          #    dedicated nodes AND the HTTP Request predefinedCredentialType path) signs
-          #    with this access_token and refreshes it from the refresh_token on expiry.
           TOKEN_OK=0
-          ACCESS_TOKEN=""
-          EXPIRES_IN=3599
           if [ -n "$RT" ]; then
             GH=$(curl -sS -o /tmp/gob-tok.json -w '%{http_code}' --max-time 20 \
               -X POST "https://oauth2.googleapis.com/token" \
               -d "client_id=${CID}" -d "client_secret=${CSEC}" \
               -d "refresh_token=${RT}" -d "grant_type=refresh_token" || echo "000")
             if [ "$GH" = "200" ] && jq -e '.access_token' /tmp/gob-tok.json >/dev/null 2>&1; then
-              TOKEN_OK=1
-              ACCESS_TOKEN=$(jq -r '.access_token' /tmp/gob-tok.json)
-              EXPIRES_IN=$(jq -r '.expires_in // 3599' /tmp/gob-tok.json)
-              echo "::add-mask::${ACCESS_TOKEN}"
-              echo "PASS: shared refresh token is valid at Google."
+              TOKEN_OK=1; echo "PASS: shared refresh token is valid at Google."
             else
               echo "WARN: shared refresh token did not validate at Google (HTTP $GH) — will fall back to consent."
             fi
@@ -137,16 +126,10 @@ jobs:
           echo "PASS: n8n owner login."
 
           # 4. Build the credential data. Pre-load oauthTokenData when the shared
-          #    token validated, so the credential is authorized without a click. Store a
-          #    REAL access_token + a real expiry_date (ms since epoch) so n8n signs with it
-          #    immediately and refreshes from the refresh_token on expiry. (Was
-          #    access_token:"" + expiry_date:0 — but expiry_date:0 is falsy, so n8n deemed
-          #    the empty token valid forever and never refreshed: every HTTP-Request OAuth2
-          #    call failed with "Unable to sign without access token". Proven live, or-edri-4.)
+          #    token validated, so the credential is authorized without a click.
           if [ "$TOKEN_OK" = "1" ]; then
-            EXPIRY_MS=$(( ($(date +%s) + EXPIRES_IN) * 1000 ))
-            DATA=$(jq -cn --arg cid "$CID" --arg csec "$CSEC" --arg sc "$SCOPE" --arg rt "$RT" --arg at "$ACCESS_TOKEN" --argjson exp "$EXPIRY_MS" \
-              '{clientId:$cid, clientSecret:$csec, scope:$sc, sendAdditionalBodyProperties:false, additionalBodyProperties:"", oauthTokenData:{access_token:$at, refresh_token:$rt, scope:$sc, token_type:"Bearer", expiry_date:$exp}}')
+            DATA=$(jq -cn --arg cid "$CID" --arg csec "$CSEC" --arg sc "$SCOPE" --arg rt "$RT" \
+              '{clientId:$cid, clientSecret:$csec, scope:$sc, sendAdditionalBodyProperties:false, additionalBodyProperties:"", oauthTokenData:{access_token:"", refresh_token:$rt, scope:$sc, token_type:"Bearer", expiry_date:0}}')
           else
             DATA=$(jq -cn --arg cid "$CID" --arg csec "$CSEC" --arg sc "$SCOPE" \
               '{clientId:$cid, clientSecret:$csec, scope:$sc, sendAdditionalBodyProperties:false, additionalBodyProperties:""}')
