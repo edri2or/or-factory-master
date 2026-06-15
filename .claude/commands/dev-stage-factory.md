@@ -66,6 +66,9 @@ Before anything, read:
    devplan CI gate satisfied).
 3. `docs/live-test-loop.md` — the standing-proving-system method in full (`or-edri-4` first,
    then lock into the template; and how it avoids the retired reference-system's decay).
+4. `docs/parallel-development.md` — running two developments at once safely: short-lived
+   branches, the `live-system-<system>` queue that serializes work on `or-edri-4`, and why
+   the factory stays non-strict (no merge queue).
 
 ## Instructions
 
