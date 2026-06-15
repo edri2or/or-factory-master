@@ -20,7 +20,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
 | 1 | בניית ה-workflow + skill + בוקקיפינג (סטטי) | completed | `templates/system/workflows/n8n/email-form-intake.json`, `templates/system/.claude/skills/email-form-intake/SKILL.md`, `scripts/gen-workflow-skill.sh`, `monitoring/registry-exempt.txt`, `devplans/email-form-intake.md`, `changelog.d/2026-06-15-email-form-intake.md`, `tests/golden/system/MANIFEST.sha256` |
-| 2 | חיווט ל-configure-agent-router.yml (סטטי) | in-progress | `templates/system/.github/workflows/configure-agent-router.yml`, `tests/golden/system/MANIFEST.sha256` |
+| 2 | חיווט ל-configure-agent-router.yml (סטטי) | completed | `templates/system/.github/workflows/configure-agent-router.yml`, `tests/golden/system/MANIFEST.sha256` |
 | 3 | הוכחה חיה על or-edri-4 (תפקודית + E2E) | pending | `e2e-proofs/email-form-intake.json` |
 | 4 | קיבוע (merge) + סגירה | pending | `devplans/email-form-intake.md` |
 
@@ -80,7 +80,7 @@ Google API מותאמות), בלי שינוי scope ובלי תלות בטיפו
 - [x] דרגרדציה חיננית: ייבוא רק אם הקרדנציאל קיים (+OpenRouter+Telegram+chat id); אחרת skip+warn.
 - [x] golden מרוענן (configure-agent-router.yml תחת templates/system/); yamllint נקי;
       הרצת ה-sed מקומית על ה-JSON מאמתת אפס `@@…@@` שנותרו.
-- [ ] שערי Playground tests + Changelog gates ירוקים ב-CI על ה-commit החדש.
+- [x] שערי Playground tests + Changelog gates ירוקים ב-CI על ה-commit החדש (bc71f3e).
 
 **הוכחה תפקודית (באותו שלב):** סטטי — yamllint נקי; הרצת sed יבשה על ה-JSON מחזירה אפס
 placeholders ו-JSON תקין עם ה-credentials מוחלפים. ייבוא חי ל-n8n הוא שלב 3.
