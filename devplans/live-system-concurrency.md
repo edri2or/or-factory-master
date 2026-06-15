@@ -23,7 +23,7 @@ status: active
 
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
-| 1 | מיפוי `live-system-<system>` + `queue: max` על ארבעת ה-workflows | completed | `.github/workflows/{prove-on-test-system,refresh-system-agents,e2e-verify,deploy-verify}.yml` |
+| 1 | מיפוי `live-system-<system>` + `queue: max` על ארבעת ה-workflows | completed | `.github/workflows/{prove-on-test-system,refresh-system-agents,e2e-verify,deploy-verify,playground-tests}.yml` |
 | 2 | אימות-תור חי על or-edri-4 (post-merge) | pending | — (דיספאצ' חי, ללא קוד) |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
@@ -38,6 +38,7 @@ status: active
 - [x] כל הארבעה עם `cancel-in-progress: false` (חובה ל-`queue: max`, אחרת שגיאת אימות).
 - [x] התאומים תחת `templates/system/.github/workflows/` **לא** נגעו (golden לא מושפע; backfill עתידי).
 - [x] שערים סטטיים ירוקים (yamllint על `.github/workflows/` + `templates/system/.github/workflows/`, Changelog gates, golden-sync no-op).
+- [x] שער ה-`actionlint` (בתוך "Playground tests") עובר: הוסף `-ignore` ממוקד ל-false-positive של `queue` (actionlint 1.7.7 עוד לא מכיר את המפתח).
 
 **הוכחה תפקודית (באותו שלב):** `yamllint` נקי על ארבעת הקבצים ועל כל ספריות ה-CI (אומת מקומית).
 תחביר `queue: max` אומת מול תיעוד GitHub (GA 2026-05-07): מפתח-אח תחת `concurrency`, FIFO עד 100
@@ -47,9 +48,9 @@ status: active
 
 **הוכחת E2E (artifact):** לא-התנהגותי (factory workflows, לא `templates/system/**` ולא קבצי-בוט).
 
-**הערת התקדמות אחרונה:** הקוד הושלם. ארבעת הבלוקים הוחלו (הוספה ב-prove/refresh, מיפוי ב-e2e/deploy), `yamllint` נקי, golden-sync no-op. נשאר שלב 2 (אימות-תור חי) שרץ אחרי המיזוג.
+**הערת התקדמות אחרונה:** הקוד הושלם. ארבעת הבלוקים הוחלו (הוספה ב-prove/refresh, מיפוי ב-e2e/deploy), `yamllint` נקי, golden-sync no-op. ב-CI הראשון (PR #470) שער ה-`actionlint` נפל כי גרסה 1.7.7 לא מכירה את `queue` — תוקן ב-`-ignore` ממוקד בצעד ה-actionlint. נשאר שלב 2 (אימות-תור חי) שרץ אחרי המיזוג.
 
-**שינוי תוכנית:** —
+**שינוי תוכנית:** ב-CI הראשון התגלה ש-`actionlint` 1.7.7 (צעד בתוך "Playground tests") פוסל את `queue: max` כ-`unexpected key for "concurrency"` — המפתח חוקי (GA 2026-05-07) אבל הגרסה הנעוצה מקדימה אותו. הפתרון: `-ignore 'unexpected key "queue" for "concurrency" section'` ממוקד בצעד ה-actionlint ב-`playground-tests.yml` (לא משדרגים את הגרסה כדי לא לפתוח false-positives אחרים). מוסר כשמשדרגים actionlint לגרסה שמכירה `queue`.
 
 ---
 
