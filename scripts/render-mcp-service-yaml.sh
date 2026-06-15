@@ -171,7 +171,11 @@ emit_secret AUTH_TOKEN n8n-mcp-internal-auth-token
 emit_secret MCP_AUTH_TOKEN n8n-mcp-internal-auth-token
 
 # ── Sidecar container: workspacemcp (Google Workspace MCP; no port → localhost) ──
-# Single-user, read-only (v1), shared Google identity. The boot shim (entrypoint.sh)
+# Single-user, WRITE-enabled (NOT read-only), shared Google identity — see
+# WORKSPACE_MCP_READ_ONLY="0" below. The shared token is write-scoped (incl. Drive
+# write via update_drive_file); write safety is the upstream gate
+# (OAUTH_ALLOWED_EMAILS + the claude.ai tool/Research controls), not a read-only
+# sidecar. The boot shim (entrypoint.sh)
 # pre-seeds the credential from the gmail-oauth-* secrets, then launches
 # workspace-mcp in streamable-http on :3002. Legacy single-user mode has no
 # transport auth of its own, so localhost-only containment is the boundary (same

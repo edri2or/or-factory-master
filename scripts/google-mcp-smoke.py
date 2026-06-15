@@ -18,6 +18,9 @@ Steps (each asserted):
      would need calendar.readonly, which this write-scoped token deliberately lacks.
   5. tools/list also carries the Drive + Docs tool groups (search_drive_files,
      search_docs) — proves WORKSPACE_MCP_TOOLS="calendar gmail drive docs" landed.
+  5b. tools/list also includes update_drive_file — the Drive WRITE tool
+     (trash/move/rename/Google-native content edit) exposed to claude.ai. Presence
+     only; never called here (calling it would mutate the real shared Drive).
   6. tools/call search_drive_files(...)  -> real Drive data, NOT an auth prompt —
      proves the rotated 6-scope shared token (auth/drive + auth/documents added
      2026-06-10) refreshes cleanly and the new scopes are live.
@@ -168,6 +171,20 @@ if missing:
           "WORKSPACE_MCP_TOOLS does not include drive+docs", json.dumps(names)[:600])
 print("PASS [5/6] tools/list carries the Drive + Docs groups "
       "(search_drive_files, search_docs)")
+
+# ── 5b. Drive WRITE capability is exposed (update_drive_file) ──
+# update_drive_file is the single tool behind all four Drive write actions: trash
+# (trashed=true, reversible — no hard-delete exists in the package), move
+# (add_parents/remove_parents), rename (name), and in-place content edit (Google
+# Docs/Sheets/Slides only). PRESENCE-ONLY — we never CALL it here; calling it would
+# mutate the real shared Drive. This closes "presence-in-code != presence-in-runtime":
+# it proves the write tool is actually served by the live sidecar, not just shipped.
+if "update_drive_file" not in names:
+    _fail("tools/list did not include update_drive_file — the Drive WRITE tool is "
+          "not exposed (check WORKSPACE_MCP_TOOLS includes 'drive' and the sidecar "
+          "is not in --read-only mode)", json.dumps(names)[:600])
+print("PASS [5b/6] tools/list includes update_drive_file (Drive WRITE: "
+      "trash/move/rename/Google-native edit — presence only, not called)")
 
 # ── 6. real Drive read — proves the rotated 6-scope token is live ──
 ok, text = tool_call("search_drive_files",

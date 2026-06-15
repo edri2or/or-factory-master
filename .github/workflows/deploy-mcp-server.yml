@@ -71,13 +71,22 @@ jobs:
       # Which systems may reach the shared Google Workspace MCP sidecar ("*" =
       # any valid system name; the Google identity is shared, so there is no
       # per-system reachability gate — the per-system bearer is the boundary).
+      # Deliberately NOT pinned to one system: pinning would 404 other systems'
+      # legitimate /workspace/<name>/mcp access and add no real security (the
+      # OAUTH_ALLOWED_EMAILS allowlist below is the gate that limits write access).
       WORKSPACE_ALLOWED_SYSTEMS: "*"
       # Which systems' factory-runtime bearers may use the tenant-locked
       # factory telemetry subset at /factory/<system>/mcp ("*" = any valid
       # system name; each bearer is hard-bound to one system). Empty = off.
       FACTORY_TOOLS_ALLOWED_SYSTEMS: "*"
       # Google-login email allowlist for the operator OAuth flow (gateway-native
-      # Google IdP). Only these emails may authenticate interactively.
+      # Google IdP). Only these emails may authenticate interactively — and since
+      # the Workspace sidecar exposes Drive WRITE tools (update_drive_file:
+      # trash/move/rename/Google-native content edit) reachable over the operator
+      # `oauth` bearer, this allowlist is THE gate on who can drive those writes.
+      # Keep it to Or only. Empty fails-closed (locks everyone out); the preflight
+      # guard step below fails the deploy loudly if it ever regresses to empty.
+      # See docs/google-identities.md › "Drive write tools exposed to claude.ai".
       OAUTH_ALLOWED_EMAILS: "edri2or@gmail.com"
       # Cloud Run RUNTIME SA = a dedicated least-privilege identity
       # (mcp-gateway-runtime), created out-of-band with READ-ONLY roles only:
@@ -95,6 +104,21 @@ jobs:
 
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
+
+      - name: Preflight — OAuth login allowlist must be set (Drive write gate)
+        run: |
+          set -euo pipefail
+          # OAUTH_ALLOWED_EMAILS is the single gate on who may drive the Workspace
+          # sidecar's Drive WRITE tools (update_drive_file: trash/move/rename/edit).
+          # An empty value makes the gateway fail-closed (nobody can log in) but the
+          # deploy would still "succeed" — a silent lockout that no smoke test (which
+          # auths with the admin secret, not the OAuth flow) would catch. Fail loudly.
+          trimmed="$(printf '%s' "${OAUTH_ALLOWED_EMAILS:-}" | tr -d '[:space:]')"
+          if [ -z "${trimmed}" ]; then
+            echo "::error::OAUTH_ALLOWED_EMAILS is empty — the gateway would fail-closed (lock everyone out) and the exposed Drive write tools would have no operator gate. Set it to Or's email."
+            exit 1
+          fi
+          echo "OAuth login allowlist is set (Drive write gate present)."
 
       - name: Authenticate to GCP via WIF
         id: wif-auth
