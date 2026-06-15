@@ -1,0 +1,14 @@
+{
+  "schema": "e2e-proof/v1",
+  "slug": "reliability-layer",
+  "repo": "edri2or/or-factory-master",
+  "run_id": "27517012216",
+  "content_hash": "sha256:4ad9d760cf1284f0fc35895f9e8d9164fc12011e0bf4415ed23eaaccdc99b9cb",
+  "system": "or-edri-4",
+  "domain": "n8n-or-edri-4.or-infra.com",
+  "execution_id": "549",
+  "reply_excerpt": "שם המערכת שלך הוא `or-edri-4`.",
+  "result": "pass",
+  "executed_at": "2026-06-15T00:27:59Z",
+  "signature": "hmac-sha256:5326937c963e8756c1f7b9031d944221868a2f9898d6fcf0b41fb6e72f4132e2"
+}
