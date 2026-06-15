@@ -28,7 +28,7 @@ stack חדש. מוכיחים כל שלב חי על `or-edri-4` לפני שמקב
 | 2 | "אות חיות" → **מוזג לשלב 3** (refinement factory-native) | folded | — (אפס ניתוח-workflow; השומר קורא executions) |
 | 5 | assertion "רץ אבל ריק" — תבנית + דוגמה אחת | pending | `docs/reliability-layer.md`, workflow מייצג אחד, golden |
 | — | **אבן-דרך E2E** (קפיאת קבצי-n8n) → proof על or-edri-4 | pending | `e2e-proofs/reliability-layer.json` |
-| 3 | watchdog `n8n-workflow-cadence` (dead-man) | pending | `scripts/run-watchdog.sh`, `monitoring/watchdog-registry.json`, טסט |
+| 3 | watchdog `n8n-workflow-cadence` (dead-man) | in-progress | `scripts/run-watchdog.sh`, `monitoring/watchdog-registry.json`, `run-watchdog.bats` |
 | 7 | אימות Task-Runner/queue (verify-only) | pending | `docs/reliability-layer.md` |
 | 6 | rollup-צי מעל Axiom → Telegram/Linear | pending | `.github/workflows/fleet-rollup.yml`(חדש), סקריפט שאילתה, `docs/observability.md` |
 | 8 | retrofit למערכות קיימות (post-merge, Or-gated) | pending | `docs/reliability-layer.md` (runbook) |
@@ -168,17 +168,18 @@ paths=workflows/n8n,.github/workflows/configure-agent-router.yml`), ואז `e2e-
 ### שלב 3 — watchdog `n8n-workflow-cadence` (dead-man)
 
 **Acceptance:**
-- [ ] `run-watchdog.sh`: `_n8n_wf_last_age_h` + `proof_n8n_workflow_cadence` (גיל >
-      `max_age_hours` → 🔴), מחווט ל-dispatch לפי `proof_method`.
-- [ ] רשומת `system-n8n-cadence` ב-`watchdog-registry.json` עם `evidence.expected` פר-קרון.
-- [ ] טסט מבוסס-fixture (stale→🔴, fresh→✅).
+- [x] `run-watchdog.sh`: `_n8n_wf_last_age_h` + `proof_n8n_workflow_cadence` (גיל >
+      `max_age_hours` → 🔴), מחווט ל-dispatch לפי `proof_method` (`n8n-workflow-cadence`).
+- [x] רשומת `system-n8n-cadence` ב-`watchdog-registry.json` עם `evidence.expected` פר-קרון.
+- [x] טסט מבוסס-fixture (fresh→✅, stale→🔴, unregistered→דילוג) — 51/51 bats עוברים, shellcheck נקי.
 
-**הוכחה תפקודית (באותו שלב):** `WATCHDOG_SYSTEMS_OVERRIDE=or-edri-4 bash scripts/run-watchdog.sh`
-→ קו cadence ✅; הטסט מוכיח stale→🔴. *לא-התנהגותי.*
+**הוכחה תפקודית (באותו שלב):** 3 טסטי-bats עוברים (כולל stale→🔴). live: הרצת ה-watchdog על
+or-edri-4 (`meta-monitoring-watchdog.yml` או `WATCHDOG_SYSTEMS_OVERRIDE=or-edri-4`) → קו cadence ✅.
 
 **הוכחת E2E (artifact):** לא-התנהגותי (scripts + monitoring).
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** מומש + טסטים ירוקים. נשאר: CI ירוק → מיזוג → הרצת watchdog live לאימות
+קו ה-cadence על or-edri-4.
 
 **שינוי תוכנית:** ה-watchdog כבר כולל `n8n-workflow-liveness` (תופס "מעולם-לא-רץ" + "אחרון
 נכשל"). השלב מוסיף רק את ממד ה-cadence/staleness — לא בנייה מאפס.

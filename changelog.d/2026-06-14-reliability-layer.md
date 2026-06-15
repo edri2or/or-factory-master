@@ -44,3 +44,19 @@ readiness לא נתמך (404 ב-n8n ישן) — נפילה-לאחור ל-`/healt
 תיתן אזעקת-שווא. אומת חי: or-edri-4 מגיש `/healthz/readiness` → 200. שינוי פקטורי-בלבד (אין golden/E2E).
 
 **Changes:** `.github/workflows/system-runtime-audit.yml`.
+
+## שלב 3 — watchdog `n8n-workflow-cadence` (dead-man לקרונים)
+
+מימוש המאוחד של שלבים 2+3 (ראו devplan — ה-heartbeat-node פר-קרון הוחלף בקריאת-executions
+מרכזית). ה-watchdog מקבל ממד **cadence**: מזהה קרון שירה פעם ואז **הפסיק לרוץ בשקט** (הריצה
+האחרונה success, אבל ישנה). `scripts/run-watchdog.sh`: `_n8n_wf_last_age_h` (גיל הריצה האחרונה
+מאותה קריאת `/executions?workflowId=&limit=1`, מול `$NOW` ה-pinnable) + `proof_n8n_workflow_cadence`
+(לכל מערכת, לכל workflow פעיל מתוזמן עם `max_age_hours` רשום: גיל > החלון → 🚨). רשומת
+`system-n8n-cadence` ב-`watchdog-registry.json` (stage 4) עם חלונות פר-קרון (DB Vacuum 192ש;
+spend-track/pending-actions-cleanup/file-catalog-refresh 3ש; style-refresh/tg-proactive 30ש). משלים
+את ה-`n8n-workflow-liveness` הקיים (שתופס "מעולם-לא-רץ" + "אחרון נכשל") — יחד מכסים כל מצבי-ההיעדר
+**בלי לגעת באף workflow** (factory-native). 3 טסטי-bats (fresh→✅, stale→🚨, unregistered→דילוג);
+51/51 עוברים, shellcheck נקי.
+
+**Changes:** `scripts/run-watchdog.sh`, `monitoring/watchdog-registry.json`,
+`scripts/tests/run-watchdog.bats`.

@@ -207,6 +207,26 @@
       "enabled": true
     },
     {
+      "id": "system-n8n-cadence",
+      "name_he": "קצב הרצה של קרונים (dead-man)",
+      "type": "n8n-workflows",
+      "layer": "system",
+      "proof_method": "n8n-workflow-cadence",
+      "evidence": {
+        "systems_folder": "123180924297",
+        "expected": {
+          "factory-master: DB Vacuum": 192,
+          "factory-master: spend-track": 3,
+          "factory-master: pending-actions-cleanup": 3,
+          "factory-master: style-refresh": 30,
+          "factory-master: tg-proactive": 30,
+          "factory-master: file-catalog-refresh": 3
+        }
+      },
+      "stage": 4,
+      "enabled": true
+    },
+    {
       "id": "system-branch-protection",
       "name_he": "הגנת-ענף במערכות",
       "type": "system-github",

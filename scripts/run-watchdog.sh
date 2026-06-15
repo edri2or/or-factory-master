@@ -433,6 +433,36 @@ _n8n_wf_exec_status() {
   esac
 }
 
+# Echo one workflow's latest-execution AGE in hours, or: none | unresolvable.
+# Same /executions?workflowId=&limit=1 call as _n8n_wf_exec_status, but reads the
+# timestamp (stoppedAt, else startedAt) and ages it against $NOW (WATCHDOG_NOW-
+# pinnable for deterministic tests). This is the dead-man's-switch dimension the
+# status-only liveness check misses: a cron that ran, then silently stopped firing.
+_n8n_wf_last_age_h() {
+  local sys="$1" wfid="$2" resp cnt ts epoch
+  if [ -n "${WATCHDOG_FIXTURE_DIR:-}" ]; then
+    local fx="${WATCHDOG_FIXTURE_DIR}/n8n_wfexec_${sys}_${wfid}.json"
+    [ -f "$fx" ] || { echo "unresolvable"; return; }
+    resp=$(cat "$fx")
+  else
+    local key body http
+    key=$(gcloud secrets versions access latest --secret="n8n-api-key" --project="$sys" 2>/dev/null) || { echo "unresolvable"; return; }
+    [ -n "$key" ] || { echo "unresolvable"; return; }
+    body=$(mktemp)
+    http=$(curl -sS -m 15 -o "$body" -w '%{http_code}' \
+      -H "X-N8N-API-KEY: ${key}" -H "accept: application/json" \
+      "https://n8n-${sys}.or-infra.com/api/v1/executions?workflowId=${wfid}&limit=1" 2>/dev/null) || http="000"
+    case "$http" in 2*) resp=$(cat "$body") ;; *) rm -f "$body"; echo "unresolvable"; return ;; esac
+    rm -f "$body"
+  fi
+  cnt=$(jq -r '.data | length' <<<"$resp" 2>/dev/null || echo "0")
+  [ "$cnt" = "0" ] && { echo "none"; return; }
+  ts=$(jq -r '.data[0].stoppedAt // .data[0].startedAt // empty' <<<"$resp" 2>/dev/null)
+  [ -n "$ts" ] || { echo "unresolvable"; return; }
+  epoch=$(date -d "$ts" +%s 2>/dev/null) || { echo "unresolvable"; return; }
+  echo $(( (NOW - epoch) / 3600 ))
+}
+
 # Per-system per-workflow verdict. Echoes: ok | bad:<names> | none(unresolvable)
 _n8n_workflow_liveness_per_system() {
   local sys="$1" wfjson checked=0 badnames="" id name active sched est
@@ -488,6 +518,73 @@ proof_n8n_workflow_liveness() {
     R_STATUS="ok"; R_DETAIL_HE="${total} מערכות: כל ה-workflows הפעילים עם ריצה תקינה · ${unkc} ❓"
   else
     R_STATUS="unknown"; R_DETAIL_HE="${total} מערכות — workflows לא ניתנים-לאימות (❓)"
+  fi
+}
+
+# Per-system per-workflow CADENCE verdict (dead-man's-switch). Echoes:
+#   ok | stale:<names> | none
+# Only ACTIVE, SCHEDULE-triggered workflows that have a registered expected
+# max_age_hours (evidence.expected keyed by workflow name) are checked. A workflow
+# with no registered cadence is skipped; "never ran"/unresolvable is left to the
+# liveness proof — this one flags only a cron that DID run but is now OLDER than
+# its window (silently stopped firing).
+_n8n_workflow_cadence_per_system() {
+  local sys="$1" expected="$2" wfjson checked=0 stalenames="" id name active sched age maxh
+  wfjson=$(_n8n_workflows_json "$sys")
+  [ -n "$wfjson" ] || { echo "none"; return; }
+  while IFS=$'\t' read -r id name active sched; do
+    [ -n "$id" ] || continue
+    [ "$active" = "true" ] || continue
+    [ "$sched" = "true" ] || continue
+    maxh=$(jq -r --arg n "$name" '.[$n] // empty' <<<"$expected" 2>/dev/null)
+    [ -n "$maxh" ] || continue
+    checked=$((checked + 1))
+    age=$(_n8n_wf_last_age_h "$sys" "$id")
+    case "$age" in
+      ''|*[!0-9]*) : ;;   # none/unresolvable -> liveness covers "never ran"
+      *) [ "$age" -gt "$maxh" ] && stalenames="${stalenames}${name}(${age}h>${maxh}h) " ;;
+    esac
+  done < <(jq -r '.data[]? | [ (.id|tostring), (.name // "?"), (.active|tostring), ([.nodes[]?.type] | map(test("scheduleTrigger";"i")) | any | tostring) ] | @tsv' <<<"$wfjson" 2>/dev/null)
+  if [ -n "$stalenames" ]; then echo "stale:${stalenames% }"; return; fi
+  [ "$checked" -gt 0 ] && { echo "ok"; return; }
+  echo "none"
+}
+
+proof_n8n_workflow_cadence() {
+  local entry="$1" folder expected
+  folder=$(jq -r '.evidence.systems_folder // "123180924297"' <<<"$entry")
+  expected=$(jq -c '.evidence.expected // {}' <<<"$entry")
+  R_URL="https://github.com/edri2or/or-factory-master/blob/main/monitoring/watchdog-registry.json"
+
+  local systems
+  if [ -n "${WATCHDOG_SYSTEMS_OVERRIDE:-}" ]; then
+    systems="$WATCHDOG_SYSTEMS_OVERRIDE"
+  elif [ -n "${WATCHDOG_FIXTURE_DIR:-}" ]; then
+    systems=""
+  else
+    systems=$(gcloud projects list --filter="parent.id=${folder}" --format='value(projectId)' 2>/dev/null || echo "")
+  fi
+
+  local total=0 okc=0 redc=0 unkc=0 redlist="" sys concl
+  for sys in $systems; do
+    [ "$sys" = "factory-test-25" ] && continue
+    total=$((total + 1))
+    concl=$(_n8n_workflow_cadence_per_system "$sys" "$expected")
+    case "$concl" in
+      ok)      okc=$((okc + 1)) ;;
+      stale:*) redc=$((redc + 1)); redlist="${redlist}${sys}[${concl#stale:}] " ;;
+      *)       unkc=$((unkc + 1)) ;;
+    esac
+  done
+
+  if [ "$total" -eq 0 ]; then
+    R_STATUS="unknown"; R_DETAIL_HE="אין מערכות פרוסות תחת התיקייה"
+  elif [ "$redc" -gt 0 ]; then
+    R_STATUS="red"; R_DETAIL_HE="${total} מערכות: ${okc} ✅ · ${redc} 🚨 קרונים שהפסיקו לרוץ (${redlist%% }) · ${unkc} ❓"
+  elif [ "$okc" -gt 0 ]; then
+    R_STATUS="ok"; R_DETAIL_HE="${total} מערכות: כל הקרונים הרשומים בקצב הצפוי · ${unkc} ❓"
+  else
+    R_STATUS="unknown"; R_DETAIL_HE="${total} מערכות — קצב לא ניתן-לאימות (❓)"
   fi
 }
 
@@ -720,6 +817,7 @@ while [ "$i" -lt "$ENTRY_COUNT" ]; do
       static-integrity)     proof_static_integrity "$entry" ;;
       n8n-execution)        proof_n8n_execution "$entry" ;;
       n8n-workflow-liveness) proof_n8n_workflow_liveness "$entry" ;;
+      n8n-workflow-cadence)  proof_n8n_workflow_cadence "$entry" ;;
       system-branch-protection) proof_system_branch_protection "$entry" ;;
       system-ci-runs)           proof_system_ci_runs "$entry" ;;
       *) R_STATUS="unknown"; R_DETAIL_HE="שיטת הוכחה לא נתמכת בשלב זה (${method})" ;;
