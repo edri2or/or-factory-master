@@ -2,7 +2,7 @@
 dev_name: יישור הגנת ה-main (הסרת הגנה קלאסית שנשארה)
 slug: reconcile-main-protection
 opened: 2026-06-15
-status: active
+status: completed
 ---
 
 # תוכנית פיתוח — יישור הגנת ה-main (הסרת הגנה קלאסית שנשארה)
@@ -26,7 +26,7 @@ status: active
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
 | 1 | מחיקת הגנה קלאסית בסקריפט + מחיקת המוקש + תיעוד | completed | `scripts/ensure-protect-main-ruleset.sh`, `.github/workflows/set-factory-branch-protection.yml` (נמחק), `docs/{bootstrap-record,parallel-development}.md` |
-| 2 | אימות חי על ה-factory (post-merge) | pending | — (ריצת `protect-main.yml` האוטומטית) |
+| 2 | אימות חי על ה-factory (post-merge) | completed | — (ריצת `protect-main.yml` האוטומטית) |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
 
@@ -53,15 +53,18 @@ status: active
 ### שלב 2 — אימות חי על ה-factory (post-merge)
 
 **Acceptance:**
-- [ ] אחרי המיזוג: `protect-main.yml` נורה אוטומטית (path-filter על הסקריפט) ורץ בהצלחה.
-- [ ] בלוג הריצה: ה-ruleset `active`, ואז מחיקת הגנה קלאסית → `204` (הוסר), ואז GET → `404` (אומת שאין).
-- [ ] (חזק, אופציונלי) PR-תיעוד שמושאר "מאחור" נמזג דרך REST **בלי** `update_branch` — מוכיח שה-main באמת לא-strict עכשיו.
+- [x] אחרי המיזוג (#473): `protect-main.yml` נורה אוטומטית (path-filter על הסקריפט) ורץ בהצלחה — ריצה `27560825765`, 2026-06-15 16:29 UTC.
+- [x] בלוג הריצה: ה-ruleset `active`, ואז מחיקת הגנה קלאסית → **הוסרה** (נתיב 204, לא 404 — כלומר הגנה קלאסית באמת הייתה שם), ואז GET-אימות → אין יותר.
+- [ ] (חזק, אופציונלי) PR-תיעוד "מאחור" נמזג בלי `update_branch` — **לא נדרש**: הלוג כבר מוכיח ישירות שההגנה הקלאסית הוסרה ושה-main ruleset-only (לא-strict). זמין אם נרצה אישוש end-to-end נוסף.
 
-**הוכחה תפקודית (באותו שלב):** מזהה-ריצת `protect-main.yml` + השורות בלוג ("removed leftover classic… 204" / "verified no classic… 404") + אישור שה-ruleset נשאר `active`.
+**הוכחה תפקודית (באותו שלב):** ריצת `protect-main.yml` `27560825765` (success). שורות הלוג:
+- `PASS: protect-main ruleset active on edri2or/or-factory-master (id=17029425)` — ה-ruleset אומת פעיל **לפני** המחיקה (main אף רגע לא חשוף).
+- `Reconcile: removed leftover classic branch protection on …@main — ruleset is now the sole governor.` — ההגנה הקלאסית הייתה קיימת והוסרה (204). **מאשש סופית את האבחנה.**
+- `Reconcile: verified no classic branch protection on …@main (ruleset-only).` — GET-אימות → אין יותר. main מנוהל ע"י ה-ruleset בלבד (לא-strict, 6 בדיקות).
 
 **הוכחת E2E (artifact):** לא-התנהגותי.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם ואומת חי. ריצת `protect-main.yml` האוטומטית הסירה את ההגנה הקלאסית (204) ואימתה שאין יותר, אחרי שאימתה שה-ruleset פעיל. הפיתוח סגור.
 
 **שינוי תוכנית:** —
 
@@ -71,4 +74,5 @@ status: active
 
 > שורה פשוטה אחת לכל שלב שהסתיים — בשפה ש-Or מבין, בלי ז'רגון.
 
-- שלב 1 הושלם — לימדתי את סקריפט-ההגנה למחוק את שכבת-ההגנה הישנה (אחרי שהוא מוודא שההגנה החדשה כבר פעילה, כך שה-main אף פעם לא נשאר חשוף), ומחקתי את ה"מוקש" שיצר אותה. נשאר רק לראות את זה קורה חי אחרי המיזוג.
+- שלב 1 הושלם — לימדתי את סקריפט-ההגנה למחוק את שכבת-ההגנה הישנה (אחרי שהוא מוודא שההגנה החדשה כבר פעילה, כך שה-main אף פעם לא נשאר חשוף), ומחקתי את ה"מוקש" שיצר אותה.
+- שלב 2 הושלם — אחרי המיזוג זה קרה חי: המערכת אימתה שההגנה החדשה פעילה, מחקה את הישנה (שבאמת הייתה שם), ואימתה שאין יותר. מעכשיו ל-main יש רק שכבה אחת — הנכונה, הלא-מחמירה. הפיתוח סגור.
