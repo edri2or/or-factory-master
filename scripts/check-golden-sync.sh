@@ -65,14 +65,16 @@ fi
 
 # --- (C) no fictional Google account in the system mould -----------------
 # `shared-google@or-infra.com` is a FICTIONAL workspace account (it never existed;
-# see docs/google-identities.md). The real shared workspace data account is
-# `edriorp38@or-infra.com`, and the workspace-mcp gateway REJECTS any other label.
+# see docs/google-identities.md). `edriorp38@or-infra.com` is the credential STORAGE-KEY
+# label callers pass as user_google_email (the token itself authenticates as Or's personal
+# edri2or@gmail.com — proven 2026-06-15; the label is a filename, not the account). This
+# gate only forbids the FICTIONAL label below; it does not assert the account identity.
 # This string has slipped back into the agent prompts twice; block it structurally
 # so no new system is ever born telling the operator to use a non-existent account.
 if grep -rIn --include='*.json' --include='*.template' --include='*.md' \
      'shared-google@or-infra\.com' templates/system/ 2>/dev/null; then
   echo "ERROR: fictional Google account 'shared-google@or-infra.com' found under templates/system/." >&2
-  echo "  The real shared workspace account is 'edriorp38@or-infra.com' (docs/google-identities.md)." >&2
+  echo "  Use the 'edriorp38@or-infra.com' storage-key label (the token authenticates as edri2or@gmail.com; docs/google-identities.md)." >&2
   echo "  Replace it — the workspace-mcp gateway rejects any other user_google_email." >&2
   rc=1
 fi

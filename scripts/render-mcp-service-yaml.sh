@@ -26,11 +26,12 @@ WORKSPACE_ALLOWED_SYSTEMS="${WORKSPACE_ALLOWED_SYSTEMS:-*}"
 # /factory/<system>/mcp ("*" = any valid system name — each bearer is already
 # hard-bound to one system). Set empty to kill-switch the surface (all 404).
 FACTORY_TOOLS_ALLOWED_SYSTEMS="${FACTORY_TOOLS_ALLOWED_SYSTEMS:-*}"
-# The Google account the shared workspace token ACTUALLY belongs to. The sidecar
-# files the credential under "<this>.json" AND the rebuilt workspace-mcp enforces
-# that the token's authenticated account matches this label. The real or-infra
-# Workspace account is edriorp38@or-infra.com — a prior "shared-google@or-infra.com"
-# was a FICTIONAL label that never matched a real account (see docs/google-identities.md).
+# The credential-file STORAGE-KEY label: the sidecar files the credential under
+# "<this>.json" and callers pass it as user_google_email. It is NOT the token's real
+# account — a 2026-06-15 live test proved the deployed token authenticates as
+# edri2or@gmail.com (Or's personal account) yet works under the edriorp38 label, so the
+# label does NOT constrain the account. Keep this value as-is (changing it breaks
+# callers); a prior "shared-google@or-infra.com" was a FICTIONAL label (see docs/google-identities.md).
 WORKSPACE_GOOGLE_ACCOUNT_LABEL="${WORKSPACE_GOOGLE_ACCOUNT_LABEL:-edriorp38@or-infra.com}"
 # Tool groups the Workspace sidecar serves + the EXACT scopes of the shared
 # token's grant. The scopes list must equal the grant byte-for-byte or google-auth

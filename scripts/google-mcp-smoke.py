@@ -37,6 +37,8 @@ import urllib.error
 GATEWAY = os.environ["GATEWAY_URL"].rstrip("/")
 ADMIN = os.environ["ADMIN_SECRET"]
 SYSTEM = os.environ.get("SMOKE_SYSTEM", "or-edri-4")
+# Credential storage-key / user_google_email param (NOT the data account): the token
+# authenticates as edri2or@gmail.com — proven 2026-06-15; see docs/google-identities.md.
 LABEL = os.environ.get("GOOGLE_ACCOUNT_LABEL", "edriorp38@or-infra.com")
 MCP_URL = f"{GATEWAY}/workspace/{SYSTEM}/mcp"
 PROTO = "2025-03-26"

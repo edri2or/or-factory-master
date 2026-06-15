@@ -10,12 +10,13 @@
 set -euo pipefail
 
 CREDS_DIR="${WORKSPACE_MCP_CREDENTIALS_DIR:-/creds}"
-# The Google account the shared workspace token belongs to. Single-user mode files
-# the cred under "<this>.json", and the (rebuilt) workspace-mcp now ENFORCES that the
-# token's authenticated account matches this label — so it MUST be the token's REAL
-# account, edriorp38@or-infra.com (the prior "shared-google@or-infra.com" was a
-# fictional label the OLD image tolerated but the rebuilt one rejects; see
-# docs/google-identities.md). The n8n agent must pass this exact string as user_google_email.
+# The credential-file STORAGE-KEY label: single-user mode files the cred under
+# "<this>.json" and callers pass it as user_google_email. It is NOT the token's real
+# account — a 2026-06-15 live test proved the deployed token authenticates as
+# edri2or@gmail.com (Or's personal account) yet works fine under the edriorp38 label,
+# so the label does NOT constrain the account (no effective account==label enforcement;
+# the prior "shared-google@or-infra.com" was a fictional label). Keep this value as-is
+# (callers pass it to locate the credential); see docs/google-identities.md.
 LABEL="${WORKSPACE_GOOGLE_ACCOUNT_LABEL:-edriorp38@or-infra.com}"
 PORT="${WORKSPACE_MCP_PORT:-3002}"
 read -r -a TOOLS_ARR <<< "${WORKSPACE_MCP_TOOLS:-calendar gmail drive docs}"
