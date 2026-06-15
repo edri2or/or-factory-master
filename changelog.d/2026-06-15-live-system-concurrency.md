@@ -1,0 +1,5 @@
+## feat: per-system concurrency queue on the four live-system workflows
+
+| Type | Summary |
+|---|---|
+| feat | The four factory workflows that act on a live system — `prove-on-test-system.yml`, `refresh-system-agents.yml`, `e2e-verify.yml`, `deploy-verify.yml` — now share a `concurrency` group `live-system-<system_name>` with `queue: max` (FIFO, up to 100 queued; `cancel-in-progress: false`, which `queue: max` requires). This serializes all factory operations on one live system (notably the standing proving system `or-edri-4`) so two parallel developments queue instead of overwriting each other's live state mid-proof. `e2e-verify`/`deploy-verify` were remapped from their old `*-verify-<target_ref>` group to the per-system group (matching the proof-system lock); `prove`/`refresh` gained a block they lacked. Intentional divergence: the `templates/system/` twins of e2e/deploy-verify keep the old grouping (golden-covered; backfill is future work). Not a provisioning-output change → no E2E proof; live queue serialization is verified post-merge on `or-edri-4`. |
