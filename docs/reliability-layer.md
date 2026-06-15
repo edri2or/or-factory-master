@@ -144,7 +144,31 @@ Stage 1 (Error Workflow) תופס כשל **לא-נתפס** (צומת שזרק). 
 ראו `devplans/reliability-layer.md`. סדר-התלות:
 `0 → (1,4) → (2,5) → 3 → 7 → 6 → 8 → 9`.
 
-הפרקים הבאים יושלמו במסמך זה ע"י השלבים המאוחרים:
-- **אימות queue/Task-Runner** של צמתי-הרובד (שלב 7).
-- **rollup-צי מעל Axiom** + אופציית **Grafana הדחויה** (שלב 6).
-- **runbook ה-retrofit** למערכות קיימות (שלב 8).
+---
+
+## 10. אימות queue / Task-Runner (שלב 7)
+
+כל הצמתים שהרובד הוסיף הם **HTTP-Request** (לא Code/`$env`) — בטוחים תחת ה-Task Runner של n8n 2.x
+(`N8N_RUNNERS_ENABLED=true`, sandbox שמסיר גישת-סביבה) ותחת מצב-תור. אומת חי על or-edri-4:
+ה-error-handler (Error Trigger→HTTP) רץ בהצלחה (ביצוע 552, שלב 1), וצמתי ה-assertion ב-spend-track
+יובאו ורצו דרך ה-configure (שלב 5) — תחת אותו runtime חי. binary-data לא נוגע ב-filesystem
+(`N8N_DEFAULT_BINARY_DATA_MODE=database`, כבר מ-`n8n-2x-upgrade`). אין שינוי deploy.
+
+## 11. סיכום-צי אמינות (שלב 6)
+
+`fleet-rollup.yml` (יומי 06:30 UTC + manual) שואל את Axiom (read-only) על אירועי-האמינות בחלון
+(`factory.n8n.workflow_failed`/`automation.empty_result`/`runtime_audit.failed`) חוצה-מערכות, ופולט
+דייג'סט אחד דרך `emit-event.sh`: צי-נקי = `info` (Axiom בלבד); אירועים בחלון = `warning` → Telegram.
+soft-fail מלא (token בלי query-scope / תשובה לא-נפרסת → note מנוון, לעולם לא נכשל). זה ה**משלים
+ההיסטורי** ל-watchdog (שמסכם מצב-נוכחי יומי) ול-runtime-audit (בריאות פר-מערכת). **Grafana** = אופציה
+דחויה מסומנת (דשבורד עשיר על אותו dataset של Axiom) — לא נדרשת ל-v1.
+
+## 12. Retrofit למערכות קיימות (שלב 8)
+
+מערכות **חדשות** נולדות עם כל הרובד (התבניות מקובעות ב-`main`: error-handler + הזרקת errorWorkflow +
+substitution גלובלי + assertion + readiness; וה-watchdog factory-side מכסה כל מערכת). מערכת **קיימת**
+שכבר פרוסה מקבלת את הרובד **בלי re-provision** דרך:
+`refresh-system-agents.yml system_name=<sys> paths=workflows/n8n,.github/workflows/configure-agent-router.yml post_merge_workflow=configure-agent-router.yml`
+(מ-main, אחרי מיזוג) — מייבא error-handler + מזריק errorWorkflow + ה-assertion ל-n8n החי. כל הרצה
+חיה **באישור Or**. שדרוג ה-readiness (שלב 4, factory-side) מכסה כבר את כולן. כיום or-edri-4 היא המערכת
+החיה היחידה — וכבר מותקנת (הוכחות שלבים 1+5); ה-runbook הוא למערכות עתידיות.
