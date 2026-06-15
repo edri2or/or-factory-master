@@ -6,7 +6,7 @@
 dev_name: כתיבת Drive דרך claude.ai
 slug: claude-drive-write
 opened: 2026-06-15
-status: active   # active בזמן פיתוח → completed בסיום (משחרר את שער ה-CI)
+status: completed   # active בזמן פיתוח → completed בסיום (משחרר את שער ה-CI)
 ---
 
 # תוכנית פיתוח — כתיבת Drive דרך claude.ai
@@ -32,7 +32,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 | 2 | הוכחת חשיפת כלי-הכתיבה (smoke) | completed | `scripts/google-mcp-smoke.py` |
 | 3 | תיקון הערה ישנה ("read-only") | completed | `scripts/render-mcp-service-yaml.sh` |
 | 4 | תיעוד (כתיבה/Research/סל/Google-native) | completed | `docs/google-identities.md`, `CLAUDE.md` |
-| 5 | אימות + קידום (PR → מיזוג → smoke חי) | in-progress | `changelog.d/2026-06-15-claude-drive-write.md` |
+| 5 | אימות + קידום (PR → מיזוג → smoke חי) | completed | `changelog.d/2026-06-15-claude-drive-write.md` |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
 > אף שלב כאן אינו נוגע בקבצי-התנהגות-בוט (`workflows/n8n/*.json` / `configure-agent-router.yml`),
@@ -124,22 +124,23 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 ### שלב 5 — אימות + קידום
 
 **Acceptance:**
-- [ ] `changelog.d/2026-06-15-claude-drive-write.md` נוצר (פותר את שער-ה-changelog ל-`.sh`/`.yml`).
-- [ ] PR פתוח (ready for review) על `claude/sleepy-carson-7e0xhl`.
-- [ ] CI ירוק: Playground tests (כולל `google-oauth.test.mjs` — scopes לא נגעו), Changelog gates
-      (fragment + נגיעת-devplan), shellcheck+yamllint, secret-scan, supply-chain.
-- [ ] מיזוג ל-`main`.
-- [ ] הוכחה חיה: `google-mcp-smoke.yml` על `main` (ref=main — ה-WIF נעוץ ל-main) → ירוק עם `[5b/6]`
-      שמוכיח ש-`update_drive_file` ב-`tools/list` החי. ללא redeploy.
-- [ ] התוכנית נסגרת (`status: completed`); דיווח ל-Or בעברית.
+- [x] `changelog.d/2026-06-15-claude-drive-write.md` נוצר (פותר את שער-ה-changelog ל-`.sh`/`.yml`).
+- [x] PR פתוח (ready for review) על `claude/sleepy-carson-7e0xhl` — PR #478.
+- [x] CI ירוק: Playground tests (כולל `google-oauth.test.mjs` — scopes לא נגעו), Changelog gates
+      (fragment + נגיעת-devplan), shellcheck+yamllint, secret-scan, supply-chain — כל 6 ירוקות.
+- [x] מיזוג ל-`main` (squash `e2255cf`).
+- [x] הוכחה חיה: `google-mcp-smoke.yml` על `main` (run 27577863231, SUCCESS) → `PASS [5b/6]
+      tools/list includes update_drive_file` + `SMOKE PASS 6/6`. ללא redeploy.
+- [x] התוכנית נסגרת (`status: completed`); דיווח ל-Or בעברית.
 
 **הוכחה תפקודית (באותו שלב):** ריצת ה-smoke החיה היא ההוכחה (presence-in-code ≠ presence-in-runtime).
 
 **הוכחת E2E (artifact):** לא-התנהגותי.
 
-**הערת התקדמות אחרונה:** בעבודה — כל שינויי-הקוד (1–4) הושלמו ואומתו מקומית; נוצר
-`changelog.d/2026-06-15-claude-drive-write.md`. הבא: push → PR → CI ירוק → (אחרי אישור Or)
-מיזוג ל-`main` → `google-mcp-smoke.yml` חי שמראה `[5b/6]` → סגירת התוכנית.
+**הערת התקדמות אחרונה:** הושלם. מוזג ב-squash `e2255cf`; `google-mcp-smoke` run 27577863231
+ירוק עם `PASS [5b/6] ... update_drive_file` (58 כלי-Google ב-`tools/list`, presence בלבד — לא
+נקרא) ו-`SMOKE PASS 6/6`. ללא redeploy (הכלי כבר טעון, השער מכוון ל-Or). נשאר ל-Or: 2 צעדי-UI
+ב-claude.ai (חיבור connector + צמצום כלים/Research).
 
 **שינוי תוכנית:** —
 
@@ -153,3 +154,4 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 - שלב 2 הושלם — בדיקת-העשן עכשיו מוודאת שכלי-הכתיבה (`update_drive_file`) באמת חי בשרת (בלי לגעת בקבצים).
 - שלב 3 הושלם — תיקנו הערה ישנה בקוד שכתבה "קריאה-בלבד" בעוד שבפועל זו כתיבה.
 - שלב 4 הושלם — תיעדנו הכל: כתיבה=כן, מחיקה=סל הפיך, עריכה=Google בלבד, ולכבות ב-Research.
+- שלב 5 הושלם — מוזג ל-main, והבדיקה החיה הוכיחה שכלי-הכתיבה חי על השרת. הפיתוח הושלם ✅
