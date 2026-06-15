@@ -443,6 +443,64 @@ run_n8nwf() {
   assert_output --partial "red=1"
 }
 
+# --- n8n-workflow-cadence (stage 4, dead-man's-switch per scheduled cron) -----
+# Reuses n8n_workflows_<sys>.json + n8n_wfexec_<sys>_<wfid>.json, but the exec
+# fixture carries a stoppedAt timestamp aged against the pinned WATCHDOG_NOW.
+# evidence.expected maps workflow name -> max age hours.
+make_n8ncad_dir() {
+  local dir
+  dir="$(make_tmpdir)"
+  mkdir -p "$dir/fx"
+  cat > "$dir/registry.json" <<'EOF'
+{ "version": 1, "entries": [
+  { "id": "ncad", "name_he": "קצב הרצה", "type": "n8n-workflows", "layer": "system",
+    "proof_method": "n8n-workflow-cadence",
+    "evidence": { "systems_folder": "123180924297", "expected": { "spend-track": 3 } },
+    "stage": 4, "enabled": true } ] }
+EOF
+  printf '%s\n' "$dir"
+}
+
+run_n8ncad() {
+  local dir="$1" systems="$2"
+  REGISTRY_FILE="$dir/registry.json" \
+  WATCHDOG_FIXTURE_DIR="$dir/fx" \
+  WATCHDOG_SYSTEMS_OVERRIDE="$systems" \
+  WATCHDOG_NOW="$NOW" \
+  WATCHDOG_EMIT=0 TG_TOKEN="" TG_CHAT="" HEARTBEAT_URL="" \
+    bash "$WATCHDOG"
+}
+
+@test "n8ncad ok: a registered cron that ran within its window is green" {
+  dir="$(make_n8ncad_dir)"
+  printf '%s' '{"data":[{"id":"w1","name":"spend-track","active":true,"nodes":[{"type":"n8n-nodes-base.scheduleTrigger"}]}]}' > "$dir/fx/n8n_workflows_sys-a.json"
+  ts=$(date -u -d "@$((NOW - 3600))" +%Y-%m-%dT%H:%M:%S.000Z)
+  printf '%s' "{\"data\":[{\"status\":\"success\",\"stoppedAt\":\"$ts\"}]}" > "$dir/fx/n8n_wfexec_sys-a_w1.json"
+  run run_n8ncad "$dir" "sys-a"
+  assert_success
+  assert_output --partial "ok=1 warn=0 red=0 unknown=0"
+}
+
+@test "n8ncad red: a registered cron older than its window is 🚨 (stopped firing)" {
+  dir="$(make_n8ncad_dir)"
+  printf '%s' '{"data":[{"id":"w1","name":"spend-track","active":true,"nodes":[{"type":"n8n-nodes-base.scheduleTrigger"}]}]}' > "$dir/fx/n8n_workflows_sys-a.json"
+  ts=$(date -u -d "@$((NOW - 36000))" +%Y-%m-%dT%H:%M:%S.000Z)
+  printf '%s' "{\"data\":[{\"status\":\"success\",\"stoppedAt\":\"$ts\"}]}" > "$dir/fx/n8n_wfexec_sys-a_w1.json"
+  run run_n8ncad "$dir" "sys-a"
+  assert_success
+  assert_output --partial "red=1"
+}
+
+@test "n8ncad skip: an active scheduled cron with no registered cadence is not 🚨" {
+  dir="$(make_n8ncad_dir)"
+  printf '%s' '{"data":[{"id":"w1","name":"unregistered-cron","active":true,"nodes":[{"type":"n8n-nodes-base.scheduleTrigger"}]}]}' > "$dir/fx/n8n_workflows_sys-a.json"
+  ts=$(date -u -d "@$((NOW - 360000))" +%Y-%m-%dT%H:%M:%S.000Z)
+  printf '%s' "{\"data\":[{\"status\":\"success\",\"stoppedAt\":\"$ts\"}]}" > "$dir/fx/n8n_wfexec_sys-a_w1.json"
+  run run_n8ncad "$dir" "sys-a"
+  assert_success
+  refute_output --partial "red=1"
+}
+
 # --- system-branch-protection (stage 4, dynamic per-system fan-out) ----------
 # A one-entry system-branch-protection registry requiring two CI contexts;
 # systems are injected via WATCHDOG_SYSTEMS_OVERRIDE and each system's branch
