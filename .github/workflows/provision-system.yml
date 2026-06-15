@@ -726,12 +726,19 @@ jobs:
           # relative paths, so it ships verbatim to the system root.
           [ -f "${GITHUB_WORKSPACE}/e2e-surfaces.json" ] || { echo "FAIL: e2e-surfaces.json not found" >&2; exit 1; }
           cp "${GITHUB_WORKSPACE}/e2e-surfaces.json" "$CLONE_DIR/e2e-surfaces.json"
+          # Workflow↔skill pairing exempt list: read by the shipped scripts/check-workflow-
+          # skill-pair.sh (matched by basename, so the factory-pathed list is authoritative
+          # in the system too). A factory-root file, shipped like e2e-surfaces.json.
+          [ -f "${GITHUB_WORKSPACE}/monitoring/workflow-skill-exempt.txt" ] || { echo "FAIL: monitoring/workflow-skill-exempt.txt not found" >&2; exit 1; }
+          mkdir -p "$CLONE_DIR/monitoring"
+          cp "${GITHUB_WORKSPACE}/monitoring/workflow-skill-exempt.txt" "$CLONE_DIR/monitoring/workflow-skill-exempt.txt"
           # Seed CHANGELOG.md only if absent (fresh repo: it is) so the doc gate has a baseline.
           [ -f "$CLONE_DIR/CHANGELOG.md" ] || cp "${GITHUB_WORKSPACE}/templates/system/CHANGELOG.md" "$CLONE_DIR/CHANGELOG.md"
           for sc in lib check-changelog-updated check-changelog-size compile-changelog scan-for-secrets \
                     check-actions-pinned check-workflow-permissions \
                     check-no-pull-request-target check-no-privileged-pr-workflows \
-                    check-devplan-updated check-agent-single-voice devplan-session-start-hook \
+                    check-devplan-updated check-agent-single-voice check-workflow-skill-pair \
+                    devplan-session-start-hook \
                     capability-session-start-hook \
                     check-e2e-proof e2e-verify-inbound deploy-verify; do
             [ -f "${GITHUB_WORKSPACE}/scripts/${sc}.sh" ] || { echo "FAIL: scripts/${sc}.sh not found" >&2; exit 1; }
@@ -772,7 +779,7 @@ jobs:
 
           git -C "$CLONE_DIR" config user.name "or-factory-master[bot]"
           git -C "$CLONE_DIR" config user.email "factory-master-broker@or-factory-master-control.iam.gserviceaccount.com"
-          git -C "$CLONE_DIR" add .claude workflows .github/workflows Caddyfile Dockerfile.caddy Dockerfile.worker caddy scripts templates docs .yamllint CHANGELOG.md changelog.d e2e-surfaces.json
+          git -C "$CLONE_DIR" add .claude workflows .github/workflows Caddyfile Dockerfile.caddy Dockerfile.worker caddy scripts templates docs monitoring .yamllint CHANGELOG.md changelog.d e2e-surfaces.json
           # Guard the commit: a reuse-mode re-provision with byte-identical files would
           # otherwise abort this step under `set -e` ("nothing to commit").
           git -C "$CLONE_DIR" diff --cached --quiet \
@@ -781,7 +788,7 @@ jobs:
             || { echo "FAIL: could not push scaffold to edri2or/${SYSTEM_NAME}:main" >&2; exit 1; }
 
           rm -rf "$CLONE_DIR"
-          echo "PASS: .claude package + Agent Router + Caddy gateway + CI governance bundle pushed to edri2or/${SYSTEM_NAME}:main (${COUNT} commands + gcp-hands-client skill + ${N8N_COUNT} n8n workflows + configure-agent-router.yml + Caddyfile + Dockerfile.caddy + caddy/hmacguard + 6 CI workflows (incl. e2e-gate + e2e-verify) + 14 portable scripts (incl. compile-changelog + devplan gate/hook + E2E gate/driver) + .claude/settings.json (devplan SessionStart hook) + templates/devplan/ seed + .yamllint + CHANGELOG.md + changelog.d/ seed)."
+          echo "PASS: .claude package + Agent Router + Caddy gateway + CI governance bundle pushed to edri2or/${SYSTEM_NAME}:main (${COUNT} commands + gcp-hands-client skill + ${N8N_COUNT} n8n workflows + configure-agent-router.yml + Caddyfile + Dockerfile.caddy + caddy/hmacguard + 6 CI workflows (incl. e2e-gate + e2e-verify) + 15 portable scripts (incl. compile-changelog + devplan gate/hook + workflow↔skill pairing gate + E2E gate/driver) + workflow-skill-exempt.txt + .claude/settings.json (devplan SessionStart hook) + templates/devplan/ seed + .yamllint + CHANGELOG.md + changelog.d/ seed)."
 
       - name: Push system orientation docs (AGENTS.md + CLAUDE.md) to system repo
         continue-on-error: true

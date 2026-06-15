@@ -124,6 +124,15 @@ jobs:
         # each system by provision-system.yml and runs there over workflows/n8n.
         run: AGENT_DIR=templates/system/workflows/n8n bash scripts/check-agent-single-voice.sh
 
+      - name: Workflow↔skill pairing gate (mould)
+        # Validates the convention that every OPERABLE shipped n8n workflow
+        # (templates/system/workflows/n8n/<name>.json) has a paired Claude skill at
+        # templates/system/.claude/skills/<name>/SKILL.md (folder = /<name> command).
+        # Pure-plumbing workflows are listed in monitoring/workflow-skill-exempt.txt.
+        # The same script (scripts/check-workflow-skill-pair.sh) ships into each system
+        # via provision-system.yml and runs there over workflows/n8n + .claude/skills.
+        run: WF_DIR=templates/system/workflows/n8n SKILL_DIR=templates/system/.claude/skills CMD_DIR=templates/system/.claude/commands bash scripts/check-workflow-skill-pair.sh
+
       - name: executeWorkflow-published gate (mould)
         # n8n 2.x: a published workflow that calls a sub via executeWorkflow (MAIN)
         # cannot publish while that sub is unpublished (HTTP 400) — it silently stays

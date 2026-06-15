@@ -122,6 +122,13 @@ Per `subagent.contract.md`, update **all** of:
    loop (so it is created and its id captured) and add the
    `-e "s#@@SUB_<INTENT>_WF_ID@@#${SUB_<INTENT>_WF_ID}#g"` substitution to the router prep.
 4. `AGENTS.md` — add a one-line entry to the agent catalogue.
+5. **Paired Claude skill (capability card).** A new `workflows/n8n/<intent>-agent.json` is an
+   operable workflow, so it needs a paired skill at `.claude/skills/<intent>-agent/SKILL.md`
+   (folder name = the `/<intent>-agent` command) — add a row to the curated table in
+   `scripts/gen-workflow-skill.sh` and run it, or add the workflow to
+   `monitoring/workflow-skill-exempt.txt` if it is pure plumbing. CI
+   (`scripts/check-workflow-skill-pair.sh`) blocks the merge otherwise. *(In the factory repo
+   refresh the golden afterward: `bash scripts/check-system-golden.sh --update`.)*
 
 ### Step 4: Add golden routing cases
 Add the Step-1 trigger phrases to `tests/router_battery.yaml` as cases mapping to the new
