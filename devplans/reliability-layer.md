@@ -28,7 +28,7 @@ stack חדש. מוכיחים כל שלב חי על `or-edri-4` לפני שמקב
 | 2 | "אות חיות" → **מוזג לשלב 3** (refinement factory-native) | folded | — (אפס ניתוח-workflow; השומר קורא executions) |
 | 5 | assertion "רץ אבל ריק" — תבנית + דוגמה אחת | pending | `docs/reliability-layer.md`, workflow מייצג אחד, golden |
 | — | **אבן-דרך E2E** (קפיאת קבצי-n8n) → proof על or-edri-4 | pending | `e2e-proofs/reliability-layer.json` |
-| 3 | watchdog `n8n-workflow-cadence` (dead-man) | in-progress | `scripts/run-watchdog.sh`, `monitoring/watchdog-registry.json`, `run-watchdog.bats` |
+| 3 | watchdog `n8n-workflow-cadence` (dead-man) | completed ✅ proven | `scripts/run-watchdog.sh`, `monitoring/watchdog-registry.json`, `run-watchdog.bats` |
 | 7 | אימות Task-Runner/queue (verify-only) | pending | `docs/reliability-layer.md` |
 | 6 | rollup-צי מעל Axiom → Telegram/Linear | pending | `.github/workflows/fleet-rollup.yml`(חדש), סקריפט שאילתה, `docs/observability.md` |
 | 8 | retrofit למערכות קיימות (post-merge, Or-gated) | pending | `docs/reliability-layer.md` (runbook) |
@@ -178,8 +178,12 @@ or-edri-4 (`meta-monitoring-watchdog.yml` או `WATCHDOG_SYSTEMS_OVERRIDE=or-edr
 
 **הוכחת E2E (artifact):** לא-התנהגותי (scripts + monitoring).
 
-**הערת התקדמות אחרונה:** מומש + טסטים ירוקים. נשאר: CI ירוק → מיזוג → הרצת watchdog live לאימות
-קו ה-cadence על or-edri-4.
+**הערת התקדמות אחרונה:** הושלם + מוזג (#462, `85d3778`) + הוכח. 51/51 bats (כולל stale→🔴);
+הרצת watchdog חיה (run 27524643130) — `done ok=18 red=0 unknown=5`, אפס אזעקות-שווא, נפלט
+`factory.watchdog.ok`. **מגבלה ידועה (follow-up):** ה-n8n-proofs של השומר (cadence+liveness) מונים
+את תיקיית-המערכות וקוראים סוד ב-`--project=<system>` → מכסים מערכות-רגילות, **לא** את or-edri-4
+(adopt, project `factory-test-21`, מחוץ-לתיקייה) ולא reuse-mode. or-edri-4 עצמה מכוסה ע"י שלב 1
+(התראת-כשל) + שלב 4 (readiness); להרחיב את כיסוי-ה-cadence ל-adopt/always-include — follow-up.
 
 **שינוי תוכנית:** ה-watchdog כבר כולל `n8n-workflow-liveness` (תופס "מעולם-לא-רץ" + "אחרון
 נכשל"). השלב מוסיף רק את ממד ה-cadence/staleness — לא בנייה מאפס.
@@ -282,3 +286,5 @@ or-edri-4 (`meta-monitoring-watchdog.yml` או `WATCHDOG_SYSTEMS_OVERRIDE=or-edr
 - שלב 2 (חידוד) — מצאתי דרך בטוחה ונקייה יותר ל"לדעת אם אוטומציה הפסיקה לרוץ": במקום להוסיף קוד
   ל-24 האוטומציות (ניתוח מסוכן), ה"שומר" המרכזי יקרא את היסטוריית-ההרצות שלהן ישירות. אותה הגנה,
   הרבה פחות סיכון. (מתממש בשלב 3.)
+- שלב 3 (הושלם + הוכח ✅) — ה"שומר" יודע עכשיו לזהות קרון שהפסיק לרוץ בשקט. 51/51 בדיקות עוברות,
+  והרצתי אותו חי על הצי — נקי, אפס אזעקות-שווא. (יחד עם שלב 1 שתופס נפילות — הצי מכוסה.)
