@@ -6,7 +6,7 @@
 dev_name: תיקון זהות חשבון ה-Workspace
 slug: workspace-identity-truth
 opened: 2026-06-15
-status: active   # active בזמן פיתוח → completed בסיום (משחרר את שער ה-CI)
+status: completed   # active בזמן פיתוח → completed בסיום (משחרר את שער ה-CI)
 ---
 
 # תוכנית פיתוח — תיקון זהות חשבון ה-Workspace
@@ -26,7 +26,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 |---|---|---|---|
 | 1 | אימות סופי (בעלות קובץ חדש) | completed | — (בדיקה חיה) |
 | 2 | תיקון תיעוד+הערות (Tier 1) | completed | `docs/google-identities.md`, `CLAUDE.md`, `services/workspace-mcp/*`, `scripts/*` |
-| 3 | אימות + קידום (PR → CI → מיזוג) | in-progress | `changelog.d/2026-06-15-workspace-identity-truth.md` |
+| 3 | אימות + קידום (PR → CI → מיזוג) | completed | `changelog.d/2026-06-15-workspace-identity-truth.md` |
 
 > כל השלבים "לא-התנהגותי" — אין נגיעה ב-`workflows/n8n/*.json` או `configure-agent-router.yml`.
 > תבניות-המערכת (AGENTS.md + ops-agent) נדחות (שערי golden+E2E) — מתועד כ-follow-up.
@@ -74,16 +74,16 @@ follow-up לתבניות-המערכת תועד.
 ### שלב 3 — אימות + קידום
 
 **Acceptance:**
-- [ ] `changelog.d/2026-06-15-workspace-identity-truth.md` נוצר.
-- [ ] PR פתוח; CI ירוק (Changelog, devplan, shellcheck+yamllint, secret-scan, golden-sync, Playground).
-- [ ] golden-sync ירוק (templates/system/** לא נגעו; השער חוסם רק את `shared-google@`).
-- [ ] מיזוג ל-`main` (Or-gated); סגירת התוכנית.
+- [x] `changelog.d/2026-06-15-workspace-identity-truth.md` נוצר.
+- [x] PR פתוח (#480); CI ירוק — כל 6 הבדיקות.
+- [x] golden-sync ירוק (templates/system/** לא נגעו; השער חוסם רק את `shared-google@`).
+- [x] מיזוג ל-`main` (squash `2109be7`, אישר Or); סגירת התוכנית.
 
 **הוכחה תפקודית (באותו שלב):** ההוכחה כבר בידינו (בדיקת הבעלות החיה); אין שינוי פונקציונלי לאמת מחדש.
 
 **הוכחת E2E (artifact):** לא-התנהגותי.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם. #480 מוזג ב-squash `2109be7`; כל 6 בדיקות ה-CI ירוקות. הפיתוח נסגר.
 
 **שינוי תוכנית:** —
 
@@ -95,3 +95,4 @@ follow-up לתבניות-המערכת תועד.
 
 - שלב 1 הושלם — אישרנו חד-משמעית: המחבר עובד על ה-Drive האישי שלך (edri2or@gmail.com).
 - שלב 2 הושלם — תיקנו את כל התיעוד שיגיד את האמת (החשבון האישי שלך), בלי לשבור שום ערך פונקציונלי.
+- שלב 3 הושלם — מוזג ל-main. הפיתוח הושלם ✅
