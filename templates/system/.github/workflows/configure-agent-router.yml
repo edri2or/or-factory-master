@@ -484,6 +484,20 @@ jobs:
             echo "INFO: github-app-{id,installation-id,private-key} not all present in SM — github-readonly tool skipped (App registration is a separate manual step)" >&2
           fi
 
+          # (b3) Gmail OAuth ("Google OAuth2 API", type googleOAuth2Api): created by the
+          #      SEPARATE manual bootstrap-gmail-oauth.yml from the SHARED Gmail token, so
+          #      it may be ABSENT here. Pure lookup-by-name over the same /tmp/ar-creds.json
+          #      — a miss only skips email-form-intake (below); the router + everything else
+          #      still configures. email-form-intake reads Gmail via HTTP Request using this
+          #      generic googleOAuth2Api credential (the n8n Gmail node would need a
+          #      different, gmailOAuth2-typed credential, which this is not — so we never use
+          #      that node, and we never touch this credential's scope).
+          GMAIL_OAUTH_CRED_NAME="Google OAuth2 API"
+          GMAIL_OAUTH_CRED_ID=$(jq -r --arg n "$GMAIL_OAUTH_CRED_NAME" '[(.data // .) | .[]? | select(.name==$n)][0].id // empty' /tmp/ar-creds.json || echo "")
+          { [ -n "$GMAIL_OAUTH_CRED_ID" ] && [ "$GMAIL_OAUTH_CRED_ID" != "null" ]; } \
+            && echo "INFO: Gmail OAuth credential id=${GMAIL_OAUTH_CRED_ID}" \
+            || { echo "WARN: 'Google OAuth2 API' credential not found — email-form-intake skipped (run bootstrap-gmail-oauth.yml to enable)" >&2; GMAIL_OAUTH_CRED_ID=""; }
+
           # Phase F: Telegram chat bot. Read the per-system bot token + chat id from
           # THIS system's SM. We check the SYSTEM copy (n8n-telegram-bot-token, seeded
           # by provision), NOT the control default — deploy-sa can read this project's
@@ -1279,6 +1293,42 @@ jobs:
             fi
           fi
 
+          # 5d-bis. email-form-intake: daily 09:00 UTC + manual Gmail scan for emails with
+          #     an attached form (PDF). Reads each PDF via the multimodal OpenRouter pipeline
+          #     (native-PDF file part; gemini-2.5-flash → claude-sonnet-4.5 fallback) and —
+          #     PROPOSAL ONLY, never writing back onto the PDF — proposes field values from
+          #     fixed details + context, composes a Hebrew card via chainLlm, and sends it to
+          #     Telegram. Gmail is read via HTTP Request with the generic googleOAuth2Api
+          #     credential. Gated on the Gmail OAuth credential + OpenRouter + Telegram +
+          #     chat id ALL present; a miss skips it. Soft-fail; never blocks the router.
+          EMAILFORM_WF_ID=""
+          if [ -n "$GMAIL_OAUTH_CRED_ID" ] && [ "$GMAIL_OAUTH_CRED_ID" != "null" ] \
+             && [ -n "$CRED_ID" ] && [ "$CRED_ID" != "null" ] \
+             && [ -n "$CRED_TELEGRAM_ID" ] && [ "$CRED_TELEGRAM_ID" != "null" ] \
+             && [ -n "$CHAT_ID" ]; then
+            EMAILFORM_SRC="${WF_DIR}/email-form-intake.json"
+            if [ -f "$EMAILFORM_SRC" ]; then
+              sed -e "s#@@CRED_GMAIL_OAUTH_ID@@#${GMAIL_OAUTH_CRED_ID}#g" \
+                  -e "s#@@CRED_OPENROUTER_ID@@#${CRED_ID}#g" \
+                  -e "s#@@CRED_TELEGRAM_ID@@#${CRED_TELEGRAM_ID}#g" \
+                  -e "s#@@CHAT_ID@@#${CHAT_ID}#g" \
+                  -e "s#@@SYSTEM_NAME@@#${SYSTEM_NAME}#g" \
+                  "$EMAILFORM_SRC" > /tmp/ar-prep-email-form-intake.json
+              EMAILFORM_WF_ID=$(_upsert_wf "factory-master: email-form-intake" /tmp/ar-prep-email-form-intake.json yes) \
+                || EMAILFORM_WF_ID=""
+              if [ -n "$EMAILFORM_WF_ID" ] && [ "$EMAILFORM_WF_ID" != "null" ]; then
+                echo "PASS: factory-master: email-form-intake → id=${EMAILFORM_WF_ID} (פעיל, cron 0 9 * * * — יומי 09:00 UTC, סריקת מיילים עם טופס מצורף)"
+              else
+                echo "WARN: email-form-intake install failed" >&2
+                EMAILFORM_WF_ID=""
+              fi
+            else
+              echo "WARN: email-form-intake.json not found in repo — skipping" >&2
+            fi
+          else
+            echo "INFO: email-form-intake skipped — needs Gmail OAuth + OpenRouter + Telegram + chat id (one is missing)" >&2
+          fi
+
           # 5e. Gap 5: install + activate spend-track — hourly poll of OpenRouter's
           #     authoritative GET /api/v1/key cumulative usage (data.usage, USD: OR
           #     credits are 1:1 USD), writes the incremental delta into spend_log as
@@ -1757,6 +1807,9 @@ jobs:
               fi
               if [ -n "${PROACT_WF_ID:-}" ] && [ "${PROACT_WF_ID:-}" != "null" ]; then
                 echo "| tg-proactive | \`${PROACT_WF_ID}\` (פעיל, cron 0 8 * * * — יומי 08:00 UTC, סיכום 24ש' לטלגרם) |"
+              fi
+              if [ -n "${EMAILFORM_WF_ID:-}" ] && [ "${EMAILFORM_WF_ID:-}" != "null" ]; then
+                echo "| email-form-intake | \`${EMAILFORM_WF_ID}\` (פעיל, cron 0 9 * * * — יומי 09:00 UTC, סריקת מיילים עם טופס מצורף → הצעה לטלגרם) |"
               fi
               if [ -n "${SPEND_WF_ID:-}" ] && [ "${SPEND_WF_ID:-}" != "null" ]; then
                 echo "| spend-track | \`${SPEND_WF_ID}\` (פעיל, cron 0 * * * * — עלות OpenRouter אמיתית ל-spend_log) |"

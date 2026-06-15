@@ -19,8 +19,8 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
-| 1 | בניית ה-workflow + skill + בוקקיפינג (סטטי) | in-progress | `templates/system/workflows/n8n/email-form-intake.json`, `templates/system/.claude/skills/email-form-intake/SKILL.md`, `scripts/gen-workflow-skill.sh`, `devplans/email-form-intake.md`, `changelog.d/2026-06-15-email-form-intake.md`, `tests/golden/system/MANIFEST.sha256` |
-| 2 | חיווט ל-configure-agent-router.yml (סטטי) | pending | `templates/system/.github/workflows/configure-agent-router.yml`, `tests/golden/system/MANIFEST.sha256` |
+| 1 | בניית ה-workflow + skill + בוקקיפינג (סטטי) | completed | `templates/system/workflows/n8n/email-form-intake.json`, `templates/system/.claude/skills/email-form-intake/SKILL.md`, `scripts/gen-workflow-skill.sh`, `monitoring/registry-exempt.txt`, `devplans/email-form-intake.md`, `changelog.d/2026-06-15-email-form-intake.md`, `tests/golden/system/MANIFEST.sha256` |
+| 2 | חיווט ל-configure-agent-router.yml (סטטי) | in-progress | `templates/system/.github/workflows/configure-agent-router.yml`, `tests/golden/system/MANIFEST.sha256` |
 | 3 | הוכחה חיה על or-edri-4 (תפקודית + E2E) | pending | `e2e-proofs/email-form-intake.json` |
 | 4 | קיבוע (merge) + סגירה | pending | `devplans/email-form-intake.md` |
 
@@ -48,7 +48,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
       (צד-שלישי). ניסוח כרטיס-ההצעה ב-chainLlm+lmChatOpenRouter; egress validation מ-tg-vision.
 - [x] PII: אין ת"ז/שם/כתובת אמיתיים בקובץ (placeholder ריק `FIXED={}`).
 - [x] skill מותאם נוצר דטרמיניסטית; שער workflow↔skill ירוק.
-- [ ] golden מרוענן; שערי Playground tests + Changelog gates ירוקים ב-CI.
+- [x] golden מרוענן; שערי Playground tests + Changelog gates ירוקים ב-CI (commit 73631c7).
 
 **הוכחה תפקודית (באותו שלב):** סטטי — `jq` מאמת JSON; `node --check` מאמת 6 בלוקי-Code;
 שער הזיווג עבר מקומית (15 workflows מזווגים). ריצה-חיה אמיתית היא שלב 3.
@@ -74,18 +74,21 @@ Google API מותאמות), בלי שינוי scope ובלי תלות בטיפו
 ### שלב 2 — חיווט ל-configure-agent-router.yml (סטטי)
 
 **Acceptance:**
-- [ ] בלוק lookup ל-"Google OAuth2 API" → `GMAIL_OAUTH_CRED_ID` (כמו דפוס ה-jq הקיים).
-- [ ] בלוק ייבוא/publish/activate ל-email-form-intake (כמו בלוק tg-proactive, דרך `_upsert_wf "…" file yes`),
-      עם `sed` ל-`@@CRED_GMAIL_OAUTH_ID@@`/`@@CRED_OPENROUTER_ID@@`/`@@CRED_TELEGRAM_ID@@`/`@@CHAT_ID@@`/`@@SYSTEM_NAME@@`.
-- [ ] דרגרדציה חיננית: ייבוא רק אם הקרדנציאל קיים (+OpenRouter+Telegram+chat id); אחרת skip+warn.
-- [ ] golden מרוענן (configure-agent-router.yml תחת templates/system/); yamllint נקי;
+- [x] בלוק lookup ל-"Google OAuth2 API" → `GMAIL_OAUTH_CRED_ID` (כמו דפוס ה-jq הקיים, ב-`/tmp/ar-creds.json`).
+- [x] בלוק ייבוא/publish/activate ל-email-form-intake ("5d-bis", כמו בלוק tg-proactive, דרך `_upsert_wf "…" file yes`),
+      עם `sed` ל-`@@CRED_GMAIL_OAUTH_ID@@`/`@@CRED_OPENROUTER_ID@@`/`@@CRED_TELEGRAM_ID@@`/`@@CHAT_ID@@`/`@@SYSTEM_NAME@@` + שורת-דיווח בטבלת הסיכום.
+- [x] דרגרדציה חיננית: ייבוא רק אם הקרדנציאל קיים (+OpenRouter+Telegram+chat id); אחרת skip+warn.
+- [x] golden מרוענן (configure-agent-router.yml תחת templates/system/); yamllint נקי;
       הרצת ה-sed מקומית על ה-JSON מאמתת אפס `@@…@@` שנותרו.
+- [ ] שערי Playground tests + Changelog gates ירוקים ב-CI על ה-commit החדש.
 
-**הוכחה תפקודית (באותו שלב):** סטטי — yamllint + הרצת sed יבשה על ה-JSON (אין placeholder שנותר).
+**הוכחה תפקודית (באותו שלב):** סטטי — yamllint נקי; הרצת sed יבשה על ה-JSON מחזירה אפס
+placeholders ו-JSON תקין עם ה-credentials מוחלפים. ייבוא חי ל-n8n הוא שלב 3.
 
 **הוכחת E2E (artifact):** לא-באותו-שלב — מופקת בשלב 3.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** החיווט נוסף ל-configure-agent-router.yml (lookup + בלוק 5d-bis +
+דרגרדציה חיננית + שורת-סיכום), golden רוענן, נותר אישור CI ירוק על ה-push.
 
 **שינוי תוכנית:** —
 
@@ -135,6 +138,8 @@ Google API מותאמות), בלי שינוי scope ובלי תלות בטיפו
 
 > שורה פשוטה אחת לכל שלב שהסתיים — בלי ז'רגון.
 
-- שלב 1 (בעבודה): בניתי את ה-workflow החדש שקורא מיילים עם טפסים ומציע מילוי בטלגרם, וכל
-  הבדיקות הסטטיות עברו. תוך כדי גיליתי שעדיף לקרוא Gmail דרך ה-API הקיים (במקום נוד ייעודי)
-  כדי להשתמש במפתח שכבר קיים בלי לגעת בהרשאות — וזה גם בטוח יותר.
+- שלב 1 הושלם: בניתי את ה-workflow החדש שקורא מיילים עם טפסים ומציע מילוי בטלגרם, כל
+  הבדיקות הסטטיות עברו, ו-PR #477 נפתח. תוך כדי גיליתי שעדיף לקרוא Gmail דרך ה-API הקיים
+  (במקום נוד ייעודי) כדי להשתמש במפתח שכבר קיים בלי לגעת בהרשאות — וזה גם בטוח יותר.
+- שלב 2 הושלם: חיברתי את ה-workflow ל"קו-ההרכבה" (configure-agent-router) — כל מערכת חדשה
+  תתקין ותדליק אותו אוטומטית, ורק אם המייל מחובר (אחרת מדלג בשקט בלי תקלה).
