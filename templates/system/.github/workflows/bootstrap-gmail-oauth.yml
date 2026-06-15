@@ -105,7 +105,7 @@ jobs:
 
           # 5. Upsert each var INDIVIDUALLY. variableUpsert sets exactly ONE variable and
           #    leaves every other var untouched — unlike variableCollectionUpsert, which
-          #    REPLACES the whole collection (and would wipe the n8n DB/${{...}} reference
+          #    REPLACES the whole collection (and would wipe the n8n DB / Railway-reference
           #    vars). Each upsert may trigger a Railway redeploy; n8n is restart-safe.
           _setvar() {
             local name="$1" value="$2"
