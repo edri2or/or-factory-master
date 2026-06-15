@@ -43,6 +43,13 @@ templates/system/workflows/n8n/deep-research.json
 # by the "system-n8n-executions" registry entry, like the other per-system crons:
 templates/system/workflows/n8n/pending-actions-cleanup.json
 templates/system/workflows/n8n/db-vacuum.json
+# email-form-intake: a daily-scheduled per-system worker (Gmail→form→Telegram proposal).
+# Provision-only — only systems provisioned AFTER it ships run it. Its executions are
+# covered collectively by "system-n8n-executions"; it is intentionally NOT added to the
+# per-workflow "system-n8n-cadence" dead-man map yet, because no existing live system runs
+# it — registering it there now would false-alarm on every system that predates it. Promote
+# it into the cadence map once it is deployed fleet-wide.
+templates/system/workflows/n8n/email-form-intake.json
 # mcp-server: inbound MCP endpoint (mcpTrigger, no schedule of its own) — proven
 # by configure-agent-router's built-in self-verification on every system, and its
 # executions are covered collectively by "system-n8n-executions" like the rest:

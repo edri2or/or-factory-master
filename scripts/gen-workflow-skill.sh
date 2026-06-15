@@ -43,6 +43,7 @@ railway-readonly|the read-only Railway tool — exposes safe Railway reads (serv
 postgres-named-queries|the whitelisted read-only SQL tool — runs a fixed set of named SELECTs (transcript, tool trace, claim/actual mismatches) against this system's Postgres|the named read-only Postgres queries the bot and agents use|invoked as a tool sub-workflow|postgres, named query, read-only sql
 mcp-server|this system's outward read-only MCP endpoint (/mcp/system-tools) — serves postgres_named_query, github_readonly and railway_readonly to external MCP clients, bearer-guarded|the system's own outward MCP endpoint at /mcp/system-tools|an MCP trigger (outward endpoint, bearer-guarded)|mcp, system-tools, endpoint, bearer
 request-write-action|the human-in-the-loop write-request gate — turns a proposed state change into a Telegram approval card; the operator's tap then routes to pending-actions-executor|the HITL write-request gate (propose -> approve -> execute)|invoked as a sub-workflow; pairs with pending-actions-executor|hitl, write action, approval, pending actions
+email-form-intake|the email-form intake worker — scans Gmail for emails with an attached form (PDF), reads it, and proposes field values to Telegram (PROPOSAL ONLY — never writes back onto the PDF)|the scheduled + manual Gmail form-reader that proposes form-field values for the operator to approve|a schedule (cron) + a manual trigger|email, form, pdf, intake, proposal
 EOF
 
 emit_skill() {

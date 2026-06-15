@@ -71,6 +71,7 @@ c456eb2a2569a9a97b9842cb45b4b04c3d39c4b480ce20a26ad53fd4644c0158  .claude/comman
 2a454cd3d53242e97864e55b63b124f94d240f728f84f90bb84ac18fe1c231a6  .claude/skills/agent-router/SKILL.md
 895f29efd8047ec67e92d92feb58d6615c365735ac137a8f7a317e5667bffa62  .claude/skills/code-agent/SKILL.md
 ef3f562f43c89a82f9b0c036eb2e738af98ee1453867e89ca7ace7bab79847d6  .claude/skills/deep-research/SKILL.md
+b00aa4fd4b66f006fc00c8b74b561ea42eeafd52da57bc7473e78ce1a81a85bc  .claude/skills/email-form-intake/SKILL.md
 d734bf57a5d88650f3d6fdf8efda57f98c7b6fa69d588e200e221b02902ff354  .claude/skills/gcp-hands-client/README.md
 ca5a080fc2e5ef305eb93f0608335cf96b19a0b7c224e4c68557ad2b70511b4d  .claude/skills/gcp-hands-client/SKILL.md
 791930a926a19f50bc2f014b352a9ae552793dbe96f6fe889b6c84afbb36bc7c  .claude/skills/github-app-operations/SKILL.md
@@ -123,6 +124,7 @@ a47304b1b6315312bbde57c308d4425db659904afc76511e534104ac09cab715  workflows/n8n/
 d5441f2ffb0c60cccda1fbc7663d94142d97467e08afe2359f519a459369a19a  workflows/n8n/db-setup.json
 7d2f13883729b3588db8107802e2a9fd2ee21c50e3b61d37f01b33fd2cb87e14  workflows/n8n/db-vacuum.json
 97e930793b4af0ebdee687f9cccd61faf6e55cab1a856aed118b5f9d2bb2023d  workflows/n8n/deep-research.json
+fcb80ac3235a31c4d061ea27ab2f304c9f6ff9337cb65b8fc5bee725d0390ac5  workflows/n8n/email-form-intake.json
 5c9f474ed24d6963b605dc9f9c0019134337aa8f629d4eb21ea22f5f367a71ce  workflows/n8n/error-handler.json
 8c762503906dcfab7cd23853574d37fc07a2809d292a6412beaca2623c525fc2  workflows/n8n/file-catalog-refresh.json
 81171d04ca0d2e92293171bb512d663fefe31fa34861e897867fcae3a4321756  workflows/n8n/github-readonly.json
