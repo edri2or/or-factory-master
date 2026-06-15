@@ -40,6 +40,43 @@
 - The browser **`authuser=N`** parameter selects which signed-in account a Google page uses (`authuser=0` = first/default, `authuser=1` = second, …). Or's Cloud Console links resolve to **`authuser=1`** = `edriorp38@or-infra.com`, not `edri2or@gmail.com`. A bare `console.cloud.google.com/...` link can land on the WRONG account; **always aim for `edriorp38@or-infra.com`** for console work. ([account switching](https://support.google.com/cloud/answer/6158849?hl=en).)
 - **There is no dedicated "shared" data mailbox.** The agents currently operate on `edriorp38`'s own mailbox. A dedicated service mailbox could be created later, but does not exist today.
 
+## Drive write tools exposed to claude.ai (write = trash / move / rename / edit)
+
+The Workspace MCP sidecar (`workspace-mcp==1.21.1`, `--tools calendar gmail drive docs`,
+`WORKSPACE_MCP_READ_ONLY=0`) runs **write-enabled** on the shared `edriorp38@or-infra.com`
+Drive. claude.ai reaches it through the gateway route `/workspace/<system>/mcp` (the operator
+`oauth` bearer is allowed there). The official Claude↔Drive connector only surfaces
+read+create; these write tools were simply never exposed — connecting the gateway as a custom
+connector exposes them (no new code; the tools already ship in the sidecar).
+
+- **One tool does all four write actions: `update_drive_file`.**
+  - **Delete = trash only** (`trashed=true`) — **reversible**, by design. There is **no
+    hard-delete** tool in the package; permanent deletion is not possible through this surface.
+  - **Move** — `add_parents` / `remove_parents`.
+  - **Rename** — `name`.
+  - **In-place content edit** — `content`, **limited to Google Docs / Sheets / Slides**
+    (Google-native MIME types). Arbitrary binary content is rejected (`ValueError`).
+- **The one gate that limits WHO can drive these writes is `OAUTH_ALLOWED_EMAILS`** (the
+  gateway Google-login allowlist, `.github/workflows/deploy-mcp-server.yml`). It is set to **Or
+  only** (`edri2or@gmail.com`). Empty = **fail-closed** (nobody can log in) — a deploy preflight
+  guard fails the deploy loudly if it ever regresses to empty. `WORKSPACE_ALLOWED_SYSTEMS="*"`
+  is **not** a write gate (the Google identity is shared; pinning it adds no real security and
+  would 404 other systems' legitimate workspace-route access).
+- **⚠️ Turn write tools OFF in claude.ai _Research_ mode.** In Research, connector tools are
+  called **automatically, without per-call confirmation** (Anthropic's own guidance). With an
+  identity that can see the whole shared Drive, a prompt-injection during Research could
+  trash / rename / move / edit across all of it. Reduce the dangerous tools
+  (`manage_drive_access`, `set_drive_file_permissions`, `transfer_owner`) in the claude.ai
+  connector UI ("Search and tools"), and keep write tools disabled for Research tasks.
+- **⚠️ Do NOT narrow capability via scopes.** `--permissions drive:readonly` or editing
+  `WORKSPACE_MCP_SCOPES` changes the scopes the sidecar requests and breaks the **byte-equal**
+  contract with `WORKSPACE_SCOPES` (`services/mcp-server/src/google-oauth.ts`) → token refresh
+  fails with **"Scope has changed"**. Tool reduction is done **on the claude.ai side only**.
+- **Future hardening (documented, not implemented):** a dedicated **Service Account** with
+  folder-scoped Drive sharing would shrink the blast radius from "the whole shared Drive" to
+  "only the shared folders" — a smaller surface than the shared OAuth identity. Tracked as an
+  option, not a current change (the shared OAuth identity already works).
+
 ## Lesson (why this doc was wrong before)
 
 A prior session set `WORKSPACE_GOOGLE_ACCOUNT_LABEL=shared-google@or-infra.com` as a *label*, on the assumption "Google authenticates by the token, not the label." That held only for the OLD workspace-mcp image; the **rebuilt** image enforces that the token's authenticated account matches the label, so the fictional label broke every Google read. **Don't document an inferred label as if it were a real account; the human (Or) is the authority on which accounts exist.**
