@@ -33,3 +33,14 @@
 `templates/system/workflows/n8n/error-handler.json` (חדש),
 `templates/system/.github/workflows/configure-agent-router.yml`, `monitoring/registry-exempt.txt`,
 `tests/golden/system/MANIFEST.sha256`.
+
+## שלב 4 — probe ריצה: `/healthz` → `/healthz/readiness` (+סבילות 503)
+
+`system-runtime-audit.yml` עבר מבדיקת *liveness* (`/healthz`) לבדיקת *readiness*
+(`/healthz/readiness` — DB + מיגרציות), שתופסת "חי אבל לא מגיש" — הפער ש-liveness מפספס. סבילות
+מובנית: 503 (לא-מוכן, טרנזיינט בזמן ריסטארט/מיגרציה) עובר retry עד 3×10ש לפני שמוכרז `failed`, כך
+שריסטארט קצר לא יוצר אזעקת-שווא; not-ready מתמשך (DB נפול) כן מתריע. universal-across-lifecycle: אם
+readiness לא נתמך (404 ב-n8n ישן) — נפילה-לאחור ל-`/healthz` liveness, כך שמערכת ישנה לעולם לא
+תיתן אזעקת-שווא. אומת חי: or-edri-4 מגיש `/healthz/readiness` → 200. שינוי פקטורי-בלבד (אין golden/E2E).
+
+**Changes:** `.github/workflows/system-runtime-audit.yml`.

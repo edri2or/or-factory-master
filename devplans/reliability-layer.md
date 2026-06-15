@@ -23,8 +23,8 @@ stack חדש. מוכיחים כל שלב חי על `or-edri-4` לפני שמקב
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
 | 0 | דוקטרינה + מנגנון הוכחה-מענף (`source_ref`) | completed | `docs/reliability-layer.md`, `.github/workflows/refresh-system-agents.yml`, `devplans/reliability-layer.md` |
-| 1 | גשר ה-emit + Error Workflow סטנדרטי בכל workflow | in-progress | `services/mcp-server/src/{index.ts,emit-route.ts}`+test, `templates/system/workflows/n8n/error-handler.json`, `templates/system/.github/workflows/configure-agent-router.yml`, `monitoring/registry-exempt.txt`, golden |
-| 4 | probe `/healthz` → `/healthz/readiness` (+סבילות 503) | pending | `.github/workflows/system-runtime-audit.yml` |
+| 1 | גשר ה-emit + Error Workflow סטנדרטי בכל workflow | completed ✅ proven-live | `services/mcp-server/src/{index.ts,emit-route.ts}`+test, `templates/system/workflows/n8n/error-handler.json`, `templates/system/.github/workflows/configure-agent-router.yml`, `monitoring/registry-exempt.txt`, golden |
+| 4 | probe `/healthz` → `/healthz/readiness` (+סבילות 503) | in-progress | `.github/workflows/system-runtime-audit.yml` |
 | 2 | heartbeat "ping בהצלחה" פר-קרון קריטי | pending | `templates/system/workflows/n8n/{db-vacuum,spend-track,pending-actions-cleanup,style-refresh,tg-proactive,file-catalog-refresh}.json`, golden |
 | 5 | assertion "רץ אבל ריק" — תבנית + דוגמה אחת | pending | `docs/reliability-layer.md`, workflow מייצג אחד, golden |
 | — | **אבן-דרך E2E** (קפיאת קבצי-n8n) → proof על or-edri-4 | pending | `e2e-proofs/reliability-layer.json` |
@@ -96,19 +96,20 @@ stack חדש. מוכיחים כל שלב חי על `or-edri-4` לפני שמקב
 של `factory-mcp` לשווא. `error-handler.json` נרשם ב-`registry-exempt.txt` (error-sink, לא קרון).
 
 **Acceptance:**
-- [ ] `system-runtime-audit.yml` בודק `…/healthz/readiness` עם סבילות (2 כשלי-503 רצופים /
-      retry קצר לפני `failed`; 503 בודד = ❓ זמני). preflight של ה-deploy נשאר `/healthz` (liveness).
-- [ ] אומת חי ש-2.25.7 מגיש `/healthz/readiness` על or-edri-4 (אחרת fallback מתועד).
+- [x] `system-runtime-audit.yml` בודק `…/healthz/readiness` עם retry על 503 (עד 3×10ש לפני
+      `failed`) + fallback ל-`/healthz` אם readiness לא נתמך (404). preflight של ה-deploy נשאר `/healthz`.
+- [x] אומת חי ש-2.25.7 מגיש `/healthz/readiness` על or-edri-4 (200 `{"status":"ok"}`).
 
-**הוכחה תפקודית (באותו שלב):** `probe_endpoint https://n8n-or-edri-4.or-infra.com/healthz/readiness`
-→ 200 כשמוכן / 503 בעת restart; הרצת `system-runtime-audit.yml` אחת → or-edri-4 בריא ללא
-התראת-503-זמנית כוזבת. *לא-התנהגותי לבוט.*
+**הוכחה תפקודית (באותו שלב):** `probe_endpoint .../healthz/readiness` → **200** (אומת חי). הרצת
+`system-runtime-audit.yml` אחת אחרי מיזוג → or-edri-4 בריא דרך readiness. *לא-התנהגותי לבוט.*
 
 **הוכחת E2E (artifact):** לא-התנהגותי (workflow פקטורי, לא `templates/system`).
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** מומש — ה-probe עבר ל-`/healthz/readiness` עם retry על 503 (טרנזיינט) +
+fallback ל-`/healthz` על 404. readiness אומת חי על or-edri-4 (200). נשאר: CI ירוק → מיזוג.
 
-**שינוי תוכנית:** —
+**שינוי תוכנית:** הוספת fallback ל-liveness על 404 — שמירה על universal-across-lifecycle (n8n ישן
+שלא מגיש readiness לא ייתן אזעקת-שווא).
 
 ---
 
@@ -268,5 +269,7 @@ paths=workflows/n8n,.github/workflows/configure-agent-router.yml`), ואז `e2e-
 
 - שלב 0 (הושלם, מוזג) — כתבתי את "ספר-החוקים" של הרובד והוספתי מתג שמאפשר לבדוק שינוי על
   המערכת החיה or-edri-4 לפני שמקבעים. נכנס ל-main לבד (PR #459).
-- שלב 1 (בתהליך) — בניתי את "צינור ההתראות" (גשר בשרת) ואת ה-Error Workflow שיגרום לכל
-  אוטומציה לצעוק בטלגרם כשהיא נופלת. הקוד עבר בדיקות מקומית; נשאר להוכיח חי על or-edri-4.
+- שלב 1 (הושלם + הוכח חי ✅) — "צינור ההתראות" + ה-Error Workflow. הוכח מקצה-לקצה על or-edri-4:
+  כשל-לדוגמה → התראה הגיעה לטלגרם + כרטיס Linear + Axiom. הצינור עובד. נכנס ל-main (PR #460).
+- שלב 4 (בתהליך) — שדרגתי את בדיקת-הבריאות התקופתית לבדוק "מוכן באמת" (DB+מיגרציות), לא רק
+  "חי", עם הגנה מפני אזעקות-שווא בזמן ריסטארט. אומת ש-or-edri-4 תומך בזה.
