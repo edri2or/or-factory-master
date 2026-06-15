@@ -29,8 +29,14 @@ on:
         required: true
 
 concurrency:
-  group: deploy-verify-${{ github.event.inputs.target_ref }}
+  # Serialize every factory run that acts on one live system into a FIFO queue (shared
+  # `live-system-<system>` group with prove / refresh / e2e-verify), so two parallel
+  # developments never overwrite each other on the same system. Grouped by SYSTEM, not by
+  # target_ref, to match the proof-system lock. queue:max keeps up to 100 runs queued and
+  # REQUIRES cancel-in-progress:false.
+  group: live-system-${{ github.event.inputs.system_name }}
   cancel-in-progress: false
+  queue: max
 
 permissions: {}
 

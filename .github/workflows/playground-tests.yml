@@ -66,7 +66,13 @@ jobs:
         # `-shellcheck "shellcheck -S error"` matches pipeline-tests.yml's
         # `--severity=error` filter, so we don't suddenly start failing on
         # info/style hits that the rest of the repo deliberately ignores.
-        run: actionlint -shellcheck "shellcheck -S error"
+        # `-ignore` drops one stale false-positive: actionlint 1.7.7 predates the
+        # `queue:` concurrency key (GitHub Actions, GA 2026-05-07), so it flags the
+        # valid `queue: max` (the live-system-<system> serialization queue in
+        # prove/refresh/e2e/deploy-verify) as an "unexpected key". yamllint and GitHub
+        # both accept it. Drop this -ignore once actionlint is bumped to a release
+        # that knows `queue`. See docs/parallel-development.md.
+        run: actionlint -shellcheck "shellcheck -S error" -ignore 'unexpected key "queue" for "concurrency" section'
 
       - name: BATS tests
         run: ./scripts/tests/bats/bin/bats scripts/tests/*.bats
