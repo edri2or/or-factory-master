@@ -124,25 +124,10 @@ jobs:
           [ "$ok" = "true" ] || { echo "FAIL: cloudflare token /user/tokens/verify: $resp" >&2; exit 1; }
           echo "PASS: cloudflare token-creator verified (will mint scoped DNS token at DNS step)."
 
-          # Gmail OAuth (shared) — published to n8n as env vars so email-form-intake can
-          # mint its OWN Google access token at runtime from the shared refresh token.
-          # n8n does not use a REST-injected OAuth2 credential token (proven live), so the
-          # workflow mints its own — the same headless pattern the Workspace MCP sidecar
-          # uses. Soft: a system missing these just can't run email-form-intake; the deploy
-          # still succeeds. Values are single-line; masked; never printed.
-          GMAIL_OAUTH_CLIENT_ID=$(_sm_read "gmail-oauth-client-id" || echo "")
-          GMAIL_OAUTH_CLIENT_SECRET=$(_sm_read "gmail-oauth-client-secret" || echo "")
-          GMAIL_OAUTH_REFRESH_TOKEN=$(_sm_read "gmail-oauth-refresh-token" || echo "")
-          [ -n "$GMAIL_OAUTH_CLIENT_SECRET" ] && echo "::add-mask::${GMAIL_OAUTH_CLIENT_SECRET}" || true
-          [ -n "$GMAIL_OAUTH_REFRESH_TOKEN" ] && echo "::add-mask::${GMAIL_OAUTH_REFRESH_TOKEN}" || true
-
           {
             echo "RAILWAY_TOKEN=${RAILWAY_TOKEN}"
             echo "CF_TOKEN_CREATOR=${CF_TOKEN_CREATOR}"
             echo "CF_ZONE_ID=${CF_ZONE_ID}"
-            echo "GMAIL_OAUTH_CLIENT_ID=${GMAIL_OAUTH_CLIENT_ID}"
-            echo "GMAIL_OAUTH_CLIENT_SECRET=${GMAIL_OAUTH_CLIENT_SECRET}"
-            echo "GMAIL_OAUTH_REFRESH_TOKEN=${GMAIL_OAUTH_REFRESH_TOKEN}"
           } >> "$GITHUB_ENV"
 
       - name: Emit deploy started
@@ -760,7 +745,6 @@ jobs:
             --arg pass "${DLR}{{Postgres.POSTGRES_PASSWORD}}" \
             --arg domain "$DOMAIN" --arg weburl "https://${DOMAIN}" \
             --arg tz "$TIMEZONE" --arg key "$N8N_KEY" \
-            --arg gcid "${GMAIL_OAUTH_CLIENT_ID:-}" --arg gcsec "${GMAIL_OAUTH_CLIENT_SECRET:-}" --arg grt "${GMAIL_OAUTH_REFRESH_TOKEN:-}" \
             --argjson extra "$QUEUE_EXTRA" '{
               DB_TYPE: "postgresdb",
               DB_POSTGRESDB_HOST: $host,
@@ -784,13 +768,9 @@ jobs:
               EXECUTIONS_DATA_SAVE_ON_PROGRESS: "true",
               EXECUTIONS_DATA_PRUNE: "true",
               EXECUTIONS_DATA_MAX_AGE: "8760",
-              EXECUTIONS_DATA_PRUNE_MAX_COUNT: "25000",
-              GMAIL_OAUTH_CLIENT_ID: $gcid,
-              GMAIL_OAUTH_CLIENT_SECRET: $gcsec,
-              GMAIL_OAUTH_REFRESH_TOKEN: $grt,
-              N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
+              EXECUTIONS_DATA_PRUNE_MAX_COUNT: "25000"
             } + $extra')"
-          echo "PASS: n8n env vars set (base + Gmail-mint vars + env-access; queue extras when QM=true; one upsert → single redeploy)."
+          echo "PASS: n8n env vars set (22 base vars + queue extras when QM=true; one upsert → single redeploy)."
 
           # ===== (Day-2 upgrade) roll out the staged image change and wait =====
           # When the image changed above, make sure a NEW deployment rolls out

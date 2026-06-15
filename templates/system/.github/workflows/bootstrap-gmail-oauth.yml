@@ -1,30 +1,31 @@
-name: Bootstrap Gmail OAuth (shared token, no click when possible)
+name: Bootstrap Gmail OAuth (n8n env vars for headless self-mint)
 
-# Connects this system's n8n to Gmail + Google Calendar using the SHARED Gmail
-# OAuth credential the factory ships to every system (all act on the same Google
-# account). It creates/updates the "Google OAuth2 API" credential in n8n and
-# pre-loads the shared refresh token, so in the common case NO consent click is
-# needed. If the shared token can't authorize (missing, or n8n didn't keep the
-# pre-loaded token), it falls back to the proven one-click Telegram consent link.
+# Publishes the SHARED Gmail OAuth secrets (client id/secret + refresh token) to this
+# system's n8n service as ENV VARS, so workflows (email-form-intake) mint their OWN
+# Google access token at runtime and call the Gmail REST API with a Bearer header.
 #
-# Secrets used (all from this system's own Secret Manager, propagated by the
-# factory's copy-generic-secrets at provision time):
-#   gmail-oauth-client-id, gmail-oauth-client-secret, gmail-oauth-refresh-token
+# Why env vars and not an n8n credential: n8n does NOT use an OAuth2 access token
+# injected via its REST credentials API (proven live on or-edri-4 — "Unable to sign
+# without access token"), and the per-system consent redirect_uri isn't registered on the
+# shared Google client, so the in-UI "Connect" flow can't run headlessly either. Minting
+# from the refresh token in env vars is exactly how the Workspace MCP sidecar stays
+# connected headlessly. Idempotent. Secrets are masked, never printed.
 #
-# Scope: gmail.modify + calendar.events + gmail.settings.basic +
-# gmail.settings.sharing + drive + documents (NOT permanent delete). Must match
-# the shared token's grant EXACTLY — a mismatched superset/subset breaks the
-# preloaded-token path ("Scope has changed" on refresh). Idempotent. Secret
-# values are masked, never printed.
+# Secrets used (this system's own Secret Manager, propagated by copy-generic-secrets at
+# provision time): gmail-oauth-client-id, gmail-oauth-client-secret,
+# gmail-oauth-refresh-token, railway-api-token, railway-project-id, railway-n8n-service-id.
 
 on:
   workflow_dispatch: {}
 
 permissions: {}
 
+env:
+  RAILWAY_GQL: https://backboard.railway.com/graphql/v2
+
 jobs:
   bootstrap-gmail:
-    name: Connect Gmail credential from the shared token
+    name: Publish Gmail env vars to the n8n service
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
     permissions:
@@ -38,14 +39,12 @@ jobs:
           workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
           service_account: ${{ vars.GCP_DEPLOY_SA }}
 
-      - name: Create/refresh credential from the shared token, notify operator
+      - name: Publish Gmail OAuth env vars to n8n, validate token, notify
         env:
           PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
           SYSTEM_NAME: ${{ vars.SYSTEM_NAME }}
         run: |
           set -euo pipefail
-          BASE="https://n8n-${SYSTEM_NAME}.or-infra.com"
-          SCOPE="https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/gmail.settings.basic https://www.googleapis.com/auth/gmail.settings.sharing https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/documents"
 
           _sm_read() { gcloud secrets versions access latest --secret="$1" --project="$PROJECT_ID" 2>/dev/null; }
 
@@ -58,124 +57,79 @@ jobs:
               echo "אפשר להריץ מחדש את ה-workflow אחרי תיקון (אידמפוטנטי)."
             } >> "$GITHUB_STEP_SUMMARY"
             echo "WARN: ${reason}" >&2
-            [ -n "${COOKIE_JAR:-}" ] && curl -sS -o /dev/null -b "$COOKIE_JAR" -X POST "$BASE/rest/logout" 2>/dev/null || true
             exit 0
           }
 
-          # 1. Secrets: Gmail OAuth client + shared refresh token + n8n login + Telegram.
+          # 1. Gmail OAuth secrets (the values the workflow mints with).
           CID=$(_sm_read "gmail-oauth-client-id" || echo "")
           CSEC=$(_sm_read "gmail-oauth-client-secret" || echo "")
-          [ -n "$CID" ] && [ -n "$CSEC" ] || _soft_exit0 "סודות Gmail OAuth חסרים (client-id / client-secret)"
-          echo "::add-mask::${CID}"; echo "::add-mask::${CSEC}"
-
           RT=$(_sm_read "gmail-oauth-refresh-token" || echo "")
-          [ -n "$RT" ] && echo "::add-mask::${RT}" || echo "INFO: no shared refresh token present — will use one-click consent."
+          { [ -n "$CID" ] && [ -n "$CSEC" ] && [ -n "$RT" ]; } || _soft_exit0 "סודות Gmail OAuth חסרים (client-id / client-secret / refresh-token)"
+          echo "::add-mask::${CID}"; echo "::add-mask::${CSEC}"; echo "::add-mask::${RT}"
 
-          N8N_OWNER_EMAIL=$(_sm_read "n8n-owner-email" || echo "")
-          N8N_OWNER_PASSWORD=$(_sm_read "n8n-owner-password" || echo "")
-          [ -n "$N8N_OWNER_EMAIL" ] && [ -n "$N8N_OWNER_PASSWORD" ] || _soft_exit0 "n8n-owner-email/password חסרים ב-SM"
-          echo "::add-mask::${N8N_OWNER_PASSWORD}"
+          # 2. Validate the shared refresh token at Google (health check only).
+          GH=$(curl -sS -o /tmp/gob-tok.json -w '%{http_code}' --max-time 20 \
+            -X POST "https://oauth2.googleapis.com/token" \
+            -d "client_id=${CID}" -d "client_secret=${CSEC}" \
+            -d "refresh_token=${RT}" -d "grant_type=refresh_token" || echo "000")
+          if [ "$GH" = "200" ] && jq -e '.access_token' /tmp/gob-tok.json >/dev/null 2>&1; then
+            echo "PASS: shared refresh token is valid at Google."
+          else
+            echo "WARN: shared refresh token did not validate at Google (HTTP $GH) — publishing anyway; the runtime mint will fail until the token is fixed." >&2
+          fi
+          rm -f /tmp/gob-tok.json
 
+          # 3. Railway creds + service ids (this system's own SM).
+          RAILWAY_TOKEN=$(_sm_read "railway-api-token" || echo "")
+          PROJECT_ID_RW=$(_sm_read "railway-project-id" || echo "")
+          N8N_SID=$(_sm_read "railway-n8n-service-id" || echo "")
+          { [ -n "$RAILWAY_TOKEN" ] && [ -n "$PROJECT_ID_RW" ] && [ -n "$N8N_SID" ]; } || _soft_exit0 "סודות Railway חסרים (api-token / project-id / n8n-service-id)"
+          echo "::add-mask::${RAILWAY_TOKEN}"
+
+          _gql() {
+            local query="$1" variables="${2:-}"
+            [ -n "$variables" ] || variables='{}'
+            curl -sS -X POST "$RAILWAY_GQL" \
+              -H "Authorization: Bearer ${RAILWAY_TOKEN}" \
+              -H "Content-Type: application/json" \
+              -d "$(jq -cn --arg q "$query" --argjson v "$variables" '{query: $q, variables: $v}')"
+          }
+
+          # 4. Resolve the production environment id.
+          resp=$(_gql 'query($id: String!) { project(id: $id) { environments { edges { node { id name } } } } }' \
+            "$(jq -cn --arg id "$PROJECT_ID_RW" '{id: $id}')" 2>/dev/null || echo '{}')
+          ENV_ID=$(printf '%s' "$resp" | jq -r \
+            '(.data.project.environments.edges // []) | map(select(.node.name=="production")) | .[0].node.id // ""' 2>/dev/null || echo "")
+          { [ -n "$ENV_ID" ] && [ "$ENV_ID" != "null" ]; } || _soft_exit0 "סביבת production לא נמצאה ב-Railway project ${PROJECT_ID_RW}"
+          echo "INFO: production environment id resolved."
+
+          # 5. Upsert each var INDIVIDUALLY. variableUpsert sets exactly ONE variable and
+          #    leaves every other var untouched — unlike variableCollectionUpsert, which
+          #    REPLACES the whole collection (and would wipe the n8n DB/${{...}} reference
+          #    vars). Each upsert may trigger a Railway redeploy; n8n is restart-safe.
+          _setvar() {
+            local name="$1" value="$2"
+            _gql 'mutation($input: VariableUpsertInput!) { variableUpsert(input: $input) }' \
+              "$(jq -cn --arg pid "$PROJECT_ID_RW" --arg eid "$ENV_ID" --arg sid "$N8N_SID" --arg n "$name" --arg v "$value" \
+                '{input: {projectId: $pid, environmentId: $eid, serviceId: $sid, name: $n, value: $v}}')" \
+              > /dev/null
+          }
+          _setvar "GMAIL_OAUTH_CLIENT_ID" "$CID"
+          _setvar "GMAIL_OAUTH_CLIENT_SECRET" "$CSEC"
+          _setvar "GMAIL_OAUTH_REFRESH_TOKEN" "$RT"
+          # Allow $env access in n8n expressions/Code (default is already allowed; set
+          # explicitly so the mint never breaks if a future default flips).
+          _setvar "N8N_BLOCK_ENV_ACCESS_IN_NODE" "false"
+          echo "PASS: published GMAIL_OAUTH_* + N8N_BLOCK_ENV_ACCESS_IN_NODE to the n8n service (Railway redeploys n8n to pick them up)."
+
+          # 6. Notify the operator.
           TG_BOT_TOKEN=$(_sm_read "n8n-telegram-bot-token" || echo "")
           TG_CHAT_ID=$(_sm_read "n8n-telegram-chat-id" || echo "")
           [ -n "$TG_BOT_TOKEN" ] && echo "::add-mask::${TG_BOT_TOKEN}" || true
-
-          # 2. Validate the shared refresh token DIRECTLY against Google (the real
-          #    "will it work" signal — independent of n8n's opaque internal state).
-          TOKEN_OK=0
-          if [ -n "$RT" ]; then
-            GH=$(curl -sS -o /tmp/gob-tok.json -w '%{http_code}' --max-time 20 \
-              -X POST "https://oauth2.googleapis.com/token" \
-              -d "client_id=${CID}" -d "client_secret=${CSEC}" \
-              -d "refresh_token=${RT}" -d "grant_type=refresh_token" || echo "000")
-            if [ "$GH" = "200" ] && jq -e '.access_token' /tmp/gob-tok.json >/dev/null 2>&1; then
-              TOKEN_OK=1; echo "PASS: shared refresh token is valid at Google."
-            else
-              echo "WARN: shared refresh token did not validate at Google (HTTP $GH) — will fall back to consent."
-            fi
-            rm -f /tmp/gob-tok.json
-          fi
-
-          # 3. n8n owner login.
-          COOKIE_JAR=$(mktemp)
-          trap 'rm -f "$COOKIE_JAR" /tmp/gob-*.json' EXIT
-          _login() {
-            curl -sS -o /tmp/gob-login.json -w '%{http_code}' --max-time 15 \
-              -c "$COOKIE_JAR" -X POST "$BASE/rest/login" -H "Content-Type: application/json" \
-              -d "$(jq -cn --arg f "$1" --arg e "$N8N_OWNER_EMAIL" --arg p "$N8N_OWNER_PASSWORD" '{($f):$e, password:$p}')" || echo "000"
-          }
-          _napi() {
-            local method="$1" url="$2" out="$3" data="${4:-}" i http
-            for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
-              if [ -n "$data" ]; then
-                http=$(curl -sS -o "$out" -w '%{http_code}' --max-time 30 -b "$COOKIE_JAR" -X "$method" -H "Content-Type: application/json" --data-binary "$data" "$url" || echo "000")
-              else
-                http=$(curl -sS -o "$out" -w '%{http_code}' --max-time 30 -b "$COOKIE_JAR" -X "$method" "$url" || echo "000")
-              fi
-              [ "$http" != "000" ] && { printf '%s' "$http"; return 0; }
-              sleep 5
-            done
-            printf '000'
-          }
-          HTTP="000"
-          for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
-            HTTP=$(_login "emailOrLdapLoginId"); [ "$HTTP" = "200" ] || HTTP=$(_login "email")
-            [ "$HTTP" = "200" ] && break; sleep 5
-          done
-          [ "$HTTP" = "200" ] || { head -c 400 /tmp/gob-login.json >&2 || true; _soft_exit0 "התחברות ל-n8n נכשלה (HTTP $HTTP)"; }
-          echo "PASS: n8n owner login."
-
-          # 4. Build the credential data. Pre-load oauthTokenData when the shared
-          #    token validated, so the credential is authorized without a click.
-          if [ "$TOKEN_OK" = "1" ]; then
-            DATA=$(jq -cn --arg cid "$CID" --arg csec "$CSEC" --arg sc "$SCOPE" --arg rt "$RT" \
-              '{clientId:$cid, clientSecret:$csec, scope:$sc, sendAdditionalBodyProperties:false, additionalBodyProperties:"", oauthTokenData:{access_token:"", refresh_token:$rt, scope:$sc, token_type:"Bearer", expiry_date:0}}')
-          else
-            DATA=$(jq -cn --arg cid "$CID" --arg csec "$CSEC" --arg sc "$SCOPE" \
-              '{clientId:$cid, clientSecret:$csec, scope:$sc, sendAdditionalBodyProperties:false, additionalBodyProperties:""}')
-          fi
-
-          # 5. Create or update the "Google OAuth2 API" credential.
-          HTTP=$(_napi GET "$BASE/rest/credentials" /tmp/gob-creds.json)
-          [ "$HTTP" = "200" ] || _soft_exit0 "GET /rest/credentials נכשל (HTTP $HTTP)"
-          CRED_ID=$(jq -r '[(.data // .) | .[]? | select(.name=="Google OAuth2 API")][0].id // empty' /tmp/gob-creds.json || echo "")
-
-          BODY=$(jq -cn --argjson d "$DATA" '{name:"Google OAuth2 API", type:"googleOAuth2Api", data:$d}')
-          if [ -z "$CRED_ID" ] || [ "$CRED_ID" = "null" ]; then
-            HTTP=$(_napi POST "$BASE/rest/credentials" /tmp/gob-new.json "$BODY")
-            { [ "$HTTP" = "200" ] || [ "$HTTP" = "201" ]; } || { head -c 400 /tmp/gob-new.json >&2 || true; _soft_exit0 "POST /rest/credentials נכשל (HTTP $HTTP)"; }
-            CRED_ID=$(jq -r '.data.id // .id // empty' /tmp/gob-new.json)
-            echo "PASS: credential created → id=${CRED_ID}"
-          else
-            HTTP=$(_napi PATCH "$BASE/rest/credentials/${CRED_ID}" /tmp/gob-upd.json "$BODY")
-            [ "$HTTP" = "200" ] || { head -c 400 /tmp/gob-upd.json >&2 || true; echo "WARN: PATCH credential failed (HTTP $HTTP)"; }
-            echo "PASS: credential updated → id=${CRED_ID}"
-          fi
-          [ -n "$CRED_ID" ] && [ "$CRED_ID" != "null" ] || _soft_exit0 "credential id ריק אחרי יצירה/עדכון"
-
-          AUTH_URL="${BASE}/rest/oauth2-credential/auth?id=${CRED_ID}"
-
-          # 6. Notify the operator. If the shared token validated, the credential is
-          #    connected automatically; the link is only a just-in-case fallback.
-          # On the auto-connected path we send NO consent link: the credential is
-          # already authorized from the shared token, and the per-system consent URL
-          # would only 400 with redirect_uri_mismatch (each system has its own
-          # n8n-<system>.or-infra.com callback, which isn't registered on the shared
-          # Google client). The link belongs ONLY to the genuine fallback path.
-          if [ "$TOKEN_OK" = "1" ]; then
-            MSG="🔐 Gmail + יומן מחוברים אוטומטית למערכת הזו ✅ (מפתח משותף, ללא צורך בקליק)."
-            HEAD="## ✅ Gmail + Calendar מחוברים אוטומטית (מפתח משותף)"
-            SUMMARY_EXTRA="הקרדנציאל טעון במפתח המשותף — אין צורך בשום פעולה."
-          else
-            MSG="🔐 לחיבור Gmail + יומן למערכת הזו — לחץ Allow פעם אחת: ${AUTH_URL}"
-            HEAD="## 🔐 Gmail + Calendar — דרוש קליק אחד"
-            SUMMARY_EXTRA="[חיבור ידני — לחץ Allow](${AUTH_URL})"
-          fi
           if [ -n "$TG_BOT_TOKEN" ] && [ -n "$TG_CHAT_ID" ]; then
             curl -sS -o /dev/null --max-time 15 "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage" \
-              --data-urlencode "chat_id=${TG_CHAT_ID}" --data-urlencode "text=${MSG}" || echo "WARN: Telegram send failed."
+              --data-urlencode "chat_id=${TG_CHAT_ID}" \
+              --data-urlencode "text=🔐 Gmail מחובר למערכת הזו ✅ (מפתח משותף, דרך משתני-סביבה — ה-n8n מתאתחל לרגע)." || echo "WARN: Telegram send failed."
           fi
-
-          { echo "$HEAD"; echo ""; echo "credential id: \`${CRED_ID}\`"; echo ""; echo "$SUMMARY_EXTRA"; } >> "$GITHUB_STEP_SUMMARY"
-          curl -sS -o /dev/null -b "$COOKIE_JAR" -X POST "$BASE/rest/logout" 2>/dev/null || true
+          { echo "## ✅ Gmail env vars published to n8n"; echo ""; echo "GMAIL_OAUTH_CLIENT_ID / CLIENT_SECRET / REFRESH_TOKEN + N8N_BLOCK_ENV_ACCESS_IN_NODE set on the n8n service. n8n redeploys to pick them up."; } >> "$GITHUB_STEP_SUMMARY"
           echo "DONE"

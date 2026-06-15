@@ -21,7 +21,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 |---|---|---|---|
 | 1 | בניית ה-workflow + skill + בוקקיפינג (סטטי) | completed | `templates/system/workflows/n8n/email-form-intake.json`, `templates/system/.claude/skills/email-form-intake/SKILL.md`, `scripts/gen-workflow-skill.sh`, `monitoring/registry-exempt.txt`, `devplans/email-form-intake.md`, `changelog.d/2026-06-15-email-form-intake.md`, `tests/golden/system/MANIFEST.sha256` |
 | 2 | חיווט ל-configure-agent-router.yml (סטטי) | completed | `templates/system/.github/workflows/configure-agent-router.yml`, `tests/golden/system/MANIFEST.sha256` |
-| 3 | הוכחה חיה על or-edri-4 (תפקודית + E2E) | in-progress | `templates/system/workflows/n8n/email-form-intake.json` (mint-token), `templates/system/.github/workflows/deploy-railway-cloudflare.yml` (Gmail env), `templates/system/.github/workflows/configure-agent-router.yml`, `e2e-proofs/email-form-intake.json` |
+| 3 | הוכחה חיה על or-edri-4 (תפקודית + E2E) | in-progress | `templates/system/workflows/n8n/email-form-intake.json` (mint-token), `templates/system/.github/workflows/bootstrap-gmail-oauth.yml` (Gmail env→Railway), `templates/system/.github/workflows/configure-agent-router.yml`, `e2e-proofs/email-form-intake.json` |
 | 4 | קיבוע (merge) + סגירה | pending | `devplans/email-form-intake.md` |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
@@ -119,11 +119,13 @@ bootstrap ששמר access_token). זה לא באג שלנו אלא מגבלה ש
 
 **שינוי תוכנית (Or-approved):** במקום קרדנציאל-Gmail של n8n — ה-workflow **מ-mint את מפתח-הגישה
 בעצמו** בזמן ריצה (נוד `Mint Gmail Token` → token endpoint עם ה-refresh token מ-env-vars של n8n),
-ושלוש קריאות ה-Gmail נושאות `Authorization: Bearer`. זה בדיוק הדפוס של ה-Workspace MCP sidecar
-(רענון headless). `deploy-railway-cloudflare.yml` מזריק `GMAIL_OAUTH_CLIENT_ID/SECRET/REFRESH_TOKEN`
-ל-env של n8n (+`N8N_BLOCK_ENV_ACCESS_IN_NODE=false`); `configure-agent-router.yml` הסיר את
-ה-lookup ל-cred + ה-placeholder; התיקון הקודם ל-`bootstrap-gmail-oauth.yml` **בוטל** (token מוזרק-
-REST חסר-תועלת ל-n8n). מרחיב את הדיף ל-deploy workflow + פריסה מחדש של or-edri-4 (אישור Or — בלי עלות חדשה).
+ושלוש קריאות ה-Gmail נושאות `Authorization: Bearer`. זה בדיוק הדפוס של ה-Workspace MCP sidecar.
+**עידון שני (אחרי שה-redeploy נחסם):** הזרקת ה-env-vars עברה מ-`deploy-railway-cloudflare.yml`
+ל-**`bootstrap-gmail-oauth.yml`** — כי עריכת ה-deploy מפעילה את משטח ה-E2E "deploy-edge" (הוכחת
+`deploy-verify` נפרדת ש-`refresh-system-agents` לא מפיק → ה-merge החי נחסם, אומת חי ב-PR or-edri-4 #39).
+`bootstrap-gmail-oauth.yml` לא נמצא באף משטח E2E, אז הוא מוחל נקי. הוא עכשיו עושה `variableUpsert`
+פר-משתנה (לא collection-replace) ל-`GMAIL_OAUTH_*`+`N8N_BLOCK_ENV_ACCESS_IN_NODE` על שירות ה-n8n.
+`configure-agent-router.yml` הסיר את ה-lookup ל-cred + ה-placeholder. ה-deploy לא נגוע (אין deploy-edge).
 
 ---
 
