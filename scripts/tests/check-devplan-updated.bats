@@ -88,6 +88,29 @@ commit_files() {
   assert_output --partial "PASS"
 }
 
+@test "PASS: closing one plan (→completed) with code, while another stays active and untouched" {
+  # The multi-development bug: with two active plans, a PR that flips plan A to
+  # `completed` AND carries code, leaving plan B untouched, must PASS — closing a
+  # plan IS valid progress. Before the fix this FAILED, because the gate looked
+  # only at still-active plans and saw B (untouched) → "none updated".
+  repo="$(make_fixture_repo)"
+  (
+    cd "$repo"
+    mkdir -p devplans
+    printf '%s' "$ACTIVE_FM" > devplans/a.md
+    printf '%s' "$ACTIVE_FM" > devplans/b.md
+    git add devplans/a.md devplans/b.md
+    git commit -q -m "seed two active plans"
+  )
+  commit_files "$repo" "final stage: close plan a + code, leave b active" \
+    "scripts/foo.sh" "echo foo" \
+    "devplans/a.md"  "$(printf '%s' "$COMPLETED_FM")"
+
+  run bash -c "cd '$repo' && bash '$CHECK'"
+  assert_success
+  assert_output --partial "PASS"
+}
+
 # --- failure paths ---
 
 @test "FAIL: active plan exists but code changed without updating it" {
