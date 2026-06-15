@@ -8,9 +8,12 @@ name: System Runtime Audit
 #   - 4xx/5xx -> factory.runtime_audit.failed (error + action_required -> Axiom + Telegram + Linear)
 #   - 000 (DNS/conn fail) -> not deployed -> logged only, no alert.
 # Plus a factory.runtime_audit.summary (info -> Axiom) with per-run counts.
-# Probes /healthz (universal: Caddy proxies it to n8n; pre-Caddy systems serve
-# it directly). Reuse-mode TEST systems share factory-test-25 and are not
-# folder-listed — a known v1 limitation. EXCEPTION: the standing proving system
+# Probes /healthz/READINESS (DB + migrations) — catches "up but not actually
+# serving", which plain /healthz liveness misses. A transient 503 (mid-restart) is
+# retried; only a persistent not-ready alerts. Stays universal: if readiness isn't
+# served (404 on older n8n) it falls back to plain /healthz (Caddy proxies it to n8n;
+# pre-Caddy systems serve it directly). Reuse-mode TEST systems share factory-test-25
+# and are not folder-listed — a known v1 limitation. EXCEPTION: the standing proving system
 # or-edri-4 lives on a test project (factory-test-21, adopt) outside the Systems
 # folder, so it is ALWAYS probed (ALWAYS_PROBE) — it must have a heartbeat, since
 # its silent decay is exactly what retired the old reference system.
@@ -58,11 +61,30 @@ jobs:
             # The shared test backend is not itself a deployed system.
             [ "$sys" = "factory-test-25" ] && continue
             TOTAL=$((TOTAL + 1))
+            # Probe READINESS (DB + migrations), not just liveness — catches "up but
+            # not actually serving". Tolerate a transient 503 (mid-restart/migration)
+            # by retrying; only a PERSISTENT not-ready is an alert. Stay universal across
+            # n8n versions/lifecycle: if readiness isn't served (404), fall back to plain
+            # /healthz liveness so an older/pre-Caddy system never false-alarms.
+            RURL="https://n8n-${sys}.or-infra.com/healthz/readiness"
             URL="https://n8n-${sys}.or-infra.com/healthz"
-            # curl's -w '%{http_code}' already prints 000 on a connection failure;
-            # don't append another (|| echo 000 -> "000000", misread as unhealthy).
-            code=$(curl -sS -m 15 -o /dev/null -w '%{http_code}' "$URL" 2>/dev/null) || true
-            code="${code:-000}"
+            USED="$RURL"
+            code=000
+            for attempt in 1 2 3; do
+              # curl's -w '%{http_code}' already prints 000 on a connection failure;
+              # don't append another (|| echo 000 -> "000000", misread as unhealthy).
+              code=$(curl -sS -m 15 -o /dev/null -w '%{http_code}' "$RURL" 2>/dev/null) || true
+              code="${code:-000}"
+              # 503 = not-ready; retry (transient restart/migration). Else terminal.
+              [ "$code" = "503" ] && [ "$attempt" -lt 3 ] && { sleep 10; continue; }
+              break
+            done
+            # Readiness not served by this n8n version -> fall back to liveness (universal).
+            if [ "$code" = "404" ]; then
+              USED="$URL"
+              code=$(curl -sS -m 15 -o /dev/null -w '%{http_code}' "$URL" 2>/dev/null) || true
+              code="${code:-000}"
+            fi
             case "$code" in
               2*)
                 HEALTHY=$((HEALTHY + 1))
@@ -71,7 +93,7 @@ jobs:
                   --name="factory.runtime_audit.ok" --severity="info" --layer="system" \
                   --workflow="system-runtime-audit.yml" --run-id="${GITHUB_RUN_ID}" \
                   --system="${sys}" \
-                  --body="$(jq -cn --arg u "$URL" --arg c "$code" '{endpoint:$u, http:$c}')" || true
+                  --body="$(jq -cn --arg u "$USED" --arg c "$code" '{endpoint:$u, http:$c}')" || true
                 ;;
               000)
                 NOTDEPLOYED=$((NOTDEPLOYED + 1))
@@ -84,7 +106,7 @@ jobs:
                   --name="factory.runtime_audit.failed" --severity="error" --layer="system" \
                   --workflow="system-runtime-audit.yml" --run-id="${GITHUB_RUN_ID}" \
                   --system="${sys}" --action-required="true" \
-                  --body="$(jq -cn --arg u "$URL" --arg c "$code" '{endpoint:$u, http:$c}')" || true
+                  --body="$(jq -cn --arg u "$USED" --arg c "$code" '{endpoint:$u, http:$c}')" || true
                 ;;
             esac
           done
