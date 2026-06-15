@@ -1,8 +1,8 @@
-name: Decommission Test System (Railway + DNS + repo archive)
+name: Decommission Test System (Railway + DNS + repo delete)
 
 # Manual dispatch only. Tears down the per-test resources of a REUSE-MODE test
 # system: deletes its Railway project, removes its Cloudflare DNS records, and
-# ARCHIVES its GitHub repo. Deliberately TEST-ONLY and narrow:
+# DELETES its GitHub repo. Deliberately TEST-ONLY and narrow:
 #   - Does NOT touch any GCP project or Secret Manager (in reuse mode the shared
 #     project's secrets are wiped + reseeded by the next provision anyway).
 #   - Does NOT delete the per-system GitHub App (org-admin only — manual).
@@ -366,10 +366,20 @@ jobs:
             --api-key="${LINEAR_KEY}" \
             --apply || echo "::warning::Linear webhook cleanup encountered an error — continuing teardown"
 
-      - name: Archive GitHub repo
+      - name: Delete GitHub repo
         run: |
           set -euo pipefail
-          http_code=$(curl -sS -o /tmp/repo.json -w '%{http_code}' \
+          # Defense in depth — repo deletion is IRREVERSIBLE (no GitHub recycle bin),
+          # so hard-refuse the factory + control repos here too, mirroring
+          # ALWAYS_KEEP_REPOS in services/mcp-server/src/github-client.ts. The
+          # acceptance gate above already makes a non-test name unreachable; this is
+          # a redundant brake on the destructive step itself.
+          case "$SYSTEM_NAME" in
+            or-factory-master|or-factory-master-control|factory-control-9piybr|factory-test-25)
+              echo "FAIL: refusing to delete protected repo edri2or/${SYSTEM_NAME}" >&2; exit 1 ;;
+          esac
+
+          http_code=$(curl -sS -o /dev/null -w '%{http_code}' \
             -H "Authorization: Bearer ${BROKER_TOKEN}" \
             -H "Accept: application/vnd.github+json" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
@@ -379,18 +389,15 @@ jobs:
             exit 0
           fi
           [ "$http_code" = "200" ] || { echo "FAIL: GET repo HTTP $http_code" >&2; exit 1; }
-          if [ "$(jq -r '.archived' /tmp/repo.json)" = "true" ]; then
-            echo "INFO: repo edri2or/${SYSTEM_NAME} already archived."
-            exit 0
-          fi
-          code=$(curl -sS -o /dev/null -w '%{http_code}' -X PATCH \
+          # DELETE /repos/{owner}/{repo} returns 204 on success (broker App
+          # administration:write — the same right it used to archive).
+          code=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE \
             -H "Authorization: Bearer ${BROKER_TOKEN}" \
             -H "Accept: application/vnd.github+json" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
-            "https://api.github.com/repos/edri2or/${SYSTEM_NAME}" \
-            -d '{"archived":true}')
-          [ "$code" = "200" ] || { echo "FAIL: archive PATCH HTTP $code" >&2; exit 1; }
-          echo "PASS: repo edri2or/${SYSTEM_NAME} archived."
+            "https://api.github.com/repos/edri2or/${SYSTEM_NAME}")
+          [ "$code" = "204" ] || { echo "FAIL: delete DELETE HTTP $code" >&2; exit 1; }
+          echo "PASS: repo edri2or/${SYSTEM_NAME} deleted."
 
       - name: Summary
         if: always()
@@ -402,7 +409,7 @@ jobs:
             echo "- Railway project named \`${SYSTEM_NAME}\` (deleted)"
             echo "- Cloudflare DNS \`n8n-${SYSTEM_NAME}\` CNAME + \`_railway-verify\` TXT"
             echo "- Linear webhooks pointing at \`${SYSTEM_NAME}.or-infra.com\` / \`n8n-${SYSTEM_NAME}.or-infra.com\` (deleted)"
-            echo "- GitHub repo \`edri2or/${SYSTEM_NAME}\` (archived)"
+            echo "- GitHub repo \`edri2or/${SYSTEM_NAME}\` (deleted)"
             echo ""
             echo "Untouched by design: GCP project / Secret Manager (\`${SYS_PROJECT:-?}\`), WIF/test_pool, and the per-system GitHub App (delete that via org admin if desired)."
           } >> "$GITHUB_STEP_SUMMARY"
