@@ -89,6 +89,17 @@ _api() {
     "$@"
 }
 
+# Like _api but returns ONLY the HTTP status code (no -f), for calls where a 4xx is an
+# expected, handled outcome — e.g. the idempotent classic-protection cleanup below, where
+# 404 means "already clean" and must not be treated as an error.
+_api_code() {
+  curl -s -o /dev/null -w '%{http_code}' \
+    -H "Authorization: Bearer ${APP_TOKEN}" \
+    -H "Accept: application/vnd.github+json" \
+    -H "X-GitHub-Api-Version: 2022-11-28" \
+    "$@"
+}
+
 # List existing rulesets; find protect-main by name.
 EXISTING=$(_api "${API}")
 RULESET_ID=$(echo "${EXISTING}" | jq -r --arg name "${RULESET_NAME}" \
@@ -112,4 +123,31 @@ else
   echo "FAIL: unexpected result on ${REPO} — name=${NAME} enforcement=${ENFORCEMENT}" >&2
   echo "${RESULT}" | jq . >&2
   exit 1
+fi
+
+# --- Reconcile: remove any leftover legacy CLASSIC branch protection -----------------
+# Older repos — the factory before this change, and systems provisioned before the
+# 2026-06 ruleset migration — had a CLASSIC branch protection set via the now-removed
+# `PUT /branches/<branch>/protection` path (strict:true + the original 4 contexts +
+# enforce_admins). GitHub enforces classic protection AND the ruleset *simultaneously*,
+# so a leftover classic layer silently overrides the ruleset's intent (notably it forces
+# strict "branch must be up to date before merge", defeating cheap parallel merges).
+# The ruleset (asserted active just above) is the SOLE intended governor, so delete any
+# classic protection now. Idempotent: 404 == already clean. Done ONLY AFTER the ruleset is
+# confirmed active, so the branch is never left unprotected. Non-fatal: the ruleset already
+# protects the branch, so a cleanup hiccup must never fail hardening.
+BRANCH="main"   # every factory-managed repo (factory + systems) uses main as default
+PROT_API="https://api.github.com/repos/${REPO}/branches/${BRANCH}/protection"
+DEL_CODE=$(_api_code -X DELETE "${PROT_API}" || echo "000")
+case "${DEL_CODE}" in
+  204) echo "Reconcile: removed leftover classic branch protection on ${REPO}@${BRANCH} — ruleset is now the sole governor." ;;
+  404) echo "Reconcile: no classic branch protection on ${REPO}@${BRANCH} (already ruleset-only)." ;;
+  *)   echo "WARN: unexpected HTTP ${DEL_CODE} deleting classic protection on ${REPO}@${BRANCH}; ruleset remains active (not failing)." >&2 ;;
+esac
+# Confirm it's gone — a clear verification surface in the protect-main run log.
+VERIFY_CODE=$(_api_code "${PROT_API}" || echo "000")
+if [ "${VERIFY_CODE}" = "404" ]; then
+  echo "Reconcile: verified no classic branch protection on ${REPO}@${BRANCH} (ruleset-only)."
+else
+  echo "WARN: classic protection still reports HTTP ${VERIFY_CODE} on ${REPO}@${BRANCH} after delete." >&2
 fi
