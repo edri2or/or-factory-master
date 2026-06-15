@@ -26,6 +26,13 @@ be up-to-date with `main` before it merges. That non-strictness is the deliberat
 makes parallel merges cheap: two independently-green PRs can both merge without a serialized
 rebase dance. See "Why not strict, and not a merge queue" below.
 
+> A leftover **classic** branch protection (`strict: true`, applied by a 2026-05 one-shot and
+> never removed) used to coexist with the ruleset and silently force strict — it blocked a
+> "behind" PR during this very development. `scripts/ensure-protect-main-ruleset.sh` now
+> deletes any such classic protection once the ruleset is confirmed active, so live `main`
+> matches this non-strict intent. See `docs/bootstrap-record.md` › "Classic-protection
+> reconciliation".
+
 ### B — the shared live proving system `or-edri-4`
 
 Four factory workflows act on a live system — `prove-on-test-system.yml`,
