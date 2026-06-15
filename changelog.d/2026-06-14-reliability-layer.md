@@ -92,3 +92,12 @@ status=success למרות שלא עשה כלום (לא ה-Error-Workflow ולא 
 
 **Changes:** `.github/workflows/fleet-rollup.yml` (חדש), `scripts/fleet-rollup.sh` (חדש),
 `monitoring/watchdog-registry.json`, `docs/reliability-layer.md`.
+
+## שלב 9 — סגירת הפיתוח
+
+`devplans/reliability-layer.md` → `status: completed`. golden in-sync (אין שינוי-תבנית בשלב הסגירה).
+כל ארבעת מנגנוני-הזיהוי (כשל→שלב 1, readiness→שלב 4, stopped-firing→שלב 3, ran-but-empty→שלב 5)
+חיים ומוכחים על or-edri-4 ומקובעים בתבנית לכל מערכת חדשה. 2 follow-ups מתועדים (Axiom-query של
+ה-fleet-rollup; כיסוי watchdog ל-adopt) — לא חוסמים. הדוקטרינה המלאה: `docs/reliability-layer.md`.
+
+**Changes:** `devplans/reliability-layer.md`, `docs/reliability-layer.md`.

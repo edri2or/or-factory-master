@@ -163,6 +163,12 @@ soft-fail מלא (token בלי query-scope / תשובה לא-נפרסת → note
 ההיסטורי** ל-watchdog (שמסכם מצב-נוכחי יומי) ול-runtime-audit (בריאות פר-מערכת). **Grafana** = אופציה
 דחויה מסומנת (דשבורד עשיר על אותו dataset של Axiom) — לא נדרשת ל-v1.
 
+> **Follow-up (תיעוד כן):** ההרצה החיה הראשונה הראתה שה-workflow + ה-soft-fail עובדים (Axiom החזיר
+> HTTP 400, ה-run **הצליח**, נפלט `factory.fleet_rollup.degraded`, שום דבר לא נשבר). 400 (לא 403) =
+> ה-token התקבל אך גוף-הבקשה זקוק לכיוונון: ככל הנראה `startTime`/`endTime` בגוף + פירוס תשובת
+> `tabular` (ערכים ב-columns, לא כ-objects). זהו follow-up ממוקד שדורש גישת-Axiom חיה לכיוונון-אחד —
+> לא בוצע בעיוורון. בינתיים ה-watchdog (מצב-נוכחי) + runtime-audit מספקים את תצוגת-הצי.
+
 ## 12. Retrofit למערכות קיימות (שלב 8)
 
 מערכות **חדשות** נולדות עם כל הרובד (התבניות מקובעות ב-`main`: error-handler + הזרקת errorWorkflow +
