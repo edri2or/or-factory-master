@@ -52,6 +52,17 @@ gateway's own Google login — zero secrets in the repo):
 - **`n8n-live`** (`/n8n/<system>/mcp`) — browse, validate, and develop workflows against this
   system's live n8n. Live writes are scratch-only (`dev-*` names); git stays the source of truth.
 
+## Per-workflow capability cards (`.claude/skills/<name>/`)
+
+Every operable n8n workflow this system runs has a paired Claude skill at
+`.claude/skills/<name>/SKILL.md` — the folder name is the `/<name>` slash command. Each is a
+**map, not a manual**: it routes a session to the live workflow (via the `n8n-live`/`factory` MCP
+servers and `AGENTS.md`) and to the HITL `request_write_action` guardrail, without restating any
+live value. Pure-plumbing workflows (crons, sinks, one-shots, media sub-workflows) deliberately
+have no card — they are listed in `monitoring/workflow-skill-exempt.txt`. CI
+(`scripts/check-workflow-skill-pair.sh`, in `pipeline-tests`) blocks any operable workflow that
+lacks its card.
+
 ## Where the details are
 
 - `AGENTS.md` — system identity, the full Postgres table list, the system-aware tool

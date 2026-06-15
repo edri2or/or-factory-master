@@ -1,0 +1,31 @@
+# Workflows that DELIBERATELY get no paired Claude skill (pure internal plumbing,
+# schedules, sinks, one-shots, media sub-workflows, and the agents manifest).
+#
+# Consumed by scripts/check-workflow-skill-pair.sh, which matches on the file
+# BASENAME — so this single factory-pathed list is authoritative in both the
+# factory tree (templates/system/workflows/n8n/) and inside a provisioned system
+# (workflows/n8n/). One repo-relative path per line, lines starting with # are
+# ignored. Keep short and reviewed — every entry is a conscious "this surface is
+# not independently operable, so it needs no /<name> capability card" decision.
+
+# Not a workflow at all — the agents data manifest (read by /build-agent):
+templates/system/workflows/n8n/agents.manifest.json
+
+# One-shot schema bootstrap (manualTrigger, run once at a system's birth):
+templates/system/workflows/n8n/db-setup.json
+
+# Internal maintenance / metering crons (scheduleTrigger, no operator surface):
+templates/system/workflows/n8n/db-vacuum.json
+templates/system/workflows/n8n/pending-actions-cleanup.json
+templates/system/workflows/n8n/spend-track.json
+templates/system/workflows/n8n/style-refresh.json
+templates/system/workflows/n8n/file-catalog-refresh.json
+
+# Internal error SINK (errorTrigger; fires only when another workflow fails):
+templates/system/workflows/n8n/error-handler.json
+
+# Media sub-workflows (executeWorkflowTrigger; invoked by tg-inbound, not operable
+# alone — the propose/approve HITL executor is documented by the request-write-action skill):
+templates/system/workflows/n8n/tg-vision.json
+templates/system/workflows/n8n/tg-voice-stt.json
+templates/system/workflows/n8n/pending-actions-executor.json

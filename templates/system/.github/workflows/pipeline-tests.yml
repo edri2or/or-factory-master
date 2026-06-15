@@ -43,3 +43,11 @@ jobs:
         # operator-facing Telegram send. The script is shipped into this repo by
         # the factory's provision step (scripts/check-agent-single-voice.sh).
         run: bash scripts/check-agent-single-voice.sh
+
+      - name: Workflow↔skill pairing gate
+        # Every operable n8n workflow (workflows/n8n/<name>.json) must have a paired
+        # Claude skill at .claude/skills/<name>/SKILL.md (folder = /<name> command);
+        # pure-plumbing workflows are listed in monitoring/workflow-skill-exempt.txt.
+        # Script + exempt list are shipped into this repo by the factory's provision
+        # step (scripts/check-workflow-skill-pair.sh).
+        run: bash scripts/check-workflow-skill-pair.sh
