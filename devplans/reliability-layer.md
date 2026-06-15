@@ -24,7 +24,7 @@ stack חדש. מוכיחים כל שלב חי על `or-edri-4` לפני שמקב
 |---|---|---|---|
 | 0 | דוקטרינה + מנגנון הוכחה-מענף (`source_ref`) | completed | `docs/reliability-layer.md`, `.github/workflows/refresh-system-agents.yml`, `devplans/reliability-layer.md` |
 | 1 | גשר ה-emit + Error Workflow סטנדרטי בכל workflow | completed ✅ proven-live | `services/mcp-server/src/{index.ts,emit-route.ts}`+test, `templates/system/workflows/n8n/error-handler.json`, `templates/system/.github/workflows/configure-agent-router.yml`, `monitoring/registry-exempt.txt`, golden |
-| 4 | probe `/healthz` → `/healthz/readiness` (+סבילות 503) | in-progress | `.github/workflows/system-runtime-audit.yml` |
+| 4 | probe `/healthz` → `/healthz/readiness` (+סבילות 503) | completed ✅ proven-live | `.github/workflows/system-runtime-audit.yml` |
 | 2 | heartbeat "ping בהצלחה" פר-קרון קריטי | pending | `templates/system/workflows/n8n/{db-vacuum,spend-track,pending-actions-cleanup,style-refresh,tg-proactive,file-catalog-refresh}.json`, golden |
 | 5 | assertion "רץ אבל ריק" — תבנית + דוגמה אחת | pending | `docs/reliability-layer.md`, workflow מייצג אחד, golden |
 | — | **אבן-דרך E2E** (קפיאת קבצי-n8n) → proof על or-edri-4 | pending | `e2e-proofs/reliability-layer.json` |
@@ -271,5 +271,5 @@ paths=workflows/n8n,.github/workflows/configure-agent-router.yml`), ואז `e2e-
   המערכת החיה or-edri-4 לפני שמקבעים. נכנס ל-main לבד (PR #459).
 - שלב 1 (הושלם + הוכח חי ✅) — "צינור ההתראות" + ה-Error Workflow. הוכח מקצה-לקצה על or-edri-4:
   כשל-לדוגמה → התראה הגיעה לטלגרם + כרטיס Linear + Axiom. הצינור עובד. נכנס ל-main (PR #460).
-- שלב 4 (בתהליך) — שדרגתי את בדיקת-הבריאות התקופתית לבדוק "מוכן באמת" (DB+מיגרציות), לא רק
-  "חי", עם הגנה מפני אזעקות-שווא בזמן ריסטארט. אומת ש-or-edri-4 תומך בזה.
+- שלב 4 (הושלם + הוכח חי ✅) — שדרגתי את בדיקת-הבריאות התקופתית לבדוק "מוכן באמת" (DB+מיגרציות),
+  לא רק "חי", עם הגנה מפני אזעקות-שווא. אומת חי: הבדיקה רצה, or-edri-4 דווחה בריאה, אפס אזעקות-שווא.
