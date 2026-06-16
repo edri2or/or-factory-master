@@ -47,3 +47,19 @@ stored") ותזמון הרוויזיה (הקונסנט רץ מול הדלת בת
   (השגיאה נוקבת בפרויקט + ב-API). כבוי כברירת-מחדל, אז שער ה-smoke הפנימי של הדיפלוי נשאר נוכחות-בלבד.
 - `services/mcp-server/src/index.ts` — מחרוזות "6-scope" מיושנות בקולבק הקונסנט (הלוג + דף ההצלחה)
   הפכו **דינמיות** (`result.scopes.length`), כך שלא ייוותרו שגויות שוב; תיקון מקביל בהודעת ה-smoke.
+
+## הרחבת גישת Google למקסימום (google-workspace-maximize) — סגירה
+
+הפיתוח נסגר: **כל 12 שירותי Google חיים ועובדים מקצה-לקצה** על הסיידקאר המאוחד (122 כלים, חשבון
+`edri2or@gmail.com`).
+- **הדלקת API (לקח מרכזי):** האימות החי הוכיח שהרשאת-scope ≠ API מודלק — 8 ה-API החדשים
+  (Tasks/Sheets/Slides/Forms/Chat/People/AppsScript/CustomSearch) הודלקו בפרויקט-הבקרה
+  (`or-factory-master-control`, פרויקט `140345952904` — שם חי ה-OAuth client). ה-broker היה חסר
+  `serviceusage.enable` שם ולא יכול לתת לעצמו (חסר גם `setIamPolicy` על control — אי-דיוק בהערת
+  `gcp-action.yml`, flag ל-CLAUDE.md). Or הקצה ל-broker `Service Usage Admin` חד-פעמית, ומאז
+  ה-broker מדליק API על control לבד (single-API `services enable` = yellow). אומת חי:
+  `PASS [new] list_task_lists returned live Tasks data`.
+- **תיעוד:** `docs/google-tools-feasibility.md` חדש (מה חי; חוזה ה-4-אתרים; הדלקת-API;
+  Maps/YouTube/Translate = מסלול API-key נפרד; Keep/NotebookLM/Photos-full = לא-אפשרי + סיבות;
+  אזהרת Research-mode); `docs/google-identities.md` עודכן (12 כלים; "שלוש"→"ארבע" אתרי byte-equal).
+- **צד-Or (מחוץ לריפו, לא נכלל כאן):** ניקוי חיבורי-גוגל הכפולים בהגדרות Claude; סקיל-גוגל אישי מאוחד.
