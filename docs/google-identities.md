@@ -100,6 +100,20 @@ already ship in the sidecar).
   "only the shared folders". Tracked as an option, not a current change (Or chose to keep the
   current personal-account setup with the safeguards above).
 
+### Runbook — the shared token stopped working ("ACTION REQUIRED: Authentication Needed")
+
+If the Workspace tools (Gmail / Drive / Calendar) suddenly fail in claude.ai or a system — or you
+get the **`workspace-token-audit.yml`** Telegram, or `google-mcp-smoke` goes red — the shared
+`gmail-oauth-refresh-token` can no longer refresh. The #1 cause is a **Google password change on
+`edri2or@gmail.com`, which revokes every Gmail-scoped refresh token** (proven live 2026-06-16). The
+fix is a re-consent, ~2 minutes:
+
+1. Run **`request-workspace-scopes-consent.yml`** → Or gets a one-click accounts.google.com link on Telegram.
+2. Tap it, sign in as **`edri2or@gmail.com`**, approve (it grants the full 41-scope set; the callback's exact-scope guard refuses anything else).
+3. Run **`deploy-mcp-server.yml`** so the sidecar reboots and loads the fresh token. **The `DEPLOY_NONCE` (from `workspace-token-reload`) forces a new Cloud Run revision every deploy**, so the re-consented token is guaranteed to load — without it, a same-commit redeploy is a no-op and the new token never reaches the running sidecar (the trap that turned a 2-minute fix into a multi-hour hunt on 2026-06-16).
+
+Verify green with a standalone `google-mcp-smoke.yml` dispatch (settled revision) — `list_gmail_labels` returns real data.
+
 ## Lesson (why this doc was wrong before — TWICE)
 
 Two layers of error compounded here:

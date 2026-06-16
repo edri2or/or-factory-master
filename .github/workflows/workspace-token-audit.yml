@@ -1,0 +1,113 @@
+name: Workspace Token Audit
+
+# Read-only daily heartbeat for the SHARED Google Workspace token. It runs the
+# live google-mcp smoke against the gateway; on failure (the shared
+# gmail-oauth-refresh-token can't refresh — typically REVOKED by a Google
+# password change, which revokes every Gmail-scoped refresh token) it sends Or
+# ONE clear Hebrew Telegram with the exact 2-minute fix, and emits a durable
+# factory.workspace_token.* event. This turns a silent break + confusing red
+# deploys into a signposted re-consent. Mirrors factory-health-audit.yml
+# (schedule + WIF + emit) and reuses scripts/google-mcp-smoke.py as the probe.
+
+on:
+  schedule:
+    - cron: "30 6 * * *"   # daily 06:30 UTC (offset from factory-health-audit's 06:00)
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  audit:
+    name: Audit the shared Google Workspace token
+    runs-on: ubuntu-latest
+    environment: production
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT: "or-factory-master-control"
+      GCP_REGION: "me-west1"
+      SERVICE: "factory-master-actions-mcp"
+      BROKER_SA: "factory-master-broker@or-factory-master-control.iam.gserviceaccount.com"
+      WIF_PROVIDER: "projects/140345952904/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
+
+      - name: Authenticate to GCP via WIF
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093  # v3.0.0
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.BROKER_SA }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db  # v3.0.1
+
+      - name: Probe the shared token + alert on failure
+        run: |
+          set -uo pipefail
+          # Resolve the live gateway URL + read the admin secret IN-STEP (masked,
+          # never persisted) — same as google-mcp-smoke.yml.
+          GATEWAY_URL=$(gcloud run services describe "${SERVICE}" \
+            --region="${GCP_REGION}" --project="${GCP_PROJECT}" \
+            --format='value(status.url)')
+          ADMIN_SECRET=$(gcloud secrets versions access latest \
+            --secret="mcp-server-admin-secret" --project="${GCP_PROJECT}" | tr -d '\r\n')
+          echo "::add-mask::${ADMIN_SECRET}"
+          export GATEWAY_URL ADMIN_SECRET SMOKE_SYSTEM="or-edri-4"
+
+          # The smoke mints a workspace bearer and calls list_gmail_labels; it exits
+          # non-zero + prints "ACTION REQUIRED" when the shared token can't refresh.
+          set +e
+          OUT=$(python3 scripts/google-mcp-smoke.py 2>&1); RC=$?
+          set -e
+          echo "${OUT}"
+
+          if [ "${RC}" -eq 0 ]; then
+            NAME="factory.workspace_token.ok"; ACTREQ="false"
+            BODY=$(jq -cn '{check:"list_gmail_labels", result:"ok"}')
+            OVERALL="✅ הטוקן עובד"
+          else
+            NAME="factory.workspace_token.revoked"; ACTREQ="true"
+            BODY=$(jq -cn '{check:"list_gmail_labels", result:"auth_failed", fix:"request-workspace-scopes-consent.yml -> tap link -> deploy-mcp-server.yml"}')
+            OVERALL="🔴 הטוקן לא עובד — שלחתי לך טלגרם עם התיקון"
+            # Rich, plain-Hebrew Telegram — the single alert Or actually reads.
+            # (emit-event below uses severity=info so it does NOT also Telegram; the
+            # custom message here is clearer than the generic "<emoji> <event.name>".)
+            TG_TOKEN=$(gcloud secrets versions access latest --secret="telegram-bot-token" --project="${GCP_PROJECT}" 2>/dev/null | tr -d '\r\n' || true)
+            TG_CHAT=$(gcloud secrets versions access latest --secret="telegram-chat-id" --project="${GCP_PROJECT}" 2>/dev/null | tr -d '\r\n' || true)
+            if [ -n "${TG_TOKEN}" ] && [ -n "${TG_CHAT}" ]; then
+              echo "::add-mask::${TG_TOKEN}"
+              MSG=$'🔴 הטוקן של Google המשותף לא עובד\n\nכלי ה-Workspace (Gmail / Drive / Calendar) ב-claude.ai ובמערכות מושבתים — הטוקן כנראה בוטל (למשל אחרי שינוי סיסמת Google, שמבטל אוטומטית טוקנים עם הרשאות Gmail).\n\nתיקון (~2 דק׳):\n1) הרץ את request-workspace-scopes-consent.yml — יגיע לך לינק כאן בטלגרם\n2) תלחץ על הלינק, תתחבר עם edri2or@gmail.com, ותאשר\n3) הרץ את deploy-mcp-server.yml\n\nאו פשוט תגיד ל-Claude: "הטוקן של Google נפל, תחדש אותו".'
+              curl -sS -m 10 -o /dev/null -X POST \
+                "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
+                --data-urlencode "chat_id=${TG_CHAT}" \
+                --data-urlencode "text=${MSG}" || echo "WARN: Telegram send failed (soft)."
+            fi
+          fi
+
+          # Durable record: Axiom always; Linear on action_required. severity=info
+          # so emit-event does NOT send its generic Telegram (we sent the rich one).
+          bash scripts/emit-event.sh \
+            --name="${NAME}" \
+            --severity="info" \
+            --layer="factory" \
+            --workflow="workspace-token-audit.yml" \
+            --run-id="${GITHUB_RUN_ID}" \
+            --action-required="${ACTREQ}" \
+            --body="${BODY}"
+
+          {
+            echo "## בדיקת טוקן Google המשותף — $(date -u +%Y-%m-%dT%H:%MZ)"
+            echo ""
+            echo "| בדיקה | תוצאה |"
+            echo "|---|---|"
+            echo "| list_gmail_labels (חי) | ${OVERALL} |"
+            echo "| event | ${NAME} |"
+            echo ""
+            echo "אם נכשל — התיקון: \`request-workspace-scopes-consent.yml\` → לחיצה על הלינק → \`deploy-mcp-server.yml\`."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # Soft heartbeat (like factory-health-audit): the Telegram + event are the
+          # signal, so a token outage does not paint the scheduled run red.
+          exit 0

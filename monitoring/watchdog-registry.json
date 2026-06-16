@@ -35,6 +35,17 @@
       "enabled": true
     },
     {
+      "id": "workspace-token-audit",
+      "name_he": "בדיקת טוקן Google המשותף",
+      "type": "cron-workflow",
+      "layer": "factory",
+      "proof_method": "gh-run-freshness",
+      "cadence": { "cron": "30 6 * * *", "tolerance_hours": 30 },
+      "evidence": { "repo": "edri2or/or-factory-master", "workflow_file": "workspace-token-audit.yml" },
+      "stage": 1,
+      "enabled": true
+    },
+    {
       "id": "fleet-reliability-rollup",
       "name_he": "סיכום-צי אמינות (Axiom)",
       "type": "cron-workflow",

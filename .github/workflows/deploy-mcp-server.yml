@@ -793,8 +793,11 @@ jobs:
           echo "  toolbox mcp_url (for Claude Code's 5b6e937f-... server):  ${REGION_URL}"
           echo "============================================================"
           echo ""
-          EXPECTED=$(grep -E '^EXPECTED_CONNECTOR_ISSUER=' docs/mcp-connector-setup.md \
-                       | head -n1 | cut -d= -f2- | tr -d '`' | tr -d ' ' || true)
+          # Match anywhere on the line (the doc wraps the value in backticks, so an
+          # anchored ^EXPECTED_CONNECTOR_ISSUER= never matches) and capture only the
+          # URL up to the closing backtick/space.
+          EXPECTED=$(grep -oE 'EXPECTED_CONNECTOR_ISSUER=https://[^` ]+' docs/mcp-connector-setup.md \
+                       | head -n1 | cut -d= -f2- || true)
           if [ -z "${EXPECTED}" ]; then
             echo "::warning::EXPECTED_CONNECTOR_ISSUER not found in docs/mcp-connector-setup.md — drift check skipped."
           elif [ "${ISSUER}" != "${EXPECTED}" ]; then
