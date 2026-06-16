@@ -655,7 +655,7 @@ app.post('/oauth/token', (req: Request, res: Response) => {
 // gateway. ===
 //
 // /workspace/consent/start: admin-gated (X-Admin-Secret), called server-side by
-// request-workspace-scopes-consent.yml. Redirects to Google's 6-scope OFFLINE
+// request-workspace-scopes-consent.yml. Redirects to Google's full-scope OFFLINE
 // consent; the caller reads the Location header and Telegrams that accounts.google.com
 // link to Or. The matching /workspace/consent/callback (added in the next stage)
 // captures the refresh_token Google returns and writes it to control SM.
@@ -675,8 +675,8 @@ app.get('/workspace/consent/start', (req: Request, res: Response) => {
 });
 
 // /workspace/consent/callback: Google redirects Or's browser here after he grants
-// the 6 scopes. Validates the state (CSRF, one-time, TTL), exchanges the code for a
-// refresh_token (exchangeWorkspaceConsentCode enforces the exact-6-scope guard), and
+// the full Workspace scope set. Validates the state (CSRF, one-time, TTL), exchanges
+// the code for a refresh_token (exchangeWorkspaceConsentCode enforces the exact-scope-set guard), and
 // writes it as a NEW version of control SM gmail-oauth-refresh-token (old version
 // stays as rollback). NOT admin-gated — Google can't send X-Admin-Secret; the random
 // one-time state IS the protection (same posture as /oauth/callback).
@@ -710,8 +710,8 @@ app.get('/workspace/consent/callback', async (req: Request, res: Response) => {
     return;
   }
 
-  process.stdout.write('[workspace/consent] captured + stored a fresh 6-scope refresh token\n');
-  res.send(`<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Workspace consent</title></head><body style="font-family:system-ui,sans-serif;max-width:420px;margin:80px auto;color:#111"><h2>✅ Workspace re-consented</h2><p>The gateway captured a fresh 6-scope Google token and stored it securely. Redeploy/restart the gateway to load it. You can close this tab.</p></body></html>`);
+  process.stdout.write(`[workspace/consent] captured + stored a fresh refresh token (${result.scopes.length} scopes)\n`);
+  res.send(`<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Workspace consent</title></head><body style="font-family:system-ui,sans-serif;max-width:420px;margin:80px auto;color:#111"><h2>✅ Workspace re-consented</h2><p>The gateway captured a fresh Google token (${result.scopes.length} scopes) and stored it securely. Redeploy/restart the gateway to load it. You can close this tab.</p></body></html>`);
 });
 
 // Server-to-server bearer exchange for trusted callers (CI workflows via WIF→SM).

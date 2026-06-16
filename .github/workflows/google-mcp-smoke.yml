@@ -19,6 +19,11 @@ on:
         required: false
         default: ""
         type: string
+      check_new_groups:
+        description: "Optional: live-probe a newly-added group (Tasks) to verify the new Google APIs are enabled (true/false)"
+        required: false
+        default: "false"
+        type: string
 
 concurrency:
   group: google-mcp-smoke
@@ -56,6 +61,7 @@ jobs:
         env:
           SMOKE_SYSTEM: ${{ inputs.system }}
           SEND_TEST_TO: ${{ inputs.send_test_to }}
+          CHECK_NEW_GROUPS: ${{ inputs.check_new_groups }}
         run: |
           set -euo pipefail
           # Resolve the live gateway URL and read the admin secret IN-STEP so the

@@ -214,11 +214,31 @@ needs_auth = ("ACTION REQUIRED" in text) or ("Authentication Needed" in text) \
     or ("authorize" in text.lower() and "oauth" in text.lower()) \
     or ("Scope has changed" in text)
 if not ok or needs_auth:
-    _fail("search_drive_files did not return real data — the rotated 6-scope "
+    _fail("search_drive_files did not return real data — the full 41-scope "
           "token did not refresh (scope mismatch between the grant and "
           "WORKSPACE_MCP_SCOPES?)", text)
 print(f"PASS [6/6] search_drive_files returned real Drive data "
       f"({len(text)} bytes) — the Drive+Docs scopes are live")
+
+# ── 6c. OPTIONAL live probe of a brand-new group (Tasks) — proves the EXPANDED
+# groups FUNCTION, not just register. A granted scope still needs its Google API
+# enabled in the OAuth client's project; list_task_lists hits the Tasks API
+# (tasks.googleapis.com), one of the 8 newly-added APIs. Gated on CHECK_NEW_GROUPS so
+# routine/inline smoke stays presence-only (the deploy gate never sets it). A failure
+# typically NAMES the project + API to enable ("...has not been used in project NNN
+# before or it is disabled") — exactly the signal needed to close the gap.
+if os.environ.get("CHECK_NEW_GROUPS", "").strip().lower() in ("1", "true", "yes"):
+    ok, text = tool_call("list_task_lists", {"user_google_email": LABEL})
+    disabled = ("has not been used in project" in text) or ("it is disabled" in text) \
+        or ("SERVICE_DISABLED" in text) or ("accessNotConfigured" in text)
+    needs_auth = ("ACTION REQUIRED" in text) or ("Authentication Needed" in text) \
+        or ("Scope has changed" in text)
+    if not ok or disabled or needs_auth:
+        _fail("list_task_lists (Tasks API — a newly added group) did not return live "
+              "data. If the message says the API is disabled for a project, enable that "
+              "API (and the other new Workspace APIs) in the OAuth client's project.", text)
+    print(f"PASS [new] list_task_lists returned live Tasks data ({len(text)} bytes) — "
+          "the newly-added Workspace APIs are enabled and live")
 
 # ── 7. OPTIONAL real send — proves Gmail WRITE (gmail.send) end to end ──
 # Gated on SEND_TEST_TO so routine smoke runs never email anyone; set it via the
