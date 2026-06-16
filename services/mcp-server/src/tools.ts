@@ -936,6 +936,24 @@ export function registerTools(server: McpServer): void {
           ? { name: 'mcp-oauth-metadata-200', status: oauthMeta.value.checks.statusMatched ? 'pass' : 'fail', evidence: `HTTP ${oauthMeta.value.status} in ${oauthMeta.value.durationMs}ms` }
           : { name: 'mcp-oauth-metadata-200', status: 'fail', evidence: String(oauthMeta.reason).slice(0, 200) },
       );
+      // mcp-oauth-issuer surfaces the EXACT URL claude.ai locks onto during OAuth discovery.
+      // Body is already fetched above; parse and report the issuer field so any session can
+      // answer "what URL do I paste into the claude.ai custom connector?" with a verified
+      // live value. See docs/mcp-connector-setup.md.
+      if (oauthMeta.status === 'fulfilled') {
+        try {
+          const meta = JSON.parse(oauthMeta.value.body) as { issuer?: unknown };
+          if (typeof meta.issuer === 'string' && meta.issuer.length > 0) {
+            checks.push({ name: 'mcp-oauth-issuer', status: 'pass', evidence: meta.issuer });
+          } else {
+            checks.push({ name: 'mcp-oauth-issuer', status: 'fail', evidence: 'issuer field missing or non-string in OAuth metadata body' });
+          }
+        } catch (e) {
+          checks.push({ name: 'mcp-oauth-issuer', status: 'fail', evidence: `OAuth metadata body not valid JSON: ${String(e).slice(0, 120)}` });
+        }
+      } else {
+        checks.push({ name: 'mcp-oauth-issuer', status: 'fail', evidence: 'OAuth metadata probe did not return a body' });
+      }
       return checks;
     },
   );
