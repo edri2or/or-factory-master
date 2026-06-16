@@ -33,7 +33,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 | 1 | הרחבת דלת-ההרשאות (gateway) + בדיקות + טקסט קונסנט | completed | `services/mcp-server/src/google-oauth.ts`, `services/mcp-server/test/google-oauth.test.mjs`, `.github/workflows/request-workspace-scopes-consent.yml` |
 | 2 | הסכמה-מחדש לחשבון Google (Or לוחץ) | completed | — (תפעולי) |
 | 3 | מעבר: הרחבת הסיידקאר + הדלקת הכלים + smoke | in-progress | `scripts/render-mcp-service-yaml.sh`, `services/workspace-mcp/entrypoint.sh`, `scripts/google-mcp-smoke.py` |
-| 4 | תיעוד היתכנות + סגירה | pending | `docs/google-tools-feasibility.md`, `docs/google-identities.md` |
+| 4 | אימות חי של הכלים החדשים + הדלקת API + תיעוד + סגירה | in-progress | `scripts/google-mcp-smoke.py`, `.github/workflows/google-mcp-smoke.yml`, `services/mcp-server/src/index.ts`, `docs/google-tools-feasibility.md`, `docs/google-identities.md` |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
 
@@ -104,18 +104,26 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 
 **שינוי תוכנית:** עדכון קל — ה-smoke בשער בודק *נוכחות* לכלים החדשים (Sheets/Tasks) + קריאות-אמת רק ל-Gmail/Drive, ולא קריאה-חיה לקבוצה חדשה: קריאה חיה תלויה בהפעלת-API (Sheets/Tasks API בפרויקט של ה-OAuth client) שטרם אומתה, ולא רוצים שתחסום את המעבר בכזב. אומת תפקודית אחרי הדיפלוי.
 
+---
+
+### שלב 4 — אימות חי של הכלים החדשים + הדלקת API + תיעוד + סגירה
+
+Or בחר "תוודא ותדליק, אז תסגור" — לוודא חי שקבוצה חדשה באמת יורה, ולהדליק כל Google API שחסר.
+
 **Acceptance:**
-- [ ] `docs/google-tools-feasibility.md` חדש: מה נפתח (הסט הסופי); מסלול API-key נפרד (Maps/YouTube/Translate — לא נבנה); לא-אפשרי (Keep/NotebookLM/Photos-full) + סיבות + תאריך; תוצאת ההסכמה בפועל ל-chat/search/appscript; חוזה ה-4-אתרים; אזהרת Research-mode.
-- [ ] רענון אזכורים מיושנים ב-`docs/google-identities.md` (`--tools` המלא; "שלוש"→"ארבע" אתרים).
+- [ ] `google-mcp-smoke.py` + `google-mcp-smoke.yml` — נוספה קריאה חיה אופציונלית (`CHECK_NEW_GROUPS`) לקבוצה חדשה (`list_task_lists` → Tasks API); תיקון מחרוזות "6-scope" מיושנות (`index.ts` דינמי לפי `result.scopes.length` + הודעת ה-smoke).
+- [ ] אימות חי: דיספאטץ' `google-mcp-smoke.yml` (main) `check_new_groups=true` → קבוצה חדשה מחזירה נתונים אמיתיים. אם API חסר — להדליק בפרויקט של ה-OAuth client + לאמת מחדש.
+- [ ] `docs/google-tools-feasibility.md` חדש: 12 שירותים/41 הרשאות; מסלול API-key נפרד (Maps/YouTube/Translate); לא-אפשרי (Keep/NotebookLM/Photos-full) + תאריך; הערת הפעלת-API; חוזה ה-4-אתרים; אזהרת Research-mode.
+- [ ] רענון `docs/google-identities.md` (`--tools` המלא; "שלוש"→"ארבע" אתרים).
 - [ ] `status: completed`.
 
-**הוכחה תפקודית (באותו שלב):** תוכן בלבד.
+**הוכחה תפקודית (באותו שלב):** דיספאטץ' `google-mcp-smoke.yml check_new_groups=true` מחזיר `PASS [new] list_task_lists returned live Tasks data` (אחרי הדלקת API אם נדרש). תיעוד = תוכן.
 
 **הוכחת E2E (artifact):** לא-התנהגותי.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** PR-A (כלי-האימות + תיקון המחרוזות) מוכן לקומיט. נשאר: מיזוג → דיספאטץ' אימות חי → הדלקת API אם צריך → PR-B (תיעוד + סגירה).
 
-**שינוי תוכנית:** —
+**שינוי תוכנית:** Or בחר אימות-חי + הדלקה (במקום תיעוד-בלבד) — שלב 4 כולל עכשיו קריאה חיה לקבוצה חדשה והדלקת-API.
 
 ---
 
