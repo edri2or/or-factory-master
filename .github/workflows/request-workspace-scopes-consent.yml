@@ -1,7 +1,8 @@
 name: Request workspace scopes consent (shared Google identity)
 
-# Opens a fresh consent for the SHARED Google identity's 6 workspace scopes
-# (Gmail + Calendar + Drive + Docs) and Telegrams Or the one-click link.
+# Opens a fresh consent for the SHARED Google identity's FULL Workspace scope set
+# (all 12 tool groups: Gmail, Calendar, Drive, Docs, Sheets, Slides, Forms, Tasks,
+# Chat, Contacts, Search, Apps Script) and Telegrams Or the one-click link.
 #
 # The consent door now lives in the GATEWAY (the permanent home), not on
 # or-adhd-agent's n8n. This workflow: auths as the broker SA (WIF), resolves the
@@ -10,7 +11,7 @@ name: Request workspace scopes consent (shared Google identity)
 # accounts.google.com consent URL (a 302 Location — the workflow never follows
 # it), and sends Or that link via the factory Telegram bot. When Or clicks Allow,
 # Google redirects to the gateway's /workspace/consent/callback, which captures
-# the fresh 6-scope refresh_token and writes it to control SM
+# the fresh refresh_token (the full Workspace scope set) and writes it to control SM
 # (gmail-oauth-refresh-token, new version; the old one stays as rollback).
 #
 # After Or clicks, redeploy/restart the gateway so the Workspace-MCP sidecar
@@ -22,7 +23,7 @@ on:
   workflow_dispatch:
     inputs:
       confirm:
-        description: 'Type "consent" to confirm re-opening the shared Google consent (6 scopes).'
+        description: 'Type "consent" to confirm re-opening the shared Google consent (full Workspace scope set).'
         required: true
         type: string
 
@@ -100,7 +101,7 @@ jobs:
               exit 1 ;;
           esac
 
-          MSG=$'🔐 חידוש חיבור Google המשותף — נדרש קליק אחד:\n'"${AUTH_URL}"$'\n\nמה זה עושה: מאשר מחדש את חשבון Google המשותף עם 6 ההרשאות (Gmail, יומן, Drive, Docs). הטוקן החדש נלכד ונשמר אוטומטית במקום הקבוע — אין תופעות לוואי.'
+          MSG=$'🔐 חידוש חיבור Google המשותף — נדרש קליק אחד:\n'"${AUTH_URL}"$'\n\nמה זה עושה: מאשר מחדש את חשבון Google המשותף עם כל הרשאות ה-Workspace (Gmail, יומן, Drive, Docs, Sheets, מצגות, טפסים, משימות, Chat, אנשי-קשר, Search, Apps Script). הטוקן החדש נלכד ונשמר אוטומטית במקום הקבוע. ייתכן שתראה אזהרת "אפליקציה לא מאומתת" — זה תקין לחשבון פרטי, פשוט אשר.'
           if [ -n "${TG_BOT_TOKEN:-}" ] && [ -n "${TG_CHAT_ID:-}" ]; then
             curl -sS -o /dev/null --max-time 15 "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage" \
               --data-urlencode "chat_id=${TG_CHAT_ID}" --data-urlencode "text=${MSG}" \
@@ -111,7 +112,7 @@ jobs:
           {
             echo "## 🔐 Shared Google consent requested (gateway door)"
             echo ""
-            echo "[One-click consent link](${AUTH_URL}) — Or clicks Allow; the gateway captures the fresh 6-scope refresh token into control SM."
+            echo "[One-click consent link](${AUTH_URL}) — Or clicks Allow; the gateway captures the fresh refresh token (full Workspace scope set) into control SM."
             echo ""
             echo "Next: redeploy the gateway (deploy-mcp-server.yml) to load the new token, then verify with google-mcp-smoke."
           } >> "$GITHUB_STEP_SUMMARY"

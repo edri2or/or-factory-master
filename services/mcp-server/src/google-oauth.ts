@@ -85,16 +85,22 @@ export function workspaceConsentConfigured(): boolean {
 // The workspace scopes, in the SAME order/spelling as WORKSPACE_MCP_SCOPES
 // (scripts/render-mcp-service-yaml.sh) — the Workspace-MCP sidecar's google-auth
 // refuses to refresh a token whose grant differs ("Scope has changed"), so this
-// list MUST stay byte-equal to that env.
+// list MUST stay byte-equal to that env. There are FOUR byte-equal sites: this
+// array, WORKSPACE_MCP_SCOPES (scripts/render-mcp-service-yaml.sh), default_scopes
+// (services/workspace-mcp/entrypoint.sh), and the literal asserted in
+// services/mcp-server/test/google-oauth.test.mjs. Edit all four together.
 //
-// This is the FULL set the workspace-mcp sidecar (--tools calendar gmail drive
-// docs) requires. Proven live 2026-06-11: a curated 6-scope grant only worked on
-// the OLD client because it had ACCUMULATED the broad grants over prior consents;
-// the fresh unified client granted exactly the 6 the door asked for, and the
-// sidecar refresh then returned "Authentication Needed" (insufficient scopes). So
-// the door must request the sidecar's full set — incl. openid/userinfo for account
-// identification. These are write-capable; per-action write safety is the system's
-// own HITL gate, not scope narrowing.
+// This is the FULL "complete"-tier set the workspace-mcp sidecar requires with all
+// 12 tool groups enabled (--tools calendar gmail drive docs sheets slides forms
+// tasks chat contacts search appscript) — derived verbatim from the package's
+// auth/scopes.py @ tag v1.21.1 (de-duplicated union of every group's scopes + the
+// base openid/userinfo). Proven live 2026-06-11: a curated grant only worked on the
+// OLD client because it had ACCUMULATED broad grants over prior consents; a fresh
+// client grants exactly what the door asks, so the door must request the sidecar's
+// full set — incl. openid/userinfo for account identification. These are
+// write-capable; per-action write safety is the system's own HITL gate, not scope
+// narrowing. Gmail stays granular (the package has no https://mail.google.com/
+// scope, so this profile is trash-only — no permanent delete).
 export const WORKSPACE_SCOPES = [
   'https://www.googleapis.com/auth/gmail.readonly',
   'https://www.googleapis.com/auth/gmail.compose',
@@ -110,6 +116,30 @@ export const WORKSPACE_SCOPES = [
   'https://www.googleapis.com/auth/drive.file',
   'https://www.googleapis.com/auth/documents',
   'https://www.googleapis.com/auth/documents.readonly',
+  'https://www.googleapis.com/auth/spreadsheets',
+  'https://www.googleapis.com/auth/spreadsheets.readonly',
+  'https://www.googleapis.com/auth/presentations',
+  'https://www.googleapis.com/auth/presentations.readonly',
+  'https://www.googleapis.com/auth/forms.body',
+  'https://www.googleapis.com/auth/forms.body.readonly',
+  'https://www.googleapis.com/auth/forms.responses.readonly',
+  'https://www.googleapis.com/auth/tasks',
+  'https://www.googleapis.com/auth/tasks.readonly',
+  'https://www.googleapis.com/auth/chat.messages',
+  'https://www.googleapis.com/auth/chat.messages.readonly',
+  'https://www.googleapis.com/auth/chat.spaces',
+  'https://www.googleapis.com/auth/chat.spaces.readonly',
+  'https://www.googleapis.com/auth/contacts',
+  'https://www.googleapis.com/auth/contacts.readonly',
+  'https://www.googleapis.com/auth/cse',
+  'https://www.googleapis.com/auth/script.projects',
+  'https://www.googleapis.com/auth/script.projects.readonly',
+  'https://www.googleapis.com/auth/script.deployments',
+  'https://www.googleapis.com/auth/script.deployments.readonly',
+  'https://www.googleapis.com/auth/script.processes',
+  'https://www.googleapis.com/auth/script.metrics',
+  'https://www.googleapis.com/auth/script.external_request',
+  'https://www.googleapis.com/auth/script.scriptapp',
   'openid',
   'https://www.googleapis.com/auth/userinfo.email',
   'https://www.googleapis.com/auth/userinfo.profile',

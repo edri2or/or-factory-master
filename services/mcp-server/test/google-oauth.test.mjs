@@ -64,14 +64,14 @@ test('workspaceConsentUrl: requests the full workspace scopes, offline + forced 
   assert.equal(u.searchParams.get('state'), 'st8');
   assert.equal(
     u.searchParams.get('scope'),
-    'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.compose https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.labels https://www.googleapis.com/auth/gmail.settings.basic https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/documents https://www.googleapis.com/auth/documents.readonly openid https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile',
+    'https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.compose https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.labels https://www.googleapis.com/auth/gmail.settings.basic https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/documents https://www.googleapis.com/auth/documents.readonly https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/spreadsheets.readonly https://www.googleapis.com/auth/presentations https://www.googleapis.com/auth/presentations.readonly https://www.googleapis.com/auth/forms.body https://www.googleapis.com/auth/forms.body.readonly https://www.googleapis.com/auth/forms.responses.readonly https://www.googleapis.com/auth/tasks https://www.googleapis.com/auth/tasks.readonly https://www.googleapis.com/auth/chat.messages https://www.googleapis.com/auth/chat.messages.readonly https://www.googleapis.com/auth/chat.spaces https://www.googleapis.com/auth/chat.spaces.readonly https://www.googleapis.com/auth/contacts https://www.googleapis.com/auth/contacts.readonly https://www.googleapis.com/auth/cse https://www.googleapis.com/auth/script.projects https://www.googleapis.com/auth/script.projects.readonly https://www.googleapis.com/auth/script.deployments https://www.googleapis.com/auth/script.deployments.readonly https://www.googleapis.com/auth/script.processes https://www.googleapis.com/auth/script.metrics https://www.googleapis.com/auth/script.external_request https://www.googleapis.com/auth/script.scriptapp openid https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile',
   );
 });
 
 test('workspaceConsentUrl: scope set is byte-equal to WORKSPACE_SCOPES (the full sidecar set)', () => {
   const u = new URL(workspaceConsentUrl('s', 'https://gw/cb'));
   assert.equal(u.searchParams.get('scope'), WORKSPACE_SCOPES.join(' '));
-  assert.equal(WORKSPACE_SCOPES.length, 17);
+  assert.equal(WORKSPACE_SCOPES.length, 41);
 });
 
 test('login URL stays untouched while adding the consent door (openid email, online, login client)', () => {
@@ -84,7 +84,7 @@ test('login URL stays untouched while adding the consent door (openid email, onl
 test('parseWorkspaceConsentResponse: full scopes + refresh_token → returns the token', () => {
   const r = parseWorkspaceConsentResponse({ refresh_token: 'rt-123', scope: WORKSPACE_SCOPES.join(' ') });
   assert.equal(r.refreshToken, 'rt-123');
-  assert.equal(r.scopes.length, 17);
+  assert.equal(r.scopes.length, 41);
 });
 
 test('parseWorkspaceConsentResponse: scope check is order-insensitive', () => {
