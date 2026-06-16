@@ -47,8 +47,10 @@
 
 ## Drive write tools exposed to claude.ai (write = trash / move / rename / edit)
 
-The Workspace MCP sidecar (`workspace-mcp==1.21.1`, `--tools calendar gmail drive docs`,
-`WORKSPACE_MCP_READ_ONLY=0`) runs **write-enabled** on Or's personal **`edri2or@gmail.com`**
+The Workspace MCP sidecar (`workspace-mcp==1.21.1`, **all 12 tool groups** — `--tools calendar
+gmail drive docs sheets slides forms tasks chat contacts search appscript`,
+`WORKSPACE_MCP_READ_ONLY=0`; full set + feasibility in `docs/google-tools-feasibility.md`) runs
+**write-enabled** on Or's personal **`edri2or@gmail.com`**
 Drive (the account the shared token authenticates as — see above). claude.ai reaches it through
 the gateway route `/workspace/<system>/mcp` (the operator `oauth` bearer is allowed there). The
 official Claude↔Drive connector only surfaces read+create; these write tools were simply never
@@ -76,8 +78,13 @@ already ship in the sidecar).
   tools"), and keep write tools disabled for Research tasks.
 - **⚠️ Do NOT narrow capability via scopes.** `--permissions drive:readonly` or editing
   `WORKSPACE_MCP_SCOPES` changes the scopes the sidecar requests and breaks the **byte-equal**
-  contract with `WORKSPACE_SCOPES` (`services/mcp-server/src/google-oauth.ts`) → token refresh
-  fails with **"Scope has changed"**. Tool reduction is done **on the claude.ai side only**.
+  contract — **four sites** must stay identical: `WORKSPACE_SCOPES`
+  (`services/mcp-server/src/google-oauth.ts`), `WORKSPACE_MCP_SCOPES`
+  (`scripts/render-mcp-service-yaml.sh`), `default_scopes` (`services/workspace-mcp/entrypoint.sh`),
+  and the test literal (`services/mcp-server/test/google-oauth.test.mjs`) → otherwise token refresh
+  fails with **"Scope has changed"**. The full current set (12 groups / 41 scopes) + the
+  API-enablement contract are in `docs/google-tools-feasibility.md`. Tool reduction is done **on the
+  claude.ai side only**.
 - **Future hardening (documented, not implemented):** a dedicated **Service Account** with
   folder-scoped Drive sharing would shrink the blast radius from "Or's whole personal Drive" to
   "only the shared folders". Tracked as an option, not a current change (Or chose to keep the
