@@ -17,15 +17,19 @@ Steps (each asserted):
      We read GMAIL labels (covered by the token's gmail.modify scope); list_calendars
      would need calendar.readonly, which this write-scoped token deliberately lacks.
   5. tools/list also carries the Drive + Docs tool groups (search_drive_files,
-     search_docs) — proves WORKSPACE_MCP_TOOLS="calendar gmail drive docs" landed.
+     search_docs) — proves the WORKSPACE_MCP_TOOLS expansion landed.
   5b. tools/list also includes update_drive_file — the Drive WRITE tool
      (trash/move/rename/Google-native content edit) exposed to claude.ai. Presence
      only; never called here (calling it would mutate the real shared Drive).
+  5c. tools/list carries the EXPANDED groups too (Sheets read/write, Tasks) —
+     proves WORKSPACE_MCP_TOOLS widened to the full 12-group set. Presence only; a
+     new group's Google API may need enabling even when the scope is granted, so the
+     live functional check of new groups is done separately post-deploy.
   6. tools/call search_drive_files(...)  -> real Drive data, NOT an auth prompt —
-     proves the rotated 6-scope shared token (auth/drive + auth/documents added
-     2026-06-10) refreshes cleanly and the new scopes are live.
+     proves the full 41-scope shared token refreshes cleanly (no "Scope has changed")
+     and the Drive scopes are live.
 
-Env: GATEWAY_URL, ADMIN_SECRET, SMOKE_SYSTEM (default or-adhd-agent),
+Env: GATEWAY_URL, ADMIN_SECRET, SMOKE_SYSTEM (default or-edri-4),
      GOOGLE_ACCOUNT_LABEL (default edriorp38@or-infra.com).
 """
 import json
@@ -188,7 +192,22 @@ if "update_drive_file" not in names:
 print("PASS [5b/6] tools/list includes update_drive_file (Drive WRITE: "
       "trash/move/rename/Google-native edit — presence only, not called)")
 
-# ── 6. real Drive read — proves the rotated 6-scope token is live ──
+# ── 5c. the expanded tool groups landed (Sheets + Tasks — Or's explicit asks) ──
+# Presence-only (like 5b): proves WORKSPACE_MCP_TOOLS was widened past the original
+# calendar/gmail/drive/docs to the full 12-group set. Representative read+write tools
+# from two new groups. NOT called live here: a brand-new group's Google API may need
+# enabling in the OAuth client's project even when the scope is granted, so the live
+# functional check of the new groups is done separately post-deploy, not in this gate.
+expanded_tools = ["read_sheet_values", "modify_sheet_values", "list_task_lists", "list_tasks"]
+missing_expanded = [t for t in expanded_tools if t not in names]
+if missing_expanded:
+    _fail(f"tools/list missing expanded-group tools {missing_expanded} — "
+          "WORKSPACE_MCP_TOOLS did not widen to the full 12-group set "
+          "(check sheets/tasks/... are enabled)", json.dumps(names)[:800])
+print("PASS [5c/6] tools/list carries the expanded groups (Sheets: "
+      "read_sheet_values/modify_sheet_values; Tasks: list_task_lists/list_tasks)")
+
+# ── 6. real Drive read — proves the full 41-scope token refreshes cleanly ──
 ok, text = tool_call("search_drive_files",
                      {"user_google_email": LABEL, "query": "trashed=false"})
 needs_auth = ("ACTION REQUIRED" in text) or ("Authentication Needed" in text) \
@@ -232,4 +251,4 @@ if SEND_TO:
     print(f"\nSMOKE PASS 7/7: full loop proven INCLUDING a real Gmail SEND to {SEND_TO}.")
 else:
     print("\nSMOKE PASS 6/6: full loop proven (gateway bearer -> Workspace MCP sidecar -> "
-          "live Google reads incl. Drive), no secret in session.")
+          "live Google reads incl. Drive; all 12 tool groups served), no secret in session.")

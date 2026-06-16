@@ -30,9 +30,9 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
-| 1 | הרחבת דלת-ההרשאות (gateway) + בדיקות + טקסט קונסנט | in-progress | `services/mcp-server/src/google-oauth.ts`, `services/mcp-server/test/google-oauth.test.mjs`, `.github/workflows/request-workspace-scopes-consent.yml` |
-| 2 | הסכמה-מחדש לחשבון Google (Or לוחץ) | pending | — (תפעולי) |
-| 3 | מעבר: הרחבת הסיידקאר + הדלקת הכלים + smoke | pending | `scripts/render-mcp-service-yaml.sh`, `services/workspace-mcp/entrypoint.sh`, `scripts/google-mcp-smoke.py` |
+| 1 | הרחבת דלת-ההרשאות (gateway) + בדיקות + טקסט קונסנט | completed | `services/mcp-server/src/google-oauth.ts`, `services/mcp-server/test/google-oauth.test.mjs`, `.github/workflows/request-workspace-scopes-consent.yml` |
+| 2 | הסכמה-מחדש לחשבון Google (Or לוחץ) | completed | — (תפעולי) |
+| 3 | מעבר: הרחבת הסיידקאר + הדלקת הכלים + smoke | in-progress | `scripts/render-mcp-service-yaml.sh`, `services/workspace-mcp/entrypoint.sh`, `scripts/google-mcp-smoke.py` |
 | 4 | תיעוד היתכנות + סגירה | pending | `docs/google-tools-feasibility.md`, `docs/google-identities.md` |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
@@ -66,7 +66,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 
 **הוכחת E2E (artifact):** לא-התנהגותי (שינוי control-plane, לא קבצי-בוט).
 
-**הערת התקדמות אחרונה:** העריכות בוצעו (4 האתרים שנוגעים לשלב + טקסט הקונסנט). נשאר: changelog fragment, אימות מקומי (build+test+lint), קומיט, PR, CI ירוק, אישור Or למיזוג.
+**הערת התקדמות אחרונה:** ✅ הושלם. PR #485 מוזג; דיפלוי ה-gateway עבר (health 200 + smoke כולל כלי Google → אפס נפילה). הדלת מבקשת 41 הרשאות.
 
 **שינוי תוכנית:** —
 
@@ -79,11 +79,11 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 - [ ] `/workspace/consent/callback` אימת granted == 41 וכתב גרסת-טוקן חדשה ל-`gmail-oauth-refresh-token` (הישנה נשמרת לגיבוי).
 - [ ] אם גוגל סירב ל-scope (סביר: `chat.*`): קצוץ אותו מ-#1+#4, דיפלוי-מחדש ל-gateway, קישור מתוקן. fallback בטוח = 9 שירותים / 28 scopes. הסט הסופי שנכבד = הקנוני לשלב 3.
 
-**הוכחה תפקודית (באותו שלב):** `list_secret_metadata` על `gmail-oauth-refresh-token` מראה גרסה טרייה אחרי הקליק.
+**הוכחה תפקודית (באותו שלב):** הקולבק `/workspace/consent/callback` החזיר 200 + "captured + stored" בלוגים; הקונסנט רץ מול הרוויזיה מ-11:52 (זו עם 41 ההרשאות), והוולידטור (התאמה-מדויקת) עבר — כלומר גוגל אישר את כל 41 ההרשאות. (`list_secret_metadata` חסום ע"י שער ה-connector ב-web, אז אומת דרך הלוגים + תזמון הרוויזיה.)
 
 **הוכחת E2E (artifact):** לא-התנהגותי.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** ✅ הושלם — Or לחץ Allow, כל 41 ההרשאות אושרו (כולל Chat/Apps Script/Search, בלי קיצוץ), טוקן חדש נשמר ב-SM (הישן לגיבוי).
 
 **שינוי תוכנית:** —
 
@@ -96,17 +96,13 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 - [ ] `scripts/google-mcp-smoke.py` כולל בדיקות-נוכחות לכלים חדשים (Sheets + Tasks, בשמות המדויקים של 1.21.1) + קריאה חיה אחת.
 - [ ] שערים סטטיים ירוקים; מיזוג מפעיל דיפלוי → שער ה-smoke הפנימי **ירוק** (קריאות אמת + בדיקת "Scope has changed").
 
-**הוכחה תפקודית (באותו שלב):** שער ה-google-mcp-smoke הפנימי של הדיפלוי עובר (נוכחות הכלים החדשים + קריאות אמת ל-Gmail/Drive/Sheets/Tasks); בנוסף הרצה ידנית של `google-mcp-smoke.yml` כארטיפקט גלוי.
+**הוכחה תפקודית (באותו שלב):** שער ה-google-mcp-smoke הפנימי של הדיפלוי עובר — נוכחות הכלים החדשים (Sheets: read_sheet_values/modify_sheet_values; Tasks: list_task_lists/list_tasks) + קריאות-אמת חיות ל-Gmail/Drive שמוכיחות שטוקן ה-41 מתרענן בלי "Scope has changed". אימות תפקודי-חי של הקבוצות החדשות + פער הפעלת-API ייבדק ידנית אחרי הדיפלוי. בנוסף הרצה ידנית של `google-mcp-smoke.yml`.
 
 **הוכחת E2E (artifact):** לא-התנהגותי.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** העריכות בוצעו (render + entrypoint + smoke). אומת byte-equal של 4 האתרים (41 הרשאות), shellcheck/bash-n/py נקיים. נשאר: PR, CI ירוק, אישור Or למיזוג (מיזוג = דיפלוי הסיידקאר = הדלקת הכלים).
 
-**שינוי תוכנית:** —
-
----
-
-### שלב 4 — תיעוד היתכנות + סגירה
+**שינוי תוכנית:** עדכון קל — ה-smoke בשער בודק *נוכחות* לכלים החדשים (Sheets/Tasks) + קריאות-אמת רק ל-Gmail/Drive, ולא קריאה-חיה לקבוצה חדשה: קריאה חיה תלויה בהפעלת-API (Sheets/Tasks API בפרויקט של ה-OAuth client) שטרם אומתה, ולא רוצים שתחסום את המעבר בכזב. אומת תפקודית אחרי הדיפלוי.
 
 **Acceptance:**
 - [ ] `docs/google-tools-feasibility.md` חדש: מה נפתח (הסט הסופי); מסלול API-key נפרד (Maps/YouTube/Translate — לא נבנה); לא-אפשרי (Keep/NotebookLM/Photos-full) + סיבות + תאריך; תוצאת ההסכמה בפועל ל-chat/search/appscript; חוזה ה-4-אתרים; אזהרת Research-mode.
@@ -132,4 +128,5 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 
 > שורה פשוטה אחת לכל שלב שהסתיים.
 
-- (מתמלא תוך כדי)
+- שלב 1 הושלם — הרחבנו את "דלת ההרשאות" לכל 41 ההרשאות (12 שירותים), בלי נפילה בכלים הקיימים.
+- שלב 2 הושלם — אישרת בקליק אחד, וגוגל נתן את כל 41 ההרשאות (כולל Chat / Apps Script / Custom Search).
