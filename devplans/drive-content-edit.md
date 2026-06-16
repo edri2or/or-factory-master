@@ -20,7 +20,7 @@ status: active
 |---|---|---|---|
 | 0 | capability-first: הוכחת היכולת הגולמית מחוץ ל-n8n (go/no-go) | completed | `scripts/probe-drive-content-edit.mjs`, `tests/fixtures/drive-content-edit/`, `.github/workflows/drive-content-edit-probe.yml`, `docs/agent-specs/drive-content-edit.md` |
 | 1 | הכלי ב-gateway (מודול + מיירוט פסאדה) | in-progress | `services/mcp-server/src/workspace-drive-edit.ts`, `services/mcp-server/src/workspace-mcp-proxy.ts`, `services/mcp-server/test/workspace-drive-edit.test.mjs` |
-| 2 | פריסה + הוכחה חיה על or-edri-4 | pending | `.github/workflows/google-mcp-smoke.yml` (או אחות), פריסה דרך `deploy-mcp-server.yml` |
+| 2 | פריסה + הוכחה חיה על or-edri-4 | in-progress | `scripts/drive-edit-smoke.mjs`, `.github/workflows/drive-edit-smoke.yml`, פריסה דרך `deploy-mcp-server.yml` |
 | 3 | תיעוד + נעילה (promote) | pending | `docs/google-tools-feasibility.md`, `docs/google-identities.md`, `.claude/commands/google-workspace-guide.md`, מראה+זהב |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
@@ -69,14 +69,14 @@ status: active
 ### שלב 2 — פריסה + הוכחה חיה על or-edri-4
 
 **Acceptance:**
-- [ ] פריסה דרך `deploy-mcp-server.yml`.
-- [ ] smoke חי על מסלול ה-workspace של or-edri-4: `tools/list` כולל הכלי, עריכת `.md` + read-back תואם.
+- [ ] פריסה דרך `deploy-mcp-server.yml` (אוטומטית על המיזוג של שלב 1).
+- [ ] smoke חי (`drive-edit-smoke.yml`) על מסלול ה-workspace של or-edri-4: `tools/list` כולל הכלי, עריכת `.md` + read-back תואם.
 
 **הוכחה תפקודית (באותו שלב):** ריצת smoke ירוקה עם read-back assert על Drive חי.
 
 **הוכחת E2E (artifact):** לא-התנהגותי.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הפריסה רצה אוטומטית מהמיזוג של שלב 1; ה-smoke החי נבנה. ממתין לסיום הפריסה כדי לדסּפּץ' את ה-smoke.
 
 **שינוי תוכנית:** —
 

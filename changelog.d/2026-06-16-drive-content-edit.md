@@ -14,3 +14,8 @@
   guard) so Docs/Sheets/Slides still go through `update_drive_file`. No scope change (the shared token
   already holds `…/auth/drive`); no `workspace-mcp` fork. 15 new unit tests (118/118 green). Live
   deploy + or-edri-4 proof is Stage 2.
+- **Drive non-native content edit (Stage 2 — live smoke):** added `scripts/drive-edit-smoke.mjs` +
+  `.github/workflows/drive-edit-smoke.yml`, a manual live proof that drives `edit_drive_file_content`
+  end-to-end through the deployed gateway's `/workspace/<system>/mcp` route (mint bearer → initialize
+  → tools/list asserts the tool → tools/call rewrites a real `.md` → Drive read-back matches → trash)
+  on `or-edri-4`. Exempt from the watchdog registry (manual, no cadence).
