@@ -1,0 +1,57 @@
+name: drive content-edit capability probe
+
+# Phase-1 capability probe (docs/capability-first.md) for the drive-content-edit
+# development: proves — OUTSIDE n8n and OUTSIDE the gateway/sidecar — that the raw
+# Google Drive API can rewrite the *content* of a non-native file (.md + binary) via
+# files.update with a media upload, using the shared Google token. The three
+# gmail-oauth-* secrets are read from Secret Manager via WIF inside the run step
+# (masked, never persisted) — they never enter a Claude session. Manual only.
+# Throwaway proving harness: it creates two temp Drive files, edits them, verifies,
+# and trashes them. Removed once the capability is proven and the gateway tool lands.
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: drive-content-edit-probe
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  probe:
+    name: Prove Drive non-native content edit
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      GCP_PROJECT: "or-factory-master-control"
+      BROKER_SA: "factory-master-broker@or-factory-master-control.iam.gserviceaccount.com"
+      WIF_PROVIDER: "projects/140345952904/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
+
+      - name: Authenticate to GCP via WIF
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093  # v3.0.0
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.BROKER_SA }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db  # v3.0.1
+
+      - name: Run the capability probe
+        run: |
+          set -euo pipefail
+          # Read the shared Google creds IN-STEP so they stay in this shell only
+          # (masked, never written to GITHUB_ENV / never logged).
+          RT=$(gcloud secrets versions access latest --secret="gmail-oauth-refresh-token" --project="${GCP_PROJECT}" | tr -d '\r\n')
+          CID=$(gcloud secrets versions access latest --secret="gmail-oauth-client-id" --project="${GCP_PROJECT}" | tr -d '\r\n')
+          CSEC=$(gcloud secrets versions access latest --secret="gmail-oauth-client-secret" --project="${GCP_PROJECT}" | tr -d '\r\n')
+          echo "::add-mask::${RT}"
+          echo "::add-mask::${CID}"
+          echo "::add-mask::${CSEC}"
+          export GMAIL_OAUTH_REFRESH_TOKEN="${RT}" GMAIL_OAUTH_CLIENT_ID="${CID}" GMAIL_OAUTH_CLIENT_SECRET="${CSEC}"
+          node scripts/probe-drive-content-edit.mjs
