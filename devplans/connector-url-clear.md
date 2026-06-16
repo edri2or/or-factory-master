@@ -60,7 +60,7 @@ deploy שמדפיס אותה חיה אחרי כל ריצה, סקיל `/prove-con
 
 **הוכחת E2E (artifact):** לא-התנהגותי (לא נוגע ב-`workflows/n8n/*.json` או `configure-agent-router.yml`).
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** שלב 1 הושלם ומוזג (PR #495); ה-deploy מדפיס את כתובת המחבר ומאמת את ה-issuer. תיקון משלים ב-PR של `workspace-token-audit`: בדיקת ה-drift השתמשה ב-`grep` מעוגן שלא תפס את שורת ה-`EXPECTED_CONNECTOR_ISSUER` (עטופה בגרשיים) — תוקן ל-`grep -oE` סובלני, כך שה-guard באמת משווה. שלב 2 (Layer D) עדיין pending, אופציונלי.
 
 **שינוי תוכנית:** —
 
