@@ -18,4 +18,11 @@
   `.github/workflows/drive-edit-smoke.yml`, a manual live proof that drives `edit_drive_file_content`
   end-to-end through the deployed gateway's `/workspace/<system>/mcp` route (mint bearer → initialize
   → tools/list asserts the tool → tools/call rewrites a real `.md` → Drive read-back matches → trash)
-  on `or-edri-4`. Exempt from the watchdog registry (manual, no cadence).
+  on `or-edri-4`. Exempt from the watchdog registry (manual, no cadence). **Proven live (run
+  `27638068121`):** `tools/list` carried the tool (123 tools) and a real `.md` was edited through
+  the gateway with a matching read-back.
+- **Drive non-native content edit (Stage 3 — docs + lock):** documented the new tool and removed the
+  ".md/.txt not supported" limitation across `docs/google-tools-feasibility.md`,
+  `docs/google-identities.md`, and the shared `.claude/commands/google-workspace-guide.md` (mirrored
+  into `templates/system/.claude/commands/` + golden refreshed). Removed the throwaway Phase-1 probe
+  harness now that the tool is live. Development complete.

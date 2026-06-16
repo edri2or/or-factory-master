@@ -18,7 +18,7 @@ token refreshes cleanly (live Gmail + Drive reads), and a brand-new group fires 
 |---|---|---|
 | gmail | ✅ live | **granular / trash-only** — the package has no `https://mail.google.com/`, so no permanent-delete exists (a package limit, not a choice) |
 | calendar | ✅ live | was already enabled |
-| drive | ✅ live | incl. the one write tool `update_drive_file` (trash/move/rename/Google-native edit) |
+| drive | ✅ live | write tools: `update_drive_file` (trash/move/rename/Google-native content edit) **+ the gateway-owned `edit_drive_file_content`** (non-native content edit — `.md`/`.txt`/binary — via Drive `files.update` media; `docs/google-identities.md`) |
 | docs | ✅ live | was already enabled |
 | sheets | ✅ live | newly enabled (Sheets API) |
 | slides | ✅ live | newly enabled (Slides API) |

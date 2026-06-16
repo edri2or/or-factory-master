@@ -2,7 +2,7 @@
 dev_name: עריכת תוכן של קבצים לא-נייטיב ב-Google Drive
 slug: drive-content-edit
 opened: 2026-06-16
-status: active
+status: completed
 ---
 
 # תוכנית פיתוח — עריכת תוכן של קבצים לא-נייטיב ב-Google Drive
@@ -19,9 +19,9 @@ status: active
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
 | 0 | capability-first: הוכחת היכולת הגולמית מחוץ ל-n8n (go/no-go) | completed | `scripts/probe-drive-content-edit.mjs`, `tests/fixtures/drive-content-edit/`, `.github/workflows/drive-content-edit-probe.yml`, `docs/agent-specs/drive-content-edit.md` |
-| 1 | הכלי ב-gateway (מודול + מיירוט פסאדה) | in-progress | `services/mcp-server/src/workspace-drive-edit.ts`, `services/mcp-server/src/workspace-mcp-proxy.ts`, `services/mcp-server/test/workspace-drive-edit.test.mjs` |
-| 2 | פריסה + הוכחה חיה על or-edri-4 | in-progress | `scripts/drive-edit-smoke.mjs`, `.github/workflows/drive-edit-smoke.yml`, פריסה דרך `deploy-mcp-server.yml` |
-| 3 | תיעוד + נעילה (promote) | pending | `docs/google-tools-feasibility.md`, `docs/google-identities.md`, `.claude/commands/google-workspace-guide.md`, מראה+זהב |
+| 1 | הכלי ב-gateway (מודול + מיירוט פסאדה) | completed | `services/mcp-server/src/workspace-drive-edit.ts`, `services/mcp-server/src/workspace-mcp-proxy.ts`, `services/mcp-server/test/workspace-drive-edit.test.mjs` |
+| 2 | פריסה + הוכחה חיה על or-edri-4 | completed | `scripts/drive-edit-smoke.mjs`, `.github/workflows/drive-edit-smoke.yml`, פריסה דרך `deploy-mcp-server.yml` |
+| 3 | תיעוד + נעילה (promote) | completed | `docs/google-tools-feasibility.md`, `docs/google-identities.md`, `.claude/commands/google-workspace-guide.md`, מראה+זהב |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
 >
@@ -69,14 +69,15 @@ status: active
 ### שלב 2 — פריסה + הוכחה חיה על or-edri-4
 
 **Acceptance:**
-- [ ] פריסה דרך `deploy-mcp-server.yml` (אוטומטית על המיזוג של שלב 1).
-- [ ] smoke חי (`drive-edit-smoke.yml`) על מסלול ה-workspace של or-edri-4: `tools/list` כולל הכלי, עריכת `.md` + read-back תואם.
+- [x] פריסה דרך `deploy-mcp-server.yml` (אוטומטית על המיזוג של שלב 1) — run `27637792787` ירוק.
+- [x] smoke חי (`drive-edit-smoke.yml`) על מסלול ה-workspace של or-edri-4: `tools/list` כולל הכלי, עריכת `.md` + read-back תואם.
 
 **הוכחה תפקודית (באותו שלב):** ריצת smoke ירוקה עם read-back assert על Drive חי.
 
 **הוכחת E2E (artifact):** לא-התנהגותי.
 
-**הערת התקדמות אחרונה:** הפריסה רצה אוטומטית מהמיזוג של שלב 1; ה-smoke החי נבנה. ממתין לסיום הפריסה כדי לדסּפּץ' את ה-smoke.
+**הערת התקדמות אחרונה:** ✅ הושלם — run `27638068121`: `tools/list` כלל את הכלי (123 כלים),
+`tools/call` ערך `.md` חי דרך ה-gateway, ה-read-back תאם. `VERDICT: go`.
 
 **שינוי תוכנית:** —
 
@@ -85,14 +86,16 @@ status: active
 ### שלב 3 — תיעוד + נעילה
 
 **Acceptance:**
-- [ ] עדכון 3 מסמכי ה-Google (הסרת מגבלת ה-.md/.txt), הוספת הכלי.
-- [ ] `sync-skills-mirror.sh` + רענון זהב; שערי CI ירוקים.
+- [x] עדכון 3 מסמכי ה-Google (הסרת מגבלת ה-.md/.txt), הוספת הכלי.
+- [x] `sync-skills-mirror.sh` + רענון זהב; שערי CI ירוקים.
+- [x] הסרת ה-harness הזמני של שלב 0 (`drive-content-edit-probe.yml` + הסקריפט + ה-fixture).
 
-**הוכחה תפקודית (באותו שלב):** תוכן בלבד + שערי CI ירוקים.
+**הוכחה תפקודית (באותו שלב):** תוכן בלבד + שערי template ירוקים מקומית (golden / golden-sync /
+skills-mirror / watchdog).
 
 **הוכחת E2E (artifact):** לא-התנהגותי.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** ✅ הושלם — 3 המסמכים עודכנו, המראה+זהב סונכרנו, ה-harness הוסר. הפיתוח נסגר.
 
 **שינוי תוכנית:** —
 
@@ -100,5 +103,7 @@ status: active
 
 ## יומן ל-Or (עברית)
 
-- (מתמלא תוך כדי)
-</content>
+- שלב 0 הושלם — הוכחנו חי שאפשר לערוך תוכן של .md ובינארי בדרייב (go).
+- שלב 1 הושלם — נבנה הכלי `edit_drive_file_content` ב-gateway, 118/118 בדיקות.
+- שלב 2 הושלם — הכלי נפרס וחי, והוכח מקצה-לקצה על or-edri-4.
+- שלב 3 הושלם — המסמכים עודכנו והפיתוח נסגר. הכלי זמין מ-claude.ai ומכל מערכת.
