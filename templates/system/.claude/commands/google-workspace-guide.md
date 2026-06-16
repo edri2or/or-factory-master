@@ -19,6 +19,16 @@ read and write. This skill is a **map, not a manual**: the authoritative *invent
 `tools/list`, and the per-context *wiring* is in the live config below. Don't hard-code tool names —
 they evolve with the package.
 
+## Identity — two names, don't mix them up
+
+The **data** is Or's personal **`edri2or@gmail.com`** — what the token authenticates as, and where
+the mail / files / calendar actually live (proven live). **But** when a tool asks for a
+**`user_google_email`** argument, you pass the credential storage-key label
+**`edriorp38@or-infra.com`** — *not* `edri2or` (which fails: no credential is filed under that
+name). The label is a filename, not the account — see `docs/google-identities.md` (factory repo).
+*(In a provisioned system this is set inside the `google_workspace` n8n tool's config, so you don't
+type it.)*
+
 ## The 12 tool groups (what exists)
 
 Read + write across: **gmail**, **calendar**, **drive**, **docs**, **sheets**, **slides**, **forms**,
