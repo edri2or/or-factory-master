@@ -758,6 +758,42 @@ jobs:
           echo "::error::Service did not return 200 on /health within 10 minutes"
           exit 1
 
+      - name: Read + assert the live connector issuer
+        id: connector-url
+        # This step is what makes the claude.ai connector URL self-documenting: it reads the
+        # live `issuer` value the gateway advertises at /.well-known/oauth-authorization-server
+        # (the exact URL claude.ai locks onto during OAuth discovery), prints it loudly for the
+        # operator, and warns (not errors) if it drifted from the documented EXPECTED_CONNECTOR_ISSUER
+        # in docs/mcp-connector-setup.md. A redeploy is Or-gated; a hard fail on a stale doc
+        # would create the friction this whole devplan exists to remove — a loud warning + the
+        # correct URL achieves "clear and tested" without a brittle brake. See
+        # docs/mcp-connector-setup.md and devplans/connector-url-clear.md (Stage 1, step B1).
+        run: |
+          set -euo pipefail
+          REGION_URL="https://${SERVICE}-${GCP_PROJECT_NUMBER}.${GCP_REGION}.run.app"
+          META_JSON=$(curl -fsS --max-time 10 "${REGION_URL}/.well-known/oauth-authorization-server")
+          ISSUER=$(echo "${META_JSON}" | jq -r '.issuer')
+          if [ -z "${ISSUER}" ] || [ "${ISSUER}" = "null" ]; then
+            echo "::error::Could not parse 'issuer' from ${REGION_URL}/.well-known/oauth-authorization-server"
+            exit 1
+          fi
+          echo "issuer=${ISSUER}" >> "$GITHUB_OUTPUT"
+          echo ""
+          echo "============================================================"
+          echo "claude.ai connector URL (paste THIS into claude.ai): ${ISSUER}"
+          echo "  toolbox mcp_url (for Claude Code's 5b6e937f-... server):  ${REGION_URL}"
+          echo "============================================================"
+          echo ""
+          EXPECTED=$(grep -E '^EXPECTED_CONNECTOR_ISSUER=' docs/mcp-connector-setup.md \
+                       | head -n1 | cut -d= -f2- | tr -d '`' | tr -d ' ' || true)
+          if [ -z "${EXPECTED}" ]; then
+            echo "::warning::EXPECTED_CONNECTOR_ISSUER not found in docs/mcp-connector-setup.md — drift check skipped."
+          elif [ "${ISSUER}" != "${EXPECTED}" ]; then
+            echo "::warning::Connector issuer drift — live=${ISSUER} expected=${EXPECTED}. Update docs/mcp-connector-setup.md EXPECTED_CONNECTOR_ISSUER, and have Or delete + re-add the claude.ai connector under the new URL."
+          else
+            echo "PASS: live issuer matches docs/mcp-connector-setup.md EXPECTED_CONNECTOR_ISSUER."
+          fi
+
       - name: Post-deploy MCP smoke gate (factory / n8n / workspace)
         env:
           SMOKE_SYSTEM: ${{ github.event.inputs.smoke_target || 'or-edri-4' }}
@@ -876,17 +912,20 @@ jobs:
             echo "| Resource | Value |"
             echo "|---|---|"
             echo "| Cloud Run service | \`${SERVICE}\` in \`${GCP_PROJECT}\` (\`${GCP_REGION}\`) |"
-            echo "| Region URL (stable) | \`https://${SERVICE}-${GCP_PROJECT_NUMBER}.${GCP_REGION}.run.app\` |"
-            echo "| Legacy URL | \`${{ steps.deploy.outputs.url }}\` |"
+            echo "| **claude.ai connector URL (issuer)** | \`${{ steps.connector-url.outputs.issuer }}\` |"
+            echo "| Region URL (toolbox \`mcp_url\`) | \`https://${SERVICE}-${GCP_PROJECT_NUMBER}.${GCP_REGION}.run.app\` |"
+            echo "| Legacy URL (Cloud Run \`status.url\`) | \`${{ steps.deploy.outputs.url }}\` |"
             echo "| Runtime SA | \`${RUNTIME_SA_EMAIL}\` |"
             echo "| Image | \`${{ steps.image.outputs.image }}\` |"
             echo ""
             echo "### Operator action — one-time"
             echo ""
-            echo "Update the MCP server URL in Claude Code (claude.ai/code → settings → MCP servers)"
-            echo "for the \`5b6e937f-...\` toolbox server. New \`mcp_url\` is the **Region URL** above."
+            echo "Two consumers, two URLs. Don't mix them — see [\`docs/mcp-connector-setup.md\`](../blob/main/docs/mcp-connector-setup.md) for why."
             echo ""
-            echo "After updating, re-open the agent session — the new tools (incl. \`inspect_railway_service_full_direct\`,"
+            echo "1. **Claude Code toolbox** (\`5b6e937f-...\` server): set its \`mcp_url\` to the **Region URL** above."
+            echo "2. **claude.ai custom connector** (OAuth login flow): paste the **claude.ai connector URL (issuer)** row above into claude.ai → Settings → Connectors → Add custom connector. The advertised \`issuer\` is what claude.ai locks onto during OAuth discovery; the Region URL is *not* it. The \`/prove-connector\` skill is the gate for proving a connector-touching change end-to-end."
+            echo ""
+            echo "After updating the toolbox, re-open the agent session — the new tools (incl. \`inspect_railway_service_full_direct\`,"
             echo "\`list_railway_service_variables\`, \`list_railway_service_volumes\`, \`list_railway_deployments\`,"
             echo "\`railway_graphql_read\`) become available and the old \`domains: []\` bug is fixed."
             echo ""
