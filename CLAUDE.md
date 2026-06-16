@@ -70,6 +70,8 @@ The previous factory (`edri2or/factory`) automated everything end-to-end. Failur
 5. **Verify outputs.** After success, call the relevant `verify_*` MCP tool to confirm the real state matches the expected state.
 6. **Stop at the boundary.** Each skill ends at a clear handoff point. Ask the user what's next; don't chain.
 
+**Building a new capability? Route through capability-first FIRST — this is non-skippable.** Before building anything that performs a *new capability* (a new **verb**: read / fill / extract / send / parse — whether it lands as a sub-agent or as a standalone n8n workflow), you MUST first prove the **raw capability outside n8n** on a real fixture with a recorded **go/no-go** verdict (`/prove-capability`, `docs/capability-first.md`), then decompose and build bottom-up (`/build-agent`). **This holds in the factory too** — building a capability into `templates/system/**` is no exception (the factory must eat its own dog food). `/dev-stage-factory` and `/dev-stage` **wrap** this rule as their Step 0; they do not replace it — a capability-adding development is not "started" until Phase 1 is **go** and the role is decomposed. This is the rule the `email-form-intake` monolith bypassed (proof of the hardest brick — reading the PDF — deferred to the end, the exact "big-bang" anti-pattern `docs/capability-first.md` exists to prevent). A development that adds **no** new capability (config / plumbing / docs) skips this rule.
+
 ## Never
 
 - Touch the old factory repo (`edri2or/factory`) or its GCP project (`factory-control-9piybr`).

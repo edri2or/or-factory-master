@@ -24,8 +24,24 @@ Before anything, read:
 1. `templates/devplan/DEVPLAN.template.md` — the plan template you instantiate.
 2. `devplans/*.md`, if any exist — to see which other developments are active in parallel
    (so you coordinate, and the devplan CI gate stays satisfied).
+3. `docs/capability-first.md` — **prove the raw capability outside n8n + go/no-go BEFORE
+   building**, then decompose. This is Step 0 below; it is mandatory whenever the
+   development adds a new capability.
 
 ## Instructions
+
+### Step 0: Capability-first gate (before anything)
+If this development **adds a new capability** — a new verb the agent/system couldn't do
+before (read / fill / extract / send / parse), whether it lands as a sub-agent or as a
+standalone n8n workflow — **STOP and run capability-first first** (`docs/capability-first.md`,
+`/prove-capability`): prove the raw capability **outside n8n** on a real fixture, record the
+**go/no-go** verdict, then decompose the role per `/build-agent`. Only a **go** capability,
+already broken into bricks, may enter the staged build below. This **wraps** `/dev-stage`, it
+does not replace it — a capability-adding development is not "started" until Phase 1 is **go**
+and decomposed. (This is the bottom-up discipline Step 2 and Step 3 already enforce *inside*
+n8n; Step 0 pushes the very first proof — the raw capability — to *before* any n8n work.) A
+development that adds **no** new capability (a config / plumbing / docs change) skips this
+gate — note that explicitly in Step 1.
 
 ### Step 1: Understand & Confirm
 Restate the development goal in your own simple words and return it to Or for
