@@ -135,6 +135,15 @@ printf '            cpu: "1"\n'
 printf '            memory: 512Mi\n'
 printf '        env:\n'
 emit_env PUBLIC_BASE_URL "${PUBLIC_BASE_URL}"
+# DEPLOY_NONCE forces a NEW Cloud Run revision on every deploy. The Workspace
+# sidecar reads the shared Google refresh token ONLY at boot; `gcloud run
+# services replace` with a byte-identical template is a NO-OP (no new revision,
+# no restart), so a freshly re-consented token (a new gmail-oauth-refresh-token
+# SM version) would silently NOT load on a same-commit redeploy — the sidecar
+# keeps running its boot-time (now-stale/revoked) token. Threading the deploy
+# run id through the template guarantees it differs each deploy → the instance
+# rolls → the sidecar re-reads :latest. Ignored by the gateway code itself.
+emit_env DEPLOY_NONCE "${DEPLOY_NONCE:-0}"
 emit_env FACTORY_TG_CHAT_MODEL "anthropic/claude-haiku-4.5"
 emit_env N8N_MCP_URL "http://localhost:3001/mcp"
 emit_env N8N_DEV_ALLOWED_SYSTEMS "${N8N_DEV_ALLOWED_SYSTEMS}"

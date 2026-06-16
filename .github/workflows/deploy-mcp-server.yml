@@ -687,6 +687,14 @@ jobs:
           [ -n "${PUBLIC_BASE_URL}" ] || PUBLIC_BASE_URL="https://${SERVICE}-${GCP_PROJECT_NUMBER}.${GCP_REGION}.run.app"
           echo "PUBLIC_BASE_URL=${PUBLIC_BASE_URL}"
 
+          # Unique per deploy so the rendered template ALWAYS differs → Cloud Run
+          # creates a fresh revision and the Workspace sidecar re-reads the
+          # (possibly re-consented) Google refresh token at boot. Without this a
+          # same-commit redeploy is a no-op (no restart) and a new token never
+          # loads. Computed ONCE here so the actAs retry loop renders identically.
+          DEPLOY_NONCE="${GITHUB_SHA}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          echo "DEPLOY_NONCE=${DEPLOY_NONCE}"
+
           # IAM propagation for the actAs binding can take up to 5 minutes
           # (per Google docs); retry with back-off on actAs permission errors.
           # Multi-container service via `gcloud run services replace` with a
@@ -708,6 +716,7 @@ jobs:
             WORKSPACE_MCP_IMAGE="${{ steps.workspacemcp-image.outputs.image }}" \
             RUNTIME_SA_EMAIL="${RUNTIME_SA_EMAIL}" \
             PUBLIC_BASE_URL="${PUBLIC_BASE_URL}" \
+            DEPLOY_NONCE="${DEPLOY_NONCE}" \
             N8N_DEV_ALLOWED_SYSTEMS="${N8N_DEV_ALLOWED_SYSTEMS}" \
             OAUTH_ALLOWED_EMAILS="${OAUTH_ALLOWED_EMAILS}" \
             WORKSPACE_ALLOWED_SYSTEMS="${WORKSPACE_ALLOWED_SYSTEMS}" \
