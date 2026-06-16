@@ -57,13 +57,23 @@ official Claude↔Drive connector only surfaces read+create; these write tools w
 exposed — connecting the gateway as a custom connector exposes them (no new code; the tools
 already ship in the sidecar).
 
-- **One tool does all four write actions: `update_drive_file`.**
+- **`update_drive_file` does four write actions:**
   - **Delete = trash only** (`trashed=true`) — **reversible**, by design. There is **no
     hard-delete** tool in the package; permanent deletion is not possible through this surface.
   - **Move** — `add_parents` / `remove_parents`.
   - **Rename** — `name`.
   - **In-place content edit** — `content`, **limited to Google Docs / Sheets / Slides**
     (Google-native MIME types). Arbitrary binary content is rejected (`ValueError`).
+- **Non-native content edit: `edit_drive_file_content`** (gateway-owned, not from the package).
+  Rewrites the **content** of a **non-native** file (`.md` / `.txt` / any binary) via the Drive
+  API `files.update` media path — the gap `update_drive_file` leaves. It is a **synthetic MCP
+  tool** the gateway injects into the workspace `tools/list` and handles itself
+  (`services/mcp-server/src/workspace-drive-edit.ts`; facade in `workspace-mcp-proxy.ts`): mints
+  the shared token from SM and calls Drive. A **MIME guard refuses Google-native files** (those
+  stay on `update_drive_file`). **No scope change** (the shared token already holds `…/auth/drive`)
+  and **no package fork**. Same write gate as the rest (`OAUTH_ALLOWED_EMAILS` + HITL). Proven live
+  on `or-edri-4` (2026-06-16, `drive-edit-smoke.yml`). Provide `file_id` + exactly one of `content`
+  (text) / `content_base64` (binary).
 - **The one gate that limits WHO can drive these writes is `OAUTH_ALLOWED_EMAILS`** (the
   gateway Google-login allowlist, `.github/workflows/deploy-mcp-server.yml`). It is set to **Or
   only** (`edri2or@gmail.com`). Empty = **fail-closed** (nobody can log in) — a deploy preflight

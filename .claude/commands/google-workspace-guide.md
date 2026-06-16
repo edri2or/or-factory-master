@@ -36,8 +36,11 @@ Read + write across: **gmail**, **calendar**, **drive**, **docs**, **sheets**, *
 worth knowing up front:
 
 - **Gmail is trash-only** — delete = move to trash (reversible). There is **no permanent delete**.
-- **Drive in-place content edit works only on Google-native files** (Docs / Sheets / Slides), not
-  `.md` / `.txt` / binary. Trash, move, and rename work on **any** file.
+- **Drive content edit:** `update_drive_file` edits the content of **Google-native** files only
+  (Docs / Sheets / Slides). For **non-native** files (`.md` / `.txt` / binary) use the gateway-owned
+  **`edit_drive_file_content`** (`file_id` + one of `content` / `content_base64`) — it rewrites the
+  content via the Drive `files.update` media path and refuses native files. Trash, move, and rename
+  (`update_drive_file`) work on **any** file.
 
 The **exact, current tool names** are whatever the live `tools/list` returns (~120 tools) — read it;
 never trust a hard-coded list here.
