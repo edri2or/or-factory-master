@@ -19,7 +19,7 @@ CREDS_DIR="${WORKSPACE_MCP_CREDENTIALS_DIR:-/creds}"
 # (callers pass it to locate the credential); see docs/google-identities.md.
 LABEL="${WORKSPACE_GOOGLE_ACCOUNT_LABEL:-edriorp38@or-infra.com}"
 PORT="${WORKSPACE_MCP_PORT:-3002}"
-read -r -a TOOLS_ARR <<< "${WORKSPACE_MCP_TOOLS:-calendar gmail drive docs}"
+read -r -a TOOLS_ARR <<< "${WORKSPACE_MCP_TOOLS:-calendar gmail drive docs sheets slides forms tasks chat contacts search appscript}"
 
 mkdir -p "${CREDS_DIR}"
 chmod 700 "${CREDS_DIR}" || true
@@ -36,15 +36,16 @@ if not refresh or refresh == "__NOT_CONFIGURED__":
                      "(Google calls fail until a real token is mounted)\n")
     refresh = "DORMANT-NOT-CONFIGURED"
 # EXACTLY the scopes the shared token was consented for (the SCOPE string in
-# bootstrap-gmail-oauth.yml / request-workspace-scopes-consent.yml). Must match
-# the grant precisely: any superset/subset makes google-auth raise "Scope has
-# changed" on refresh. Env-driven (space-separated WORKSPACE_MCP_SCOPES) so a
-# scope rotation is a deploy-time change; the default is the FULL set the --tools
-# calendar/gmail/drive/docs sidecar requires (rotated 2026-06-11 — a curated
-# 6-scope set only worked on the old client via accumulated grants; the fresh
-# unified client granted exactly 6 and the sidecar then reported "Authentication
-# Needed"). These are write-capable scopes — the server runs full mode (not
-# --read-only); per-action write safety is the system's HITL gate.
+# request-workspace-scopes-consent.yml). Must match the grant precisely: any
+# superset/subset makes google-auth raise "Scope has changed" on refresh.
+# Env-driven (space-separated WORKSPACE_MCP_SCOPES) so a scope rotation is a
+# deploy-time change; this default is the FULL "complete"-tier set — all 12
+# workspace-mcp tool groups, the 41-scope union from auth/scopes.py @ tag v1.21.1
+# (granted live for edri2or@gmail.com 2026-06-16). NOTE: in production
+# WORKSPACE_MCP_SCOPES is always set by render-mcp-service-yaml.sh, so this block is
+# a local/standalone fallback only — keep it byte-equal to the other three sites.
+# These are write-capable scopes — the server runs full mode (not --read-only);
+# per-action write safety is the system's HITL gate.
 default_scopes = (
     "https://www.googleapis.com/auth/gmail.readonly "
     "https://www.googleapis.com/auth/gmail.compose "
@@ -60,6 +61,30 @@ default_scopes = (
     "https://www.googleapis.com/auth/drive.file "
     "https://www.googleapis.com/auth/documents "
     "https://www.googleapis.com/auth/documents.readonly "
+    "https://www.googleapis.com/auth/spreadsheets "
+    "https://www.googleapis.com/auth/spreadsheets.readonly "
+    "https://www.googleapis.com/auth/presentations "
+    "https://www.googleapis.com/auth/presentations.readonly "
+    "https://www.googleapis.com/auth/forms.body "
+    "https://www.googleapis.com/auth/forms.body.readonly "
+    "https://www.googleapis.com/auth/forms.responses.readonly "
+    "https://www.googleapis.com/auth/tasks "
+    "https://www.googleapis.com/auth/tasks.readonly "
+    "https://www.googleapis.com/auth/chat.messages "
+    "https://www.googleapis.com/auth/chat.messages.readonly "
+    "https://www.googleapis.com/auth/chat.spaces "
+    "https://www.googleapis.com/auth/chat.spaces.readonly "
+    "https://www.googleapis.com/auth/contacts "
+    "https://www.googleapis.com/auth/contacts.readonly "
+    "https://www.googleapis.com/auth/cse "
+    "https://www.googleapis.com/auth/script.projects "
+    "https://www.googleapis.com/auth/script.projects.readonly "
+    "https://www.googleapis.com/auth/script.deployments "
+    "https://www.googleapis.com/auth/script.deployments.readonly "
+    "https://www.googleapis.com/auth/script.processes "
+    "https://www.googleapis.com/auth/script.metrics "
+    "https://www.googleapis.com/auth/script.external_request "
+    "https://www.googleapis.com/auth/script.scriptapp "
     "openid "
     "https://www.googleapis.com/auth/userinfo.email "
     "https://www.googleapis.com/auth/userinfo.profile"
