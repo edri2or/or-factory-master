@@ -18,3 +18,7 @@
 - **הוכחה:** yamllint + actionlint(+shellcheck) נקיים; השומרים נבדקו (regex/refusals). הרצה חיה על
   or-edri-4 (הסרת `email-form-intake`, id `cTKyxHEOE43jqsPh`) מתבצעת בנפרד לאחר ✅ של Or, ומאומתת
   ב-`list_n8n_workflows` (27→26).
+- **תיקון (live-found):** ההרצה החיה הראשונה על or-edri-4 נכשלה בטוח (לפני כל מחיקה) — משתנה
+  הסביבה `GCP_PROJECT` שכתבתי ל-`$GITHUB_ENV` נדרס ע"י ה-action `google-github-actions/auth`
+  שמייצא `GCP_PROJECT` משלו (פרויקט ה-broker). שונה שם המשתנה ל-`SM_PROJECT` (שה-action לא נוגע
+  בו). בדיוק הסוג של באג שרק הרצה חיה תופסת.

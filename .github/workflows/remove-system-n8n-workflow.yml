@@ -61,7 +61,7 @@ jobs:
       - name: Validate inputs
         env:
           SYSTEM_NAME: ${{ inputs.system_name }}
-          GCP_PROJECT_IN: ${{ inputs.gcp_project }}
+          SM_PROJECT_IN: ${{ inputs.gcp_project }}
           WORKFLOW_ID: ${{ inputs.workflow_id }}
           CONFIRM: ${{ inputs.confirm }}
         run: |
@@ -82,12 +82,12 @@ jobs:
           fi
 
           # gcp_project: default to system_name; guard control/factory/shared.
-          GCP_PROJECT="${GCP_PROJECT_IN:-}"
-          [ -n "$GCP_PROJECT" ] || GCP_PROJECT="$SYSTEM_NAME"
-          if ! [[ "$GCP_PROJECT" =~ ^[a-z][a-z0-9-]{4,28}[a-z0-9]$ ]]; then
-            echo "FAIL: gcp_project '$GCP_PROJECT' is not a valid GCP project id (6-30 chars)" >&2; exit 1
+          SM_PROJECT="${SM_PROJECT_IN:-}"
+          [ -n "$SM_PROJECT" ] || SM_PROJECT="$SYSTEM_NAME"
+          if ! [[ "$SM_PROJECT" =~ ^[a-z][a-z0-9-]{4,28}[a-z0-9]$ ]]; then
+            echo "FAIL: gcp_project '$SM_PROJECT' is not a valid GCP project id (6-30 chars)" >&2; exit 1
           fi
-          case "$GCP_PROJECT" in
+          case "$SM_PROJECT" in
             or-factory-master-control|factory-control-9piybr)
               echo "FAIL: gcp_project must not be a control project" >&2; exit 1 ;;
             factory-test-25)
@@ -99,8 +99,8 @@ jobs:
             echo "FAIL: workflow_id '$WORKFLOW_ID' is not a valid n8n workflow id" >&2; exit 1
           fi
 
-          echo "GCP_PROJECT=$GCP_PROJECT" >> "$GITHUB_ENV"
-          echo "INFO: will remove n8n workflow '$WORKFLOW_ID' from system '$SYSTEM_NAME' (SM project: $GCP_PROJECT)."
+          echo "SM_PROJECT=$SM_PROJECT" >> "$GITHUB_ENV"
+          echo "INFO: will remove n8n workflow '$WORKFLOW_ID' from system '$SYSTEM_NAME' (SM project: $SM_PROJECT)."
 
       - name: Authenticate to GCP via WIF
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093  # v3.0.0
@@ -116,8 +116,8 @@ jobs:
           set -euo pipefail
           BASE="https://n8n-${SYSTEM_NAME}.or-infra.com"
 
-          APIKEY=$(gcloud secrets versions access latest --secret="n8n-api-key" --project="$GCP_PROJECT" 2>/dev/null || echo "")
-          [ -n "$APIKEY" ] || { echo "FAIL: n8n-api-key not readable in $GCP_PROJECT" >&2; exit 1; }
+          APIKEY=$(gcloud secrets versions access latest --secret="n8n-api-key" --project="$SM_PROJECT" 2>/dev/null || echo "")
+          [ -n "$APIKEY" ] || { echo "FAIL: n8n-api-key not readable in $SM_PROJECT" >&2; exit 1; }
           echo "::add-mask::${APIKEY}"
 
           # 1. Does the workflow exist? (idempotent: 404 -> nothing to do)
@@ -142,8 +142,8 @@ jobs:
             echo "PASS: deleted via public API (HTTP $dcode)."
           else
             echo "WARN: public API delete returned HTTP $dcode — falling back to /rest cookie login."
-            OWNER_EMAIL=$(gcloud secrets versions access latest --secret="n8n-owner-email" --project="$GCP_PROJECT" 2>/dev/null || echo "")
-            OWNER_PW=$(gcloud secrets versions access latest --secret="n8n-owner-password" --project="$GCP_PROJECT" 2>/dev/null || echo "")
+            OWNER_EMAIL=$(gcloud secrets versions access latest --secret="n8n-owner-email" --project="$SM_PROJECT" 2>/dev/null || echo "")
+            OWNER_PW=$(gcloud secrets versions access latest --secret="n8n-owner-password" --project="$SM_PROJECT" 2>/dev/null || echo "")
             if [ -z "$OWNER_EMAIL" ] || [ -z "$OWNER_PW" ]; then
               echo "FAIL: owner creds missing — cannot fall back" >&2; exit 1
             fi
@@ -179,8 +179,8 @@ jobs:
           set -euo pipefail
           RAILWAY_GQL="https://backboard.railway.com/graphql/v2"
 
-          RTOKEN=$(gcloud secrets versions access latest --secret="railway-api-token" --project="$GCP_PROJECT" 2>/dev/null || echo "")
-          [ -n "$RTOKEN" ] || { echo "FAIL: railway-api-token not readable in $GCP_PROJECT" >&2; exit 1; }
+          RTOKEN=$(gcloud secrets versions access latest --secret="railway-api-token" --project="$SM_PROJECT" 2>/dev/null || echo "")
+          [ -n "$RTOKEN" ] || { echo "FAIL: railway-api-token not readable in $SM_PROJECT" >&2; exit 1; }
           echo "::add-mask::${RTOKEN}"
 
           _gql() {
@@ -197,8 +197,8 @@ jobs:
             printf '%s' "$resp"
           }
 
-          PID=$(gcloud secrets versions access latest --secret="railway-project-id" --project="$GCP_PROJECT" 2>/dev/null || echo "")
-          { [ -n "$PID" ] && [ "$PID" != "null" ]; } || { echo "FAIL: railway-project-id not in SM ($GCP_PROJECT)" >&2; exit 1; }
+          PID=$(gcloud secrets versions access latest --secret="railway-project-id" --project="$SM_PROJECT" 2>/dev/null || echo "")
+          { [ -n "$PID" ] && [ "$PID" != "null" ]; } || { echo "FAIL: railway-project-id not in SM ($SM_PROJECT)" >&2; exit 1; }
 
           # shellcheck disable=SC2016  # $id is a GraphQL variable, not shell expansion
           resp=$(_gql 'query($id: String!) { project(id: $id) { environments { edges { node { id name } } } } }' \
@@ -206,7 +206,7 @@ jobs:
           ENVID=$(printf '%s' "$resp" | jq -r '(.data.project.environments.edges // []) | map(select(.node.name=="production")) | .[0].node.id // ""' 2>/dev/null || echo "")
           { [ -n "$ENVID" ] && [ "$ENVID" != "null" ]; } || { echo "FAIL: production environment not found on project $PID" >&2; exit 1; }
 
-          SID=$(gcloud secrets versions access latest --secret="railway-n8n-service-id" --project="$GCP_PROJECT" 2>/dev/null || echo "")
+          SID=$(gcloud secrets versions access latest --secret="railway-n8n-service-id" --project="$SM_PROJECT" 2>/dev/null || echo "")
           if [ -z "$SID" ] || [ "$SID" = "null" ]; then
             # shellcheck disable=SC2016  # $id is a GraphQL variable, not shell expansion
             resp=$(_gql 'query($id: String!) { project(id: $id) { services { edges { node { id name } } } } }' \
