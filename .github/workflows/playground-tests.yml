@@ -133,6 +133,17 @@ jobs:
         # via provision-system.yml and runs there over workflows/n8n + .claude/skills.
         run: WF_DIR=templates/system/workflows/n8n SKILL_DIR=templates/system/.claude/skills CMD_DIR=templates/system/.claude/commands bash scripts/check-workflow-skill-pair.sh
 
+      - name: Capability-card gate (mould)
+        # The teeth behind capability-first (CLAUDE.md "How to work" + docs/capability-first.md):
+        # any OPERABLE mould workflow that adds a NEW external capability (a verb: read/fill/
+        # extract/send/parse) must ship a Phase-1 proof — docs/capability-cards/<name>.md with a
+        # go/partial verdict — proving the raw capability was demonstrated OUTSIDE n8n on a real
+        # fixture before it was built. Workflows that add no new external capability (plumbing,
+        # and the pre-gate baseline) are listed in monitoring/capability-card-exempt.txt.
+        # Factory-only by design (not shipped into systems). This is the gate the email-form-intake
+        # monolith would have hit. Twin of the workflow↔skill pairing gate above.
+        run: WF_DIR=templates/system/workflows/n8n CARD_DIR=docs/capability-cards EXEMPT_FILE=monitoring/capability-card-exempt.txt bash scripts/check-capability-card.sh
+
       - name: executeWorkflow-published gate (mould)
         # n8n 2.x: a published workflow that calls a sub via executeWorkflow (MAIN)
         # cannot publish while that sub is unpublished (HTTP 400) — it silently stays

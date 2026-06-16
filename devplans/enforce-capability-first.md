@@ -21,7 +21,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
 | 1 | וו-ניתוב: capability-first חובה בכל שער-כניסה | completed | `CLAUDE.md`, `.claude/commands/dev-stage-factory.md`, `.claude/commands/dev-stage.md` (+מראה `templates/system/.claude/commands/dev-stage.md`), `tests/golden/system/MANIFEST.sha256` |
-| 2 | שיניים: שער-CI שדורש Capability Card ל-workflow חדש | pending | `scripts/check-capability-card.sh` (חדש) + חיווט CI + fixtures |
+| 2 | שיניים: שער-CI שדורש Capability Card ל-workflow חדש | completed | `scripts/check-capability-card.sh` (חדש), `monitoring/capability-card-exempt.txt` (חדש), `docs/capability-cards/README.md` (חדש), `.github/workflows/playground-tests.yml` |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
 >
@@ -60,20 +60,32 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 ### שלב 2 — שיניים: שער-CI שדורש Capability Card ל-workflow חדש
 
 **Acceptance:**
-- [ ] `scripts/check-capability-card.sh`: workflow n8n חדש לא-פטור תחת
-      `templates/system/workflows/n8n/` חייב Capability Card (`docs/agent-specs/<name>.md` עם
-      go/no-go) או רישום ב-`monitoring/capability-card-exempt.txt` ("אין יכולת-חוץ חדשה") —
-      אחרת merge חסום. תאום ל-check-workflow-skill-pair / check-e2e-proof.
-- [ ] חיווט ל-job CI (Changelog gates / Playground tests) + ל-pipeline-tests של מערכת.
-- [ ] fixtures: עובר (יש כרטיס/פטור) + נכשל (אין).
+- [x] `scripts/check-capability-card.sh`: workflow n8n לא-פטור תחת `templates/system/workflows/n8n/`
+      חייב Capability Card ב-`docs/capability-cards/<name>.md` עם `verdict: go|partial` (no-go/חסר →
+      כשל), או רישום ב-`monitoring/capability-card-exempt.txt`. תאום-מבנה ל-check-workflow-skill-pair
+      (full-scan + exempt לפי basename). shellcheck נקי.
+- [x] `monitoring/capability-card-exempt.txt`: 25 ה-workflows הקיימים grandfathered (baseline) + הסבר
+      שערך-חדש דורש נימוק. `docs/capability-cards/README.md`: פורמט הכרטיס + שורת verdict + קישור §0.
+- [x] חיווט ל-job "Playground tests" (`.github/workflows/playground-tests.yml`) מיד אחרי שער ה-skill-pair.
+      yamllint נקי.
+- [x] fixtures (3-way): PASS על ה-mould, FAIL על workflow חדש בלי כרטיס, PASS עם כרטיס go (+bonus no-go→FAIL).
 
-**הוכחה תפקודית (באותו שלב):** הרצת הסקריפט על fixture עם כרטיס (PASS) ובלי (FAIL).
+**הוכחה תפקודית (באותו שלב):** הורצו 4 הרצות: (1) על ה-mould האמיתי → PASS exit 0 (25 grandfathered,
+0 לא-פטורים — no-op היום, נדלק על ה-workflow החדש הבא); (2) WF_DIR זמני עם `prove-fail-cap.json` בלי
+כרטיס/פטור → FAIL exit 1; (3) אותו temp עם כרטיס `verdict: go` → PASS exit 0; (bonus) כרטיס `verdict:
+no-go` → FAIL exit 1. shellcheck + yamllint נקיים.
 
-**הוכחת E2E (artifact):** לא-התנהגותי.
+**הוכחת E2E (artifact):** לא-התנהגותי (factory-only gate; אין שינוי בקבצי-בוט workflows/n8n).
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** ✅ הושלם. השער נכתב כתאום-מבנה ל-check-workflow-skill-pair (full-scan + exempt
+basename), בהיקף factory-only על ה-mould. 4 הרצות-הוכחה עברו (PASS/FAIL/PASS/FAIL כצפוי). אין נגיעה
+ב-`templates/system/**` → אין golden/mirror/golden-sync.
 
-**שינוי תוכנית:** —
+**שינוי תוכנית:** מול ה-Acceptance המקורי — (1) מיקום הכרטיס `docs/agent-specs/`→`docs/capability-cards/`
+(התיישרות עם הוועקבולרי הקיים של "Capability Card" §0; `docs/agent-specs/` לא קיים). (2) היקף: ירד
+מ"+pipeline-tests מערכת" ל-**factory-only-MVP** — הכשל המוכח היה פיתוח-פקטורי; שילוח-למערכות מוסיף שטח
+למקרה נדיר שכבר מכוסה ע"י המסמכים/סקילים הנשלחים. **נדחה במפורש, לא נזרק** (תועד ב-README). זה עצמו
+"לא over-build" — הלקח של הפיתוח הזה.
 
 ---
 
@@ -83,3 +95,8 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
   כך שיכולת חדשה *חייבת* לעבור הוכחה-מחוץ-ל-n8n + פירוק לפני בנייה — גם בפקטורי. בדקתי בדיעבד
   (replay) שזה בדיוק מה שהיה עוצר את email-form-intake. השארים הסטטיים ירוקים. נשאר שלב 2
   (שער-CI שייתן "שיניים" לכלל).
+- שלב 2 ✅ הושלם: בניתי שער-CI (`check-capability-card.sh`) שחוסם הוספת workflow-יכולת חדש
+  בלי "כרטיס יכולת" מוכח (go/partial). גיליתי במחקר שכבר היה תשתית capability-first (המתודולוגיה
+  עצמה) — מה שחסר היה רק ה"שיניים", וזה מה שהוספתי (לא כפילות). הוכחתי שהשער באמת חוסם: 4 הרצות
+  (עובר/נכשל/עובר/נכשל כצפוי). היקף מינימלי — factory בלבד; שילוח-למערכות נדחה במכוון. נשאר רק
+  ניקוי email-form-intake מ-or-edri-4 (נדחה בהחלטתך) + סגירת הפיתוח.

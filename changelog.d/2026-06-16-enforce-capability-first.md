@@ -22,3 +22,20 @@
     הפעלים של הכלל החדש — כך שעל אותה בקשה, Step 0 היה עוצר ומכריח `/prove-capability` על
     fixture של טופס עברי אמיתי לפני כל בנייה. שערים סטטיים ירוקים: skills-mirror, system-golden,
     golden-sync.
+
+- **שלב 2 — שיניים: שער-CI שדורש Capability Card ל-workflow-יכולת חדש (factory-only):**
+  - `scripts/check-capability-card.sh` (חדש) — תאום-מבנה ל-`check-workflow-skill-pair.sh`
+    (full-scan + exempt לפי basename): כל `templates/system/workflows/n8n/<name>.json` שאינו פטור
+    חייב `docs/capability-cards/<name>.md` עם `verdict: go|partial` (no-go/חסר/פגום → exit 1).
+    זה ה"teeth" שהיה חוסם את מונוליט email-form-intake. shellcheck נקי.
+  - `monitoring/capability-card-exempt.txt` (חדש) — 25 ה-workflows הקיימים כ-baseline grandfathered,
+    עם הסבר שערך-חדש דורש נימוק אמיתי ("אין יכולת-חוץ חדשה"), לא העתקת-דפוס.
+  - `docs/capability-cards/README.md` (חדש) — פורמט הכרטיס (טבלת §0 + שורת `verdict:` קריאת-מכונה),
+    קישור ל-`templates/agent-design-spec.md` §0 ו-`docs/capability-first.md`, והבהרת ההיקף הנדחה.
+  - `.github/workflows/playground-tests.yml` — צעד "Capability-card gate (mould)" מיד אחרי שער
+    ה-skill-pair (job "Playground tests"). yamllint נקי.
+  - **הוכחה תפקודית (3-way + bonus):** PASS על ה-mould (25 grandfathered, 0 לא-פטורים — no-op היום,
+    נדלק על ה-workflow החדש הבא); FAIL על workflow חדש בלי כרטיס/פטור; PASS עם כרטיס `go`;
+    bonus: כרטיס `no-go` → FAIL. **שינוי-תוכנית:** מיקום `docs/agent-specs/`→`docs/capability-cards/`,
+    והיקף factory-only-MVP (שילוח-למערכות נדחה במפורש) — שתיהן "לא over-build", לקח הפיתוח עצמו.
+  - **אין נגיעה ב-`templates/system/**`** → אין השפעת golden/mirror.
