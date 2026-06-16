@@ -24,5 +24,5 @@
 - **Drive non-native content edit (Stage 3 — docs + lock):** documented the new tool and removed the
   ".md/.txt not supported" limitation across `docs/google-tools-feasibility.md`,
   `docs/google-identities.md`, and the shared `.claude/commands/google-workspace-guide.md` (mirrored
-  into `templates/system/.claude/commands/` + golden refreshed). Removed the throwaway Phase-1 probe
-  harness now that the tool is live. Development complete.
+  into `templates/system/.claude/commands/` + golden refreshed). The Phase-1 probe + Stage-2 live
+  smoke are kept as exempt manual proofs. Development complete.

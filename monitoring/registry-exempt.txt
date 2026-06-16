@@ -119,6 +119,9 @@ templates/system/.github/workflows/bootstrap-gmail-oauth.yml
 .github/workflows/propose-repo-delete.yml
 # Verification helper: creates a zz-* throwaway repo via broker (name-guarded).
 .github/workflows/create-throwaway-repo.yml
+# Capability-first Phase-1 probe (raw Drive files.update media on a real .md/binary).
+# workflow_dispatch only; retained as an exempt manual probe. No cadence to prove.
+.github/workflows/drive-content-edit-probe.yml
 # Manual live smoke: drives edit_drive_file_content end-to-end through the deployed
 # gateway's /workspace/<system>/mcp route on a real .md. workflow_dispatch only; no cadence.
 .github/workflows/drive-edit-smoke.yml
