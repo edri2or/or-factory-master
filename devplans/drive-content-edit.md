@@ -18,8 +18,8 @@ status: active
 
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
-| 0 | capability-first: הוכחת היכולת הגולמית מחוץ ל-n8n (go/no-go) | in-progress | `scripts/probe-drive-content-edit.mjs`, `tests/fixtures/drive-content-edit/`, `.github/workflows/drive-content-edit-probe.yml`, `docs/agent-specs/drive-content-edit.md` |
-| 1 | הכלי ב-gateway (מודול + מיירוט פסאדה) | pending | `services/mcp-server/src/workspace-drive-edit.ts`, `services/mcp-server/src/index.ts`, `services/mcp-server/test/*` |
+| 0 | capability-first: הוכחת היכולת הגולמית מחוץ ל-n8n (go/no-go) | completed | `scripts/probe-drive-content-edit.mjs`, `tests/fixtures/drive-content-edit/`, `.github/workflows/drive-content-edit-probe.yml`, `docs/agent-specs/drive-content-edit.md` |
+| 1 | הכלי ב-gateway (מודול + מיירוט פסאדה) | in-progress | `services/mcp-server/src/workspace-drive-edit.ts`, `services/mcp-server/src/workspace-mcp-proxy.ts`, `services/mcp-server/test/workspace-drive-edit.test.mjs` |
 | 2 | פריסה + הוכחה חיה על or-edri-4 | pending | `.github/workflows/google-mcp-smoke.yml` (או אחות), פריסה דרך `deploy-mcp-server.yml` |
 | 3 | תיעוד + נעילה (promote) | pending | `docs/google-tools-feasibility.md`, `docs/google-identities.md`, `.claude/commands/google-workspace-guide.md`, מראה+זהב |
 
@@ -41,7 +41,8 @@ status: active
 
 **הוכחת E2E (artifact):** לא-התנהגותי (לא נוגע ב-`workflows/n8n/*.json`).
 
-**הערת התקדמות אחרונה:** נבנו אבני ההוכחה; ממתין לדיספאצ' של ה-workflow.
+**הערת התקדמות אחרונה:** ✅ הושלם — run `27636636406` ירוק: `.md` ובינארי PNG עודכנו ואומתו
+ב-read-back, הקבצים הזמניים נמחקו. verdict=GO נרשם ב-Capability Card.
 
 **שינוי תוכנית:** —
 
@@ -50,15 +51,16 @@ status: active
 ### שלב 1 — הכלי ב-gateway
 
 **Acceptance:**
-- [ ] מודול `workspace-drive-edit.ts` עם מינטינג access token + מגן MIME + `files.update(media)`.
-- [ ] מיירוט פסאדה: `tools/list` כולל `edit_drive_file_content`, `tools/call` מנותב.
-- [ ] `npm test` ירוק.
+- [x] מודול `workspace-drive-edit.ts` עם מינטינג access token + מגן MIME + `files.update(media)`.
+- [x] מיירוט פסאדה: `tools/list` כולל `edit_drive_file_content`, `tools/call` מנותב.
+- [x] `npm test` ירוק.
 
-**הוכחה תפקודית (באותו שלב):** בדיקות יחידה ירוקות; `tools/list` מקומי מראה את הכלי.
+**הוכחה תפקודית (באותו שלב):** בדיקות יחידה ירוקות (118/118, 15 חדשות); `injectToolIntoToolsList`
+מוכיח שהכלי נכנס לרשימה, `parseDriveEditArgs`/`isGoogleNativeMime` מוכיחים ולידציה ומגן MIME.
 
 **הוכחת E2E (artifact):** לא-התנהגותי.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הכלי + הפסאדה נבנו, 118/118 בדיקות עוברות. ממתין לפריסה+הוכחה חיה (שלב 2).
 
 **שינוי תוכנית:** —
 

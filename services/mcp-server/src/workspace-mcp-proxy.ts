@@ -11,14 +11,22 @@
 // bearer) is enforced by the /workspace/:system/mcp route in index.ts BEFORE
 // this runs; this module never sees an unauthenticated request.
 //
-// v1 is a straight pass-through (no transparent session-recovery like the n8n
-// proxy). n8n's MCP Client Tool node re-initializes on session loss per the MCP
-// spec; if live testing (Stage 2) shows it doesn't, port the recovery engine
-// from n8n-mcp-proxy.ts. Kept minimal on purpose — build the brick, prove it,
-// then iterate.
+// The ONE exception to pure pass-through is a gateway-owned synthetic tool,
+// edit_drive_file_content (workspace-drive-edit.ts): tools/list is augmented with
+// it, and a tools/call to it is handled here (the Drive files.update media path
+// the bundled update_drive_file refuses). Every other request still streams
+// straight through to the sidecar untouched.
 
 import type { Request, Response } from 'express';
 import { Readable } from 'node:stream';
+import {
+  parseDriveEditCall,
+  isToolsListRequest,
+  extractJsonRpcMessage,
+  injectToolIntoToolsList,
+  buildToolResult,
+  executeDriveContentEdit,
+} from './workspace-drive-edit.js';
 
 // Internal sidecar MCP endpoint, e.g. http://localhost:3002/mcp/. Absent → the
 // Workspace MCP feature is dormant (routes 503) until deployed with the sidecar.
@@ -49,18 +57,11 @@ export function isAllowedWorkspaceSystem(system: string): boolean {
   return ALLOWED_SYSTEMS.has(system);
 }
 
-// Reverse-proxy one MCP request to the internal Workspace MCP sidecar. `system`
-// is already validated + bearer-checked by the caller (index.ts). The client's
+// Forward one request to the sidecar and return the raw upstream Response (the
+// caller decides whether to stream it or buffer + rewrite it). The client's
 // mcp-session-id / mcp-protocol-version pass through untouched (the shared
 // identity needs no header rewriting).
-export async function proxyToWorkspaceMcp(req: Request, res: Response): Promise<void> {
-  if (!workspaceMcpEnabled()) {
-    res.status(503).json({ error: 'workspace_mcp_disabled' });
-    return;
-  }
-
-  // Forward the exact bytes the client sent (rawBody captured in index.ts) so the
-  // sidecar sees an untouched JSON-RPC payload.
+async function forwardToSidecar(req: Request): Promise<globalThis.Response> {
   const rawBody = (req as unknown as { rawBody?: Buffer }).rawBody;
   const bodyInit = rawBody ? rawBody.toString('utf8') : JSON.stringify(req.body ?? {});
 
@@ -75,14 +76,27 @@ export async function proxyToWorkspaceMcp(req: Request, res: Response): Promise<
 
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), PROXY_TIMEOUT_MS);
-  let upstream: globalThis.Response;
   try {
-    upstream = await fetch(WORKSPACE_MCP_URL!, {
+    return await fetch(WORKSPACE_MCP_URL!, {
       method: req.method,
       headers,
       body: req.method === 'GET' || req.method === 'HEAD' ? undefined : bodyInit,
       signal: ctrl.signal,
     });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Augment a tools/list response with the synthetic edit_drive_file_content tool.
+// Buffers the sidecar's response (small), extracts the JSON-RPC message whether
+// framed as JSON or SSE, injects the tool, and returns it as application/json
+// (the client accepts both). On any parse surprise, falls back to a clean
+// passthrough of the original bytes so tools/list is never broken.
+async function proxyToolsListWithInjection(req: Request, res: Response): Promise<void> {
+  let upstream: globalThis.Response;
+  try {
+    upstream = await forwardToSidecar(req);
   } catch (e) {
     if (!res.headersSent) {
       res.status(502).json({ error: 'workspace_mcp_upstream_error', detail: String((e as Error).message).slice(0, 300) });
@@ -90,8 +104,73 @@ export async function proxyToWorkspaceMcp(req: Request, res: Response): Promise<
       res.end();
     }
     return;
-  } finally {
-    clearTimeout(timer);
+  }
+
+  const ct = upstream.headers.get('content-type') ?? '';
+  const text = await upstream.text().catch(() => '');
+  const usid = upstream.headers.get('mcp-session-id');
+
+  const msg = upstream.ok ? extractJsonRpcMessage(ct, text) : null;
+  if (!msg) {
+    // Could not parse (or upstream error) — pass the original response through.
+    res.status(upstream.status);
+    if (ct) res.setHeader('content-type', ct);
+    if (usid) res.setHeader('mcp-session-id', usid);
+    res.end(text);
+    return;
+  }
+
+  injectToolIntoToolsList(msg);
+  res.status(200).setHeader('content-type', 'application/json');
+  if (usid) res.setHeader('mcp-session-id', usid);
+  res.end(JSON.stringify(msg));
+}
+
+// Reverse-proxy one MCP request to the internal Workspace MCP sidecar. `system`
+// is already validated + bearer-checked by the caller (index.ts).
+export async function proxyToWorkspaceMcp(req: Request, res: Response): Promise<void> {
+  if (!workspaceMcpEnabled()) {
+    res.status(503).json({ error: 'workspace_mcp_disabled' });
+    return;
+  }
+
+  // (1) A tools/call to our gateway-owned synthetic tool — handled here, the
+  // sidecar never sees it. Errors come back as an MCP tool result (isError),
+  // not a transport failure, so the model reads a clear message.
+  const call = parseDriveEditCall(req.body);
+  if (call) {
+    let payload: unknown;
+    let isError = false;
+    try {
+      payload = await executeDriveContentEdit(call.args);
+    } catch (e) {
+      payload = { ok: false, error: String((e as Error).message) };
+      isError = true;
+    }
+    const sid = req.headers['mcp-session-id'];
+    if (typeof sid === 'string') res.setHeader('mcp-session-id', sid);
+    res.status(200).setHeader('content-type', 'application/json');
+    res.end(JSON.stringify(buildToolResult(call.id, payload, isError)));
+    return;
+  }
+
+  // (2) tools/list — forward, then inject the synthetic tool into the result.
+  if (isToolsListRequest(req.body)) {
+    await proxyToolsListWithInjection(req, res);
+    return;
+  }
+
+  // (3) Everything else — straight pass-through (the v1 behavior).
+  let upstream: globalThis.Response;
+  try {
+    upstream = await forwardToSidecar(req);
+  } catch (e) {
+    if (!res.headersSent) {
+      res.status(502).json({ error: 'workspace_mcp_upstream_error', detail: String((e as Error).message).slice(0, 300) });
+    } else {
+      res.end();
+    }
+    return;
   }
 
   res.status(upstream.status);
