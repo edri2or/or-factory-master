@@ -5,7 +5,7 @@ DEVPLAN — workspace-token-audit. מנוהל על-ידי /dev-stage. זיכרו
 dev_name: התרעת-טוקן Google אוטומטית
 slug: workspace-token-audit
 opened: 2026-06-16
-status: active
+status: completed
 ---
 
 # תוכנית פיתוח — התרעת-טוקן Google אוטומטית
@@ -23,7 +23,7 @@ status: active
 
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
-| 1 | workspace-token-audit.yml — probe יומי + טלגרם ברור בכשל + תיעוד + תיקון grep | in-progress | `.github/workflows/workspace-token-audit.yml`, `.github/workflows/deploy-mcp-server.yml`, `CLAUDE.md`, `docs/google-identities.md` |
+| 1 | workspace-token-audit.yml — probe יומי + טלגרם ברור בכשל + תיעוד + תיקון grep | completed | `.github/workflows/workspace-token-audit.yml`, `.github/workflows/deploy-mcp-server.yml`, `CLAUDE.md`, `docs/google-identities.md` |
 
 ---
 
@@ -39,7 +39,7 @@ status: active
 
 **הוכחת E2E (artifact):** לא-התנהגותי.
 
-**הערת התקדמות אחרונה:** הקוד + התיעוד נכתבו; ב-PR. ממתין ל-CI + דיספטץ' אימות.
+**הערת התקדמות אחרונה:** הושלם ואומת חי. מוזג ב-PR #497; דיספטץ' של ה-audit רץ ירוק על הטוקן הבריא — `SMOKE PASS 6/6` (`list_gmail_labels` + `search_drive_files` החזירו מידע אמיתי), `[event] factory.workspace_token.ok` ל-Axiom, בלי טלגרם (severity=info, כמתוכנן). מסלול-הכשל מאומת בקריאת-קוד.
 
 **שינוי תוכנית:** —
 
@@ -48,3 +48,4 @@ status: active
 ## יומן ל-Or (עברית)
 
 - 2026-06-16: בונה התרעה אוטומטית — אם טוקן Google יישבר שוב, תקבל טלגרם ברור עם בדיוק מה לעשות, במקום שעות חקירה.
+- 2026-06-16: ✅ הושלם ואומת. שומר-הטוקן חי; שותק כשבריא, יצעק בטלגרם ברור כששבור. הפיתוח נסגר.
