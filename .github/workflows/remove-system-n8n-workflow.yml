@@ -1,0 +1,247 @@
+name: Remove a system's n8n workflow (live cleanup)
+
+# Manual dispatch only. DESTRUCTIVE, factory-only, and deliberately OFF the
+# dispatch_workflow MCP allowlist (like the real-system decommission). It removes
+# ONE n8n workflow from a LIVE system — deactivate + delete via the n8n API — and
+# optionally deletes named Railway environment variables from that system's n8n
+# service. Runs as the broker SA via WIF, reading the system's OWN Secret Manager
+# cross-project (the broker holds project-level secretAccessor on system projects).
+#
+# Why this exists: there was no clean way to remove a leftover capability from a
+# live system (e.g. a cancelled experiment's workflow + the env vars it needed).
+# This is the minimal, guarded "removal" tool. It is plumbing over APIs the
+# factory already uses (n8n deactivate/activate, Railway variable mutations), so
+# it adds no new raw external capability (capability-first: skipped).
+#
+# Safety: hard-refuses control/factory projects, requires `confirm == system_name`,
+# verifies the workflow exists before deleting and is gone after, is idempotent
+# (already-absent is a no-op), and NEVER prints a secret value. It does NOT force a
+# redeploy — env-var removal updates config; the running container clears them on
+# its next natural deploy (the workflow that used them is being deleted anyway).
+
+on:
+  workflow_dispatch:
+    inputs:
+      system_name:
+        description: "System name (the n8n host: https://n8n-<system_name>.or-infra.com). e.g. or-edri-4"
+        required: true
+        type: string
+      gcp_project:
+        description: "The system's GCP project where its SM lives. Leave blank to use system_name (adopt systems differ, e.g. or-edri-4 -> factory-test-21)."
+        required: false
+        type: string
+        default: ""
+      workflow_id:
+        description: "The n8n workflow id to remove (from list_n8n_workflows). e.g. cTKyxHEOE43jqsPh"
+        required: true
+        type: string
+      confirm:
+        description: "Type the system_name again to confirm this destructive removal."
+        required: true
+        type: string
+      remove_env_vars:
+        description: "Optional: comma-separated Railway env-var names to delete from the n8n service (e.g. GMAIL_OAUTH_CLIENT_ID,...)."
+        required: false
+        type: string
+        default: ""
+
+permissions: {}
+
+jobs:
+  remove:
+    name: Remove n8n workflow (+ optional Railway env vars)
+    runs-on: ubuntu-latest
+    # Broker WIF CEL pins ref=refs/heads/main; running off other branches will fail to auth.
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      id-token: write   # WIF OIDC token
+
+    steps:
+      - name: Validate inputs
+        env:
+          SYSTEM_NAME: ${{ inputs.system_name }}
+          GCP_PROJECT_IN: ${{ inputs.gcp_project }}
+          WORKFLOW_ID: ${{ inputs.workflow_id }}
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          set -euo pipefail
+
+          # system_name shape (also the n8n host) — refuse the factory itself.
+          if ! [[ "$SYSTEM_NAME" =~ ^[a-z][a-z0-9-]{4,28}[a-z0-9]$ ]]; then
+            echo "FAIL: system_name '$SYSTEM_NAME' is not a valid system name (6-30 chars)" >&2; exit 1
+          fi
+          case "$SYSTEM_NAME" in
+            or-factory-master|or-factory-master-control|factory-control-9piybr|factory-test-25)
+              echo "FAIL: refusing system_name '$SYSTEM_NAME' (factory/control/shared backend)" >&2; exit 1 ;;
+          esac
+
+          # confirm must echo system_name (anti-accident).
+          if [ "$CONFIRM" != "$SYSTEM_NAME" ]; then
+            echo "FAIL: confirm ('$CONFIRM') must equal system_name ('$SYSTEM_NAME')" >&2; exit 1
+          fi
+
+          # gcp_project: default to system_name; guard control/factory/shared.
+          GCP_PROJECT="${GCP_PROJECT_IN:-}"
+          [ -n "$GCP_PROJECT" ] || GCP_PROJECT="$SYSTEM_NAME"
+          if ! [[ "$GCP_PROJECT" =~ ^[a-z][a-z0-9-]{4,28}[a-z0-9]$ ]]; then
+            echo "FAIL: gcp_project '$GCP_PROJECT' is not a valid GCP project id (6-30 chars)" >&2; exit 1
+          fi
+          case "$GCP_PROJECT" in
+            or-factory-master-control|factory-control-9piybr)
+              echo "FAIL: gcp_project must not be a control project" >&2; exit 1 ;;
+            factory-test-25)
+              echo "FAIL: gcp_project must not be factory-test-25 (shared sandbox backend)" >&2; exit 1 ;;
+          esac
+
+          # workflow_id charset (n8n nanoid-style).
+          if ! [[ "$WORKFLOW_ID" =~ ^[A-Za-z0-9_-]{6,64}$ ]]; then
+            echo "FAIL: workflow_id '$WORKFLOW_ID' is not a valid n8n workflow id" >&2; exit 1
+          fi
+
+          echo "GCP_PROJECT=$GCP_PROJECT" >> "$GITHUB_ENV"
+          echo "INFO: will remove n8n workflow '$WORKFLOW_ID' from system '$SYSTEM_NAME' (SM project: $GCP_PROJECT)."
+
+      - name: Authenticate to GCP via WIF
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093  # v3.0.0
+        with:
+          workload_identity_provider: "projects/140345952904/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
+          service_account: "factory-master-broker@or-factory-master-control.iam.gserviceaccount.com"
+
+      - name: Remove the n8n workflow (deactivate + delete), verify gone
+        env:
+          SYSTEM_NAME: ${{ inputs.system_name }}
+          WORKFLOW_ID: ${{ inputs.workflow_id }}
+        run: |
+          set -euo pipefail
+          BASE="https://n8n-${SYSTEM_NAME}.or-infra.com"
+
+          APIKEY=$(gcloud secrets versions access latest --secret="n8n-api-key" --project="$GCP_PROJECT" 2>/dev/null || echo "")
+          [ -n "$APIKEY" ] || { echo "FAIL: n8n-api-key not readable in $GCP_PROJECT" >&2; exit 1; }
+          echo "::add-mask::${APIKEY}"
+
+          # 1. Does the workflow exist? (idempotent: 404 -> nothing to do)
+          code=$(curl -sS -o /tmp/wf.json -w '%{http_code}' --max-time 30 \
+            -H "X-N8N-API-KEY: ${APIKEY}" "$BASE/api/v1/workflows/${WORKFLOW_ID}" || echo "000")
+          if [ "$code" = "404" ]; then
+            echo "PASS: workflow ${WORKFLOW_ID} already absent on ${SYSTEM_NAME} — nothing to delete (idempotent)."
+            exit 0
+          fi
+          [ "$code" = "200" ] || { echo "FAIL: unexpected HTTP $code checking ${WORKFLOW_ID} at $BASE" >&2; exit 1; }
+          wfname=$(jq -r '.name // "?"' /tmp/wf.json 2>/dev/null || echo "?")
+          echo "INFO: found workflow ${WORKFLOW_ID} ('${wfname}') — deactivating + deleting."
+
+          # 2. Deactivate (ignore failure — may already be inactive).
+          curl -sS -o /dev/null --max-time 30 -X POST \
+            -H "X-N8N-API-KEY: ${APIKEY}" "$BASE/api/v1/workflows/${WORKFLOW_ID}/deactivate" 2>/dev/null || true
+
+          # 3. Delete via the public API; fall back to /rest cookie-login if needed.
+          dcode=$(curl -sS -o /tmp/del.json -w '%{http_code}' --max-time 30 -X DELETE \
+            -H "X-N8N-API-KEY: ${APIKEY}" "$BASE/api/v1/workflows/${WORKFLOW_ID}" || echo "000")
+          if [ "$dcode" = "200" ] || [ "$dcode" = "204" ]; then
+            echo "PASS: deleted via public API (HTTP $dcode)."
+          else
+            echo "WARN: public API delete returned HTTP $dcode — falling back to /rest cookie login."
+            OWNER_EMAIL=$(gcloud secrets versions access latest --secret="n8n-owner-email" --project="$GCP_PROJECT" 2>/dev/null || echo "")
+            OWNER_PW=$(gcloud secrets versions access latest --secret="n8n-owner-password" --project="$GCP_PROJECT" 2>/dev/null || echo "")
+            if [ -z "$OWNER_EMAIL" ] || [ -z "$OWNER_PW" ]; then
+              echo "FAIL: owner creds missing — cannot fall back" >&2; exit 1
+            fi
+            echo "::add-mask::${OWNER_PW}"
+            CJ=$(mktemp)
+            lc=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 -c "$CJ" -X POST "$BASE/rest/login" \
+              -H "Content-Type: application/json" \
+              -d "$(jq -cn --arg e "$OWNER_EMAIL" --arg p "$OWNER_PW" '{emailOrLdapLoginId:$e, password:$p}')" || echo "000")
+            if [ "$lc" != "200" ]; then
+              lc=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 -c "$CJ" -X POST "$BASE/rest/login" \
+                -H "Content-Type: application/json" \
+                -d "$(jq -cn --arg e "$OWNER_EMAIL" --arg p "$OWNER_PW" '{email:$e, password:$p}')" || echo "000")
+            fi
+            [ "$lc" = "200" ] || { rm -f "$CJ"; echo "FAIL: /rest login failed (HTTP $lc)" >&2; exit 1; }
+            rc=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 30 -b "$CJ" -X DELETE "$BASE/rest/workflows/${WORKFLOW_ID}" || echo "000")
+            curl -sS -o /dev/null -b "$CJ" -X POST "$BASE/rest/logout" >/dev/null 2>&1 || true
+            rm -f "$CJ"
+            { [ "$rc" = "200" ] || [ "$rc" = "204" ]; } || { echo "FAIL: /rest delete failed (HTTP $rc)" >&2; exit 1; }
+            echo "PASS: deleted via /rest (HTTP $rc)."
+          fi
+
+          # 4. Verify it is gone.
+          vcode=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 30 \
+            -H "X-N8N-API-KEY: ${APIKEY}" "$BASE/api/v1/workflows/${WORKFLOW_ID}" || echo "000")
+          [ "$vcode" = "404" ] || { echo "FAIL: post-delete verify expected 404, got $vcode" >&2; exit 1; }
+          echo "PASS: verified workflow ${WORKFLOW_ID} ('${wfname}') is gone from ${SYSTEM_NAME}."
+
+      - name: Remove Railway env vars (optional)
+        if: ${{ inputs.remove_env_vars != '' }}
+        env:
+          REMOVE_ENV_VARS: ${{ inputs.remove_env_vars }}
+        run: |
+          set -euo pipefail
+          RAILWAY_GQL="https://backboard.railway.com/graphql/v2"
+
+          RTOKEN=$(gcloud secrets versions access latest --secret="railway-api-token" --project="$GCP_PROJECT" 2>/dev/null || echo "")
+          [ -n "$RTOKEN" ] || { echo "FAIL: railway-api-token not readable in $GCP_PROJECT" >&2; exit 1; }
+          echo "::add-mask::${RTOKEN}"
+
+          _gql() {
+            local query="$1" variables="${2:-}" body resp
+            [ -n "$variables" ] || variables='{}'
+            body=$(jq -cn --arg q "$query" --argjson v "$variables" '{query: $q, variables: $v}')
+            resp=$(curl -sS -X POST "$RAILWAY_GQL" \
+              -H "Authorization: Bearer ${RTOKEN}" \
+              -H "Content-Type: application/json" -d "$body")
+            if printf '%s' "$resp" | jq -e '.errors' >/dev/null 2>&1; then
+              printf '%s\n' "$resp" | jq -r '.errors[] | "  - " + .message' >&2
+              return 1
+            fi
+            printf '%s' "$resp"
+          }
+
+          PID=$(gcloud secrets versions access latest --secret="railway-project-id" --project="$GCP_PROJECT" 2>/dev/null || echo "")
+          { [ -n "$PID" ] && [ "$PID" != "null" ]; } || { echo "FAIL: railway-project-id not in SM ($GCP_PROJECT)" >&2; exit 1; }
+
+          # shellcheck disable=SC2016  # $id is a GraphQL variable, not shell expansion
+          resp=$(_gql 'query($id: String!) { project(id: $id) { environments { edges { node { id name } } } } }' \
+            "$(jq -cn --arg id "$PID" '{id:$id}')" 2>/dev/null || echo '{}')
+          ENVID=$(printf '%s' "$resp" | jq -r '(.data.project.environments.edges // []) | map(select(.node.name=="production")) | .[0].node.id // ""' 2>/dev/null || echo "")
+          { [ -n "$ENVID" ] && [ "$ENVID" != "null" ]; } || { echo "FAIL: production environment not found on project $PID" >&2; exit 1; }
+
+          SID=$(gcloud secrets versions access latest --secret="railway-n8n-service-id" --project="$GCP_PROJECT" 2>/dev/null || echo "")
+          if [ -z "$SID" ] || [ "$SID" = "null" ]; then
+            # shellcheck disable=SC2016  # $id is a GraphQL variable, not shell expansion
+            resp=$(_gql 'query($id: String!) { project(id: $id) { services { edges { node { id name } } } } }' \
+              "$(jq -cn --arg id "$PID" '{id:$id}')" 2>/dev/null || echo '{}')
+            SID=$(printf '%s' "$resp" | jq -r '(.data.project.services.edges // []) | map(select(.node.name=="n8n")) | .[0].node.id // ""' 2>/dev/null || echo "")
+          fi
+          { [ -n "$SID" ] && [ "$SID" != "null" ]; } || { echo "FAIL: cannot resolve the n8n service id" >&2; exit 1; }
+
+          IFS=',' read -ra VARS <<< "$REMOVE_ENV_VARS"
+          for v in "${VARS[@]}"; do
+            v="$(echo "$v" | xargs)"
+            [ -z "$v" ] && continue
+            if ! [[ "$v" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+              echo "WARN: skipping invalid env-var name '$v'"; continue
+            fi
+            # shellcheck disable=SC2016  # $input is a GraphQL variable, not shell expansion
+            if _gql 'mutation($input: VariableDeleteInput!) { variableDelete(input: $input) }' \
+                 "$(jq -cn --arg pid "$PID" --arg eid "$ENVID" --arg sid "$SID" --arg n "$v" \
+                   '{input:{projectId:$pid, environmentId:$eid, serviceId:$sid, name:$n}}')" >/dev/null 2>&1; then
+              echo "PASS: removed Railway var '$v' from the n8n service (or it was already absent)."
+            else
+              echo "INFO: variableDelete for '$v' returned an error (likely already absent) — continuing."
+            fi
+          done
+          echo "INFO: env-var removal updates config only; not forcing a redeploy — the running container clears them on its next deploy."
+
+      - name: Summary
+        if: always()
+        env:
+          SYSTEM_NAME: ${{ inputs.system_name }}
+          WORKFLOW_ID: ${{ inputs.workflow_id }}
+        run: |
+          {
+            echo "## Remove n8n workflow — ${SYSTEM_NAME}"
+            echo ""
+            echo "- workflow id: \`${WORKFLOW_ID}\`"
+            echo "- result: see job logs (deactivate + delete + verify-gone)."
+          } >> "$GITHUB_STEP_SUMMARY"
