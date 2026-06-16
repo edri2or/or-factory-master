@@ -69,8 +69,25 @@ Before anything, read:
 4. `docs/parallel-development.md` — running two developments at once safely: short-lived
    branches, the `live-system-<system>` queue that serializes work on `or-edri-4`, and why
    the factory stays non-strict (no merge queue).
+5. `docs/capability-first.md` — **prove the raw capability outside n8n + go/no-go BEFORE
+   building**, then decompose. This is Step 0 below; it is mandatory whenever the
+   development adds a new capability into `templates/system/**`.
 
 ## Instructions
+
+### Step 0: Capability-first gate (before anything)
+If this development **adds a new capability** — a new verb the provisioned system couldn't
+do before (read / fill / extract / send / parse), whether it lands as a sub-agent or as a
+standalone n8n workflow under `templates/system/**` — **STOP and run capability-first
+first** (`docs/capability-first.md`, `/prove-capability`): prove the raw capability
+**outside n8n** on a real fixture, record the **go/no-go** verdict in a Capability Card,
+then decompose the role per `/build-agent`. Only a **go** capability, already broken into
+bricks, may enter the staged build below. This **wraps** `/dev-stage-factory`, it does not
+replace it — a capability-adding development is not "started" until Phase 1 is **go** and
+decomposed. The factory is **not** exempt: building a capability into the template is the
+exact case the `email-form-intake` monolith got wrong. A development that adds **no** new
+capability (a config / plumbing / version / docs change) skips this gate — say so
+explicitly in Step 1.
 
 ### Step 1: Understand & Confirm
 Restate the development goal in plain Hebrew and wait for Or's OK. Name explicitly that
