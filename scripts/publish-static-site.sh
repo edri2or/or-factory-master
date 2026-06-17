@@ -29,7 +29,12 @@
 #   SITE_DIR           directory of static files to publish (default: generated minimal page)
 #   ZONE_NAME          apex zone (default: or-infra.com)
 #   WRANGLER_VERSION   npm version spec for wrangler (default: 3)
-#   PAGES_PROXIED      proxy the custom-domain CNAME through Cloudflare (default: true)
+#   PAGES_PROXIED      proxy the custom-domain CNAME through Cloudflare (default: false = DNS-only).
+#                      DNS-only is deliberate: a proxied (orange) record runs the zone's Bot Fight
+#                      Mode, which 403s datacenter IPs (CI runners, monitors) while letting browsers
+#                      through — so the public site is unreachable to automation and unverifiable from
+#                      CI. DNS-only keeps it universally reachable; Cloudflare Pages still serves the
+#                      custom domain with its own provisioned cert.
 #   PROBE_TRIES        live-probe attempts (default: 20)
 #   PROBE_SLEEP        seconds between probe attempts (default: 15)
 
@@ -38,7 +43,7 @@ set -euo pipefail
 CF_API="https://api.cloudflare.com/client/v4"
 ZONE_NAME="${ZONE_NAME:-or-infra.com}"
 WRANGLER_VERSION="${WRANGLER_VERSION:-3}"
-PAGES_PROXIED="${PAGES_PROXIED:-true}"
+PAGES_PROXIED="${PAGES_PROXIED:-false}"
 PROBE_TRIES="${PROBE_TRIES:-20}"
 PROBE_SLEEP="${PROBE_SLEEP:-15}"
 DNS_GROUP_ID="4755a26eedb94da69e1066d98aa820be"  # Zone:DNS:Edit (same id the deploy workflow uses)
@@ -186,6 +191,10 @@ else
 fi
 
 # ---- 7. upsert the CNAME (<slug> -> <slug>.pages.dev) ----------------------
+# DNS-only (proxied=false) by default — see the PAGES_PROXIED note in the header:
+# a proxied record subjects the public site to the zone's Bot Fight Mode (403s
+# datacenter IPs). Cloudflare Pages serves the custom domain via its own cert
+# regardless, so DNS-only keeps the site reachable by everyone, CI probe included.
 CNAME_TARGET="${SLUG}.pages.dev"
 echo "Upserting CNAME ${FQDN} -> ${CNAME_TARGET} (proxied=${PAGES_PROXIED})..."
 LIST=$(cf GET "${CF_API}/zones/${CF_ZONE_ID}/dns_records?type=CNAME&name=${FQDN}" "$DNS_TOKEN")
@@ -207,7 +216,8 @@ fi
 echo "Probing https://${FQDN} (up to ${PROBE_TRIES} x ${PROBE_SLEEP}s)..."
 LIVE=0
 for i in $(seq 1 "$PROBE_TRIES"); do
-  CODE=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 15 "https://${FQDN}" || echo "000")
+  CODE=$(curl -sS -L -o /dev/null -w '%{http_code}' --max-time 15 \
+    -A "Mozilla/5.0 (compatible; or-factory-master publish-static-site verifier)" "https://${FQDN}" || echo "000")
   echo "  attempt ${i}: HTTP ${CODE}"
   if [ "$CODE" = "200" ]; then LIVE=1; break; fi
   sleep "$PROBE_SLEEP"
