@@ -1,0 +1,10 @@
+# Changelog fragment — harden-retired-ref-guards (2026-06-17)
+
+> Per-development changelog fragment. Folded into `CHANGELOG.md` with running Stage numbers by
+> `scripts/compile-changelog.sh`.
+
+## fix: guard against retired-resource references (post-mortem of retire-gcp-hands-client)
+
+| Type | Summary |
+|---|---|
+| fix | Three `/dev-insights` findings from the `gcp-hands-client` retirement, hardening the factory against the *class* of bug (a shipped artifact referencing a consolidated/retired resource that no longer exists). **(1)** `scripts/check-golden-sync.sh` gains a section **(D)** that fails CI if a retired-resource identifier (`edri2or/gcp-hands`, `gcp-hands-control`, `factory-control-9piybr`) appears anywhere under `templates/system/` — a sibling of the existing section (C) fictional-Google-account guard, and the structural check that would have caught the dead `gcp-hands-client` skill. `edri2or/factory` is intentionally **not** denylisted (it appears in legitimate historical provenance comments in the deploy template). A new `scripts/tests/check-golden-sync.bats` case proves the (D) failure. **(2)** `CLAUDE.md` (Skills audience section) gains a rule: a skill that auto-surfaces from `templates/system/.claude/skills/` while working under `templates/system/` is a shipped-to-systems artifact, **not** a live factory capability — never cite it as a factory precedent (the exact trap that let the retired `edri2or/gcp-hands` client skill be mistaken for a live cross-repo dispatch channel). **(3)** `.claude/hooks/session-start.sh` is hardened: the `gettext-base` (envsubst) install now tolerates a failing `apt-get update` (the sandbox's broken deadsnakes/ondrej PPAs make `update` exit non-zero, which had silently skipped the base-package install), and the final unconditional "dependencies ready" line is replaced with a verify-then-report that emits a `::warning::` naming any still-missing tool — non-fatal, never breaks a session. Factory-side only (CI script + CLAUDE.md + factory-only hook); no `templates/system/**` content change, so no golden refresh. |

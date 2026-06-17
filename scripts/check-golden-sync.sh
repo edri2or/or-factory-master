@@ -79,8 +79,25 @@ if grep -rIn --include='*.json' --include='*.template' --include='*.md' \
   rc=1
 fi
 
+# --- (D) no retired-resource identifier in the system mould --------------
+# These name resources that were CONSOLIDATED/RETIRED into or-factory-master and
+# no longer exist (edri2or/gcp-hands → gcp-action.yml; their control projects are
+# deleted). A provisioned system must NEVER reference them — a stale client skill
+# pointing at the deleted edri2or/gcp-hands repo shipped into every system and was
+# even mistaken for a live precedent (retire-gcp-hands-client, 2026-06-17). Block
+# them structurally so a retired reference can never ship again. NOTE: `edri2or/factory`
+# is intentionally NOT listed — it appears in legitimate historical provenance comments
+# in the deploy template (the twin of the "consolidated from gcp-hands" notes we keep).
+if grep -rInE --include='*.json' --include='*.template' --include='*.md' --include='*.yml' --include='*.yaml' \
+     'edri2or/gcp-hands|gcp-hands-control|factory-control-9piybr' templates/system/ 2>/dev/null; then
+  echo "ERROR: a retired-resource identifier was found under templates/system/." >&2
+  echo "  These resources no longer exist (consolidated into or-factory-master)." >&2
+  echo "  A provisioned system must not reference edri2or/gcp-hands, gcp-hands-control, or factory-control-9piybr." >&2
+  rc=1
+fi
+
 if [ "$rc" -ne 0 ]; then
   exit 1
 fi
 
-echo "PASS: template golden in sync (mould↔golden coupling + allow-list parity + no fictional Google account)."
+echo "PASS: template golden in sync (mould↔golden coupling + allow-list parity + no fictional Google account + no retired-resource refs)."
