@@ -28,6 +28,11 @@ on:
         required: false
         default: ""
         type: string
+      run_probe:
+        description: "After seeding, dispatch cred-probe.yml in the worker and verify it (Stage 1a credential proof). true/false."
+        required: false
+        default: "false"
+        type: string
 
 permissions: {}
 
@@ -78,6 +83,7 @@ jobs:
           WORKER: ${{ inputs.worker_repo }}
           REQUESTER: ${{ inputs.requester_repo }}
           TASK: ${{ inputs.task }}
+          RUN_PROBE: ${{ inputs.run_probe }}
         run: |
           set -euo pipefail
           APP_ID=$(gcloud secrets versions access latest --secret=factory-master-broker-app-id --project="$CONTROL_PROJECT")
@@ -108,7 +114,9 @@ jobs:
           if [ -n "$REQUESTER" ]; then create_repo "$REQUESTER"; fi
 
           # --- Seed the worker: push spikes/agent-skeleton/*.yml -> .github/workflows/ ---
-          WORKER_TOKEN=$(bash scripts/generate-app-token.sh /tmp/bk.pem "$APP_ID" "$INSTALL_ID" "" '{"contents":"write","workflows":"write"}' "[\"${WORKER}\"]")
+          # actions:write lets us also DISPATCH + poll the probe below (Stage 1a) — the same
+          # dispatch+poll engine the Stage 1b broker uses. Still scoped to the one worker repo.
+          WORKER_TOKEN=$(bash scripts/generate-app-token.sh /tmp/bk.pem "$APP_ID" "$INSTALL_ID" "" '{"contents":"write","workflows":"write","actions":"write"}' "[\"${WORKER}\"]")
           echo "::add-mask::$WORKER_TOKEN"
           rm -rf wk
           if ! cerr=$(git clone --depth 1 "https://x-access-token:${WORKER_TOKEN}@github.com/edri2or/${WORKER}.git" wk 2>&1); then
@@ -126,7 +134,44 @@ jobs:
             if ! perr=$(git -C wk push "https://x-access-token:${WORKER_TOKEN}@github.com/edri2or/${WORKER}.git" HEAD:main 2>&1); then
               echo "FAIL: push worker: $(printf '%s' "$perr" | sed "s/${WORKER_TOKEN}/***/g")" >&2; exit 1
             fi
-            echo "PASS: seeded edri2or/${WORKER} with $(ls spikes/agent-skeleton/*.yml | wc -l) spike workflow(s)."
+            echo "PASS: seeded edri2or/${WORKER} with $(find spikes/agent-skeleton -name '*.yml' | wc -l) spike workflow(s)."
+          fi
+
+          # --- Stage 1a proof: dispatch + verify the credential probe in the worker ---
+          # Dispatch cred-probe.yml in the GCP-less worker, poll to terminal, surface its
+          # PASS line. This is the live proof that a bound agent-repo reads anthropic-api-key
+          # via the WIF door (no standing secret). Same dispatch+poll shape the broker reuses.
+          if [ "${RUN_PROBE:-false}" = "true" ]; then
+            export GH_TOKEN="$WORKER_TOKEN"
+            echo "INFO: dispatching cred-probe.yml in edri2or/${WORKER} (newly-pushed workflow may need a moment to register)…"
+            dispatched=""
+            for a in 1 2 3 4 5 6; do
+              if gh workflow run cred-probe.yml --repo "edri2or/${WORKER}" --ref main 2>/dev/null; then dispatched="yes"; break; fi
+              echo "  dispatch attempt ${a}/6 …"; sleep 10
+            done
+            [ -n "$dispatched" ] || { echo "FAIL: could not dispatch cred-probe.yml in ${WORKER}" >&2; exit 1; }
+            RID=""
+            for a in $(seq 1 12); do
+              RID=$(gh run list --repo "edri2or/${WORKER}" --workflow cred-probe.yml -L 1 --json databaseId --jq '.[0].databaseId // empty' 2>/dev/null || true)
+              [ -n "$RID" ] && break
+              sleep 5
+            done
+            [ -n "$RID" ] || { echo "FAIL: cred-probe run never appeared in ${WORKER}" >&2; exit 1; }
+            echo "INFO: cred-probe run id=${RID}; polling to terminal…"
+            concl=""
+            for a in $(seq 1 40); do
+              st=$(gh run view "$RID" --repo "edri2or/${WORKER}" --json status --jq '.status' 2>/dev/null || echo "")
+              if [ "$st" = "completed" ]; then
+                concl=$(gh run view "$RID" --repo "edri2or/${WORKER}" --json conclusion --jq '.conclusion' 2>/dev/null || echo "")
+                break
+              fi
+              sleep 10
+            done
+            [ -n "$concl" ] || { echo "FAIL: cred-probe did not finish within ~7m" >&2; exit 1; }
+            echo "INFO: cred-probe conclusion=${concl}"
+            gh run view "$RID" --repo "edri2or/${WORKER}" --log 2>/dev/null | grep -E "PASS:|FAIL:|length=" | head -10 || true
+            [ "$concl" = "success" ] || { echo "FAIL: cred-probe did not succeed (${concl}) — the WIF door or grant is misconfigured." >&2; exit 1; }
+            echo "PASS (Stage 1a): a GCP-less agent-repo read anthropic-api-key via the shared WIF door, no standing secret."
           fi
 
           # --- Optional (Stage 1b): open the task issue in the requester ---

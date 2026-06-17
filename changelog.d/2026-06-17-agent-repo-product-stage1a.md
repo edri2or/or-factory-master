@@ -21,7 +21,10 @@ bottom-up) ו-1b (הלולאה המלאה). שלב זה בונה את 1a; ההר
   הלבנה הקשה: ריפו בלי GCP שולף את המפתח דרך OIDC קצר-מועד.
 - **`.github/workflows/agent-skeleton-seed.yml` (חדש, throwaway)** — יוצר ריפו-`zz-` (broker App,
   name-guard `zz-`) ומזריע אליו את `spikes/agent-skeleton/*.yml` דרך token מתוחם
-  (`contents+workflows:write` לריפו בודד); אופציונלית פותח issue-משימה ב-requester (לשלב 1b).
+  (`contents+workflows+actions:write` לריפו בודד); אופציונלית פותח issue-משימה ב-requester (לשלב 1b).
+  קלט `run_probe=true` מוסיף את הוכחת 1a החיה: ה-seed עצמו **dispatch-ים + polling + מאמת** את
+  `cred-probe.yml` בתוך ה-worker (אי-אפשר ל-dispatch לריפו זר מהסשן — ה-GitHub MCP מתוחם
+  ל-or-factory-master; הדפוס הזה הוא בדיוק מנוע ה-dispatch+poll שה-broker של 1b ישתמש בו).
   יוחלף ב-`provision-agent-repo.yml` בשלב 3.
 - **`monitoring/registry-exempt.txt`** — נוספו שני ה-workflows החדשים (one-time/throwaway,
   dispatch-only, אין cadence לאמת).
