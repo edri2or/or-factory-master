@@ -49,7 +49,7 @@ workflow דק, מופעל ע"י Claude Code, ויודע לשלוח/לקבל יח
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
 | 0 | פתיחת תיק-פיתוח + capability-card skeleton | completed | `devplans/agent-repo-product.md`, `changelog.d/2026-06-17-agent-repo-product.md`, `docs/capability-cards/agent-broker-handoff.md` |
-| 1a | "הדלת" — WIF משותף + הוכחת-מפתח (ריפו בלי GCP שולף את מפתח Claude) | in-progress | `scripts/bootstrap-agent-repo-identity.sh`, `.github/workflows/bootstrap-agent-repo-identity.yml`, `.github/workflows/agent-skeleton-seed.yml`, `spikes/agent-skeleton/cred-probe.yml`, `monitoring/registry-exempt.txt` |
+| 1a | "הדלת" — WIF משותף + הוכחת-מפתח (ריפו בלי GCP שולף את מפתח Claude) | completed | `scripts/bootstrap-agent-repo-identity.sh`, `.github/workflows/bootstrap-agent-repo-identity.yml`, `.github/workflows/agent-skeleton-seed.yml`, `spikes/agent-skeleton/cred-probe.yml`, `monitoring/registry-exempt.txt` |
 | 1b | "הלולאה" — broker → worker מריץ Claude → תוצאה חוזרת ל-requester (go/no-go) | pending | `.github/workflows/agent-action.yml`, `spikes/agent-skeleton/agent-main.yml`, `monitoring/registry-exempt.txt`, `docs/capability-cards/agent-broker-handoff.md` |
 | 2 | תבניות המוצר + golden אינטגריטי מקביל | pending | `templates/agent-repo/**`, `scripts/render-agent-repo-golden.sh`, `scripts/check-agent-repo-golden.sh`, `scripts/check-agent-repo-golden-sync.sh`, `tests/golden/agent-repo/**`, `.github/workflows/{changelog-check,pipeline-tests}.yml` |
 | 3 | provisioner (GitHub-scaffold בלבד) | pending | `.github/workflows/provision-agent-repo.yml`, `monitoring/registry-exempt.txt`, `tests/golden/agent-repo/**` |
@@ -106,7 +106,7 @@ PASS עם `length>0` — כלומר שלפה את המפתח דרך OIDC קצר-
 
 **הוכחת E2E (artifact):** לא-התנהגותי.
 
-**הערת התקדמות אחרונה:** הדלת נבנתה ואומתה חי (PR #512 מוזג; `agent-repo-pool`/`github-agent-repo-provider` ACTIVE ב-factory-test-25; ה-bootstrap רץ ✅). ה-seed יצר+זרע את `zz-agentskel-worker` ✅. נוסף ל-seed קלט `run_probe` שמ-dispatch+מאמת את ה-probe בתוך ה-worker (כי אי-אפשר ל-dispatch לריפו זר מהסשן). ממתין למיזוג השינוי + הרצת ה-probe להכרעת 1a.
+**הערת התקדמות אחרונה:** ✅ **הוכח חי (GO).** הדלת נבנתה ואומתה (PRs #512+#513 מוזגו; `agent-repo-pool`/`github-agent-repo-provider` ACTIVE ב-factory-test-25). ה-seed יצר+זרע את `zz-agentskel-worker` והריץ את ה-probe: ריצת `cred-probe` (worker run 27686971862) → `conclusion=success`, לוג: "read anthropic-api-key via short-lived OIDC. length=108 chars (value masked, never printed). No standing secret was used." כלומר ריפו בלי GCP משלו שלף את המפתח דרך OIDC קצר-מועד, הערך לא נחשף. הלבנה הקשה עובדת.
 
 **שינוי תוכנית:** מודל-המפתח עוגן ל-WIF משותף (אופציה B, אישור Or 2026-06-17); השלב המקורי "שלב 1" פוצל ל-1a (הדלת) + 1b (הלולאה) כדי להוכיח את לבנת-המפתח לבד לפני הלולאה. מיקום הדלת = `factory-test-25` (אילוץ הרשאות broker ב-control).
 
@@ -206,3 +206,4 @@ PASS עם `length>0` — כלומר שלפה את המפתח דרך OIDC קצר-
 
 - 2026-06-17: התוכנית נפתחה. עיגנתי מחדש לקוד החי (gcp-hands נמחק — בונים על `gcp-action`+ה-MCP). שלב 0 (פתיחת תיק) הושלם, PR #512 ירוק.
 - 2026-06-17: Or בחר את מודל-המפתח — "דלת-WIF משותפת". פיצלתי את שלב 1 ל-1a (הדלת + הוכחת-מפתח) ו-1b (הלולאה המלאה), כדי להוכיח קודם שריפו בלי GCP שולף את המפתח בבטחה, ורק אז לבנות את הלולאה.
+- 2026-06-17: שלב 1a הושלם והוכח חי ✅ — ריפו-ניסוי בלי GCP שלף את מפתח-Claude דרך הדלת (OIDC רגעי), המפתח לא נחשף, אפס סוד קבוע. הלבנה הקשה ביותר עובדת. הבא: שלב 1b — הלולאה המלאה (broker→worker מריץ Claude→תוצאה חוזרת).
