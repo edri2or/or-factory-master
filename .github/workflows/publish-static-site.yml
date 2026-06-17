@@ -1,0 +1,63 @@
+name: Publish static site (Cloudflare Pages)
+
+# The factory's "idea -> designed site -> live URL" publish engine.
+# Takes a static site folder and publishes it to Cloudflare Pages via Direct
+# Upload (wrangler, headless), then attaches <slug>.or-infra.com and verifies
+# it live. Factory-native + least-privilege: auth as the broker SA via WIF,
+# read the Cloudflare secrets from the control project's SM, and have the
+# script mint + revoke TWO short-lived scoped tokens (Pages + DNS).
+#
+# Stage 1 (capability-first proof): no source input yet — the script publishes
+# a minimal generated page to prove the raw capability. Stage 2 adds the
+# source-repo checkout (source_repo/source_ref/source_dir via a broker token).
+#
+# Broker WIF is pinned to refs/heads/main, so this only runs on main.
+# Dispatched via the dispatch_workflow allowlist (after Stage 4) or the GitHub MCP.
+
+on:
+  workflow_dispatch:
+    inputs:
+      slug:
+        description: "Site slug — becomes the Pages project name AND <slug>.or-infra.com."
+        required: true
+        type: string
+        default: "pages-proof"
+
+permissions: {}
+
+jobs:
+  publish:
+    name: Publish to Cloudflare Pages
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      id-token: write   # WIF OIDC token
+
+    env:
+      CONTROL_PROJECT: or-factory-master-control
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
+
+      - name: Authenticate to GCP via WIF
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093  # v3.0.0
+        with:
+          workload_identity_provider: "projects/140345952904/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
+          service_account: "factory-master-broker@or-factory-master-control.iam.gserviceaccount.com"
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db  # v3.0.1
+
+      - name: Publish
+        env:
+          SLUG: ${{ inputs.slug }}
+        run: |
+          set -euo pipefail
+          CF_TOKEN_CREATOR=$(gcloud secrets versions access latest --secret=cloudflare-token-creator --project="$CONTROL_PROJECT")
+          echo "::add-mask::${CF_TOKEN_CREATOR}"
+          CF_ACCOUNT_ID=$(gcloud secrets versions access latest --secret=cloudflare-account-id --project="$CONTROL_PROJECT")
+          CF_ZONE_ID=$(gcloud secrets versions access latest --secret=cloudflare-zone-id-or-infra --project="$CONTROL_PROJECT")
+          export CF_TOKEN_CREATOR CF_ACCOUNT_ID CF_ZONE_ID
+          bash scripts/publish-static-site.sh
