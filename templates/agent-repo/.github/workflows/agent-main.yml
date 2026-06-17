@@ -101,9 +101,18 @@ jobs:
           if [ -n "${EXEC_FILE:-}" ] && [ -f "$EXEC_FILE" ]; then
             RESULT=$(jq -r 'if type=="array" then ([.[] | select(.type=="result") | .result] | last) else (.result // .text // empty) end // empty' "$EXEC_FILE" 2>/dev/null || true)
           fi
-          # Pull the fenced ```json block out of the model's result; if absent/invalid,
-          # wrap the raw text so the artifact is ALWAYS valid JSON.
-          DIAG=$(printf '%s\n' "$RESULT" | awk '/```json/{f=1;next} /```/{f=0} f')
+          # Pull the LAST fenced ```json block out of the model's result. The worker prompt
+          # mandates the structured result is the FINAL fenced block; any earlier ```json block
+          # is a code EXAMPLE. The fence patterns are FULL-LINE-ANCHORED (^...$) so a ```json
+          # token that appears as a substring INSIDE the JSON content does not mis-open a block
+          # (the naive /```json/ substring match did, dropping the real block). If the captured
+          # text is absent/invalid, wrap the raw text so the artifact is ALWAYS valid JSON.
+          DIAG=$(printf '%s\n' "$RESULT" | awk '
+            /^[[:space:]]*```json[[:space:]]*$/    { cap=1; buf=""; next }
+            cap && /^[[:space:]]*```[[:space:]]*$/ { cap=0; last=buf; next }
+            cap                                    { buf = buf $0 "\n" }
+            END                                    { printf "%s", last }
+          ')
           if ! printf '%s' "$DIAG" | jq -e . >/dev/null 2>&1; then
             DIAG=$(jq -cn --arg a "$RESULT" '{answer:$a, status:"unstructured"}')
           fi
