@@ -139,3 +139,6 @@ templates/system/.github/workflows/bootstrap-gmail-oauth.yml
 # result. workflow_dispatch only (reachable via the MCP approval path once Stage 4 lands the
 # risk-gate); no cadence to prove.
 .github/workflows/agent-action.yml
+# The agent-repo provisioner: GitHub-scaffold-only creation of a new agent-repo from
+# templates/agent-repo/ + bind to the WIF door. workflow_dispatch only; no cadence to prove.
+.github/workflows/provision-agent-repo.yml
