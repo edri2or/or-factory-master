@@ -16,7 +16,10 @@ Or asks to delete/remove one or more org repos. This is the always-available, st
 2. **Propose** — dispatch the proposal workflow (it only sends the card; it cannot delete):
    - `dispatch_workflow` is NOT used (not allowlisted); dispatch via `mcp__github__actions_run_trigger` `run_workflow` on `or-factory-master`, `ref=main`, `workflow_id=propose-repo-delete.yml`, inputs `{ "repos": "<space/comma names>", "correlation_id": "<short-id>" }`.
 3. **Tell Or** a ✅/❌ card was sent to Telegram; he taps **✅ אישור ומחיקה** to delete, or **❌** / ignores to cancel.
-4. **Verify** after he taps: `list_repos` (factory MCP) shows the targets gone and the keepers intact.
+4. **Verify AND record** after he taps — the deletion is NOT "done" until both happen:
+   - **Verify:** `get_repo` / `list_repos` (factory MCP) — the targets are gone (404) and the keepers intact.
+   - **Record:** write the verified outcome (which repos were deleted, the date, the correlation id) into the durable record — a `changelog.d/` fragment and/or the relevant devplan journal. Never leave it at "I sent the card" — a count/guess is not a record.
+   - If the conversation moved on after you proposed (Or approved later, async), **loop back** and do this verify+record step; do not close the development with the deletion unverified/unrecorded (per CLAUDE.md "How to work" §7).
 
 ## Notes
 - Credential: the **broker App** (`administration:write`, already org-wide) — no token to add, nothing for Or to open.
