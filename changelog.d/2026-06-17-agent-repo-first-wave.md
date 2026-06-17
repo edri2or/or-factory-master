@@ -21,3 +21,21 @@
 אין נגיעה ב-`templates/system/**` (שער הזהב לא נדרס), לא ב-`templates/agent-repo/**` (golden
 לא נדרס), ולא בקבצי-התנהגות-בוט (שער ה-E2E no-op). אין שינוי קוד-מוצר ב-MVP — רוכבים על
 ה-workflows הקיימים.
+
+## הגל הראשון — שלב 1: הוכחת יכולת ה-fan-out (verdict go)
+
+הוכחה capability-first של היכולת החדשה (ה-fan-out של נחשון) על **ריפו-בדיקה זרוק אחד**
+(`zz-fanout-spike`) לפני יצירת ריפויי-אמת. ריפויי ה-`zz-` הקודמים נמחקו, אז אור אישר את
+המסלול הזול: ריפו אחד שמשחק נתב+שני אחים+מאחד דרך תג-מצב מהימן `[MODE:SPLIT|WORKER|UNIFY]`.
+
+- **`spikes/firstwave-fanout/` (חדש, זרוק)** — `README.md` (runbook) + `nachshon-router.prompt.md`
+  (תיעוד ה-prompt). ה-worker-נתב עצמו חי בענף `spike/firstwave-fanout` בלבד (לא ממוזג; התבנית
+  ב-main נשארת גנרית — שער הזהב לא נדרס), והוחל על ריפו-הבדיקה דרך `refresh-agent-repo.yml`.
+- **`docs/capability-cards/firstwave-fanout.md`** — `verdict: go` עם ראיות מלאות: SPLIT
+  (broker `27699916209`) פלט הצהרה תקינה מוגבלת ל-allow-list, fan-out לשתי תת-משימות, ו-UNIFY
+  (broker `27700474510`) שמסנתז את שתי התוצאות. כל ה-run-ids מתועדים.
+- **תובנת-עיצוב:** fan-out מקבילי לאותו ריפו עושה מרוץ (artifact `agent-result` משותף); בבנייה
+  האמיתית האחים הם ריפויים נפרדים → אין התנגשות, והמנהל מסדר שליחות לאותו ריפו.
+
+ללא שינוי קוד-מוצר: רוכבים על `provision-agent-repo.yml` / `refresh-agent-repo.yml` /
+`agent-action.yml` הקיימים. אין נגיעה ב-`templates/agent-repo/**` ב-main (golden לא נדרס).
