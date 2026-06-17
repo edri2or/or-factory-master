@@ -52,7 +52,7 @@ workflow דק, מופעל ע"י Claude Code, ויודע לשלוח/לקבל יח
 | 1a | "הדלת" — WIF משותף + הוכחת-מפתח (ריפו בלי GCP שולף את מפתח Claude) | completed | `scripts/bootstrap-agent-repo-identity.sh`, `.github/workflows/bootstrap-agent-repo-identity.yml`, `.github/workflows/agent-skeleton-seed.yml`, `spikes/agent-skeleton/cred-probe.yml`, `monitoring/registry-exempt.txt` |
 | 1b | "הלולאה" — broker → worker מריץ Claude → תוצאה חוזרת ל-requester (go/no-go) | completed | `.github/workflows/agent-action.yml`, `spikes/agent-skeleton/agent-main.yml`, `monitoring/registry-exempt.txt`, `docs/capability-cards/agent-broker-handoff.md` |
 | 2 | תבניות המוצר + golden אינטגריטי מקביל | in-progress | `templates/agent-repo/**`, `scripts/render-agent-repo-golden.sh`, `scripts/check-agent-repo-golden.sh`, `scripts/check-agent-repo-golden-sync.sh`, `tests/golden/agent-repo/**`, `.github/workflows/{changelog-check,pipeline-tests,playground-tests}.yml` |
-| 3 | provisioner (GitHub-scaffold בלבד) | pending | `.github/workflows/provision-agent-repo.yml`, `monitoring/registry-exempt.txt`, `tests/golden/agent-repo/**` |
+| 3 | provisioner (GitHub-scaffold בלבד) | in-progress | `.github/workflows/provision-agent-repo.yml`, `monitoring/registry-exempt.txt` |
 | 4 | שער-סיכון + אישור-טלגרם ל-red + MCP allowlist + דוק-מוצר | pending | `policy/agent-risk-tiers.yml`, `scripts/agent-classify.sh`, `services/mcp-server/src/agent-approval.ts`, `services/mcp-server/src/index.ts`, `services/mcp-server/src/tools.ts`, `docs/agent-repo-product.md`, `monitoring/doc-bindings.json` |
 | 5 | לולאת "iterate על ריפו-סוכן חי אחד" | pending | `.github/workflows/refresh-system-agents.yml` (פרמטריזציה) או `refresh-agent-repo.yml`, `monitoring/registry-exempt.txt` |
 
@@ -153,17 +153,17 @@ PASS עם `length>0` — כלומר שלפה את המפתח דרך OIDC קצר-
 ### שלב 3 — provisioner (GitHub-scaffold בלבד)
 
 **Acceptance:**
-- [ ] `.github/workflows/provision-agent-repo.yml` — fork של החצי-GitHub-בלבד מ-`provision-system.yml` (validate → mint broker token → create repo → push scaffold → push orientation docs (envsubst) → `protect-main` ruleset → set repo vars). **מדלג** GCP/n8n/Railway/Caddy לחלוטין.
-- [ ] `monitoring/registry-exempt.txt` += `provision-agent-repo.yml`. golden מרוענן.
-- [ ] CI ירוק.
+- [x] `.github/workflows/provision-agent-repo.yml` — fork של החצי-GitHub-בלבד מ-`provision-system.yml` (validate → broker token → create repo → render+push scaffold (envsubst, allow-list זהה ל-golden) → bind לדלת-ה-WIF דרך `bootstrap-agent-repo-identity.sh`). **מדלג** GCP/n8n/Railway/Caddy. **הגנת-main קשוחה נדחתה** (ראה "שינוי תוכנית").
+- [x] `monitoring/registry-exempt.txt` += `provision-agent-repo.yml`. (part B של golden-sync — parity של allow-list — פעיל עכשיו ועובר.)
+- [ ] CI ירוק + הרצה חיה: provision של ריפו-`zz-` → לולאה עליו עוברת.
 
-**הוכחה תפקודית (באותו שלב):** dispatch ל-`provision-agent-repo.yml` עם שם `zz-` → `verify_github_system`/`get_repo` מאשרים ריפו עם scaffold + ruleset + repo vars; אף פרויקט GCP לא נגע.
+**הוכחה תפקודית (באותו שלב):** dispatch ל-`provision-agent-repo.yml` עם שם `zz-` → הריפו נולד עם 4 הקבצים + קשור לדלת → ואז dispatch ל-`agent-action.yml` עם הריפו החדש כ-worker → התוצאה חוזרת. אף פרויקט GCP לא נגע.
 
 **הוכחת E2E (artifact):** לא-התנהגותי.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** ה-provisioner נבנה ועבר yamllint/actionlint + parity של allow-list מול ה-golden. ממתין למיזוג + הרצה חיה (provision ריפו-`zz-` ולולאה עליו).
 
-**שינוי תוכנית:** —
+**שינוי תוכנית:** (1) **הגנת-main קשוחה נדחתה** — ה-broker כותב `results/<corr>.json` ישירות ל-main של ריפו-המבקש (contents); הגנת PR+CI הייתה חוסמת זאת, וצריך נתיב-כתיבה תואם-broker (ref ייעודי או PR ב-0-contexts) — hardening נפרד. ה-MVP משאיר main כתיב (ריפו פרטי). (2) ה-bind לדלת מבוצע ע"י שימוש-חוזר ב-`bootstrap-agent-repo-identity.sh` (אידמפוטנטי), לא set-repo-vars (ל-worker אין placeholders פר-ריפו).
 
 ---
 
