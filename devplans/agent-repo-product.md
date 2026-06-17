@@ -126,7 +126,7 @@ PASS עם `length>0` — כלומר שלפה את המפתח דרך OIDC קצר-
 
 **הוכחת E2E (artifact):** לא-התנהגותי (ה-walking-skeleton הוא ההוכחה החיה, לא `e2e-verify`).
 
-**הערת התקדמות אחרונה:** ה-worker (`spikes/agent-skeleton/agent-main.yml`) וה-broker (`agent-action.yml`) נבנו ועברו yamllint+actionlint. הבא: מיזוג ל-main → seed של requester+issue → dispatch של הלולאה → הכרעת go/no-go.
+**הערת התקדמות אחרונה:** ה-worker וה-broker נבנו ומוזגו (#514). הריצה החיה חשפה שה-broker App **חסר הרשאת `issues`** (יש לו contents/actions/secrets/workflows/pull_requests/administration/metadata), אז token עם issues:write נכשל. תיקנתי: ערוץ ה-requester הוא **קבצים** (`contents`) — ה-broker מקבל את המשימה כקלט וכותב את התוצאה כ-`results/<corr>.json` לריפו-ה-requester (במקום issue). תואם D5′. הבא: מיזוג התיקון → seed (יוצר requester+worker) → dispatch הלולאה → go/no-go.
 
 **שינוי תוכנית:** —
 

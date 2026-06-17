@@ -2,8 +2,8 @@ name: Agent-skeleton seed (throwaway, Stage 1)
 
 # THROWAWAY setup for the agent-repo walking skeleton (devplans/agent-repo-product.md,
 # Stage 1). Creates the zz- spike repo(s) via the broker App and seeds the WORKER repo with
-# the spike workflows from spikes/agent-skeleton/ (pushed under .github/workflows/). Optionally
-# opens a task issue in the REQUESTER repo (Stage 1b). This is replaced by
+# the spike workflows from spikes/agent-skeleton/ (pushed under .github/workflows/). When a
+# REQUESTER is given it is created too (the broker writes the result there). This is replaced by
 # provision-agent-repo.yml in Stage 3 — delete this file + the spike repos after the
 # go/no-go verdict. Name-guarded to zz-* so it can only ever touch throwaways.
 #
@@ -19,12 +19,7 @@ on:
         default: "zz-agentskel-worker"
         type: string
       requester_repo:
-        description: "Requester spike repo (MUST start with zz-). Empty for the Stage-1a credential probe."
-        required: false
-        default: ""
-        type: string
-      task:
-        description: "Task text opened as an issue in the requester (only used when requester_repo is set)."
+        description: "Requester spike repo (MUST start with zz-). The broker writes the result here. Empty for the Stage-1a credential probe."
         required: false
         default: ""
         type: string
@@ -82,7 +77,6 @@ jobs:
         env:
           WORKER: ${{ inputs.worker_repo }}
           REQUESTER: ${{ inputs.requester_repo }}
-          TASK: ${{ inputs.task }}
           RUN_PROBE: ${{ inputs.run_probe }}
         run: |
           set -euo pipefail
@@ -174,19 +168,7 @@ jobs:
             echo "PASS (Stage 1a): a GCP-less agent-repo read anthropic-api-key via the shared WIF door, no standing secret."
           fi
 
-          # --- Optional (Stage 1b): open the task issue in the requester ---
-          if [ -n "$REQUESTER" ] && [ -n "$TASK" ]; then
-            REQ_TOKEN=$(bash scripts/generate-app-token.sh /tmp/bk.pem "$APP_ID" "$INSTALL_ID" "" '{"issues":"write"}' "[\"${REQUESTER}\"]")
-            echo "::add-mask::$REQ_TOKEN"
-            ISSUE=$(curl -sS -m 30 -X POST "https://api.github.com/repos/edri2or/${REQUESTER}/issues" \
-              -H "Authorization: Bearer ${REQ_TOKEN}" \
-              -H "Accept: application/vnd.github+json" \
-              -H "X-GitHub-Api-Version: 2022-11-28" \
-              --data "$(jq -cn --arg t "agent-repo skeleton task" --arg b "$TASK" '{title:$t, body:$b}')")
-            NUM=$(printf '%s' "$ISSUE" | jq -r '.number // empty')
-            [ -n "$NUM" ] || { echo "FAIL: could not open task issue in ${REQUESTER}." >&2; exit 1; }
-            echo "PASS: opened task issue edri2or/${REQUESTER}#${NUM}."
-            echo "task_issue_number=${NUM}"
-          fi
-
+          # The requester just needs to EXIST — the broker (agent-action.yml) writes the
+          # result back to it as results/<corr>.json (contents). No GitHub issue is opened
+          # (the broker App has no `issues` permission; the requester's channel is repo files).
           rm -f /tmp/bk.pem /tmp/cr.body
