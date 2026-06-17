@@ -50,7 +50,7 @@ workflow דק, מופעל ע"י Claude Code, ויודע לשלוח/לקבל יח
 |---|---|---|---|
 | 0 | פתיחת תיק-פיתוח + capability-card skeleton | completed | `devplans/agent-repo-product.md`, `changelog.d/2026-06-17-agent-repo-product.md`, `docs/capability-cards/agent-broker-handoff.md` |
 | 1a | "הדלת" — WIF משותף + הוכחת-מפתח (ריפו בלי GCP שולף את מפתח Claude) | completed | `scripts/bootstrap-agent-repo-identity.sh`, `.github/workflows/bootstrap-agent-repo-identity.yml`, `.github/workflows/agent-skeleton-seed.yml`, `spikes/agent-skeleton/cred-probe.yml`, `monitoring/registry-exempt.txt` |
-| 1b | "הלולאה" — broker → worker מריץ Claude → תוצאה חוזרת ל-requester (go/no-go) | pending | `.github/workflows/agent-action.yml`, `spikes/agent-skeleton/agent-main.yml`, `monitoring/registry-exempt.txt`, `docs/capability-cards/agent-broker-handoff.md` |
+| 1b | "הלולאה" — broker → worker מריץ Claude → תוצאה חוזרת ל-requester (go/no-go) | in-progress | `.github/workflows/agent-action.yml`, `spikes/agent-skeleton/agent-main.yml`, `monitoring/registry-exempt.txt`, `docs/capability-cards/agent-broker-handoff.md` |
 | 2 | תבניות המוצר + golden אינטגריטי מקביל | pending | `templates/agent-repo/**`, `scripts/render-agent-repo-golden.sh`, `scripts/check-agent-repo-golden.sh`, `scripts/check-agent-repo-golden-sync.sh`, `tests/golden/agent-repo/**`, `.github/workflows/{changelog-check,pipeline-tests}.yml` |
 | 3 | provisioner (GitHub-scaffold בלבד) | pending | `.github/workflows/provision-agent-repo.yml`, `monitoring/registry-exempt.txt`, `tests/golden/agent-repo/**` |
 | 4 | שער-סיכון + אישור-טלגרם ל-red + MCP allowlist + דוק-מוצר | pending | `policy/agent-risk-tiers.yml`, `scripts/agent-classify.sh`, `services/mcp-server/src/agent-approval.ts`, `services/mcp-server/src/index.ts`, `services/mcp-server/src/tools.ts`, `docs/agent-repo-product.md`, `monitoring/doc-bindings.json` |
@@ -126,7 +126,7 @@ PASS עם `length>0` — כלומר שלפה את המפתח דרך OIDC קצר-
 
 **הוכחת E2E (artifact):** לא-התנהגותי (ה-walking-skeleton הוא ההוכחה החיה, לא `e2e-verify`).
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** ה-worker (`spikes/agent-skeleton/agent-main.yml`) וה-broker (`agent-action.yml`) נבנו ועברו yamllint+actionlint. הבא: מיזוג ל-main → seed של requester+issue → dispatch של הלולאה → הכרעת go/no-go.
 
 **שינוי תוכנית:** —
 

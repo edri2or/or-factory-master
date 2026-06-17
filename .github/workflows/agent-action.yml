@@ -1,0 +1,222 @@
+name: Agent Action (broker — dispatch work to an agent-repo)
+
+# The broker for the agent-repo product-type (devplans/agent-repo-product.md, Stage 1b),
+# shaped on gcp-action.yml + publish-static-site.yml. Dispatched on or-factory-master only,
+# runs as the broker SA (WIF, main-locked). For one unit of work it:
+#   1. reads the task from the REQUESTER's tracking issue (issues token, that repo only),
+#   2. dispatches the WORKER's agent-main.yml with the task + correlation_id (actions token,
+#      that repo only),
+#   3. POLLS the worker run to terminal (broker-PULL — the worker never reaches outward),
+#   4. downloads the worker's `agent-result` artifact,
+#   5. posts the result back to the requester's issue (upsert by correlation marker),
+#   6. emits factory.agent_action.{started,dispatched,completed,failed} via emit-event.sh.
+#
+# Every cross-repo reach is a FRESH, minimal, single-repo-scoped broker App token; the worker
+# holds no standing secret. agent->broker only (the broker pulls; agents never talk directly).
+# Risk-classify green/yellow/red + RED Telegram approval arrive in Stage 4 — this skeleton
+# runs phase=execute directly. NOT on the dispatch_workflow allowlist yet (added in Stage 4
+# alongside the approval bridge).
+
+on:
+  workflow_dispatch:
+    inputs:
+      worker_repo:
+        description: "Worker agent-repo that runs the task (edri2or/<repo> or bare repo)."
+        required: true
+        type: string
+      requester_repo:
+        description: "Requester agent-repo holding the tracking issue (bare repo under edri2or)."
+        required: true
+        type: string
+      task_issue_number:
+        description: "Issue number in the requester repo whose body is the task."
+        required: true
+        type: string
+      correlation_id:
+        description: "Short id tying the dispatch, artifact, comment and events together."
+        required: false
+        default: ""
+        type: string
+      phase:
+        description: "execute (skeleton). propose/red-approval lands in Stage 4."
+        required: false
+        default: "execute"
+        type: string
+
+permissions: {}
+
+jobs:
+  broker:
+    name: Broker a unit of work to an agent-repo
+    runs-on: ubuntu-latest
+    environment: production
+    # Broker WIF CEL pins ref=refs/heads/main; running off other branches fails to auth.
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      id-token: write
+
+    env:
+      CONTROL_PROJECT: or-factory-master-control
+      BROKER_SA: "factory-master-broker@or-factory-master-control.iam.gserviceaccount.com"
+      WIF_PROVIDER: "projects/140345952904/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
+
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
+        with:
+          persist-credentials: false
+
+      - name: Validate inputs
+        env:
+          WORKER: ${{ inputs.worker_repo }}
+          REQUESTER: ${{ inputs.requester_repo }}
+          ISSUE: ${{ inputs.task_issue_number }}
+          CORR: ${{ inputs.correlation_id }}
+          PHASE: ${{ inputs.phase }}
+        run: |
+          set -euo pipefail
+          case "$PHASE" in
+            execute) ;;
+            *) echo "FAIL: skeleton supports phase=execute only (got '$PHASE')" >&2; exit 1 ;;
+          esac
+          norm() { printf '%s' "${1##*/}"; }   # accept owner/repo or bare repo
+          for pair in "worker_repo:$(norm "$WORKER")" "requester_repo:$(norm "$REQUESTER")"; do
+            name="${pair#*:}"; key="${pair%%:*}"
+            printf '%s' "$name" | grep -Eq '^[a-z][a-z0-9._-]{2,38}[a-z0-9]$' \
+              || { echo "FAIL: ${key} '${name}' has a bad repo-name shape" >&2; exit 1; }
+            case "$name" in
+              or-factory-master|or-factory-master-control|*-control) echo "FAIL: refusing control/factory repo '${name}'" >&2; exit 1 ;;
+            esac
+          done
+          printf '%s' "$ISSUE" | grep -Eq '^[0-9]+$' || { echo "FAIL: task_issue_number must be numeric" >&2; exit 1; }
+          if [ -n "$CORR" ]; then
+            printf '%s' "$CORR" | grep -Eq '^[A-Za-z0-9-]{1,40}$' || { echo "FAIL: correlation_id has a bad shape" >&2; exit 1; }
+          fi
+
+      - name: Authenticate to GCP via WIF
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093  # v3.0.0
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.BROKER_SA }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db  # v3.0.1
+
+      - name: Broker the work (read task -> dispatch worker -> poll -> return)
+        env:
+          WORKER: ${{ inputs.worker_repo }}
+          REQUESTER: ${{ inputs.requester_repo }}
+          ISSUE: ${{ inputs.task_issue_number }}
+          CORR: ${{ inputs.correlation_id }}
+        run: |
+          set -uo pipefail
+          WORKER="${WORKER##*/}"; REQUESTER="${REQUESTER##*/}"
+          CORR_VAL="${CORR:-skel-${GITHUB_RUN_ID}}"
+
+          emit() {  # emit <name> <severity> <action_required> <body-json>
+            bash scripts/emit-event.sh --name="$1" --severity="$2" --layer=factory \
+              --workflow=agent-action.yml --run-id="${GITHUB_RUN_ID}" \
+              --action-required="$3" --body="$4" || true
+          }
+          fail() {
+            echo "FAIL: $1" >&2
+            emit "factory.agent_action.failed" "error" "true" \
+              "$(jq -cn --arg c "$CORR_VAL" --arg m "$1" '{correlation_id:$c, error:$m}')"
+            exit 1
+          }
+
+          emit "factory.agent_action.started" "info" "false" \
+            "$(jq -cn --arg c "$CORR_VAL" --arg w "$WORKER" --arg r "$REQUESTER" --arg i "$ISSUE" \
+              '{correlation_id:$c, worker:$w, requester:$r, issue:$i}')"
+
+          # --- broker App creds ---
+          APP_ID=$(gcloud secrets versions access latest --secret=factory-master-broker-app-id --project="$CONTROL_PROJECT")
+          INSTALL_ID=$(gcloud secrets versions access latest --secret=factory-master-broker-app-installation-id --project="$CONTROL_PROJECT")
+          gcloud secrets versions access latest --secret=factory-master-broker-app-private-key --project="$CONTROL_PROJECT" > /tmp/bk.pem
+          echo "::add-mask::$APP_ID"; echo "::add-mask::$INSTALL_ID"
+
+          # --- 1) read the task from the requester's tracking issue (issues token, that repo only) ---
+          REQ_TOKEN=$(bash scripts/generate-app-token.sh /tmp/bk.pem "$APP_ID" "$INSTALL_ID" "" '{"issues":"write"}' "[\"$REQUESTER\"]")
+          [ -n "$REQ_TOKEN" ] || fail "could not mint requester token for ${REQUESTER}"
+          echo "::add-mask::$REQ_TOKEN"
+          ISSUE_JSON=$(curl -sS -m 30 "https://api.github.com/repos/edri2or/${REQUESTER}/issues/${ISSUE}" \
+            -H "Authorization: Bearer ${REQ_TOKEN}" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" || true)
+          TASK=$(printf '%s' "$ISSUE_JSON" | jq -r '.body // empty')
+          [ -n "$TASK" ] || fail "task issue edri2or/${REQUESTER}#${ISSUE} has an empty body"
+          echo "INFO: read task from edri2or/${REQUESTER}#${ISSUE} ($(printf '%s' "$TASK" | wc -c) bytes)."
+
+          # --- 2) dispatch the worker's agent-main.yml (actions token, that repo only) ---
+          WORKER_TOKEN=$(bash scripts/generate-app-token.sh /tmp/bk.pem "$APP_ID" "$INSTALL_ID" "" '{"actions":"write"}' "[\"$WORKER\"]")
+          [ -n "$WORKER_TOKEN" ] || fail "could not mint worker token for ${WORKER}"
+          echo "::add-mask::$WORKER_TOKEN"
+          rm -f /tmp/bk.pem
+          DISPATCH_AT=$(date -u +%s)
+          code=$(curl -sS -m 30 -o /tmp/disp.body -w '%{http_code}' -X POST \
+            "https://api.github.com/repos/edri2or/${WORKER}/actions/workflows/agent-main.yml/dispatches" \
+            -H "Authorization: Bearer ${WORKER_TOKEN}" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" \
+            --data "$(jq -cn --arg t "$TASK" --arg c "$CORR_VAL" '{ref:"main", inputs:{task:$t, correlation_id:$c}}')" || echo "000")
+          [ "$code" = "204" ] || fail "dispatch agent-main.yml in ${WORKER} -> HTTP ${code}: $(cat /tmp/disp.body 2>/dev/null | head -c 200)"
+          echo "INFO: dispatched agent-main.yml in edri2or/${WORKER} (corr=${CORR_VAL})."
+          emit "factory.agent_action.dispatched" "info" "false" \
+            "$(jq -cn --arg c "$CORR_VAL" --arg w "$WORKER" '{correlation_id:$c, worker:$w}')"
+
+          export GH_TOKEN="$WORKER_TOKEN"
+
+          # --- 3) find + poll the worker run to terminal (broker-PULL) ---
+          RID=""
+          for a in $(seq 1 18); do
+            RID=$(gh run list --repo "edri2or/${WORKER}" --workflow agent-main.yml -L 5 \
+              --json databaseId,createdAt,event \
+              --jq "[.[] | select(.event==\"workflow_dispatch\")] | .[0].databaseId // empty" 2>/dev/null || true)
+            [ -n "$RID" ] && break
+            sleep 5
+          done
+          [ -n "$RID" ] || fail "worker run never appeared in ${WORKER}"
+          echo "INFO: worker run id=${RID}; polling to terminal…"
+          concl=""
+          for a in $(seq 1 60); do
+            st=$(gh run view "$RID" --repo "edri2or/${WORKER}" --json status --jq '.status' 2>/dev/null || echo "")
+            if [ "$st" = "completed" ]; then
+              concl=$(gh run view "$RID" --repo "edri2or/${WORKER}" --json conclusion --jq '.conclusion' 2>/dev/null || echo "")
+              break
+            fi
+            sleep 10
+          done
+          [ -n "$concl" ] || fail "worker run ${RID} did not finish within ~10m"
+          echo "INFO: worker run ${RID} conclusion=${concl}"
+          [ "$concl" = "success" ] || fail "worker run ${RID} did not succeed (${concl})"
+
+          # --- 4) download the worker's result artifact ---
+          rm -rf dl && mkdir -p dl
+          gh run download "$RID" --repo "edri2or/${WORKER}" --name agent-result --dir dl 2>/dev/null \
+            || fail "could not download agent-result artifact from worker run ${RID}"
+          RESULT_FILE="dl/${CORR_VAL}.json"
+          [ -f "$RESULT_FILE" ] || RESULT_FILE=$(find dl -name '*.json' | head -1)
+          [ -n "$RESULT_FILE" ] && [ -f "$RESULT_FILE" ] || fail "result json not found in the artifact"
+          RESULT_JSON=$(cat "$RESULT_FILE")
+          printf '%s' "$RESULT_JSON" | jq -e . >/dev/null 2>&1 || fail "worker result is not valid JSON"
+          echo "INFO: result: $(printf '%s' "$RESULT_JSON" | head -c 300)"
+
+          # --- 5) post the result back to the requester's issue (upsert by marker) ---
+          MARKER="<!-- agent-action:${CORR_VAL} -->"
+          COMMENT="${MARKER}"$'\n'"🤖 תוצאה מ-edri2or/${WORKER} (correlation \`${CORR_VAL}\`):"$'\n\n'"\`\`\`json"$'\n'"${RESULT_JSON}"$'\n'"\`\`\`"
+          EXISTING=$(curl -sS -m 30 "https://api.github.com/repos/edri2or/${REQUESTER}/issues/${ISSUE}/comments?per_page=100" \
+            -H "Authorization: Bearer ${REQ_TOKEN}" -H "Accept: application/vnd.github+json" \
+            | jq -r --arg m "$MARKER" '[.[] | select(.body | contains($m))] | .[0].id // empty' 2>/dev/null || true)
+          if [ -n "$EXISTING" ]; then
+            curl -sS -m 30 -o /dev/null -X PATCH "https://api.github.com/repos/edri2or/${REQUESTER}/issues/comments/${EXISTING}" \
+              -H "Authorization: Bearer ${REQ_TOKEN}" -H "Accept: application/vnd.github+json" \
+              --data "$(jq -cn --arg b "$COMMENT" '{body:$b}')" || fail "could not update the result comment"
+            echo "PASS: updated result comment on edri2or/${REQUESTER}#${ISSUE}."
+          else
+            ccode=$(curl -sS -m 30 -o /dev/null -w '%{http_code}' -X POST "https://api.github.com/repos/edri2or/${REQUESTER}/issues/${ISSUE}/comments" \
+              -H "Authorization: Bearer ${REQ_TOKEN}" -H "Accept: application/vnd.github+json" \
+              --data "$(jq -cn --arg b "$COMMENT" '{body:$b}')" || echo "000")
+            [ "$ccode" = "201" ] || fail "could not post the result comment (HTTP ${ccode})"
+            echo "PASS: posted result comment on edri2or/${REQUESTER}#${ISSUE}."
+          fi
+
+          emit "factory.agent_action.completed" "info" "false" \
+            "$(jq -cn --arg c "$CORR_VAL" --arg w "$WORKER" --arg r "$REQUESTER" --arg i "$ISSUE" \
+              '{correlation_id:$c, worker:$w, requester:$r, issue:$i}')"
+          echo "PASS (Stage 1b): broker dispatched -> worker ran Claude -> result returned to edri2or/${REQUESTER}#${ISSUE}."
