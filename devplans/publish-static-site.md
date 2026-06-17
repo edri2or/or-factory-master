@@ -19,7 +19,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
-| 1 | הוכחת-יכולת חיה (הלבנה הקשה: Pages Direct Upload + חיבור דומיין) | pending | `.github/workflows/publish-static-site.yml`, `scripts/publish-static-site.sh`, `monitoring/registry-exempt.txt`, `docs/capability-cards/publish-static-site.md` |
+| 1 | הוכחת-יכולת חיה (הלבנה הקשה: Pages Direct Upload + חיבור דומיין) | in-progress | `.github/workflows/publish-static-site.yml`, `scripts/publish-static-site.sh`, `monitoring/registry-exempt.txt`, `docs/capability-cards/publish-static-site.md` |
 | 2 | הקשחה לגרסת-ייצור (פרמטרים, מקור-ריפו דרך טוקן broker, idempotency, מלכודת-ביטול, המתנת-SSL, emit) | pending | `scripts/publish-static-site.sh`, `.github/workflows/publish-static-site.yml` |
 | 3 | End-to-end על האתר האמיתי (`or-edri-4/site` → `<slug>.or-infra.com`) | pending | (הפעלה חיה; ללא שינוי קוד) |
 | 4 | חיווט ל-MCP allowlist + תיעוד | pending | `services/mcp-server/src/tools.ts`, `CLAUDE.md` |
@@ -57,12 +57,20 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 
 **הוכחת E2E (artifact):** לא-התנהגותי.
 
-**הערת התקדמות אחרונה:** הרצה חיה ראשונה (run 27674330970) נכשלה: בורר קבוצת-ההרשאה תפס בטעות
-את `Access: Custom Pages Write` (מוצר Cloudflare Access, לא Pages) → ה-API החזיר 10000
-"Authentication error". האבטחה החזיקה — שני הטוקנים בוטלו במלכודת. תוקן: הבורר מחריג
-`access/custom` ודורש את קבוצת ה-Pages האמיתית, + הדפסת כל המועמדים. מריץ שוב.
+**הערת התקדמות אחרונה (מתוקנת):** היו **שתי** הרצות חיות. הראשונה (run 27674330970) נכשלה כי בורר
+קבוצת-ההרשאה תפס את `Access: Custom Pages Write` (מוצר Cloudflare Access, לא Pages) → 10000
+"Authentication error"; תוקן ב-#503 (מחריג `access/custom`, דורש את קבוצת ה-Pages האמיתית).
+השנייה (run 27674750310) **הוכיחה את היכולת**: הבורר בחר נכון `Pages Write`
+(id `8d28297797f24fb8a0c332fe0866ec89`), wrangler העלה, הדומיין חובר, ה-CNAME נוצר — ורק ה-probe
+נצבע אדום כי חיכה 5 דק' בלבד, בעוד שהפעלת-הדומיין הראשונית מחזירה 403 עד שהיא מסתיימת. הכתובת
+עלתה מעט אחרי: `https://pages-proof.or-infra.com` → **HTTP 200** עם ה-HTML המצופה (אומת 2026-06-17).
+שני הטוקנים בוטלו בשתי ההרצות (אבטחה החזיקה). go/no-go = **go**, נרשם ב-`docs/capability-cards/publish-static-site.md`.
+תוקן בסקריפט: probe מודע-הפעלה (בודק את סטטוס הדומיין + סובל 403/000/52x, תקציב ~13 דק'). ממתין למיזוג
+ה-PR ולהרצה ירוקה חוזרת.
 
-**שינוי תוכנית:** תיקון נקודתי בבורר קבוצת-ההרשאה ב-`scripts/publish-static-site.sh` (ללא שינוי ארכיטקטורה).
+**שינוי תוכנית:** שלב 1 (הוכחה) ושלב 2 (הקשחת ה-probe) מתמזגים — אותו תיקון נקודתי. הבורר תוקן (#503)
+וה-probe הוחלף ל-probe מודע-הפעלה. קלט source-repo + emit `factory.publish.*` עוברים ל-PR ההקשחה
+(שלב 2.5). הענף הפעיל הוא `claude/sweet-thompson-e5ew11` (לא `quirky-ramanujan-tvt92z` שבסשן הקודם).
 
 ---
 
@@ -157,7 +165,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 ### שלב 7 — ניקוי חוצה-ריפו ב-or-edri-4 + סגירה
 
 **Acceptance:**
-- [ ] ב-`edri2or/or-edri-4` (ענף `claude/quirky-ramanujan-tvt92z`): הוסרו `.github/workflows/deploy-pages.yml` (מפרסם GitHub-Pages, מוחלף) + `vercel.json` (שארית אינרטית). `site/` נשמר (מקור הפרסום).
+- [ ] ב-`edri2or/or-edri-4` (ענף `claude/sweet-thompson-e5ew11`): הוסרו `.github/workflows/deploy-pages.yml` (מפרסם GitHub-Pages, מוחלף) + `vercel.json` (שארית אינרטית). `site/` נשמר (מקור הפרסום).
 - [ ] CI של or-edri-4 ירוק; ה-URL החי משלב 3 עדיין משרת.
 - [ ] `devplans/publish-static-site.md` → `status: completed`.
 
@@ -176,4 +184,4 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 
 > שורה פשוטה אחת לכל שלב שהסתיים — בשפה ש-Or מבין, בלי ז'רגון.
 
-- (מתמלא תוך כדי)
+- **שלב 1 (כמעט):** מנוע הפרסום נבנה ועובד — ההוכחה כבר חיה ב-`https://pages-proof.or-infra.com`. מה שנשבר היה רק "סבלנות": ה-workflow חיכה 5 דק' לכתובת, ו-Cloudflare סיים להדליק אותה רגע אחרי. תיקנתי את ההמתנה; נריץ פעם נקייה לאישור.
