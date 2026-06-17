@@ -14,3 +14,9 @@
   "Authentication error". הבורר תוקן: מחריג `access/custom`, דורש את קבוצת ה-**Pages** האמיתית
   (`pages` + `write`/`edit`), ומדפיס את כל קבוצות-ה"pages" המועמדות לשקיפות. המלכודת ביטלה את
   שני הטוקנים גם בכישלון — אבטחה החזיקה.
+- **שלב 1 — CNAME ב-DNS-only.** ההרצה השנייה העלתה את האתר בהצלחה (`wrangler` Direct Upload +
+  חיבור דומיין + CNAME), אך ה-run נכשל כי ה-probe מ-runner של GitHub קיבל 403: ה-CNAME היה
+  proxied ו-Bot Fight Mode של ה-zone חוסם IP של דאטה-סנטר (האתר עצמו עלה חי — אומת 200 ישירות).
+  תוקן: ברירת המחדל של ה-CNAME היא עכשיו **DNS-only** (`proxied=false`) כדי שהאתר הציבורי יהיה
+  נגיש לכולם וניתן לאימות מ-CI; Cloudflare Pages עדיין מגיש את הדומיין עם תעודה משלו. ה-probe
+  קיבל גם `-L` + UA דפדפן.

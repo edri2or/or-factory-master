@@ -19,7 +19,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
-| 1 | הוכחת-יכולת חיה (הלבנה הקשה: Pages Direct Upload + חיבור דומיין) | pending | `.github/workflows/publish-static-site.yml`, `scripts/publish-static-site.sh`, `monitoring/registry-exempt.txt`, `docs/capability-cards/publish-static-site.md` |
+| 1 | הוכחת-יכולת חיה (הלבנה הקשה: Pages Direct Upload + חיבור דומיין) | in-progress | `.github/workflows/publish-static-site.yml`, `scripts/publish-static-site.sh`, `monitoring/registry-exempt.txt`, `docs/capability-cards/publish-static-site.md` |
 | 2 | הקשחה לגרסת-ייצור (פרמטרים, מקור-ריפו דרך טוקן broker, idempotency, מלכודת-ביטול, המתנת-SSL, emit) | pending | `scripts/publish-static-site.sh`, `.github/workflows/publish-static-site.yml` |
 | 3 | End-to-end על האתר האמיתי (`or-edri-4/site` → `<slug>.or-infra.com`) | pending | (הפעלה חיה; ללא שינוי קוד) |
 | 4 | חיווט ל-MCP allowlist + תיעוד | pending | `services/mcp-server/src/tools.ts`, `CLAUDE.md` |
@@ -57,12 +57,18 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 
 **הוכחת E2E (artifact):** לא-התנהגותי.
 
-**הערת התקדמות אחרונה:** הרצה חיה ראשונה (run 27674330970) נכשלה: בורר קבוצת-ההרשאה תפס בטעות
+**הערת התקדמות אחרונה:** הרצה חיה ראשונה (run 27674330970) נכשלה: בורר קבוצת-הרשאה תפס בטעות
 את `Access: Custom Pages Write` (מוצר Cloudflare Access, לא Pages) → ה-API החזיר 10000
 "Authentication error". האבטחה החזיקה — שני הטוקנים בוטלו במלכודת. תוקן: הבורר מחריג
-`access/custom` ודורש את קבוצת ה-Pages האמיתית, + הדפסת כל המועמדים. מריץ שוב.
+`access/custom` ודורש את קבוצת ה-Pages האמיתית, + הדפסת כל המועמדים.
+הרצה שנייה (run 27674750310): הבורר תקין (`Pages Write`), הפרויקט נוצר, wrangler העלה, הדומיין
+חובר, ה-CNAME נוצר — **והאתר עלה חי** (אומת 200 ישירות דרך `probe_endpoint`). אבל ה-run נכשל כי
+ה-probe מתוך runner של GitHub קיבל 403: ה-CNAME היה proxied (כתום) ו-Bot Fight Mode של ה-zone
+חוסם IP של דאטה-סנטר (דפדפנים אמיתיים עוברים). תוקן: CNAME ב-DNS-only (`proxied=false`) + UA דפדפן
+ל-probe. מריץ שוב.
 
-**שינוי תוכנית:** תיקון נקודתי בבורר קבוצת-ההרשאה ב-`scripts/publish-static-site.sh` (ללא שינוי ארכיטקטורה).
+**שינוי תוכנית:** (1) תיקון בורר קבוצת-הרשאה; (2) מעבר ל-CNAME ב-DNS-only כדי שהאתר הציבורי יהיה
+נגיש לכולם (כולל אימות מ-CI) ולא ייחסם ע"י Bot Fight Mode. ללא שינוי ארכיטקטורה.
 
 ---
 
@@ -174,6 +180,6 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 
 ## יומן ל-Or (עברית)
 
-> שורה פשוטה אחת לכל שלב שהסתיים — בשפה ש-Or מבין, בלי ז'רגון.
+> שורה פשוטה אחת לכל שלב שהסתיים — בשפה ש-Or מבין, בלי ז'גון.
 
 - (מתמלא תוך כדי)
