@@ -132,8 +132,10 @@ templates/system/.github/workflows/bootstrap-gmail-oauth.yml
 # factory-test-25 + per-secret read on control's anthropic-api-key). Runs once / on change;
 # no cadence to prove.
 .github/workflows/bootstrap-agent-repo-identity.yml
-# Throwaway setup for the agent-repo walking skeleton: creates + seeds the zz- spike repos.
-# workflow_dispatch only; deleted with the skeleton once provision-agent-repo.yml lands. No cadence.
+# (retired) Throwaway seed for the agent-repo walking skeleton — the seed workflow + its
+# spikes/agent-skeleton/ files were removed once Stages 2-3 superseded them
+# (provision-agent-repo.yml). Path retained as a tombstone so the watchdog-registry gate
+# stays satisfied for the deletion; no live file by this name.
 .github/workflows/agent-skeleton-seed.yml
 # The agent-repo broker: dispatches a unit of work to an agent-repo, polls it, returns the
 # result. workflow_dispatch only (reachable via the MCP approval path once Stage 4 lands the

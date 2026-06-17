@@ -7,7 +7,8 @@ Or לא פותח אותו; הסוכן קורא ממנו ומסכם לו בעבר
 dev_name: טיפוס-מוצר "ריפו-סוכן" (agent-repo)
 slug: agent-repo-product
 opened: 2026-06-17
-status: active
+status: completed
+closed: 2026-06-17
 ---
 
 # תוכנית פיתוח — טיפוס-מוצר "ריפו-סוכן"
@@ -51,7 +52,7 @@ workflow דק, מופעל ע"י Claude Code, ויודע לשלוח/לקבל יח
 | 0 | פתיחת תיק-פיתוח + capability-card skeleton | completed | `devplans/agent-repo-product.md`, `changelog.d/2026-06-17-agent-repo-product.md`, `docs/capability-cards/agent-broker-handoff.md` |
 | 1a | "הדלת" — WIF משותף + הוכחת-מפתח (ריפו בלי GCP שולף את מפתח Claude) | completed | `scripts/bootstrap-agent-repo-identity.sh`, `.github/workflows/bootstrap-agent-repo-identity.yml`, `.github/workflows/agent-skeleton-seed.yml`, `spikes/agent-skeleton/cred-probe.yml`, `monitoring/registry-exempt.txt` |
 | 1b | "הלולאה" — broker → worker מריץ Claude → תוצאה חוזרת ל-requester (go/no-go) | completed | `.github/workflows/agent-action.yml`, `spikes/agent-skeleton/agent-main.yml`, `monitoring/registry-exempt.txt`, `docs/capability-cards/agent-broker-handoff.md` |
-| 2 | תבניות המוצר + golden אינטגריטי מקביל | in-progress | `templates/agent-repo/**`, `scripts/render-agent-repo-golden.sh`, `scripts/check-agent-repo-golden.sh`, `scripts/check-agent-repo-golden-sync.sh`, `tests/golden/agent-repo/**`, `.github/workflows/{changelog-check,pipeline-tests,playground-tests}.yml` |
+| 2 | תבניות המוצר + golden אינטגריטי מקביל | completed | `templates/agent-repo/**`, `scripts/render-agent-repo-golden.sh`, `scripts/check-agent-repo-golden.sh`, `scripts/check-agent-repo-golden-sync.sh`, `tests/golden/agent-repo/**`, `.github/workflows/{changelog-check,pipeline-tests,playground-tests}.yml` |
 | 3 | provisioner (GitHub-scaffold בלבד) | completed | `.github/workflows/provision-agent-repo.yml`, `monitoring/registry-exempt.txt` |
 | 4a | שער-סיכון — ה-classifier (policy + script), נבדק לבד | completed | `policy/agent-risk-tiers.yml`, `scripts/agent-classify.sh` |
 | 4b | חיווט ל-broker (propose/execute) + גשר-אישור-טלגרם ב-MCP + allowlist + דוק-מוצר | completed | `.github/workflows/agent-action.yml`, `services/mcp-server/src/agent-approval.ts`, `services/mcp-server/src/index.ts`, `services/mcp-server/src/tools.ts`, `services/mcp-server/test/agent-approval.test.mjs`, `docs/agent-repo-product.md`, `monitoring/doc-bindings.json` |
@@ -145,7 +146,7 @@ PASS עם `length>0` — כלומר שלפה את המפתח דרך OIDC קצר-
 
 **הוכחת E2E (artifact):** לא-התנהגותי.
 
-**הערת התקדמות אחרונה:** התבניות + ה-golden + חיווט-CI נבנו ועברו shellcheck/yamllint/actionlint + ה-golden gate מקומית. ערוץ ה-requester = קבצים (Or אישר, בלי issues). ממתין למיזוג.
+**הערת התקדמות אחרונה:** ✅ הושלם ומוזג. התבניות + ה-golden + חיווט-CI נבנו ועברו את כל השערים; ה-golden משמש את ה-provisioner (שלב 3) וה-refresh (שלב 5). ערוץ ה-requester = קבצים (Or אישר, בלי issues). (תיקון-סטטוס: השורה נותרה "in-progress" בטעות אחרי המיזוג — נסגר בניקוי.)
 
 **שינוי תוכנית:** ה-MVP מספק 4 קבצי-ליבה (CLAUDE.md=@AGENTS.md, AGENTS.md, .mcp.json, ה-worker). **`.claude/settings.json` נדחה**: ה-hook של devplan דורש `scripts/` שאין לריפו-סוכן, אז לא רוצים לשגר hook שבור. מכונת `.claude/` (commands/dev-stage) היא שיפור לשלב מאוחר.
 
@@ -220,3 +221,4 @@ PASS עם `length>0` — כלומר שלפה את המפתח דרך OIDC קצר-
 - 2026-06-17: **קוד 4b הושלם ✅ (מקומית).** בניתי את גשר-האישור ב-MCP (`agent-approval.ts`) בדיוק כמו ה-GCP, רק שהמשימה היא 4 שדות + טקסט חופשי, אז כל היחידה נוסעת כ-base64 בתוך טקסט-הכרטיס (כך טלגרם מחזיר אותה בלחיצה, בלי DB). חיברתי route + ניתוב ב-`index.ts`, הוספתי את `agent-action.yml` ל-allowlist עם חסם שמונע עקיפת שער-ה-red, ושכתבתי את ה-broker ל-propose/execute עם הסיווג. 10 בדיקות-יחידה חדשות + 128 הכלליות + tsc + yamllint — הכול ירוק. הבא (Or אישר "תעשה הכל"): מיזוג → redeploy ל-MCP (costed) → הוכחה חיה: אשלח לך כרטיס-טלגרם של משימת-red, תלחץ ✅, וה-execute ירוץ ויחזיר תוצאה.
 - 2026-06-17: **שלב 4b הושלם והוכח חי מקצה-לקצה ✅ — שער ה-RED עובד.** מוזג (#522, CI ירוק), ה-MCP נפרס מחדש (הroute החדש חי, `/health` 200). הרצתי משימה "אדומה" (מכילה "delete"): המערכת סיווגה אותה אדום, **עצרה**, ושלחה לאור כרטיס-אישור בטלגרם. אור לחץ ✅ → המשימה רצה (סוכן-עובד קרא וניתח, קריאה-בלבד) → התשובה נכתבה אוטומטית לריפו-המבקש. כלומר: שום משימה מסוכנת לא רצה בלי אישור אנושי מפורש — בדיוק כמו OIL ו-gcp-action. **שלבים 0–4 סגורים — טיפוס "ריפו-סוכן" בנוי, מתוקף-סיכון, ומוכח חי.** נותרו: שלב 5 (לולאת-refresh), ניקוי spike/zz-, ושלב 6 (גל ראשון — פיתוח נפרד). עוצר בגבול לאישור אור מה הלאה.
 - 2026-06-17: אור בחר שלב 5. **שלב 5 הושלם והוכח חי ✅ — לולאת ה-refresh.** בניתי `refresh-agent-repo.yml` (תאום ה-refresh של המערכות, אבל direct-push כי main של ריפו-סוכן כתיב), הוספתי שיפור-עמידוּת קטן לעובד (`timeout-minutes:15`) — שגם שימש כ-diff להוכחה — מוזג (#524), והרצתי refresh חי על `zz-agentrepo-prov1`: ה-`timeout-minutes` נחת בקובץ החי. כלומר אפשר עכשיו לְאַיטֵר על לוגיקת-העובד ולהחיל אותה על ריפו-סוכן חי בלי לבנות אותו מחדש, בלי קליקים ובלי עלות. **שלבים 0–5 סגורים — טיפוס "ריפו-סוכן" בנוי, מתוקף-סיכון, מוכח חי, וניתן-לאיטרציה.** נשאר רק ניקוי (קבצי-spike + 3 ריפויי zz-) לפני סגירת התיק; שלב 6 (נחשון/נתן/ספי) הוא פיתוח נפרד. עוצר בגבול.
+- 2026-06-17: אור בחר "רק קבצי-ניסוי" לניקוי. **התיק נסגר (`status: completed`).** מחקתי את קבצי-הספייק (`spikes/agent-skeleton/*`, `agent-skeleton-seed.yml`; רשומת ה-exempt הפכה ל-tombstone כדי לרצות את שער ה-watchdog למחיקה). תיקנתי סטטוס תקוע של שלב 2 (נשאר "in-progress" בטעות אחרי המיזוג). **3 ריפויי ה-`zz-` נשארים בכוונה** (לבקשת Or) — מחיקתם פעולה עצמאית דרך אישור-טלגרם, מתי שיבחר. **שלב 6 (גל ראשון — נחשון/נתן/ספי) ייפתח כפיתוח נפרד עם devplan משלו.** טיפוס-המוצר "ריפו-סוכן" הושלם והוכח מקצה-לקצה.
