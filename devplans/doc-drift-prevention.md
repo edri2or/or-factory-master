@@ -19,7 +19,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
 | 1 | תיעוד-הכלל + ספריית-נרמול n8n (C5 + C1) | completed | `docs/doc-drift-prevention.md`, `scripts/lib/normalize-n8n.sh`, `scripts/tests/normalize-n8n.bats`, `CLAUDE.md`, `monitoring/README.md` |
-| 2 | שער בדיקת-עובדות (C4 + חיווט C6a) | pending | `scripts/check-doc-facts.sh`, `monitoring/doc-fact-checks.json`, `scripts/tests/check-doc-facts.bats`, `.github/workflows/changelog-check.yml` |
+| 2 | שער בדיקת-עובדות (C4 + חיווט C6a) | completed | `scripts/check-doc-facts.sh`, `monitoring/doc-fact-checks.json`, `scripts/tests/check-doc-facts.bats`, `.github/workflows/changelog-check.yml` |
 | 3 | שער כבילה (C2 + C3 + חיווט C6b) + סגירה | pending | `monitoring/doc-bindings.json`, `monitoring/doc-binding-exempt.txt`, `scripts/check-doc-binding.sh`, `scripts/tests/check-doc-binding.bats`, `.github/workflows/changelog-check.yml` |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
@@ -53,18 +53,18 @@ key-order מנרמל **שווה**; שינוי parameter/הוספת node מנרמ
 ### שלב 2 — שער בדיקת-עובדות (C4 + חיווט C6a)
 
 **Acceptance:**
-- [ ] `check-doc-facts.sh` מחלץ את ערכת-השמות מהקוד (`valid` ב-`Normalize Input`) ומה-`AGENTS.md.template` (השורה אחרי "read-only SELECTs"), משווה כקבוצות, ונכשל-סגור על חילוץ ריק.
-- [ ] מחווט ל-job "Changelog gates" ב-`changelog-check.yml`.
-- [ ] עובר על ה-templates האמיתיים (8==8) — לא חוסם את main.
+- [x] `check-doc-facts.sh` מחלץ את ערכת-השמות מהקוד (`valid` ב-`Normalize Input`) ומה-`AGENTS.md.template` (השורה אחרי "read-only SELECTs"), משווה כקבוצות, ונכשל-סגור על חילוץ ריק.
+- [x] מחווט ל-job "Changelog gates" ב-`changelog-check.yml`.
+- [x] עובר על ה-templates האמיתיים (8==8) — לא חוסם את main.
 
-**הוכחה תפקודית (באותו שלב):** `scripts/tests/check-doc-facts.bats` — (א) עוגן-רגרסיה: הרצה על
+**הוכחה תפקודית (באותו שלב):** `scripts/tests/check-doc-facts.bats` — 7/7 עברו: (א) עוגן-רגרסיה: הרצה על
 ה-templates האמיתיים → PASS (מוכיח שעובר על main, ושהחילוץ-מהדוק מחריג נכון את `postgres_named_query`);
 (ב) תפיסה חיובית: fixture עם דוק שמצהיר 4 שמות מול 8 בקוד → FAIL ומזכיר `claim_actual_mismatch`;
-(ג) כשל-סגור: node בלי `valid` / דוק בלי שורת-העוגן → FAIL. וגם `bash scripts/check-doc-facts.sh` מקומי → PASS.
+(ג) כשל-סגור: node בלי `valid` / דוק בלי שורת-העוגן → FAIL. וגם `bash scripts/check-doc-facts.sh` מקומי → PASS. shellcheck נקי.
 
 **הוכחת E2E (artifact):** לא-התנהגותי (קורא את ה-n8n JSON כנתון; לא משנה אותו).
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם. השער החוסם המרכזי חי ומוכח שתופס את "8 מול 4" בלי לחסום את main.
 
 **שינוי תוכנית:** —
 
@@ -93,3 +93,4 @@ key-order מנרמל **שווה**; שינוי parameter/הוספת node מנרמ
 > שורה פשוטה אחת לכל שלב שהסתיים — בשפה ש-Or מבין, בלי ז'רגון.
 
 - שלב 1 הושלם — כתבנו את המסמך שמסביר את הכלל, ובנינו והוכחנו כלי קטן שמנקה "רעש" מקבצי n8n כדי שלא נקבל התראות-שווא.
+- שלב 2 הושלם — השער המרכזי חי: הוא משווה את רשימת השאילתות בקוד מול התיעוד, והוכחנו שהיה תופס בדיוק את "8 מול 4" — בלי להפיל שום מיזוג תקין.
