@@ -125,3 +125,6 @@ templates/system/.github/workflows/bootstrap-gmail-oauth.yml
 # Manual live smoke: drives edit_drive_file_content end-to-end through the deployed
 # gateway's /workspace/<system>/mcp route on a real .md. workflow_dispatch only; no cadence.
 .github/workflows/drive-edit-smoke.yml
+# On-demand static-site publisher: uploads a folder to Cloudflare Pages + attaches
+# <slug>.or-infra.com. Dispatched per site (workflow_dispatch only); no cadence to prove.
+.github/workflows/publish-static-site.yml
