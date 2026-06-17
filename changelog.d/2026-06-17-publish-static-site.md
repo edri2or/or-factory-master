@@ -20,3 +20,7 @@
   תוקן: ברירת המחדל של ה-CNAME היא עכשיו **DNS-only** (`proxied=false`) כדי שהאתר הציבורי יהיה
   נגיש לכולם וניתן לאימות מ-CI; Cloudflare Pages עדיין מגיש את הדומיין עם תעודה משלו. ה-probe
   קיבל גם `-L` + UA דפדפן.
+- **שלב 1 הושלם — היכולת מוכחת חיה.** הרצה `27678930371` עברה **ירוק מקצה-לקצה** ו-
+  `https://pages-proof.or-infra.com` מחזיר 200 (אומת עצמאית). נוסף `docs/capability-cards/publish-static-site.md`
+  (verdict: go; קבוצת-הרשאה `Pages Write` id `8d28297797f24fb8a0c332fe0866ec89`; ממצא ה-DNS-only).
+  שלב 1 (הוכחת-יכולת) סגור.
