@@ -92,7 +92,12 @@ function allowedUserIds(): Set<string> {
 
 type Outcome = 'registered' | 'register_failed' | 'approved' | 'rejected' | 'delete_failed' | 'unauthorized' | 'recover_failed';
 
-async function emitRepo(outcome: Outcome, corr: string, reason: string): Promise<void> {
+async function emitRepo(
+  outcome: Outcome,
+  corr: string,
+  reason: string,
+  extra?: Record<string, unknown>,
+): Promise<void> {
   try {
     await emitEvent({
       name: `factory.repo_delete.${outcome}`,
@@ -101,7 +106,10 @@ async function emitRepo(outcome: Outcome, corr: string, reason: string): Promise
       workflow: 'mcp:repo-approval',
       runId: new Date().toISOString(),
       actionRequired: false,
-      body: { corr, reason },
+      // `extra` carries the deleted/failed repo NAMES on the delete outcome, so the
+      // audit answers "was repo X deleted?" — not just a count. A later session can
+      // query this instead of guessing from a 404. (Earlier the body was name-less.)
+      body: { corr, reason, ...(extra ?? {}) },
     });
   } catch {
     /* emitEvent is itself soft-fail; guard anyway */
@@ -205,21 +213,31 @@ export async function handleRepoApprovalCallback(req: Request): Promise<RepoAppr
     return { status: 200, body: { action: 'approve', corr, deleted: 0, detail: 'recover_failed' } };
   }
 
-  let deleted = 0;
+  const deletedRepos: string[] = [];
   const failures: string[] = [];
   for (const repo of repos) {
     const r = await deleteRepoAsBroker(repo);
-    if (r.deleted) deleted += 1;
+    if (r.deleted) deletedRepos.push(repo);
     else failures.push(`${repo} (${r.status})`);
   }
+  const deleted = deletedRepos.length;
 
+  // Name the deleted repos in BOTH the operator's Telegram confirmation and the audit
+  // event — so the record of WHICH repos were deleted is durable and authoritative
+  // (Telegram history + Axiom), independent of whether an agent loops back to verify.
+  const deletedList = deletedRepos.join(', ');
   const summary =
     failures.length === 0
-      ? `✅ נמחקו ${deleted} ריפוז (${corr}).`
-      : `⚠️ נמחקו ${deleted}; נכשלו ${failures.length}: ${failures.slice(0, 8).join(', ')}`;
+      ? `✅ נמחקו ${deleted} ריפוז (${corr}): ${deletedList}`
+      : `⚠️ נמחקו ${deleted} (${deletedList || '—'}); נכשלו ${failures.length}: ${failures.slice(0, 8).join(', ')}`;
   if (messageId && chatId != null) {
     await editTelegramMessage(chatId as string | number, messageId, summary);
   }
-  await emitRepo(failures.length === 0 ? 'approved' : 'delete_failed', corr, `deleted=${deleted} failed=${failures.length}`);
-  return { status: 200, body: { action: 'approve', corr, deleted, failed: failures.length } };
+  await emitRepo(
+    failures.length === 0 ? 'approved' : 'delete_failed',
+    corr,
+    `deleted=${deleted} failed=${failures.length}`,
+    { deleted: deletedRepos, failed: failures },
+  );
+  return { status: 200, body: { action: 'approve', corr, deleted, deleted_repos: deletedRepos, failed: failures.length } };
 }
