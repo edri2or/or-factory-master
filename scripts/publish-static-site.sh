@@ -87,17 +87,28 @@ mint_token() {  # mint_token <name> <resources-json> <group-id> ; sets MINTED_VA
   echo "::add-mask::${MINTED_VALUE}"
 }
 
-# ---- 1. discover the Pages-Write permission group id (not published) -------
-echo "Discovering the Cloudflare Pages-Write permission group..."
+# ---- 1. discover the Cloudflare Pages edit permission group id -------------
+# The id isn't published, so resolve it at runtime. CAREFUL: Cloudflare Access
+# (Zero Trust) ships a similarly-named "Access: Custom Pages Write" group — a
+# DIFFERENT product. A token scoped to it yields a 10000 "Authentication error"
+# against the Pages API. So EXCLUDE any access/custom group and require the real
+# Cloudflare Pages edit group (name has "pages" + "write"/"edit", no access/custom).
+echo "Discovering the Cloudflare Pages edit permission group..."
 PG_RESP=$(cf GET "${CF_API}/user/tokens/permission_groups" "$CF_TOKEN_CREATOR")
 [ "$(printf '%s' "$PG_RESP" | jq -r '.success')" = "true" ] \
   || { echo "FAIL: could not list permission groups: $(printf '%s' "$PG_RESP" | jq -c '{success,errors}')" >&2; exit 1; }
+echo "Candidate 'pages' permission groups (name [id]):"
+printf '%s' "$PG_RESP" | jq -r '.result[] | select(.name | test("pages";"i")) | "  - \(.name) [\(.id)]"'
 PAGES_GROUP_ID=$(printf '%s' "$PG_RESP" | jq -r '
   [ .result[]
-    | select((.name | test("pages"; "i")) and (.name | test("write|edit"; "i")))
-  ] | (map(select(.name | test("write"; "i"))) + .) | .[0].id // empty')
+    | select((.name | test("pages"; "i"))
+             and (.name | test("write|edit"; "i"))
+             and ((.name | test("access|custom"; "i")) | not))
+  ]
+  | (map(select(.name | test("^(cloudflare )?pages[: ]+(write|edit)$"; "i"))) + .)
+  | .[0].id // empty')
 PAGES_GROUP_NAME=$(printf '%s' "$PG_RESP" | jq -r --arg id "$PAGES_GROUP_ID" '.result[] | select(.id==$id) | .name')
-[ -n "$PAGES_GROUP_ID" ] || { echo "FAIL: no 'Pages Write/Edit' permission group found in this account." >&2; exit 1; }
+[ -n "$PAGES_GROUP_ID" ] || { echo "FAIL: no real Cloudflare Pages edit permission group found (excluding Access/Custom)." >&2; exit 1; }
 echo "PASS: Pages permission group = '${PAGES_GROUP_NAME}' (id=${PAGES_GROUP_ID})"
 
 # ---- 2. mint the two scoped tokens + arm the revoke trap -------------------
