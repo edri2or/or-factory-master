@@ -19,7 +19,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
-| 1 | הוכחת-יכולת חיה (הלבנה הקשה: Pages Direct Upload + חיבור דומיין) | in-progress | `.github/workflows/publish-static-site.yml`, `scripts/publish-static-site.sh`, `monitoring/registry-exempt.txt`, `docs/capability-cards/publish-static-site.md` |
+| 1 | הוכחת-יכולת חיה (הלבנה הקשה: Pages Direct Upload + חיבור דומיין) | completed | `.github/workflows/publish-static-site.yml`, `scripts/publish-static-site.sh`, `monitoring/registry-exempt.txt`, `docs/capability-cards/publish-static-site.md` |
 | 2 | הקשחה לגרסת-ייצור (פרמטרים, מקור-ריפו דרך טוקן broker, idempotency, מלכודת-ביטול, המתנת-SSL, emit) | pending | `scripts/publish-static-site.sh`, `.github/workflows/publish-static-site.yml` |
 | 3 | End-to-end על האתר האמיתי (`or-edri-4/site` → `<slug>.or-infra.com`) | pending | (הפעלה חיה; ללא שינוי קוד) |
 | 4 | חיווט ל-MCP allowlist + תיעוד | pending | `services/mcp-server/src/tools.ts`, `CLAUDE.md` |
@@ -65,7 +65,11 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 חובר, ה-CNAME נוצר — **והאתר עלה חי** (אומת 200 ישירות דרך `probe_endpoint`). אבל ה-run נכשל כי
 ה-probe מתוך runner של GitHub קיבל 403: ה-CNAME היה proxied (כתום) ו-Bot Fight Mode של ה-zone
 חוסם IP של דאטה-סנטר (דפדפנים אמיתיים עוברים). תוקן: CNAME ב-DNS-only (`proxied=false`) + UA דפדפן
-ל-probe. מריץ שוב.
+ל-probe.
+הרצה שלישית (run 27678930371): **ירוק מקצה-לקצה** — wrangler העלה, ה-CNAME עודכן ל-DNS-only,
+וה-probe מתוך ה-runner קיבל 200. אומת עצמאית: `https://pages-proof.or-infra.com` → 200, שני
+הטוקנים בוטלו. קבוצת-ההרשאה: `Pages Write` (id `8d28297797f24fb8a0c332fe0866ec89`). **שלב 1 הושלם** —
+כרטיס-היכולת נרשם ב-`docs/capability-cards/publish-static-site.md` (verdict: go).
 
 **שינוי תוכנית:** (1) תיקון בורר קבוצת-הרשאה; (2) מעבר ל-CNAME ב-DNS-only כדי שהאתר הציבורי יהיה
 נגיש לכולם (כולל אימות מ-CI) ולא ייחסם ע"י Bot Fight Mode. ללא שינוי ארכיטקטורה.
@@ -182,4 +186,4 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 
 > שורה פשוטה אחת לכל שלב שהסתיים — בשפה ש-Or מבין, בלי ז'גון.
 
-- (מתמלא תוך כדי)
+- שלב 1 הושלם — מנוע הפרסום הוכח חי מקצה-לקצה: רעיון → אתר → URL חי (`https://pages-proof.or-infra.com`, 200). בדרך תוקנו שני באגים (קבוצת-הרשאה שגויה; חסימת Bot Fight Mode → מעבר ל-DNS-only).
