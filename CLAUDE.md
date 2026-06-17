@@ -243,6 +243,14 @@ of all factory commands). When adding or retagging a command, set its `audience:
 command with a missing/invalid tag (forcing the shared/factory-only decision) or any mirror
 drift. Full reference: `docs/skills-audience.md`.
 
+**A skill that auto-surfaces from `templates/system/.claude/skills/` is NOT a live factory
+capability.** When you work under `templates/system/`, Claude Code auto-loads those system skills as
+"available" in the *factory* session — but they are **shipped-to-systems artifacts** describing what a
+*provisioned system* does, not what the factory itself runs. Never cite one as a factory precedent or
+assume the mechanism it describes is live here; verify the factory's own implementation (a workflow,
+an MCP tool, a doc) instead. (This is the trap that let a retired `edri2or/gcp-hands` client skill be
+mistaken for a live cross-repo dispatch channel — `retire-gcp-hands-client`, 2026-06-17.)
+
 ## MCP
 
 The MCP server `5b6e937f-c064-4cfd-88c4-ef93df38fa87` provides read-only inspection tools (`verify_*_system`, `list_all_systems_inventory`, `inspect_*`, `tail_*_logs`, etc.), **org-wide GitHub read tools consolidated from the retired `org-reader` MCP** (`list_repos`, `get_repo`, `list/get_pull_requests`, `list_pull_request_files`, `list/get_issues`, `list_issue_comments`, `list_commits`, `get_file_contents`, `search_code`, `search_issues`, `get_workflow`, `list/get_repo_variable`, `list/get_org_variable`, and the permission-gated `list_repo_secrets_names`/`list_branch_protection_rules`/`list_github_environments` — all reading across every `edri2or/*` repo via the org-wide broker App; source `services/mcp-server/src/org-read-tools.ts`), plus one WRITE tool — `dispatch_workflow`, which triggers the allowlisted workflows (`provision-system.yml`, `register-system-app.yml`, `deploy-railway-cloudflare.yml`, `configure-agent-router.yml`, `refresh-system-agents.yml`, `decommission-test-system.yml`, `oil-autofix-investigate.yml`, `deploy-mcp-server.yml`, `meta-monitoring-watchdog.yml`, `bootstrap-sandbox-tester.yml`, `prove-on-test-system.yml`) on `or-factory-master` or any system repo via the org-wide broker App (or, for `prove-on-test-system.yml`, the sandbox identity off a work branch). The real-system `decommission-system.yml` is excluded by design (and is not yet implemented — planned only; see `skills/decommission-system/SKILL.md`); `decommission-test-system.yml` is test-only and dispatched only on an explicit user teardown request. The GitHub MCP (`mcp__github__*`) is scoped to `edri2or/or-factory-master` only. Use the read tools to verify; `dispatch_workflow` is the only sanctioned cross-repo write (workflow_dispatch events only).

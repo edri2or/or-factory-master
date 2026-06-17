@@ -97,3 +97,17 @@ _validate="scripts/tests/validate-templates.sh"
   assert_failure
   assert_output --partial "ALLOWLIST drift"
 }
+
+@test "FAIL: retired-resource identifier in the system mould" {
+  repo="$(make_fixture_repo)"
+  commit_files "$repo" "retired ref in mould" \
+    "templates/system/notes.md"            "see edri2or/gcp-hands for the broker" \
+    "tests/golden/system/MANIFEST.sha256"  "deadbeef  notes.md" \
+    "$_render"    "$ALLOWLIST_LINE" \
+    "$_provision" "$ALLOWLIST_LINE" \
+    "$_validate"  "$ALLOWLIST_LINE"
+
+  run bash -c "cd '$repo' && bash '$CHECK'"
+  assert_failure
+  assert_output --partial "retired-resource identifier"
+}

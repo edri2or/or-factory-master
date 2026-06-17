@@ -35,11 +35,14 @@ fi
 # 2. yamllint — via pip (no apt). Lands on the system PATH under root.
 command -v yamllint >/dev/null 2>&1 || python3 -m pip install --quiet yamllint
 
-# 2b. envsubst (gettext-base) — a base Ubuntu pkg (not a blocked third-party PPA),
-#     so plain apt works. Required by scripts/render-system-golden.sh +
-#     scripts/tests/validate-templates.sh (the System golden gate / template
-#     validation) — without it a golden render fails with "envsubst: command not found".
-command -v envsubst >/dev/null 2>&1 || { sudo apt-get update -qq && sudo apt-get install -y -qq gettext-base; }
+# 2b. envsubst (gettext-base) — a base Ubuntu pkg. Required by
+#     scripts/render-system-golden.sh + scripts/tests/validate-templates.sh
+#     (the System golden gate / template validation) — without it a golden render
+#     fails with "envsubst: command not found". The sandbox's broken third-party
+#     PPAs (deadsnakes/ondrej) can make `apt-get update` exit non-zero, which would
+#     otherwise skip this base-package install — so tolerate an update failure and
+#     still attempt the install.
+command -v envsubst >/dev/null 2>&1 || { sudo apt-get update -qq || true; sudo apt-get install -y -qq gettext-base || true; }
 
 # 3. bats test runner (via npm) + its helper submodules (scripts/tests/*.bats).
 command -v bats >/dev/null 2>&1 || npm install -g bats >/dev/null 2>&1
@@ -50,4 +53,15 @@ if [ -f services/mcp-server/package.json ]; then
   ( cd services/mcp-server && npm install --no-audit --no-fund )
 fi
 
-echo "session-start hook: dependencies ready (shellcheck, yamllint, envsubst, bats, mcp-server node deps)."
+# Verify each dependency is actually present and report honestly, instead of
+# assuming success. Non-fatal: a missing tool emits a ::warning:: (so the CI gate
+# that relies on it later fails with a clear cause) but never breaks the session.
+missing=""
+for tool in shellcheck yamllint envsubst bats; do
+  command -v "$tool" >/dev/null 2>&1 || missing="${missing} ${tool}"
+done
+if [ -n "$missing" ]; then
+  echo "::warning::session-start hook: dependencies MISSING:${missing} — the CI gate(s) relying on them will fail until installed (e.g. envsubst → System golden gate)."
+else
+  echo "session-start hook: dependencies ready (shellcheck, yamllint, envsubst, bats, mcp-server node deps)."
+fi
