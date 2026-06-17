@@ -135,3 +135,7 @@ templates/system/.github/workflows/bootstrap-gmail-oauth.yml
 # Throwaway setup for the agent-repo walking skeleton: creates + seeds the zz- spike repos.
 # workflow_dispatch only; deleted with the skeleton once provision-agent-repo.yml lands. No cadence.
 .github/workflows/agent-skeleton-seed.yml
+# The agent-repo broker: dispatches a unit of work to an agent-repo, polls it, returns the
+# result. workflow_dispatch only (reachable via the MCP approval path once Stage 4 lands the
+# risk-gate); no cadence to prove.
+.github/workflows/agent-action.yml

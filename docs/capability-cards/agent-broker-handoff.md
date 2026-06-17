@@ -30,4 +30,7 @@ A **no-go / partial** verdict stops the build and re-scopes (the capability-firs
 
 ## Evidence
 
-_(to be filled in Stage 1 from the live run — run id, the requester-issue comment link, the worker run conclusion, the Axiom events, and the per-request token mints.)_
+**Stage 1a — credential sub-brick (the novel hard brick): PROVEN ✅ (2026-06-17).**
+The shared WIF door (`agent-repo-pool`/`github-agent-repo-provider` on `factory-test-25`, SA `agent-repo-runtime-sa`, conditioned `secretAccessor` on control's `anthropic-api-key`) was built (`bootstrap-agent-repo-identity.yml`, verified ACTIVE) and bound to `zz-agentskel-worker`. The worker — a repo with **no GCP project of its own** — ran `cred-probe.yml` (worker run `27686971862`, `conclusion=success`): it authenticated via short-lived GitHub OIDC and read `anthropic-api-key` (`length=108 chars`), **value masked / never printed, no standing secret used**. This proves a GCP-less agent-repo can obtain the Claude credential at run time exactly as the design (D6/D9) intends.
+
+**Stage 1b — full loop (broker → worker runs Claude → result returns to requester):** _pending — fills the GO criteria above + sets the final verdict._
