@@ -50,7 +50,7 @@ workflow דק, מופעל ע"י Claude Code, ויודע לשלוח/לקבל יח
 |---|---|---|---|
 | 0 | פתיחת תיק-פיתוח + capability-card skeleton | completed | `devplans/agent-repo-product.md`, `changelog.d/2026-06-17-agent-repo-product.md`, `docs/capability-cards/agent-broker-handoff.md` |
 | 1a | "הדלת" — WIF משותף + הוכחת-מפתח (ריפו בלי GCP שולף את מפתח Claude) | completed | `scripts/bootstrap-agent-repo-identity.sh`, `.github/workflows/bootstrap-agent-repo-identity.yml`, `.github/workflows/agent-skeleton-seed.yml`, `spikes/agent-skeleton/cred-probe.yml`, `monitoring/registry-exempt.txt` |
-| 1b | "הלולאה" — broker → worker מריץ Claude → תוצאה חוזרת ל-requester (go/no-go) | in-progress | `.github/workflows/agent-action.yml`, `spikes/agent-skeleton/agent-main.yml`, `monitoring/registry-exempt.txt`, `docs/capability-cards/agent-broker-handoff.md` |
+| 1b | "הלולאה" — broker → worker מריץ Claude → תוצאה חוזרת ל-requester (go/no-go) | completed | `.github/workflows/agent-action.yml`, `spikes/agent-skeleton/agent-main.yml`, `monitoring/registry-exempt.txt`, `docs/capability-cards/agent-broker-handoff.md` |
 | 2 | תבניות המוצר + golden אינטגריטי מקביל | pending | `templates/agent-repo/**`, `scripts/render-agent-repo-golden.sh`, `scripts/check-agent-repo-golden.sh`, `scripts/check-agent-repo-golden-sync.sh`, `tests/golden/agent-repo/**`, `.github/workflows/{changelog-check,pipeline-tests}.yml` |
 | 3 | provisioner (GitHub-scaffold בלבד) | pending | `.github/workflows/provision-agent-repo.yml`, `monitoring/registry-exempt.txt`, `tests/golden/agent-repo/**` |
 | 4 | שער-סיכון + אישור-טלגרם ל-red + MCP allowlist + דוק-מוצר | pending | `policy/agent-risk-tiers.yml`, `scripts/agent-classify.sh`, `services/mcp-server/src/agent-approval.ts`, `services/mcp-server/src/index.ts`, `services/mcp-server/src/tools.ts`, `docs/agent-repo-product.md`, `monitoring/doc-bindings.json` |
@@ -126,7 +126,7 @@ PASS עם `length>0` — כלומר שלפה את המפתח דרך OIDC קצר-
 
 **הוכחת E2E (artifact):** לא-התנהגותי (ה-walking-skeleton הוא ההוכחה החיה, לא `e2e-verify`).
 
-**הערת התקדמות אחרונה:** ה-worker וה-broker נבנו ומוזגו (#514). הריצה החיה חשפה שה-broker App **חסר הרשאת `issues`** (יש לו contents/actions/secrets/workflows/pull_requests/administration/metadata), אז token עם issues:write נכשל. תיקנתי: ערוץ ה-requester הוא **קבצים** (`contents`) — ה-broker מקבל את המשימה כקלט וכותב את התוצאה כ-`results/<corr>.json` לריפו-ה-requester (במקום issue). תואם D5′. הבא: מיזוג התיקון → seed (יוצר requester+worker) → dispatch הלולאה → go/no-go.
+**הערת התקדמות אחרונה:** ✅ **הוכח חי מקצה-לקצה (GO).** broker run 27688427006 → dispatch ל-worker → worker run 27688451409 (`conclusion=success`, Claude קריאה-בלבד) → ה-broker משך את ה-artifact וכתב את התשובה ל-`edri2or/zz-agentskel-requester/results/skel-loop-1.json` (JSON תקין, `status:ok`, התשובה של Claude). שלושת אירועי ה-audit (started/dispatched/completed) הגיעו ל-Axiom. כל token חוצה-ריפו מתוחם לריפו-בודד. תיקון בדרך: ה-broker App חסר `issues` → ערוץ ה-requester עבר לקבצים (`contents`). **שלב 1 (ה-walking-skeleton) הושלם — ההוכחה-החיה של הטיפוס הושגה.**
 
 **שינוי תוכנית:** —
 
@@ -207,3 +207,4 @@ PASS עם `length>0` — כלומר שלפה את המפתח דרך OIDC קצר-
 - 2026-06-17: התוכנית נפתחה. עיגנתי מחדש לקוד החי (gcp-hands נמחק — בונים על `gcp-action`+ה-MCP). שלב 0 (פתיחת תיק) הושלם, PR #512 ירוק.
 - 2026-06-17: Or בחר את מודל-המפתח — "דלת-WIF משותפת". פיצלתי את שלב 1 ל-1a (הדלת + הוכחת-מפתח) ו-1b (הלולאה המלאה), כדי להוכיח קודם שריפו בלי GCP שולף את המפתח בבטחה, ורק אז לבנות את הלולאה.
 - 2026-06-17: שלב 1a הושלם והוכח חי ✅ — ריפו-ניסוי בלי GCP שלף את מפתח-Claude דרך הדלת (OIDC רגעי), המפתח לא נחשף, אפס סוד קבוע. הלבנה הקשה ביותר עובדת. הבא: שלב 1b — הלולאה המלאה (broker→worker מריץ Claude→תוצאה חוזרת).
+- 2026-06-17: שלב 1b הושלם והוכח חי ✅ — **כל הלולאה עובדת מקצה-לקצה.** ה-broker שלח משימה לריפו-עובד, העובד הריץ Claude (קריאה בלבד), והתשובה חזרה לריפו-המבקש כקובץ. זו ה-**go** של ה-walking-skeleton — ההוכחה שטיפוס "ריפו-סוכן" אפשרי ובטוח. תוך כדי גיליתי שה-broker App חסר הרשאת issues, אז ערוץ-התוצאה הוא קבצים (לא issues) — נמנע שינוי ל-App המרכזי. **שלב 1 סגור. הבא: שלב 2 — תבניות המוצר + golden.**
