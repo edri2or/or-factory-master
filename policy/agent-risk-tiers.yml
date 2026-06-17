@@ -1,0 +1,49 @@
+# Agent-repo risk-tier policy for or-factory-master. Source of truth for
+# scripts/agent-classify.sh. Unlike policy/gcp-risk-tiers.yml (which matches a STRUCTURED
+# gcloud command token-wise), an agent TASK is freeform text — so this is a case-insensitive
+# keyword RED-FLAG scanner: RED first (a dangerous / cross-boundary request wins), then
+# YELLOW (self-write class), else GREEN. It is defense-in-depth + future-proofing, NOT a
+# bulletproof parser; false-positives merely route to Or's Telegram ✅ (safe), and the
+# current worker is READ-ONLY anyway so it cannot act dangerously.
+#
+# Routing in .github/workflows/agent-action.yml (Stage 4b):
+#   green  → broker dispatches the worker immediately (read-only Claude)
+#   yellow → dispatch + emit an audit event (self-write class; for future write-capable workers)
+#   red    → NOT dispatched; routed to the Telegram ✅ approval bridge ({MCP}/agent-action-register)
+#
+# NOTE on the default: the current worker is read-only (Read,Grep,Glob), so an unflagged task
+# is inherently safe → default GREEN. Revisit this default when write-capable workers exist.
+version: "1.0"
+default_tier: green
+tiers:
+  red:
+    patterns:
+      - "delete"
+      - "deploy"
+      - "provision"
+      - "decommission"
+      - "teardown"
+      - "secret"
+      - "credential"
+      - "private key"
+      - "api key"
+      - "branch protection"
+      - "force-push"
+      - "force push"
+      - ".github/"
+      - "agents.md"
+      - "claude.md"
+      - "rm -rf"
+      - "drop table"
+      - "another repo"
+      - "cross-repo"
+  yellow:
+    patterns:
+      - "commit"
+      - "pull request"
+      - "open a pr"
+      - "push to"
+      - "refactor"
+      - "create file"
+      - "write to"
+  # green is the default — read / analyze / summarise / plan / research / review.
