@@ -34,8 +34,8 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
-| 0 | פתיחת תיק (devplan + changelog + כרטיס-יכולת) | in-progress | `devplans/`, `changelog.d/`, `docs/capability-cards/firstwave-fanout.md` |
-| 1 | הוכחת יכולת ה-fan-out (spike זרוק על ריפויי zz-) | pending | `spikes/firstwave-fanout/` |
+| 0 | פתיחת תיק (devplan + changelog + כרטיס-יכולת) | completed | `devplans/`, `changelog.d/`, `docs/capability-cards/firstwave-fanout.md` |
+| 1 | הוכחת יכולת ה-fan-out (spike זרוק על ריפו-בדיקה אחד) | in-progress | `spikes/firstwave-fanout/` |
 | 2 | פרובוז 3 הריפויים האמיתיים ★גבול-עלות★ | pending | (דיספוז `provision-agent-repo.yml` ×3) |
 | 3 | הזרקת פרסונת AGENTS.md לכל ריפו חי | pending | `docs/agent-specs/firstwave/`, (refresh חי) |
 | 4 | כל סוכן עונה לבד + לולאת-broker (Gate 1) | pending | (לולאות `agent-action.yml`) |
@@ -59,7 +59,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 
 **הוכחת E2E (artifact):** לא-התנהגותי.
 
-**הערת התקדמות אחרונה:** התיק נפתח; ממתין לאישור אור להתחיל את שלב 1 (ה-spike).
+**הערת התקדמות אחרונה:** הושלם — התיק נפתח, כל 6 שערי ה-CI ב-PR #527 ירוקים. אור אישר את שלב 1.
 
 **שינוי תוכנית:** —
 
@@ -69,8 +69,13 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 
 **Acceptance:**
 - [ ] `spikes/firstwave-fanout/` עם prompt נחשון-נתב זרוק + README runbook.
-- [ ] הרצה חיה דרך ה-broker על 3 ריפויי `zz-` קיימים: SPLIT → fan-out → איסוף → UNIFY.
+- [ ] הרצה חיה דרך ה-broker על **ריפו-בדיקה אחד** (`zz-fanout-spike`, משחק את כל התפקידים): SPLIT → fan-out → איסוף → UNIFY.
 - [ ] הכרעת go/no-go נרשמה ב-`docs/capability-cards/firstwave-fanout.md` עם run-ids.
+
+> **שינוי תוכנית (שלב 1):** שלושת ריפויי ה-`zz-` נמחקו מאז שלב הניקוי, אז ה-spike רץ על
+> **ריפו-בדיקה זרוק אחד** (`zz-fanout-spike`) שמשחק נתב+שני אחים+מאחד דרך תג-מצב מהימן
+> (`[MODE:SPLIT|WORKER|UNIFY]`). אושר ע"י אור (האופציה הזולה ביותר). רוב הלולאה כבר מוכח
+> (`agent-broker-handoff.md`); ה-spike מוכיח רק את החדש: פליטת-הצהרה + סינתזת-איחוד.
 
 **הוכחה תפקודית (באותו שלב):** קלט אמיתי דו-תחומי (לדוגמה: "מצא 3 שיטות עבודה לכתיבת
 תיעוד טכני והכן מהן צ'קליסט"). מעבר-1 פולט JSON עם `plan[]` מוגבל ל-allow-list האחים;
