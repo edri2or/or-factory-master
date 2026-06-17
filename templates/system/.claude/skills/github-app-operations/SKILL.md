@@ -42,14 +42,14 @@ commit, open a PR, trigger/edit a workflow, or call the GitHub API with the App'
 
 ## The security model — read before you touch the private key
 
-This repo has **no GCP credentials in interactive runs**. The `gcp-hands-client` skill routes every
-GCP operation through the `edri2or/gcp-hands` broker, and **the result returns as a comment on a
-GitHub issue**. That means:
+This repo holds **no GCP credentials in interactive runs** and never runs `gcloud` by hand — the
+`github-app-private-key` lives only in this system's GCP Secret Manager and is reachable only from
+*inside* a GitHub Actions workflow that authenticates via this system's own WIF. That means:
 
-> 🚫 **NEVER fetch `github-app-private-key` interactively / via the gcp-hands broker.** The value
-> would be posted into an issue comment — a serious leak. The private key may only be read **inside
-> a GitHub Actions workflow** that authenticates to GCP via this system's own WIF, where it stays in
-> runner memory.
+> 🚫 **NEVER fetch `github-app-private-key` in an interactive session.** Any interactive surface (a
+> chat reply, a log, an issue comment) can leak it. The private key may be read **only inside a GitHub
+> Actions workflow** that authenticates to GCP via this system's own WIF, where it stays in runner
+> memory and is auto-masked.
 
 So there are exactly two usage paths:
 
@@ -130,7 +130,7 @@ needs — not the App's full set. With the script, pass a repo-name/`repository_
 ## Security rules
 
 - **Never print, log, echo, or write to disk** the `github-app-private-key` or any minted token.
-- **Never fetch the private key outside a GitHub Actions workflow** (it would leak via the
-  gcp-hands issue-comment path).
+- **Never fetch the private key outside a GitHub Actions workflow** (any interactive surface — a chat
+  reply, a log, an issue comment — could leak it).
 - Prefer `actions/create-github-app-token` so the token is auto-masked and auto-revoked; otherwise
   `::add-mask::` it yourself and rely on the **1-hour** expiry.

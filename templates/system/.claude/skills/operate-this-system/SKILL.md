@@ -67,8 +67,11 @@ Prefer these read tools to form a picture before proposing any change.
 - **GitHub work goes through the App.** Act as this system's GitHub App with least privilege — use
   the **`github-app-operations`** skill (already in this repo). Never fetch the private key outside
   a workflow.
-- **GCP work goes through the broker.** Never run `gcloud` locally — use the **`gcp-hands-client`**
-  skill (already in this repo) to dispatch any GCP operation.
+- **This system has no interactive GCP path.** It holds no GCP credentials in an interactive session
+  and never runs `gcloud` by hand. GCP work happens only *inside* this system's own GitHub Actions
+  workflows, via the system's WIF (e.g. the deploy workflow reading Secret Manager). If the system
+  needs a GCP resource it cannot create itself, it *requests* it from the factory broker (emit a
+  request via `scripts/emit-event.sh`; an operator approves) — it never runs GCP operations itself.
 - **`main` is protected** (the `protect-main` ruleset): PR-only, CI must pass. Never push to `main`
   directly and never disable branch protection.
 - **Infra is deploy-workflow-owned.** Never hand-edit the Railway project or Cloudflare DNS — change
@@ -78,8 +81,6 @@ Prefer these read tools to form a picture before proposing any change.
 
 - **`github-app-operations`** — mint this system's GitHub App installation token for pushes, PRs,
   workflow runs, or secret operations.
-- **`gcp-hands-client`** — dispatch any Google Cloud / `gcloud` operation to the broker instead of
-  running it locally.
 
 ## When in doubt
 
