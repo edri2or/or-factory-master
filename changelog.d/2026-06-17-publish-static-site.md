@@ -41,3 +41,7 @@
 - **שלב 6 — Skills + כרטיס יכולת.** נוספו `skills/publish-site/SKILL.md` (מפת-ההפעלה לפרסום) +
   `skills/build-site/SKILL.md` (הכנת הבייטים לריפו); כרטיס-היכולת `docs/capability-cards/publish-static-site.md`
   כבר סופי משלב 1 (verdict go).
+- **שלב 7 + סגירה.** ב-`edri2or/or-edri-4` (PR #44, מוזג) הוסרו `deploy-pages.yml` (מפרסם GitHub-Pages
+  מוחלף) + `vercel.json` (אינרטי); `site/` נשמר כמקור הפרסום. אומת ש-`https://pages-proof.or-infra.com`
+  עדיין מחזיר 200 (העותק ב-Cloudflare לא הושפע). הפיתוח נסגר — `devplans/publish-static-site.md`
+  → `status: completed`.
