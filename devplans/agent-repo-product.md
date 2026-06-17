@@ -55,7 +55,7 @@ workflow דק, מופעל ע"י Claude Code, ויודע לשלוח/לקבל יח
 | 3 | provisioner (GitHub-scaffold בלבד) | completed | `.github/workflows/provision-agent-repo.yml`, `monitoring/registry-exempt.txt` |
 | 4a | שער-סיכון — ה-classifier (policy + script), נבדק לבד | completed | `policy/agent-risk-tiers.yml`, `scripts/agent-classify.sh` |
 | 4b | חיווט ל-broker (propose/execute) + גשר-אישור-טלגרם ב-MCP + allowlist + דוק-מוצר | completed | `.github/workflows/agent-action.yml`, `services/mcp-server/src/agent-approval.ts`, `services/mcp-server/src/index.ts`, `services/mcp-server/src/tools.ts`, `services/mcp-server/test/agent-approval.test.mjs`, `docs/agent-repo-product.md`, `monitoring/doc-bindings.json` |
-| 5 | לולאת "iterate על ריפו-סוכן חי אחד" | in-progress | `.github/workflows/refresh-agent-repo.yml`, `templates/agent-repo/.github/workflows/agent-main.yml`, `tests/golden/agent-repo/MANIFEST.sha256`, `monitoring/registry-exempt.txt` |
+| 5 | לולאת "iterate על ריפו-סוכן חי אחד" | completed | `.github/workflows/refresh-agent-repo.yml`, `templates/agent-repo/.github/workflows/agent-main.yml`, `tests/golden/agent-repo/MANIFEST.sha256`, `monitoring/registry-exempt.txt` |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
 >
@@ -195,15 +195,14 @@ PASS עם `length>0` — כלומר שלפה את המפתח דרך OIDC קצר-
 - [x] `refresh-agent-repo.yml` חדש (לא פרמטריזציה של תאום-המערכת — נקי יותר, כמו ה-fork ב-provision): מנפיק token מתוחם, משכפל, מעתיק non-.template subpaths, **דוחף ישירות ל-main** (main של ריפו-סוכן כתיב), אידמפוטנטי, מסרב `.template`/control/factory. `source_ref` לפרוּב-מענף.
 - [x] `monitoring/registry-exempt.txt` += `refresh-agent-repo.yml` (dispatch-only).
 - [x] diff להוכחת ה-push: `timeout-minutes: 15` ל-job של העובד (`agent-main.yml`) + רענון golden.
-- [ ] מוזג ל-main (workflow_dispatch זמין רק מ-main).
-- [ ] הוכחה חיה: refresh ל-`zz-agentrepo-prov1` → אימות ש-`timeout-minutes` נחת בקובץ החי.
-- [ ] `status: completed`.
+- [x] מוזג ל-main (#524, כל ה-CI ירוק).
+- [x] **הוכחה חיה (GO) ✅:** refresh ל-`zz-agentrepo-prov1` → `timeout-minutes: 15` נחת בקובץ החי.
 
 **הוכחה תפקודית (באותו שלב):** refresh לריפו-סוכן `zz-` חי → אימות שהקובץ סונכרן (push אמיתי, לא רק no-diff).
 
 **הוכחת E2E (artifact):** לא-התנהגותי.
 
-**הערת התקדמות אחרונה:** קוד שלב 5 נבנה — `refresh-agent-repo.yml` (תאום ה-refresh, direct-push כי main של ריפו-סוכן כתיב), שיפור-עמידוּת `timeout-minutes:15` לעובד (גם ה-diff להוכחת ה-push), golden רוענן, exempt + changelog. yamllint/secret-scan/golden ירוקים מקומית. הבא: מיזוג → הוכחה חיה (refresh ל-`zz-agentrepo-prov1`).
+**הערת התקדמות אחרונה:** ✅ **הושלם והוכח חי (GO).** refresh-run 27694931374 (success): הניב token מתוחם ל-`zz-agentrepo-prov1`, שכפל, זיהה diff אמיתי (ה-`agent-main.yml` החי קדם ל-`timeout-minutes`), ודחף ישירות ל-main. אימות: קריאת `zz-agentrepo-prov1/.github/workflows/agent-main.yml` החי מראה `timeout-minutes: 15`. **לולאת ה-refresh עובדת — אפשר לְאַיטֵר על העובד ולהחיל על ריפו-סוכן חי, 0 קליקים, 0 עלות.**
 
 **שינוי תוכנית:** בחרתי **`refresh-agent-repo.yml` ייעודי** (לא פרמטריזציה של `refresh-system-agents.yml`) — הלוגיקה דומה אבל פשוטה יותר (אין PR מוגן, אין reimport ל-n8n, direct-push), אז fork נקי עדיף על צימוד. ההוכחה דורשת diff אמיתי, אז כרכתי שיפור-עובד קטן (`timeout-minutes`) — זה גם בדיוק תרחיש-השימוש ("לְאַיטֵר על העובד, להחיל על ריפו-סוכן חי").
 
@@ -220,3 +219,4 @@ PASS עם `length>0` — כלומר שלפה את המפתח דרך OIDC קצר-
 - 2026-06-17: שלב 4 פוצל ל-4a (classifier) ו-4b (חיווט+MCP+redeploy). **4a נבנה ונבדק לבד ✅** — `agent-classify.sh` (סורק red-flags על משימה freeform: RED→YELLOW→GREEN ברירת-מחדל) הוכח על דגימות green/yellow/red. כי המשימה היא טקסט חופשי (לא פקודה מובנית כמו gcloud), זה שער-היוריסטי הגנתי + הכנה ל-workers עתידיים עם כתיבה (ה-worker הנוכחי read-only = בטוח ממילא). הבא: 4b — חיווט ל-broker + גשר-טלגרם ב-MCP + redeploy (costed).
 - 2026-06-17: **קוד 4b הושלם ✅ (מקומית).** בניתי את גשר-האישור ב-MCP (`agent-approval.ts`) בדיוק כמו ה-GCP, רק שהמשימה היא 4 שדות + טקסט חופשי, אז כל היחידה נוסעת כ-base64 בתוך טקסט-הכרטיס (כך טלגרם מחזיר אותה בלחיצה, בלי DB). חיברתי route + ניתוב ב-`index.ts`, הוספתי את `agent-action.yml` ל-allowlist עם חסם שמונע עקיפת שער-ה-red, ושכתבתי את ה-broker ל-propose/execute עם הסיווג. 10 בדיקות-יחידה חדשות + 128 הכלליות + tsc + yamllint — הכול ירוק. הבא (Or אישר "תעשה הכל"): מיזוג → redeploy ל-MCP (costed) → הוכחה חיה: אשלח לך כרטיס-טלגרם של משימת-red, תלחץ ✅, וה-execute ירוץ ויחזיר תוצאה.
 - 2026-06-17: **שלב 4b הושלם והוכח חי מקצה-לקצה ✅ — שער ה-RED עובד.** מוזג (#522, CI ירוק), ה-MCP נפרס מחדש (הroute החדש חי, `/health` 200). הרצתי משימה "אדומה" (מכילה "delete"): המערכת סיווגה אותה אדום, **עצרה**, ושלחה לאור כרטיס-אישור בטלגרם. אור לחץ ✅ → המשימה רצה (סוכן-עובד קרא וניתח, קריאה-בלבד) → התשובה נכתבה אוטומטית לריפו-המבקש. כלומר: שום משימה מסוכנת לא רצה בלי אישור אנושי מפורש — בדיוק כמו OIL ו-gcp-action. **שלבים 0–4 סגורים — טיפוס "ריפו-סוכן" בנוי, מתוקף-סיכון, ומוכח חי.** נותרו: שלב 5 (לולאת-refresh), ניקוי spike/zz-, ושלב 6 (גל ראשון — פיתוח נפרד). עוצר בגבול לאישור אור מה הלאה.
+- 2026-06-17: אור בחר שלב 5. **שלב 5 הושלם והוכח חי ✅ — לולאת ה-refresh.** בניתי `refresh-agent-repo.yml` (תאום ה-refresh של המערכות, אבל direct-push כי main של ריפו-סוכן כתיב), הוספתי שיפור-עמידוּת קטן לעובד (`timeout-minutes:15`) — שגם שימש כ-diff להוכחה — מוזג (#524), והרצתי refresh חי על `zz-agentrepo-prov1`: ה-`timeout-minutes` נחת בקובץ החי. כלומר אפשר עכשיו לְאַיטֵר על לוגיקת-העובד ולהחיל אותה על ריפו-סוכן חי בלי לבנות אותו מחדש, בלי קליקים ובלי עלות. **שלבים 0–5 סגורים — טיפוס "ריפו-סוכן" בנוי, מתוקף-סיכון, מוכח חי, וניתן-לאיטרציה.** נשאר רק ניקוי (קבצי-spike + 3 ריפויי zz-) לפני סגירת התיק; שלב 6 (נחשון/נתן/ספי) הוא פיתוח נפרד. עוצר בגבול.
