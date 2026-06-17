@@ -53,8 +53,8 @@ workflow דק, מופעל ע"י Claude Code, ויודע לשלוח/לקבל יח
 | 1b | "הלולאה" — broker → worker מריץ Claude → תוצאה חוזרת ל-requester (go/no-go) | completed | `.github/workflows/agent-action.yml`, `spikes/agent-skeleton/agent-main.yml`, `monitoring/registry-exempt.txt`, `docs/capability-cards/agent-broker-handoff.md` |
 | 2 | תבניות המוצר + golden אינטגריטי מקביל | in-progress | `templates/agent-repo/**`, `scripts/render-agent-repo-golden.sh`, `scripts/check-agent-repo-golden.sh`, `scripts/check-agent-repo-golden-sync.sh`, `tests/golden/agent-repo/**`, `.github/workflows/{changelog-check,pipeline-tests,playground-tests}.yml` |
 | 3 | provisioner (GitHub-scaffold בלבד) | completed | `.github/workflows/provision-agent-repo.yml`, `monitoring/registry-exempt.txt` |
-| 4a | שער-סיכון — ה-classifier (policy + script), נבדק לבד | in-progress | `policy/agent-risk-tiers.yml`, `scripts/agent-classify.sh` |
-| 4b | חיווט ל-broker (propose/execute) + גשר-אישור-טלגרם ב-MCP + allowlist + דוק-מוצר | pending | `.github/workflows/agent-action.yml`, `services/mcp-server/src/agent-approval.ts`, `services/mcp-server/src/index.ts`, `services/mcp-server/src/tools.ts`, `docs/agent-repo-product.md`, `monitoring/doc-bindings.json` |
+| 4a | שער-סיכון — ה-classifier (policy + script), נבדק לבד | completed | `policy/agent-risk-tiers.yml`, `scripts/agent-classify.sh` |
+| 4b | חיווט ל-broker (propose/execute) + גשר-אישור-טלגרם ב-MCP + allowlist + דוק-מוצר | in-progress | `.github/workflows/agent-action.yml`, `services/mcp-server/src/agent-approval.ts`, `services/mcp-server/src/index.ts`, `services/mcp-server/src/tools.ts`, `services/mcp-server/test/agent-approval.test.mjs`, `docs/agent-repo-product.md`, `monitoring/doc-bindings.json` |
 | 5 | לולאת "iterate על ריפו-סוכן חי אחד" | pending | `.github/workflows/refresh-system-agents.yml` (פרמטריזציה) או `refresh-agent-repo.yml`, `monitoring/registry-exempt.txt` |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
@@ -171,18 +171,21 @@ PASS עם `length>0` — כלומר שלפה את המפתח דרך OIDC קצר-
 ### שלב 4 — שער-סיכון + אישור-טלגרם ל-red + MCP allowlist + דוק-מוצר
 
 **Acceptance:**
-- [ ] `policy/agent-risk-tiers.yml` + `scripts/agent-classify.sh` (תאום דק של `gcp-classify.sh`): green=קריאה/ניתוח/תכנון; yellow=כתיבה-עצמית/PR; red=תשתית/חציית-גבול/עריכת `.github/**`|`AGENTS.md`|`CLAUDE.md`.
-- [ ] `services/mcp-server/src/agent-approval.ts` (תאום של `gcp-approval.ts`) + route `/agent-action-register` ב-`index.ts` (admin-gated) + `agent-action.yml` נוסף ל-`DISPATCHABLE_WORKFLOWS` ב-`tools.ts`. `phase=propose` ב-`agent-action.yml`.
-- [ ] `docs/agent-repo-product.md` + רשומת binding ב-`monitoring/doc-bindings.json` (`templates/agent-repo/AGENTS.md.template` ↔ הדוק).
-- [ ] redeploy של ה-MCP (Or-gated) + smoke.
+- [x] `policy/agent-risk-tiers.yml` + `scripts/agent-classify.sh` (תאום דק של `gcp-classify.sh`): green=קריאה/ניתוח/תכנון; yellow=כתיבה-עצמית/PR; red=תשתית/חציית-גבול/עריכת `.github/**`|`AGENTS.md`|`CLAUDE.md`. **[4a, מוזג]**
+- [x] `services/mcp-server/src/agent-approval.ts` (תאום של `gcp-approval.ts`, אבל יחידת-עבודה של 4 שדות + task freeform → base64(JSON) בתוך הסנטינלים `⟦AGENT⟧…⟦/AGENT⟧`; corr בכפתור = corr ב-blob) + route `/agent-action-register` ב-`index.ts` (admin-gated) + ניתוב-callback (`agentok:`/`agentno:`) + `agent-action.yml` נוסף ל-`DISPATCHABLE_WORKFLOWS` ב-`tools.ts` **עם חסם `phase=execute`** (execute רק דרך גשר-הטלגרם). **[4b]**
+- [x] `agent-action.yml` משוכתב ל-`phase=propose|execute`: classify (`agent-classify.sh`) → green/yellow מתווך מיד; red → POST `/agent-action-register` (לא רץ); execute רץ ללא-תלות-tier (אחרי ✅). **[4b]**
+- [x] בדיקות יחידה `services/mcp-server/test/agent-approval.test.mjs` (10/10 עובר) + כל החבילה (128/128) + `tsc` נקי + yamllint נקי. **[4b]**
+- [x] `docs/agent-repo-product.md` + רשומת binding ב-`monitoring/doc-bindings.json` (`templates/agent-repo/AGENTS.md.template` ↔ הדוק). **[4b]**
+- [ ] מוזג ל-main; redeploy של ה-MCP (Or-gated) + `verify_mcp_server`.
+- [ ] הוכחה חיה: משימת-red → כרטיס-טלגרם → ✅ של Or → execute רץ ומחזיר תוצאה.
 
-**הוכחה תפקודית (באותו שלב):** פקודת-red → כרטיס-טלגרם; ✅ של Or מפעיל execute (כמו ה-smoke של gcp-action); `verify_mcp_server` + `factory-mcp-smoke.yml` אחרי ה-redeploy.
+**הוכחה תפקודית (באותו שלב):** משימת-red → כרטיס-טלגרם; ✅ של Or מפעיל execute (כמו ה-smoke של gcp-action); `verify_mcp_server` אחרי ה-redeploy.
 
 **הוכחת E2E (artifact):** לא-התנהגותי. (נגיעה ב-`tools.ts` תופסת את surface `factory-mcp` שהוא `enforce:false` — מייעץ, לא חוסם.)
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** קוד 4b הושלם מקומית — `agent-approval.ts` (גשר), `index.ts` (route+ניתוב), `tools.ts` (allowlist+חסם-execute), `agent-action.yml` (propose/execute עם classify), בדיקות יחידה, דוק-מוצר + binding. `tsc`+128 בדיקות+yamllint ירוקים. הבא: מיזוג → redeploy ל-MCP (costed, Or אישר "תעשה הכל") → הוכחה חיה עם משימת-red.
 
-**שינוי תוכנית:** —
+**שינוי תוכנית:** שלב 4 פוצל ל-4a (classifier, נבדק לבד) ו-4b (חיווט+MCP+redeploy). **חסם-execute חדש ב-`tools.ts`:** מאחר ש-`agent-action.yml` חייב להיות ב-allowlist כדי ש-requester יוכל לבקש עבודה (`phase=propose`), הוספתי חסם נקודתי שמסרב `phase=execute` דרך הכלי — כך ש-execute נשאר נגיש רק דרך callback-הטלגרם (שער-ה-red לא ניתן לעקיפה). זו ההקבלה ל-`gcp-action.yml` שכולו מחוץ ל-allowlist.
 
 ---
 
@@ -212,3 +215,4 @@ PASS עם `length>0` — כלומר שלפה את המפתח דרך OIDC קצר-
 - 2026-06-17: Or הכריע סופית — **קבצים, בלי issues** (אחרי הוכחה: קבצים מנצחים במשתלם/יציב/אמין, issues עדיפים רק לנראוּת-אנושית; נמנע הרחבת-כוח ל-App המרכזי). שלב 2 נבנה: `templates/agent-repo/` (CLAUDE.md=@AGENTS.md, AGENTS.md, .mcp.json עם server factory בלבד, ה-worker) + golden מקביל + חיווט-CI. הכול עבר את השערים מקומית. הבא: שלב 3 — provisioner.
 - 2026-06-17: שלב 3 הושלם והוכח חי ✅ — ה-provisioner יצר ריפו-סוכן אמיתי מהתבנית (`zz-agentrepo-prov1`, נולד נכון), קשר אותו לדלת, ולולאת-broker רצה עליו בהצלחה (התשובה חזרה למבקש כקובץ). **provision → ריפו-סוכן עובד.** הגנת-main קשוחה נדחתה (תיעוד ב-changelog). **שלבים 0–3 סגורים — טיפוס "ריפו-סוכן" בנוי ומוכח מקצה-לקצה.** נותרו: שלב 4 (שער-סיכון+אישור-טלגרם, costed — redeploy ל-MCP), שלב 5 (לולאת-refresh), ניקוי spike/zz-, ושלב 6 (גל ראשון — פיתוח נפרד).
 - 2026-06-17: שלב 4 פוצל ל-4a (classifier) ו-4b (חיווט+MCP+redeploy). **4a נבנה ונבדק לבד ✅** — `agent-classify.sh` (סורק red-flags על משימה freeform: RED→YELLOW→GREEN ברירת-מחדל) הוכח על דגימות green/yellow/red. כי המשימה היא טקסט חופשי (לא פקודה מובנית כמו gcloud), זה שער-היוריסטי הגנתי + הכנה ל-workers עתידיים עם כתיבה (ה-worker הנוכחי read-only = בטוח ממילא). הבא: 4b — חיווט ל-broker + גשר-טלגרם ב-MCP + redeploy (costed).
+- 2026-06-17: **קוד 4b הושלם ✅ (מקומית).** בניתי את גשר-האישור ב-MCP (`agent-approval.ts`) בדיוק כמו ה-GCP, רק שהמשימה היא 4 שדות + טקסט חופשי, אז כל היחידה נוסעת כ-base64 בתוך טקסט-הכרטיס (כך טלגרם מחזיר אותה בלחיצה, בלי DB). חיברתי route + ניתוב ב-`index.ts`, הוספתי את `agent-action.yml` ל-allowlist עם חסם שמונע עקיפת שער-ה-red, ושכתבתי את ה-broker ל-propose/execute עם הסיווג. 10 בדיקות-יחידה חדשות + 128 הכלליות + tsc + yamllint — הכול ירוק. הבא (Or אישר "תעשה הכל"): מיזוג → redeploy ל-MCP (costed) → הוכחה חיה: אשלח לך כרטיס-טלגרם של משימת-red, תלחץ ✅, וה-execute ירוץ ויחזיר תוצאה.

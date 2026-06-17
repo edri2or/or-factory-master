@@ -1,8 +1,20 @@
 name: Agent Action (broker — dispatch work to an agent-repo)
 
-# The broker for the agent-repo product-type (devplans/agent-repo-product.md, Stage 1b),
+# The broker for the agent-repo product-type (devplans/agent-repo-product.md),
 # shaped on gcp-action.yml + publish-static-site.yml. Dispatched on or-factory-master only,
-# runs as the broker SA (WIF, main-locked). For one unit of work it:
+# runs as the broker SA (WIF, main-locked). It risk-classifies the task
+# (scripts/agent-classify.sh) and routes:
+#
+#   phase=propose (default):
+#     green/yellow -> broker the work immediately (dispatch worker -> poll -> write
+#                     the result back to the requester) + emit audit events.
+#     red          -> DO NOT broker; ask the MCP to send Or a Telegram ✅/❌ card
+#                     (/agent-action-register). The work is NOT run here.
+#   phase=execute:
+#     dispatched by the MCP ONLY after Or taps ✅ on the Telegram card — brokers the
+#     approved work regardless of tier. The approval is the gate.
+#
+# For one unit of brokered work it:
 #   1. mints a per-request token scoped to the WORKER (actions) and dispatches the worker's
 #      agent-main.yml with the task + correlation_id,
 #   2. POLLS the worker run to terminal (broker-PULL — the worker never reaches outward),
@@ -14,8 +26,11 @@ name: Agent Action (broker — dispatch work to an agent-repo)
 # the requester's tracking channel is repo files (git-native; switching to issues would need
 # an App-permission change + re-consent). agent->broker only (the broker pulls; agents never
 # talk directly). Every cross-repo reach is a FRESH, minimal, single-repo-scoped broker App
-# token; the worker holds no standing secret. Audit via emit-event.sh. Risk-classify + RED
-# Telegram approval arrive in Stage 4 (this skeleton runs phase=execute directly).
+# token; the worker holds no standing secret. Audit via emit-event.sh.
+#
+# Allowlisted for phase=propose only: the MCP dispatch_workflow tool refuses a phase=execute
+# dispatch, so EXECUTE is reachable ONLY through the Telegram approval callback (the RED gate
+# cannot be bypassed). Mirrors gcp-action.yml's "execute reachable only via the MCP".
 
 on:
   workflow_dispatch:
@@ -38,9 +53,14 @@ on:
         default: ""
         type: string
       phase:
-        description: "execute (skeleton). propose/red-approval lands in Stage 4."
+        description: "propose (classify + run green/yellow, card for red) | execute (run, post-approval)."
         required: false
-        default: "execute"
+        default: "propose"
+        type: string
+      reason:
+        description: "Free-text reason shown on the RED approval card."
+        required: false
+        default: ""
         type: string
 
 permissions: {}
@@ -60,6 +80,7 @@ jobs:
       CONTROL_PROJECT: or-factory-master-control
       BROKER_SA: "factory-master-broker@or-factory-master-control.iam.gserviceaccount.com"
       WIF_PROVIDER: "projects/140345952904/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
+      MCP_URL: https://factory-master-actions-mcp-140345952904.me-west1.run.app
 
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
@@ -76,8 +97,8 @@ jobs:
         run: |
           set -euo pipefail
           case "$PHASE" in
-            execute) ;;
-            *) echo "FAIL: skeleton supports phase=execute only (got '$PHASE')" >&2; exit 1 ;;
+            propose|execute) ;;
+            *) echo "FAIL: phase must be 'propose' or 'execute' (got '$PHASE')" >&2; exit 1 ;;
           esac
           norm() { printf '%s' "${1##*/}"; }   # accept owner/repo or bare repo
           for pair in "worker_repo:$(norm "$WORKER")" "requester_repo:$(norm "$REQUESTER")"; do
@@ -93,6 +114,21 @@ jobs:
             printf '%s' "$CORR" | grep -Eq '^[A-Za-z0-9-]{1,40}$' || { echo "FAIL: correlation_id has a bad shape" >&2; exit 1; }
           fi
 
+      - name: Classify
+        id: classify
+        env:
+          TASK: ${{ inputs.task }}
+        run: |
+          set -euo pipefail
+          # An agent task is FREEFORM text — the classifier substring-matches it
+          # case-insensitively (no normalization needed, unlike gcp-action.yml).
+          OUT=$(bash scripts/agent-classify.sh "$TASK")
+          echo "classifier: $OUT"
+          TIER=$(printf '%s' "$OUT" | sed -n 's/.*"tier":[[:space:]]*"\([^"]*\)".*/\1/p')
+          [ -n "$TIER" ] || { echo "FAIL: classifier returned no tier" >&2; exit 1; }
+          echo "tier=$TIER" >> "$GITHUB_OUTPUT"
+          echo "INFO: task tiered '$TIER'"
+
       - name: Authenticate to GCP via WIF
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093  # v3.0.0
         with:
@@ -102,12 +138,48 @@ jobs:
       - name: Set up gcloud
         uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db  # v3.0.1
 
-      - name: Broker the work (dispatch worker -> poll -> write result to requester)
+      # ---- red + propose: ask the MCP to send the Telegram approval card --------
+      - name: Send Telegram approval card (red, propose)
+        if: inputs.phase == 'propose' && steps.classify.outputs.tier == 'red'
         env:
           WORKER: ${{ inputs.worker_repo }}
           REQUESTER: ${{ inputs.requester_repo }}
           TASK: ${{ inputs.task }}
           CORR: ${{ inputs.correlation_id }}
+          REASON: ${{ inputs.reason }}
+        run: |
+          set -euo pipefail
+          WORKER="${WORKER##*/}"; REQUESTER="${REQUESTER##*/}"
+          CORR_VAL="${CORR:-run-${GITHUB_RUN_ID}}"
+          MCP_ADMIN=$(gcloud secrets versions access latest --secret=mcp-server-admin-secret --project="$CONTROL_PROJECT" | tr -d '\r\n')
+          echo "::add-mask::$MCP_ADMIN"
+          REQ=$(jq -cn --arg w "$WORKER" --arg r "$REQUESTER" --arg t "$TASK" --arg corr "$CORR_VAL" --arg reason "$REASON" \
+            '{worker_repo:$w, requester_repo:$r, task:$t, correlation_id:$corr, reason:$reason}')
+          CODE=$(curl -sS -m 30 -o /tmp/agent-reg.body -w '%{http_code}' \
+            -X POST "${MCP_URL}/agent-action-register" \
+            -H "X-Admin-Secret: ${MCP_ADMIN}" \
+            -H "Content-Type: application/json" \
+            --data "$REQ" || echo "000")
+          echo "POST /agent-action-register -> HTTP ${CODE}"
+          if [ "$CODE" != "200" ]; then
+            echo "FAIL: could not send approval card (HTTP ${CODE}): $(jq -r '.error // empty' /tmp/agent-reg.body 2>/dev/null || true)" >&2
+            rm -f /tmp/agent-reg.body; exit 1
+          fi
+          rm -f /tmp/agent-reg.body
+          echo "PASS: RED task — approval card sent to Telegram (awaiting Or's ✅). Work NOT brokered."
+
+      # ---- green/yellow (propose) OR execute (post-approval): broker the work ----
+      - name: Broker the work (dispatch worker -> poll -> write result to requester)
+        if: >-
+          (inputs.phase == 'propose' && (steps.classify.outputs.tier == 'green' || steps.classify.outputs.tier == 'yellow'))
+          || inputs.phase == 'execute'
+        env:
+          WORKER: ${{ inputs.worker_repo }}
+          REQUESTER: ${{ inputs.requester_repo }}
+          TASK: ${{ inputs.task }}
+          CORR: ${{ inputs.correlation_id }}
+          TIER: ${{ steps.classify.outputs.tier }}
+          PHASE: ${{ inputs.phase }}
         run: |
           set -uo pipefail
           WORKER="${WORKER##*/}"; REQUESTER="${REQUESTER##*/}"
@@ -135,8 +207,8 @@ jobs:
           }
 
           emit "factory.agent_action.started" "info" "false" \
-            "$(jq -cn --arg c "$CORR_VAL" --arg w "$WORKER" --arg r "$REQUESTER" \
-              '{correlation_id:$c, worker:$w, requester:$r}')"
+            "$(jq -cn --arg c "$CORR_VAL" --arg w "$WORKER" --arg r "$REQUESTER" --arg t "${TIER:-}" --arg p "${PHASE:-}" \
+              '{correlation_id:$c, worker:$w, requester:$r, tier:$t, phase:$p}')"
 
           # --- broker App creds ---
           APP_ID=$(gcloud secrets versions access latest --secret=factory-master-broker-app-id --project="$CONTROL_PROJECT")
@@ -218,4 +290,23 @@ jobs:
           emit "factory.agent_action.completed" "info" "false" \
             "$(jq -cn --arg c "$CORR_VAL" --arg w "$WORKER" --arg r "$REQUESTER" --arg p "$RPATH" \
               '{correlation_id:$c, worker:$w, requester:$r, result_path:$p}')"
-          echo "PASS (Stage 1b): broker dispatched -> worker ran Claude -> result returned to edri2or/${REQUESTER}/${RPATH}."
+          echo "PASS: broker dispatched -> worker ran Claude -> result returned to edri2or/${REQUESTER}/${RPATH}."
+
+      - name: Telegram confirmation (execute phase)
+        if: inputs.phase == 'execute' && success()
+        continue-on-error: true
+        env:
+          REQUESTER: ${{ inputs.requester_repo }}
+          CORR: ${{ inputs.correlation_id }}
+        run: |
+          set -uo pipefail
+          REQUESTER="${REQUESTER##*/}"
+          BOT=$(gcloud secrets versions access latest --secret=telegram-bot-token --project="$CONTROL_PROJECT" 2>/dev/null | tr -d '\r\n' || true)
+          CHAT=$(gcloud secrets versions access latest --secret=telegram-chat-id --project="$CONTROL_PROJECT" 2>/dev/null | tr -d '\r\n' || true)
+          if [ -n "$BOT" ] && [ -n "$CHAT" ]; then
+            echo "::add-mask::$BOT"
+            MSG="✅ בוצע: משימת-הסוכן שאישרת (${CORR:-}) הורצה — התוצאה נכתבה ל-${REQUESTER}."
+            curl -sS -m 20 -X POST "https://api.telegram.org/bot${BOT}/sendMessage" \
+              --data-urlencode "chat_id=${CHAT}" \
+              --data-urlencode "text=${MSG}" >/dev/null || true
+          fi

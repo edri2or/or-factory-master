@@ -402,6 +402,7 @@ export function registerTools(server: McpServer): void {
     'deploy-verify.yml',
     'cleanup-orphan-linear-webhooks.yml',
     'publish-static-site.yml',
+    'agent-action.yml',
   ]);
 
   server.tool(
@@ -426,6 +427,24 @@ export function registerTools(server: McpServer): void {
               workflow_id,
               allowed: [...DISPATCHABLE_WORKFLOWS],
               message: 'Not on the dispatch allowlist. decommission-system.yml is intentionally excluded (destructive; requires written approval).',
+            }, null, 2),
+          }],
+        };
+      }
+      // agent-action.yml is allowlisted for phase=propose (a requester asks the
+      // broker for work; the workflow then classifies + gates RED itself). Its
+      // EXECUTE phase must stay reachable ONLY via the Telegram approval callback
+      // (handleAgentApprovalCallback dispatches it directly), so refuse a
+      // phase=execute dispatch through this tool — otherwise a caller could skip
+      // the RED ✅ gate. (Mirrors gcp-action.yml being entirely off the allowlist.)
+      if (workflow_id === 'agent-action.yml' && (inputs?.['phase'] ?? 'propose') === 'execute') {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              error: 'phase_not_dispatchable',
+              workflow_id,
+              message: 'agent-action.yml phase=execute is reachable only via the Telegram approval callback (the RED gate). Dispatch phase=propose; a RED task will ask Or for ✅.',
             }, null, 2),
           }],
         };

@@ -7,6 +7,13 @@
       "artifacts": ["templates/system/workflows/n8n/postgres-named-queries.json"],
       "docs": ["templates/system/AGENTS.md.template"],
       "enforce": true
+    },
+    {
+      "id": "agent-repo-product",
+      "name_he": "תיעוד טיפוס-המוצר ריפו-סוכן",
+      "artifacts": ["templates/agent-repo/AGENTS.md.template"],
+      "docs": ["docs/agent-repo-product.md"],
+      "enforce": true
     }
   ]
 }
