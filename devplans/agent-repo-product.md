@@ -55,7 +55,7 @@ workflow דק, מופעל ע"י Claude Code, ויודע לשלוח/לקבל יח
 | 3 | provisioner (GitHub-scaffold בלבד) | completed | `.github/workflows/provision-agent-repo.yml`, `monitoring/registry-exempt.txt` |
 | 4a | שער-סיכון — ה-classifier (policy + script), נבדק לבד | completed | `policy/agent-risk-tiers.yml`, `scripts/agent-classify.sh` |
 | 4b | חיווט ל-broker (propose/execute) + גשר-אישור-טלגרם ב-MCP + allowlist + דוק-מוצר | completed | `.github/workflows/agent-action.yml`, `services/mcp-server/src/agent-approval.ts`, `services/mcp-server/src/index.ts`, `services/mcp-server/src/tools.ts`, `services/mcp-server/test/agent-approval.test.mjs`, `docs/agent-repo-product.md`, `monitoring/doc-bindings.json` |
-| 5 | לולאת "iterate על ריפו-סוכן חי אחד" | pending | `.github/workflows/refresh-system-agents.yml` (פרמטריזציה) או `refresh-agent-repo.yml`, `monitoring/registry-exempt.txt` |
+| 5 | לולאת "iterate על ריפו-סוכן חי אחד" | in-progress | `.github/workflows/refresh-agent-repo.yml`, `templates/agent-repo/.github/workflows/agent-main.yml`, `tests/golden/agent-repo/MANIFEST.sha256`, `monitoring/registry-exempt.txt` |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
 >
@@ -192,17 +192,20 @@ PASS עם `length>0` — כלומר שלפה את המפתח דרך OIDC קצר-
 ### שלב 5 — לולאת "iterate על ריפו-סוכן חי אחד"
 
 **Acceptance:**
-- [ ] פרמטריזציה של `refresh-system-agents.yml` לקבל מקורות `templates/agent-repo/` (או `refresh-agent-repo.yml` חדש + exempt) — סנכרון תיקון-תבנית לריפו-סוכן חי דרך PR→CI→merge.
-- [ ] CI ירוק.
-- [ ] `status: completed` ב-`devplans/agent-repo-product.md`.
+- [x] `refresh-agent-repo.yml` חדש (לא פרמטריזציה של תאום-המערכת — נקי יותר, כמו ה-fork ב-provision): מנפיק token מתוחם, משכפל, מעתיק non-.template subpaths, **דוחף ישירות ל-main** (main של ריפו-סוכן כתיב), אידמפוטנטי, מסרב `.template`/control/factory. `source_ref` לפרוּב-מענף.
+- [x] `monitoring/registry-exempt.txt` += `refresh-agent-repo.yml` (dispatch-only).
+- [x] diff להוכחת ה-push: `timeout-minutes: 15` ל-job של העובד (`agent-main.yml`) + רענון golden.
+- [ ] מוזג ל-main (workflow_dispatch זמין רק מ-main).
+- [ ] הוכחה חיה: refresh ל-`zz-agentrepo-prov1` → אימות ש-`timeout-minutes` נחת בקובץ החי.
+- [ ] `status: completed`.
 
-**הוכחה תפקודית (באותו שלב):** refresh לריפו-סוכן `zz-` חי → אימות שהקובץ סונכרן.
+**הוכחה תפקודית (באותו שלב):** refresh לריפו-סוכן `zz-` חי → אימות שהקובץ סונכרן (push אמיתי, לא רק no-diff).
 
 **הוכחת E2E (artifact):** לא-התנהגותי.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** קוד שלב 5 נבנה — `refresh-agent-repo.yml` (תאום ה-refresh, direct-push כי main של ריפו-סוכן כתיב), שיפור-עמידוּת `timeout-minutes:15` לעובד (גם ה-diff להוכחת ה-push), golden רוענן, exempt + changelog. yamllint/secret-scan/golden ירוקים מקומית. הבא: מיזוג → הוכחה חיה (refresh ל-`zz-agentrepo-prov1`).
 
-**שינוי תוכנית:** —
+**שינוי תוכנית:** בחרתי **`refresh-agent-repo.yml` ייעודי** (לא פרמטריזציה של `refresh-system-agents.yml`) — הלוגיקה דומה אבל פשוטה יותר (אין PR מוגן, אין reimport ל-n8n, direct-push), אז fork נקי עדיף על צימוד. ההוכחה דורשת diff אמיתי, אז כרכתי שיפור-עובד קטן (`timeout-minutes`) — זה גם בדיוק תרחיש-השימוש ("לְאַיטֵר על העובד, להחיל על ריפו-סוכן חי").
 
 ---
 

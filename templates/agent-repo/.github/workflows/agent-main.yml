@@ -29,6 +29,9 @@ jobs:
   work:
     name: Run Claude on the handed task
     runs-on: ubuntu-latest
+    # Cap a stuck run (a hung Claude turn would otherwise hold a runner for hours). The
+    # read-only worker with --max-turns 12 finishes well under this.
+    timeout-minutes: 15
     permissions:
       contents: read
       id-token: write
