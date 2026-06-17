@@ -33,12 +33,24 @@ workflow דק, מופעל ע"י Claude Code, ויודע לשלוח/לקבל יח
 > `generate-app-token.sh`, audit דרך `emit-event.sh`. בונים על `gcp-action.yml` +
 > `publish-static-site` + ה-MCP — **לא** על repository_dispatch/issue-comment של gcp-hands.
 
+> **החלטת מודל-המפתח (Or אישר 2026-06-17): דלת-WIF משותפת (אופציה B).** ריפו-סוכן (בלי GCP
+> משלו) מקבל את `anthropic-api-key` בזמן ריצה דרך **GitHub OIDC קצר-מועד → WIF → SA זמן-ריצה
+> מינימלי** — אפס סוד קבוע בריפו (בדיוק D6/D9 של המחקר). **מיקום הדלת (אילוץ הרשאות):** ה-broker
+> לא יכול לבנות pool/provider/SA בפרויקט ה-control (יש לו רק `secretmanager.admin` שם, לא
+> `workloadIdentityPoolAdmin`/`serviceAccountAdmin`). לכן הדלת (pool `agent-repo-pool` /
+> provider `github-agent-repo-provider` / SA `agent-repo-runtime-sa`) יושבת ב-`factory-test-25`
+> (שם ה-broker admin, ליד זהות ה-sandbox), וה-SA מקבל `secretAccessor` על **סוד יחיד** —
+> `anthropic-api-key` שב-control (binding per-secret, חוצה-פרויקט; בתוך ה-`secretmanager.admin`
+> של ה-broker). CEL: org `edri2or` + `main` בלבד; הרשאת impersonation היא per-agent-repo
+> (`workloadIdentityUser`), כך שרק ריפו-סוכן מאושר במפורש יכול להשתמש בדלת.
+
 ## שלבים
 
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
-| 0 | פתיחת תיק-פיתוח + capability-card skeleton | in-progress | `devplans/agent-repo-product.md`, `changelog.d/2026-06-17-agent-repo-product.md`, `docs/capability-cards/agent-broker-handoff.md` |
-| 1 | שלד-מהלך (walking skeleton) — ההוכחה-החיה (go/no-go) | pending | `.github/workflows/agent-action.yml`, `spikes/agent-skeleton/agent-main.yml`, `monitoring/registry-exempt.txt`, `docs/capability-cards/agent-broker-handoff.md` |
+| 0 | פתיחת תיק-פיתוח + capability-card skeleton | completed | `devplans/agent-repo-product.md`, `changelog.d/2026-06-17-agent-repo-product.md`, `docs/capability-cards/agent-broker-handoff.md` |
+| 1a | "הדלת" — WIF משותף + הוכחת-מפתח (ריפו בלי GCP שולף את מפתח Claude) | in-progress | `scripts/bootstrap-agent-repo-identity.sh`, `.github/workflows/bootstrap-agent-repo-identity.yml`, `.github/workflows/agent-skeleton-seed.yml`, `spikes/agent-skeleton/cred-probe.yml`, `monitoring/registry-exempt.txt` |
+| 1b | "הלולאה" — broker → worker מריץ Claude → תוצאה חוזרת ל-requester (go/no-go) | pending | `.github/workflows/agent-action.yml`, `spikes/agent-skeleton/agent-main.yml`, `monitoring/registry-exempt.txt`, `docs/capability-cards/agent-broker-handoff.md` |
 | 2 | תבניות המוצר + golden אינטגריטי מקביל | pending | `templates/agent-repo/**`, `scripts/render-agent-repo-golden.sh`, `scripts/check-agent-repo-golden.sh`, `scripts/check-agent-repo-golden-sync.sh`, `tests/golden/agent-repo/**`, `.github/workflows/{changelog-check,pipeline-tests}.yml` |
 | 3 | provisioner (GitHub-scaffold בלבד) | pending | `.github/workflows/provision-agent-repo.yml`, `monitoring/registry-exempt.txt`, `tests/golden/agent-repo/**` |
 | 4 | שער-סיכון + אישור-טלגרם ל-red + MCP allowlist + דוק-מוצר | pending | `policy/agent-risk-tiers.yml`, `scripts/agent-classify.sh`, `services/mcp-server/src/agent-approval.ts`, `services/mcp-server/src/index.ts`, `services/mcp-server/src/tools.ts`, `docs/agent-repo-product.md`, `monitoring/doc-bindings.json` |
@@ -75,18 +87,42 @@ workflow דק, מופעל ע"י Claude Code, ויודע לשלוח/לקבל יח
 
 ---
 
-### שלב 1 — שלד-מהלך (walking skeleton) — ההוכחה-החיה
+### שלב 1a — "הדלת": WIF משותף + הוכחת-מפתח
+
+הלבנה הקשה והחדשה: ריפו בלי GCP משלו שולף את `anthropic-api-key` בזמן ריצה דרך OIDC קצר-מועד.
+מוכיחים אותה לבד (bottom-up) לפני בניית הלולאה.
+
+**Acceptance:**
+- [ ] `scripts/bootstrap-agent-repo-identity.sh` — בונה אידמפוטנטית את `agent-repo-pool`/`github-agent-repo-provider`/`agent-repo-runtime-sa` ב-`factory-test-25` (CEL: org `edri2or` + `main`), binding `workloadIdentityUser` per-repo, ו-`secretAccessor` על סוד יחיד `anthropic-api-key` ב-control. Hard-guards: WIF רק ב-`factory-test-25`, סוד רק ב-control.
+- [ ] `.github/workflows/bootstrap-agent-repo-identity.yml` — מריץ את הסקריפט כ-broker (WIF, main-locked), קלט `bind_repos`.
+- [ ] `.github/workflows/agent-skeleton-seed.yml` (throwaway) — יוצר ריפו-`zz-` ומזריע אליו את `spikes/agent-skeleton/*.yml` דרך token מתוחם.
+- [ ] `spikes/agent-skeleton/cred-probe.yml` — ב-worker: auth דרך הדלת → קורא `anthropic-api-key` → מדפיס **רק אורך** (אף פעם לא הערך).
+- [ ] `monitoring/registry-exempt.txt` += `bootstrap-agent-repo-identity.yml`, `agent-skeleton-seed.yml`.
+- [ ] מוזג ל-main; הדלת הורצה; `zz-agentskel-worker` נוצר+נזרע+נקשר; ה-probe רץ והצליח.
+
+**הוכחה תפקודית (באותו שלב):** ריצת ה-`cred-probe` ב-`zz-agentskel-worker` (ריפו בלי GCP) חוזרת
+PASS עם `length>0` — כלומר שלפה את המפתח דרך OIDC קצר-מועד, **בלי סוד קבוע ובלי שהמפתח מודפס**.
+נצפה דרך `get_workflow_run`/`get_run_jobs` של אותה ריצה.
+
+**הוכחת E2E (artifact):** לא-התנהגותי.
+
+**הערת התקדמות אחרונה:** הקבצים נבנו; ממתין למיזוג-ל-main + הרצת הדלת (GCP) שאישר Or.
+
+**שינוי תוכנית:** מודל-המפתח עוגן ל-WIF משותף (אופציה B, אישור Or 2026-06-17); השלב המקורי "שלב 1" פוצל ל-1a (הדלת) + 1b (הלולאה) כדי להוכיח את לבנת-המפתח לבד לפני הלולאה. מיקום הדלת = `factory-test-25` (אילוץ הרשאות broker ב-control).
+
+---
+
+### שלב 1b — "הלולאה": broker → worker מריץ Claude → תוצאה חוזרת (go/no-go)
 
 **Acceptance:**
 - [ ] `.github/workflows/agent-action.yml` (broker): `workflow_dispatch`, קלטים מתוקפי-charset, `if: refs/heads/main`, `permissions:{contents:read,id-token:write}`. מנפיק dispatch-token מתוחם, מפעיל את ה-worker, **polling** עד טרמינל, מוריד artifact, מפרסם תוצאה ל-issue של ה-requester, פולט 4 אירועי `factory.agent_action.*`.
-- [ ] `spikes/agent-skeleton/agent-main.yml` (worker): `workflow_dispatch`, קורא `anthropic-api-key` (WIF, מוסתר), מריץ `anthropics/claude-code-action@v1` read-only (`Read,Grep,Glob`), כותב `result/<corr>.json` ומעלה artifact. בלי git push, בלי סוד קבוע.
+- [ ] `spikes/agent-skeleton/agent-main.yml` (worker): `workflow_dispatch`, auth דרך הדלת (1a), מריץ `anthropics/claude-code-action@v1` read-only (`Read,Grep,Glob`), כותב `result/<corr>.json` ומעלה artifact. בלי git push, בלי סוד קבוע.
 - [ ] `monitoring/registry-exempt.txt` += `agent-action.yml` (dispatch-only).
-- [ ] שני ריפו-ניסוי `zz-` נוצרו ונזרעו (דרך `create-throwaway-repo.yml` + push מתוחם).
-- [ ] CI ירוק. הריצה החיה עברה והוכרעה go/no-go ב-capability-card.
+- [ ] שני ריפו-ניסוי `zz-` (requester+worker) קיימים ונזרעו. הריצה החיה עברה; capability-card מעודכן עם go/no-go.
 
 **הוכחה תפקודית (באותו שלב):** ריצה חיה — dispatch ל-`agent-action.yml` → ה-issue של ה-requester
-מציג תוצאת-Claude → לוג ה-worker מאשר אפס-סוד-קבוע + אפס-יציאה-החוצה → 4 אירועים ב-Axiom →
-כל token חוצה-ריפו מתוחם לריפו-בודד. **GO רק אם כל ארבעת התנאים מתקיימים.**
+מציג תוצאת-Claude → לוג ה-worker מאשר אפס-סוד-קבוע + אפס-יציאה-החוצה → 4 אירועי emit בלוג →
+כל token חוצה-ריפו מתוחם לריפו-בודד. **GO רק אם כל הקריטריונים ב-capability-card מתקיימים.**
 
 **הוכחת E2E (artifact):** לא-התנהגותי (ה-walking-skeleton הוא ההוכחה החיה, לא `e2e-verify`).
 
@@ -168,4 +204,5 @@ workflow דק, מופעל ע"י Claude Code, ויודע לשלוח/לקבל יח
 
 ## יומן ל-Or (עברית)
 
-- 2026-06-17: התוכנית נפתחה. עיגנתי מחדש לקוד החי (gcp-hands נמחק — בונים על `gcp-action`+ה-MCP). שלב 0 (פתיחת תיק) בעבודה; אחריו עוצר ושואל אותך לפני שלב 1 (שעולה כמה סנט — 2 ריפו-ניסוי + הרצת Claude).
+- 2026-06-17: התוכנית נפתחה. עיגנתי מחדש לקוד החי (gcp-hands נמחק — בונים על `gcp-action`+ה-MCP). שלב 0 (פתיחת תיק) הושלם, PR #512 ירוק.
+- 2026-06-17: Or בחר את מודל-המפתח — "דלת-WIF משותפת". פיצלתי את שלב 1 ל-1a (הדלת + הוכחת-מפתח) ו-1b (הלולאה המלאה), כדי להוכיח קודם שריפו בלי GCP שולף את המפתח בבטחה, ורק אז לבנות את הלולאה.
