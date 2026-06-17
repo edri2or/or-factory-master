@@ -37,7 +37,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 | 0 | פתיחת תיק (devplan + changelog + כרטיס-יכולת) | completed | `devplans/`, `changelog.d/`, `docs/capability-cards/firstwave-fanout.md` |
 | 1 | הוכחת יכולת ה-fan-out (spike זרוק על ריפו-בדיקה אחד) | completed | `spikes/firstwave-fanout/` |
 | 2 | פרובוז 3 הריפויים האמיתיים ★גבול-עלות★ | completed | (דיספוז `provision-agent-repo.yml` ×3) |
-| 3 | הזרקת פרסונת AGENTS.md לכל ריפו חי | pending | `docs/agent-specs/firstwave/`, (refresh חי) |
+| 3 | אופי מותאם (Drive-free) + worker לכל ריפו חי | completed | `docs/agent-specs/firstwave/`, (refresh חי) |
 | 4 | כל סוכן עונה לבד + לולאת-broker (Gate 1) | pending | (לולאות `agent-action.yml`) |
 | 5 | fan-out + unify על השלושה (Gate 2 — לבנה אחרונה) | pending | (לולאות `agent-action.yml`) |
 
@@ -130,7 +130,11 @@ run-ids ב-`docs/capability-cards/firstwave-fanout.md`. **תובנה:** fan-out 
 
 **הוכחת E2E (artifact):** לא-התנהגותי.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם ✅ — 3 ענפי-עבודה זרוקים (`wave/persona-{nachshon,natan,sapi}`)
+נושאים `AGENTS.md` מותאם + worker, הוחלו דרך `refresh-agent-repo.yml` (runs 27704815500 /
+27704822668 / 27704829541, כולם success). אומת: כל `AGENTS.md` חי הוא האופי המותאם (נחשון=נתב
+תלת-מצבי + allow-list natan-research/sapi-docs; נתן=מחקר-ריפו מבוסס-ראיות; ספי=תיעוד+MECE).
+התבנית ב-main נשארה גנרית (golden לא נדרס).
 
 **שינוי תוכנית (החלטת-עיצוב אור, 2026-06-17):** **Drive בחוץ לגמרי** — האופי של כל סוכן יושב
 בריפו שלו (`AGENTS.md`), לא נקרא מ-Drive. לוקחים את *עיקרון* התהליך של כל פרסונה ומתרגמים אותו
@@ -183,3 +187,4 @@ run-ids ב-`docs/capability-cards/firstwave-fanout.md`. **תובנה:** fan-out 
 - שלב 0 הושלם — פתחתי את תיק-הפיתוח של "הגל הראשון": מטרה, שלבים, וכרטיס להוכחת היכולת החדשה (ה-fan-out).
 - שלב 1 הושלם — הוכחתי על ריפו-בדיקה אחד שה-fan-out עובד: נחשון פיצל בקשה לשתי משימות, כל אחת רצה דרך ה-broker, והאיחוד הסופי שילב את שתי התשובות. ✅ go — אפשר לבנות את הסוכנים האמיתיים.
 - שלב 2 הושלם — יצרתי את שלושת הסוכנים האמיתיים: נחשון (נתב), נתן (מחקר), ספי (תיעוד). כל אחד ריפו פרטי חי, מחובר ומאובטח. עכשיו צריך להלביש לכל אחד את האופי שלו (מתיקיית ה-Drive).
+- שלב 3 הושלם — הלבשתי לכל סוכן את האופי שלו (מותאם לעולם הריפו, בלי Drive): נחשון יודע לנתב ולפצל לנתן/ספי, נתן חוקר ומתכנן, ספי מתעד ומסווג. כולם חיים בריפו עצמו.
