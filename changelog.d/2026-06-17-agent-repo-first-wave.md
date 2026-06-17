@@ -39,3 +39,14 @@
 
 ללא שינוי קוד-מוצר: רוכבים על `provision-agent-repo.yml` / `refresh-agent-repo.yml` /
 `agent-action.yml` הקיימים. אין נגיעה ב-`templates/agent-repo/**` ב-main (golden לא נדרס).
+
+## הגל הראשון — שלב 2: פרובוז 3 הריפויים האמיתיים
+
+נוצרו שלושת ריפו-הסוכנים הפרטיים האמיתיים מעל התשתית המוכחת (אישור-עלות מפורש מאור):
+**`nachshon`** (נתב, provision run `27700908287`), **`natan-research`** (מחקר, `27700977619`),
+**`sapi-docs`** (תיעוד, `27701033095`). כל אחד נולד פרטי עם 4 הקבצים (`CLAUDE.md`→`AGENTS.md`,
+`.mcp.json`, `agent-main.yml`) וקושר לדלת-WIF המשותפת (שלב ה-bind ירוק בכל ריצה). אומת:
+`get_repo` (private=true) + `AGENTS.md` מרונדר עם השם והתכלית של כל סוכן.
+
+נוצר דרך ה-`provision-agent-repo.yml` הקיים — אין שינוי קוד. הוכחת לולאת-ה-broker החיה לכל
+ריפו מקופלת לשלב 4 (כל סוכן עונה לבד) כדי לא לכפול הרצות Claude.

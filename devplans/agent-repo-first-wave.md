@@ -36,7 +36,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 |---|---|---|---|
 | 0 | פתיחת תיק (devplan + changelog + כרטיס-יכולת) | completed | `devplans/`, `changelog.d/`, `docs/capability-cards/firstwave-fanout.md` |
 | 1 | הוכחת יכולת ה-fan-out (spike זרוק על ריפו-בדיקה אחד) | completed | `spikes/firstwave-fanout/` |
-| 2 | פרובוז 3 הריפויים האמיתיים ★גבול-עלות★ | pending | (דיספוז `provision-agent-repo.yml` ×3) |
+| 2 | פרובוז 3 הריפויים האמיתיים ★גבול-עלות★ | completed | (דיספוז `provision-agent-repo.yml` ×3) |
 | 3 | הזרקת פרסונת AGENTS.md לכל ריפו חי | pending | `docs/agent-specs/firstwave/`, (refresh חי) |
 | 4 | כל סוכן עונה לבד + לולאת-broker (Gate 1) | pending | (לולאות `agent-action.yml`) |
 | 5 | fan-out + unify על השלושה (Gate 2 — לבנה אחרונה) | pending | (לולאות `agent-action.yml`) |
@@ -101,17 +101,21 @@ run-ids ב-`docs/capability-cards/firstwave-fanout.md`. **תובנה:** fan-out 
 ### שלב 2 — פרובוז 3 הריפויים האמיתיים  ★ גבול-עלות אמיתי — עצירה לאישור אור ★
 
 **Acceptance:**
-- [ ] `provision-agent-repo.yml` הורץ ×3: `nachshon`, `natan-research`, `sapi-docs`.
-- [ ] כל ריפו נולד פרטי עם 4 הקבצים + קישור לדלת-WIF.
+- [x] `provision-agent-repo.yml` הורץ ×3: `nachshon`, `natan-research`, `sapi-docs`.
+- [x] כל ריפו נולד פרטי עם 4 הקבצים + קישור לדלת-WIF.
 
 **הוכחה תפקודית (באותו שלב):** `get_repo` מאשר ריפו פרטי + `get_file_contents` מאשר 4
 קבצים; לולאת-broker "ערומה" אחת לכל ריפו מחזירה `results/<corr>.json` תקין. run-ids נרשמים.
 
 **הוכחת E2E (artifact):** לא-התנהגותי.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם ✅ — שלושת הריפויים נוצרו ואומתו: `nachshon`
+(provision run `27700908287`), `natan-research` (`27700977619`), `sapi-docs` (`27701033095`).
+כל אחד פרטי, עם AGENTS.md מרונדר, ושלב "Bind ... WIF door" ירוק. ה"לולאת-broker הערומה"
+מקופלת לתוך שלב 4 (כל סוכן עונה לבד = בדיוק לולאת ה-broker החיה לכל ריפו) כדי לא לכפול הרצות Claude.
 
-**שינוי תוכנית:** —
+**שינוי תוכנית:** הוכחת לולאת-ה-broker הערומה לא מורצת בנפרד בשלב 2 — היא זהה להוכחת
+שלב 4 (broker → סוכן → תוצאה), אז מאומתת שם פעם אחת לכל ריפו.
 
 ---
 
@@ -173,3 +177,4 @@ run-ids ב-`docs/capability-cards/firstwave-fanout.md`. **תובנה:** fan-out 
 
 - שלב 0 הושלם — פתחתי את תיק-הפיתוח של "הגל הראשון": מטרה, שלבים, וכרטיס להוכחת היכולת החדשה (ה-fan-out).
 - שלב 1 הושלם — הוכחתי על ריפו-בדיקה אחד שה-fan-out עובד: נחשון פיצל בקשה לשתי משימות, כל אחת רצה דרך ה-broker, והאיחוד הסופי שילב את שתי התשובות. ✅ go — אפשר לבנות את הסוכנים האמיתיים.
+- שלב 2 הושלם — יצרתי את שלושת הסוכנים האמיתיים: נחשון (נתב), נתן (מחקר), ספי (תיעוד). כל אחד ריפו פרטי חי, מחובר ומאובטח. עכשיו צריך להלביש לכל אחד את האופי שלו (מתיקיית ה-Drive).
