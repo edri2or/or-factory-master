@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "bindings": [
+    {
+      "id": "postgres-named-queries",
+      "name_he": "תיעוד השאילתות הבטוחות",
+      "artifacts": ["templates/system/workflows/n8n/postgres-named-queries.json"],
+      "docs": ["templates/system/AGENTS.md.template"],
+      "enforce": true
+    }
+  ]
+}

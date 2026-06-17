@@ -60,3 +60,17 @@ jobs:
         # inspects only postgres `query` strings, so legit JSON.stringify in
         # jsonBody / claimsJson / prompts is untouched.
         run: bash scripts/check-n8n-sql-literals.sh
+
+      - name: Check documented facts match the code
+        # Documentation drift prevention, Layer 2 (the pillar): a fact extracted
+        # from code — e.g. the named-Postgres-query whitelist — must equal what
+        # the doc declares. Catches the recorded "8 vs 4" class, which the
+        # presence/structure gates miss. See docs/doc-drift-prevention.md.
+        run: bash scripts/check-doc-facts.sh
+
+      - name: Check bound docs touched when their artifact changes
+        # Documentation drift prevention, Layer 1: if a bound artifact REALLY
+        # changed (n8n diffs normalized so a cosmetic reposition doesn't count),
+        # its bound doc must be touched in the same diff — unless a `doc-waiver:`
+        # line is added to a changelog.d/ fragment. See docs/doc-drift-prevention.md.
+        run: bash scripts/check-doc-binding.sh
