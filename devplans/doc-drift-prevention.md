@@ -2,7 +2,7 @@
 dev_name: מנגנון מניעת סחיפת-תיעוד
 slug: doc-drift-prevention
 opened: 2026-06-17
-status: active   # active בזמן פיתוח → completed בסיום (משחרר את שער ה-CI)
+status: completed   # active בזמן פיתוח → completed בסיום (משחרר את שער ה-CI)
 ---
 
 # תוכנית פיתוח — מנגנון מניעת סחיפת-תיעוד
@@ -20,7 +20,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 |---|---|---|---|
 | 1 | תיעוד-הכלל + ספריית-נרמול n8n (C5 + C1) | completed | `docs/doc-drift-prevention.md`, `scripts/lib/normalize-n8n.sh`, `scripts/tests/normalize-n8n.bats`, `CLAUDE.md`, `monitoring/README.md` |
 | 2 | שער בדיקת-עובדות (C4 + חיווט C6a) | completed | `scripts/check-doc-facts.sh`, `monitoring/doc-fact-checks.json`, `scripts/tests/check-doc-facts.bats`, `.github/workflows/changelog-check.yml` |
-| 3 | שער כבילה (C2 + C3 + חיווט C6b) + סגירה | pending | `monitoring/doc-bindings.json`, `monitoring/doc-binding-exempt.txt`, `scripts/check-doc-binding.sh`, `scripts/tests/check-doc-binding.bats`, `.github/workflows/changelog-check.yml` |
+| 3 | שער כבילה (C2 + C3 + חיווט C6b) + סגירה | completed | `monitoring/doc-bindings.json`, `monitoring/doc-binding-exempt.txt`, `scripts/check-doc-binding.sh`, `scripts/tests/check-doc-binding.bats`, `.github/workflows/changelog-check.yml` |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
 >
@@ -73,16 +73,17 @@ key-order מנרמל **שווה**; שינוי parameter/הוספת node מנרמ
 ### שלב 3 — שער כבילה (C2 + C3 + חיווט C6b) + סגירה
 
 **Acceptance:**
-- [ ] `doc-bindings.json` כובל את `postgres-named-queries.json` ↔ `AGENTS.md.template`; `doc-binding-exempt.txt` קיים.
-- [ ] `check-doc-binding.sh`: ארטיפקט כבול ש**באמת** השתנה (n8n מנורמל דרך C1) בלי נגיעת-דוק → FAIL; שינוי קוסמטי → PASS; `doc-waiver:` בפרגמנט-באותו-דיף → PASS + emit.
-- [ ] מחווט ל-"Changelog gates"; סוגר את התוכנית (`status: completed`) באותו PR.
+- [x] `doc-bindings.json` כובל את `postgres-named-queries.json` ↔ `AGENTS.md.template`; `doc-binding-exempt.txt` קיים.
+- [x] `check-doc-binding.sh`: ארטיפקט כבול ש**באמת** השתנה (n8n מנורמל דרך C1) בלי נגיעת-דוק → FAIL; שינוי קוסמטי → PASS; `doc-waiver:` בפרגמנט-באותו-דיף → PASS + emit.
+- [x] מחווט ל-"Changelog gates"; סוגר את התוכנית (`status: completed`) באותו PR.
 
-**הוכחה תפקודית (באותו שלב):** `scripts/tests/check-doc-binding.bats` — fixtures: שינוי-אמיתי בלי דוק → FAIL;
-שינוי-position-בלבד → PASS; דוק נגוע → PASS; waiver → PASS.
+**הוכחה תפקודית (באותו שלב):** `scripts/tests/check-doc-binding.bats` — 8/8 עברו: שינוי-אמיתי בלי דוק → FAIL;
+שינוי-position-בלבד → PASS; דוק נגוע → PASS; waiver → PASS (WAIVED); קובץ לא-קשור → PASS; waiver לארטיפקט אחר → FAIL;
+ארטיפקט שזה-עתה-נוסף → FAIL; מניפסט פגום → FAIL. shellcheck נקי; הרצה על הריפו האמיתי → PASS (pnq.json לא השתנה).
 
 **הוכחת E2E (artifact):** לא-התנהגותי.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם. שני השערים החוסמים חיים ומחווטים; התוכנית נסגרת באותו PR.
 
 **שינוי תוכנית:** —
 
@@ -94,3 +95,4 @@ key-order מנרמל **שווה**; שינוי parameter/הוספת node מנרמ
 
 - שלב 1 הושלם — כתבנו את המסמך שמסביר את הכלל, ובנינו והוכחנו כלי קטן שמנקה "רעש" מקבצי n8n כדי שלא נקבל התראות-שווא.
 - שלב 2 הושלם — השער המרכזי חי: הוא משווה את רשימת השאילתות בקוד מול התיעוד, והוכחנו שהיה תופס בדיוק את "8 מול 4" — בלי להפיל שום מיזוג תקין.
+- שלב 3 הושלם — שער שני: אם משנים קובץ-קוד שיש לו תיעוד ייעודי, חייבים לגעת בתיעוד (עם פתח-מילוט מסודר אם באמת אין צורך). שינוי "קוסמטי" של n8n לא מפעיל התראת-שווא. המנגנון הושלם וייסגר.
