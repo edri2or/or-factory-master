@@ -1,15 +1,17 @@
 name: Publish static site (Cloudflare Pages)
 
 # The factory's "idea -> designed site -> live URL" publish engine.
-# Takes a static site folder and publishes it to Cloudflare Pages via Direct
-# Upload (wrangler, headless), then attaches <slug>.or-infra.com and verifies
-# it live. Factory-native + least-privilege: auth as the broker SA via WIF,
-# read the Cloudflare secrets from the control project's SM, and have the
-# script mint + revoke TWO short-lived scoped tokens (Pages + DNS).
+# Takes a static site folder from a source repo and publishes it to Cloudflare
+# Pages via Direct Upload (wrangler, headless), then attaches <slug>.or-infra.com
+# and verifies it live. Factory-native + least-privilege: auth as the broker SA
+# via WIF, read the Cloudflare secrets from the control project's SM, mint a
+# short-lived broker App token scoped to the source repo (contents:read) to fetch
+# the site bytes, and have the script mint + revoke TWO short-lived scoped
+# Cloudflare tokens (Pages + DNS).
 #
-# Stage 1 (capability-first proof): no source input yet — the script publishes
-# a minimal generated page to prove the raw capability. Stage 2 adds the
-# source-repo checkout (source_repo/source_ref/source_dir via a broker token).
+# Bytes ingestion (D1): the site lives in a source repo at source_dir; default is
+# edri2or/or-edri-4@main:site. A dedicated edri2or/or-sites repo can become the
+# default source later with zero workflow change.
 #
 # Broker WIF is pinned to refs/heads/main, so this only runs on main.
 # Dispatched via the dispatch_workflow allowlist (after Stage 4) or the GitHub MCP.
@@ -22,6 +24,21 @@ on:
         required: true
         type: string
         default: "pages-proof"
+      source_repo:
+        description: "owner/name of the repo holding the site bytes (broker App must be able to read it)."
+        required: false
+        type: string
+        default: "edri2or/or-edri-4"
+      source_ref:
+        description: "Git ref (branch/tag/sha) in the source repo to publish."
+        required: false
+        type: string
+        default: "main"
+      source_dir:
+        description: "Directory within the source repo to publish (the site root)."
+        required: false
+        type: string
+        default: "site"
 
 permissions: {}
 
@@ -38,7 +55,7 @@ jobs:
       CONTROL_PROJECT: or-factory-master-control
 
     steps:
-      - name: Checkout
+      - name: Checkout factory (for scripts)
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
 
       - name: Authenticate to GCP via WIF
@@ -50,14 +67,60 @@ jobs:
       - name: Set up gcloud
         uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db  # v3.0.1
 
+      - name: Set up Node (for wrangler)
+        uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903  # v6.0.0
+        with:
+          node-version: "20"
+
       - name: Publish
         env:
           SLUG: ${{ inputs.slug }}
+          SOURCE_REPO: ${{ inputs.source_repo }}
+          SOURCE_REF: ${{ inputs.source_ref }}
+          SOURCE_DIR: ${{ inputs.source_dir }}
         run: |
           set -euo pipefail
+
+          emit() {  # emit <name> <severity> <action_required> <body-json>
+            bash scripts/emit-event.sh \
+              --name="$1" --severity="$2" --layer=factory \
+              --workflow=publish-static-site.yml --run-id="${GITHUB_RUN_ID}" \
+              --action-required="$3" --body="$4" || true
+          }
+          BODY=$(jq -cn --arg s "$SLUG" --arg r "$SOURCE_REPO" --arg ref "$SOURCE_REF" --arg d "$SOURCE_DIR" \
+            '{slug:$s, source_repo:$r, source_ref:$ref, source_dir:$d}')
+          emit factory.publish.started info false "$BODY"
+
+          # --- mint a short-lived broker App token scoped to the source repo (contents:read) ---
+          APP_ID=$(gcloud secrets versions access latest --secret=factory-master-broker-app-id --project="$CONTROL_PROJECT")
+          INSTALL_ID=$(gcloud secrets versions access latest --secret=factory-master-broker-app-installation-id --project="$CONTROL_PROJECT")
+          gcloud secrets versions access latest --secret=factory-master-broker-app-private-key --project="$CONTROL_PROJECT" > /tmp/bk.pem
+          echo "::add-mask::$APP_ID"; echo "::add-mask::$INSTALL_ID"
+          SRC_NAME="${SOURCE_REPO##*/}"
+          SRC_TOKEN=$(bash scripts/generate-app-token.sh /tmp/bk.pem "$APP_ID" "$INSTALL_ID" "" '{"contents":"read"}' "[\"${SRC_NAME}\"]")
+          rm -f /tmp/bk.pem
+          echo "::add-mask::$SRC_TOKEN"
+
+          # --- fetch the site bytes from the source repo ---
+          SRC_ROOT="$(mktemp -d)"
+          git clone --depth 1 --branch "$SOURCE_REF" \
+            "https://x-access-token:${SRC_TOKEN}@github.com/${SOURCE_REPO}.git" "$SRC_ROOT/repo" 2>&1 \
+            | sed "s/${SRC_TOKEN}/***/g" || { echo "FAIL: could not clone ${SOURCE_REPO}@${SOURCE_REF}" >&2; exit 1; }
+          SITE_DIR="$SRC_ROOT/repo/${SOURCE_DIR}"
+          [ -d "$SITE_DIR" ] || { echo "FAIL: source_dir '${SOURCE_DIR}' not found in ${SOURCE_REPO}@${SOURCE_REF}" >&2; exit 1; }
+
+          # --- Cloudflare secrets (control SM, broker-read) ---
           CF_TOKEN_CREATOR=$(gcloud secrets versions access latest --secret=cloudflare-token-creator --project="$CONTROL_PROJECT")
           echo "::add-mask::${CF_TOKEN_CREATOR}"
           CF_ACCOUNT_ID=$(gcloud secrets versions access latest --secret=cloudflare-account-id --project="$CONTROL_PROJECT")
           CF_ZONE_ID=$(gcloud secrets versions access latest --secret=cloudflare-zone-id-or-infra --project="$CONTROL_PROJECT")
-          export CF_TOKEN_CREATOR CF_ACCOUNT_ID CF_ZONE_ID
-          bash scripts/publish-static-site.sh
+          export CF_TOKEN_CREATOR CF_ACCOUNT_ID CF_ZONE_ID SITE_DIR
+
+          # --- publish (the script mints/revokes the two scoped CF tokens itself) ---
+          if bash scripts/publish-static-site.sh; then
+            emit factory.publish.completed info false "$(jq -cn --arg s "$SLUG" '{slug:$s, url:("https://"+$s+".or-infra.com")}')"
+          else
+            rc=$?
+            emit factory.publish.failed error true "$(jq -cn --arg s "$SLUG" --argjson rc "$rc" '{slug:$s, exit_code:$rc}')"
+            exit "$rc"
+          fi

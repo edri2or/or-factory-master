@@ -24,3 +24,8 @@
   `https://pages-proof.or-infra.com` מחזיר 200 (אומת עצמאית). נוסף `docs/capability-cards/publish-static-site.md`
   (verdict: go; קבוצת-הרשאה `Pages Write` id `8d28297797f24fb8a0c332fe0866ec89`; ממצא ה-DNS-only).
   שלב 1 (הוכחת-יכולת) סגור.
+- **שלב 2 — הקשחה לגרסת-ייצור.** ה-workflow קיבל פרמטרים `source_repo`/`source_ref`/`source_dir`
+  (ברירת מחדל `edri2or/or-edri-4`@`main`:`site`), checkout של מקור-הריפו דרך טוקן broker קצר-מועד
+  (`contents:read`, דפוס `create-throwaway-repo.yml`), `setup-node` נעוץ-SHA ל-wrangler, ופליטת
+  `factory.publish.{started,completed,failed}` (כולל `action_required` בכישלון). הסקריפט כבר נשא
+  idempotency + מלכודת-ביטול-כפולה + לולאת-המתנה ל-SSL מ-שלב 1.

@@ -20,7 +20,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
 | 1 | הוכחת-יכולת חיה (הלבנה הקשה: Pages Direct Upload + חיבור דומיין) | completed | `.github/workflows/publish-static-site.yml`, `scripts/publish-static-site.sh`, `monitoring/registry-exempt.txt`, `docs/capability-cards/publish-static-site.md` |
-| 2 | הקשחה לגרסת-ייצור (פרמטרים, מקור-ריפו דרך טוקן broker, idempotency, מלכודת-ביטול, המתנת-SSL, emit) | pending | `scripts/publish-static-site.sh`, `.github/workflows/publish-static-site.yml` |
+| 2 | הקשחה לגרסת-ייצור (פרמטרים, מקור-ריפו דרך טוקן broker, idempotency, מלכודת-ביטול, המתנת-SSL, emit) | in-progress | `scripts/publish-static-site.sh`, `.github/workflows/publish-static-site.yml` |
 | 3 | End-to-end על האתר האמיתי (`or-edri-4/site` → `<slug>.or-infra.com`) | pending | (הפעלה חיה; ללא שינוי קוד) |
 | 4 | חיווט ל-MCP allowlist + תיעוד | pending | `services/mcp-server/src/tools.ts`, `CLAUDE.md` |
 | 5 | redeploy ל-MCP + smoke | pending | (הפעלה חיה; ללא שינוי קוד) |
@@ -89,9 +89,13 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 
 **הוכחת E2E (artifact):** לא-התנהגותי.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** ה-workflow הוקשח: נוספו פרמטרים `source_repo`/`source_ref`/`source_dir`,
+checkout של מקור-הריפו דרך טוקן broker קצר-מועד (contents:read, דפוס `create-throwaway-repo.yml`),
+`setup-node` נעוץ-SHA, ופליטת `factory.publish.{started,completed,failed}`. הסקריפט כבר נושא
+idempotency + מלכודת-ביטול-כפולה + לולאת-SSL מ-שלב 1. ממתין למיזוג + הרצת-אימות חיה.
 
-**שינוי תוכנית:** —
+**שינוי תוכנית:** ה-emit ממומש ב-workflow (לא בסקריפט) כי הוא צריך את `GITHUB_RUN_ID` ואת זרימת
+ההצלחה/כישלון; הסקריפט נשאר נקי וניתן-לשימוש-חוזר. ללא שינוי אחר.
 
 ---
 
