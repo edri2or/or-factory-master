@@ -24,6 +24,11 @@ import {
   isGcpApprovalCallback,
 } from './gcp-approval.js';
 import {
+  registerAgentApproval,
+  handleAgentApprovalCallback,
+  isAgentApprovalCallback,
+} from './agent-approval.js';
+import {
   registerRepoDelete,
   handleRepoApprovalCallback,
   isRepoApprovalCallback,
@@ -376,6 +381,29 @@ app.post('/gcp-approval-register', async (req: Request, res: Response) => {
   res.status(r.status).json(r.body);
 });
 
+// Agent-repo risk-gate — REGISTER. agent-action.yml (red path) calls this
+// (admin-gated, X-Admin-Secret) for a unit of agent work the classifier tiered
+// RED. It sends Or one Telegram card with ✅/❌ buttons; the whole work unit
+// ({worker_repo, requester_repo, task, correlation_id}) is embedded in the card
+// text (base64-in-sentinel) for stateless recovery on ✅. Body: { worker_repo,
+// requester_repo, task, correlation_id, reason? }.
+app.post('/agent-action-register', async (req: Request, res: Response) => {
+  const provided = (req.headers['x-admin-secret'] as string | undefined) ?? '';
+  if (!secretMatches(provided)) {
+    res.status(403).json({ error: 'unauthorized' });
+    return;
+  }
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const r = await registerAgentApproval({
+    worker_repo: String(body['worker_repo'] ?? ''),
+    requester_repo: String(body['requester_repo'] ?? ''),
+    task: String(body['task'] ?? ''),
+    correlation_id: String(body['correlation_id'] ?? ''),
+    reason: typeof body['reason'] === 'string' ? body['reason'] : undefined,
+  });
+  res.status(r.status).json(r.body);
+});
+
 // Repo-deletion gate — REGISTER. propose-repo-delete.yml calls this (admin-gated,
 // X-Admin-Secret) to send Or one ✅/❌ card listing repos to delete. The deletion
 // runs ONLY in the Telegram callback (handleRepoApprovalCallback) — never here.
@@ -403,7 +431,9 @@ app.post('/repo-delete-register', async (req: Request, res: Response) => {
 // (one bot, one webhook). Gated by the secret_token Telegram echoes in
 // X-Telegram-Bot-Api-Secret-Token (constant-time). Routes by update kind: an OIL
 // approval callback (oilapprove:/oilreject:) → handleTelegramCallback; a system
-// resource-request callback (sysreq:/sysno:) → handleSystemRequestCallback;
+// resource-request callback (sysreq:/sysno:) → handleSystemRequestCallback; a GCP
+// red-op callback (gcpok:/gcpno:) → handleGcpApprovalCallback; an agent-action
+// callback (agentok:/agentno:) → handleAgentApprovalCallback;
 // everything else (a text message, or a chat HITL cdo:/cno: callback) → handleChatUpdate.
 // Always answers 200 (Telegram retries non-2xx) — the real outcome is in the
 // body; any reply is delivered out-of-band via a separate sendMessage.
@@ -424,6 +454,7 @@ app.post('/telegram-webhook', async (req: Request, res: Response) => {
     const isOilCallback = data.startsWith('oilapprove:') || data.startsWith('oilreject:');
     const isSysReqCallback = isSystemRequestCallback(data);
     const isGcpCallback = isGcpApprovalCallback(data);
+    const isAgentCallback = isAgentApprovalCallback(data);
     const isRepoCallback = isRepoApprovalCallback(data);
     let r;
     if (isOilCallback) {
@@ -432,6 +463,8 @@ app.post('/telegram-webhook', async (req: Request, res: Response) => {
       r = await handleSystemRequestCallback(req);
     } else if (isGcpCallback) {
       r = await handleGcpApprovalCallback(req);
+    } else if (isAgentCallback) {
+      r = await handleAgentApprovalCallback(req);
     } else if (isRepoCallback) {
       r = await handleRepoApprovalCallback(req);
     } else {
