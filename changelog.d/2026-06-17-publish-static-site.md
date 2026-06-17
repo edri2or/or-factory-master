@@ -36,3 +36,8 @@
 - **שלב 4 — חיווט ל-MCP allowlist + תיעוד.** `publish-static-site.yml` נוסף ל-`DISPATCHABLE_WORKFLOWS`
   + תיאור הכלי ב-`services/mcp-server/src/tools.ts`, ושורת Workflows ב-`CLAUDE.md`. (ה-redeploy של
   ה-MCP — שלב 5 — מופעל בנפרד באישור Or, כי הוא נוגע בשירות-הליבה.)
+- **שלב 5 — redeploy ל-MCP + smoke.** הופעל `deploy-mcp-server.yml` (נבנה מחדש מ-main → ה-allowlist
+  חי), ו-`factory-mcp-smoke.yml` עבר **ירוק** על or-edri-4 (handshake + 8 כלים + חומות חוצה-tenant).
+- **שלב 6 — Skills + כרטיס יכולת.** נוספו `skills/publish-site/SKILL.md` (מפת-ההפעלה לפרסום) +
+  `skills/build-site/SKILL.md` (הכנת הבייטים לריפו); כרטיס-היכולת `docs/capability-cards/publish-static-site.md`
+  כבר סופי משלב 1 (verdict go).
