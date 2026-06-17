@@ -52,7 +52,7 @@ workflow דק, מופעל ע"י Claude Code, ויודע לשלוח/לקבל יח
 | 1a | "הדלת" — WIF משותף + הוכחת-מפתח (ריפו בלי GCP שולף את מפתח Claude) | completed | `scripts/bootstrap-agent-repo-identity.sh`, `.github/workflows/bootstrap-agent-repo-identity.yml`, `.github/workflows/agent-skeleton-seed.yml`, `spikes/agent-skeleton/cred-probe.yml`, `monitoring/registry-exempt.txt` |
 | 1b | "הלולאה" — broker → worker מריץ Claude → תוצאה חוזרת ל-requester (go/no-go) | completed | `.github/workflows/agent-action.yml`, `spikes/agent-skeleton/agent-main.yml`, `monitoring/registry-exempt.txt`, `docs/capability-cards/agent-broker-handoff.md` |
 | 2 | תבניות המוצר + golden אינטגריטי מקביל | in-progress | `templates/agent-repo/**`, `scripts/render-agent-repo-golden.sh`, `scripts/check-agent-repo-golden.sh`, `scripts/check-agent-repo-golden-sync.sh`, `tests/golden/agent-repo/**`, `.github/workflows/{changelog-check,pipeline-tests,playground-tests}.yml` |
-| 3 | provisioner (GitHub-scaffold בלבד) | in-progress | `.github/workflows/provision-agent-repo.yml`, `monitoring/registry-exempt.txt` |
+| 3 | provisioner (GitHub-scaffold בלבד) | completed | `.github/workflows/provision-agent-repo.yml`, `monitoring/registry-exempt.txt` |
 | 4 | שער-סיכון + אישור-טלגרם ל-red + MCP allowlist + דוק-מוצר | pending | `policy/agent-risk-tiers.yml`, `scripts/agent-classify.sh`, `services/mcp-server/src/agent-approval.ts`, `services/mcp-server/src/index.ts`, `services/mcp-server/src/tools.ts`, `docs/agent-repo-product.md`, `monitoring/doc-bindings.json` |
 | 5 | לולאת "iterate על ריפו-סוכן חי אחד" | pending | `.github/workflows/refresh-system-agents.yml` (פרמטריזציה) או `refresh-agent-repo.yml`, `monitoring/registry-exempt.txt` |
 
@@ -161,7 +161,7 @@ PASS עם `length>0` — כלומר שלפה את המפתח דרך OIDC קצר-
 
 **הוכחת E2E (artifact):** לא-התנהגותי.
 
-**הערת התקדמות אחרונה:** ה-provisioner נבנה ועבר yamllint/actionlint + parity של allow-list מול ה-golden. ממתין למיזוג + הרצה חיה (provision ריפו-`zz-` ולולאה עליו).
+**הערת התקדמות אחרונה:** ✅ **הוכח חי (completed).** מוזג (#518). provision של `zz-agentrepo-prov1` (run 27690894574, success) → הריפו נולד נכון (AGENTS.md מרונדר מלא, קשור לדלת). אז לולאת broker עם הריפו החדש כ-worker (run 27691008815, success) → `results/prov-loop-1.json` נכתב ל-`zz-agentskel-requester` עם תשובת-Claude. כלומר **provision → ריפו-סוכן עובד, מקצה לקצה.** ניקוי קבצי-ה-skeleton + ריפויי-ה-`zz-` נדחה ל-follow-up קצר (ראה יומן).
 
 **שינוי תוכנית:** (1) **הגנת-main קשוחה נדחתה** — ה-broker כותב `results/<corr>.json` ישירות ל-main של ריפו-המבקש (contents); הגנת PR+CI הייתה חוסמת זאת, וצריך נתיב-כתיבה תואם-broker (ref ייעודי או PR ב-0-contexts) — hardening נפרד. ה-MVP משאיר main כתיב (ריפו פרטי). (2) ה-bind לדלת מבוצע ע"י שימוש-חוזר ב-`bootstrap-agent-repo-identity.sh` (אידמפוטנטי), לא set-repo-vars (ל-worker אין placeholders פר-ריפו).
 
@@ -209,3 +209,4 @@ PASS עם `length>0` — כלומר שלפה את המפתח דרך OIDC קצר-
 - 2026-06-17: שלב 1a הושלם והוכח חי ✅ — ריפו-ניסוי בלי GCP שלף את מפתח-Claude דרך הדלת (OIDC רגעי), המפתח לא נחשף, אפס סוד קבוע. הלבנה הקשה ביותר עובדת. הבא: שלב 1b — הלולאה המלאה (broker→worker מריץ Claude→תוצאה חוזרת).
 - 2026-06-17: שלב 1b הושלם והוכח חי ✅ — **כל הלולאה עובדת מקצה-לקצה.** ה-broker שלח משימה לריפו-עובד, העובד הריץ Claude (קריאה בלבד), והתשובה חזרה לריפו-המבקש כקובץ. זו ה-**go** של ה-walking-skeleton — ההוכחה שטיפוס "ריפו-סוכן" אפשרי ובטוח. תוך כדי גיליתי שה-broker App חסר הרשאת issues, אז ערוץ-התוצאה הוא קבצים (לא issues) — נמנע שינוי ל-App המרכזי. **שלב 1 סגור.**
 - 2026-06-17: Or הכריע סופית — **קבצים, בלי issues** (אחרי הוכחה: קבצים מנצחים במשתלם/יציב/אמין, issues עדיפים רק לנראוּת-אנושית; נמנע הרחבת-כוח ל-App המרכזי). שלב 2 נבנה: `templates/agent-repo/` (CLAUDE.md=@AGENTS.md, AGENTS.md, .mcp.json עם server factory בלבד, ה-worker) + golden מקביל + חיווט-CI. הכול עבר את השערים מקומית. הבא: שלב 3 — provisioner.
+- 2026-06-17: שלב 3 הושלם והוכח חי ✅ — ה-provisioner יצר ריפו-סוכן אמיתי מהתבנית (`zz-agentrepo-prov1`, נולד נכון), קשר אותו לדלת, ולולאת-broker רצה עליו בהצלחה (התשובה חזרה למבקש כקובץ). **provision → ריפו-סוכן עובד.** הגנת-main קשוחה נדחתה (תיעוד ב-changelog). **שלבים 0–3 סגורים — טיפוס "ריפו-סוכן" בנוי ומוכח מקצה-לקצה.** נותרו: שלב 4 (שער-סיכון+אישור-טלגרם, costed — redeploy ל-MCP), שלב 5 (לולאת-refresh), ניקוי spike/zz-, ושלב 6 (גל ראשון — פיתוח נפרד).
