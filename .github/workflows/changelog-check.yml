@@ -53,6 +53,13 @@ jobs:
         # validator. No-op when already in sync.
         run: bash scripts/check-golden-sync.sh
 
+      - name: Check agent-repo golden in sync
+        # Anti-drift twin for the agent-repo mould: a templates/agent-repo/ change must
+        # also update the committed golden (tests/golden/agent-repo/). Allow-list parity
+        # with provision-agent-repo.yml is checked too once that provisioner exists.
+        # No-op when already in sync.
+        run: bash scripts/check-agent-repo-golden-sync.sh
+
       - name: Check n8n postgres queries quote interpolated values
         # Guards the JSON.stringify-in-SQL antipattern that silently killed three
         # scheduled workers (a {{ }} value must be a single-quoted SQL literal;

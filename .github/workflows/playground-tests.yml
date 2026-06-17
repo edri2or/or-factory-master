@@ -116,6 +116,13 @@ jobs:
         # changes. Stays in THIS job so no new required status context is added.
         run: bash scripts/check-system-golden.sh
 
+      - name: Agent-repo golden gate
+        # Twin of the system golden gate for the agent-repo mould: re-renders
+        # templates/agent-repo/ with the same fixed allow-list a provision uses and
+        # compares it byte-for-byte to tests/golden/agent-repo/. Drift fails the build;
+        # the twin gate in changelog-check.yml forces a `--update` on any mould change.
+        run: bash scripts/check-agent-repo-golden.sh
+
       - name: Single-voice agent gate (mould)
         # Validates the shipped sub-agent templates (templates/system/workflows/n8n/
         # *-agent.json): every specialist agent returns {reply} to the orchestrator
