@@ -128,3 +128,10 @@ templates/system/.github/workflows/bootstrap-gmail-oauth.yml
 # On-demand static-site publisher: uploads a folder to Cloudflare Pages + attaches
 # <slug>.or-infra.com. Dispatched per site (workflow_dispatch only); no cadence to prove.
 .github/workflows/publish-static-site.yml
+# One-time, idempotent infra: builds the shared agent-repo WIF "door" (pool/provider/SA on
+# factory-test-25 + per-secret read on control's anthropic-api-key). Runs once / on change;
+# no cadence to prove.
+.github/workflows/bootstrap-agent-repo-identity.yml
+# Throwaway setup for the agent-repo walking skeleton: creates + seeds the zz- spike repos.
+# workflow_dispatch only; deleted with the skeleton once provision-agent-repo.yml lands. No cadence.
+.github/workflows/agent-skeleton-seed.yml

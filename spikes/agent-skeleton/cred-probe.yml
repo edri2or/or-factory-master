@@ -1,0 +1,48 @@
+name: Agent-repo credential probe (Stage 1a)
+
+# THROWAWAY capability probe for the agent-repo walking skeleton
+# (devplans/agent-repo-product.md, Stage 1a). Proves a GCP-LESS agent-repo can fetch the
+# shared anthropic-api-key at RUN TIME via short-lived GitHub OIDC -> the agent-repo WIF door
+# (agent-repo-pool / github-agent-repo-provider on factory-test-25) -> agent-repo-runtime-sa,
+# with NO standing secret. Prints ONLY the key length (never the value). This file is seeded
+# into a zz- throwaway repo by .github/workflows/agent-skeleton-seed.yml and is deleted with
+# the skeleton (the real worker is spikes/agent-skeleton/agent-main.yml in Stage 1b).
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  id-token: write   # mint the GitHub OIDC token presented to the WIF door
+
+jobs:
+  probe:
+    name: Read anthropic-api-key via the agent-repo WIF door
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Authenticate to GCP via the agent-repo WIF door
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093  # v3.0.0
+        with:
+          workload_identity_provider: "projects/522447289560/locations/global/workloadIdentityPools/agent-repo-pool/providers/github-agent-repo-provider"
+          service_account: "agent-repo-runtime-sa@factory-test-25.iam.gserviceaccount.com"
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db  # v3.0.1
+
+      - name: Read the key, print ONLY its length
+        run: |
+          set -euo pipefail
+          KEY=$(gcloud secrets versions access latest \
+            --secret=anthropic-api-key --project=or-factory-master-control)
+          echo "::add-mask::$KEY"
+          LEN=${#KEY}
+          if [ "$LEN" -lt 10 ]; then
+            echo "FAIL: anthropic-api-key read returned too few chars (${LEN}) — door or grant misconfigured." >&2
+            exit 1
+          fi
+          echo "PASS: this repo (no GCP project of its own) read anthropic-api-key via short-lived OIDC."
+          echo "      length=${LEN} chars (value masked, never printed). No standing secret was used."
