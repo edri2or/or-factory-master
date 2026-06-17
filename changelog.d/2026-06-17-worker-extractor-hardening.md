@@ -37,3 +37,20 @@
 
 לא נוגעים ב-`templates/system/**` (golden לא נדרס) ולא בקבצי-התנהגות-בוט. יישום על שלושת הריפויים
 החיים (`nachshon`/`natan-research`/`sapi-docs`) דרך `refresh-agent-repo.yml` — בשלב נפרד, באישור Or.
+
+## הקשחת ה-extractor של ה-worker — שלבים 4‑5: מיזוג, יישום חי + הוכחת "אחרי" + סגירה
+
+- **מיזוג (PR #531, squash `50c5656`)** — התיקון הדורבני נעול ב-main; כל ריפו-סוכן עתידי נולד עם
+  ה-extractor המוקשח. נדרש גם עדכון `tests/golden/agent-repo/MANIFEST.sha256` (golden נפרד
+  ל-agent-repo) — שער ה-CI `check-agent-repo-golden-sync` תפס את החוסר והוסף ל-PR.
+- **יישום חי (באישור Or)** — הוחל על שלושת הריפויים החיים דרך `refresh-agent-repo.yml`
+  (runs `27720761526`/`27720763248`/`27720774370`) מענפי-מקור זרוקים `wave/extrfix-nachshon`
+  (וריאנט נחשון התלת-מצבי) ו-`wave/extrfix-roleanchored` (וריאנט role-anchored לנתן+ספי), שכל אחד
+  נושא את ה-prompt החי **מילה-במילה** (אומת `diff` ריק) + ה-extractor המתוקן בלבד. אומת חי שה-prompt
+  של כל פרסונה נשמר וה-extractor החדש נחת.
+- **הוכחת "אחרי" חיה** — re-run של אותו SPLIT שנכשל ב-wex1 (broker `27720850378` →
+  `nachshon/results/wex2-after.json`) חזר עכשיו `status:"ok","mode":"fanout"` עם תוכנית-פיצול נקייה —
+  before/after חי מלא מול ה-`unstructured` הקודם.
+
+ענפי-המקור הזרוקים (`wave/extrfix-{nachshon,roleanchored}`) נשמרים (לא ממוזגים; נושאי-מקור
+ל-refresh, כמו `wave/persona-*` בגל הראשון) — ניקוי אופציונלי טעון אישור Or.
