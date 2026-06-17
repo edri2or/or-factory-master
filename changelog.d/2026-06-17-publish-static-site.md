@@ -29,3 +29,10 @@
   (`contents:read`, דפוס `create-throwaway-repo.yml`), `setup-node` נעוץ-SHA ל-wrangler, ופליטת
   `factory.publish.{started,completed,failed}` (כולל `action_required` בכישלון). הסקריפט כבר נשא
   idempotency + מלכודת-ביטול-כפולה + לולאת-המתנה ל-SSL מ-שלב 1.
+- **שלבים 2+3 הושלמו (הוכחה חיה).** הרצה `27679859622` עברה **ירוק**: המנוע משך את `or-edri-4/site`
+  דרך טוקן broker והעלה אותו, ו-`https://pages-proof.or-infra.com` מגיש עכשיו את אתר ה-Caden האמיתי
+  (אומת 200 + תוכן RTL). זו גם הרצה אידמפוטנטית (הפרויקט + ה-CNAME כבר היו קיימים) — לכן שלב 3
+  (E2E על האתר האמיתי) הוכח באותה הרצה.
+- **שלב 4 — חיווט ל-MCP allowlist + תיעוד.** `publish-static-site.yml` נוסף ל-`DISPATCHABLE_WORKFLOWS`
+  + תיאור הכלי ב-`services/mcp-server/src/tools.ts`, ושורת Workflows ב-`CLAUDE.md`. (ה-redeploy של
+  ה-MCP — שלב 5 — מופעל בנפרד באישור Or, כי הוא נוגע בשירות-הליבה.)
