@@ -623,8 +623,7 @@ jobs:
           set -euo pipefail
           # Scaffold the factory's .claude package into the new repo: the
           # command-skills (.claude/commands/*.md) AND project skills
-          # such as .claude/skills/gcp-hands-client/SKILL.md (lets the new repo
-          # dispatch GCP ops to edri2or/gcp-hands out of the box). The commands
+          # such as .claude/skills/operate-this-system/SKILL.md. The commands
           # dir under templates/system/.claude is the DERIVED `audience: shared`
           # subset (NOT a byte clone of all factory commands) — factory-only
           # commands stay in the factory. check-skills-mirror.sh keeps it in sync;
@@ -635,9 +634,6 @@ jobs:
           # embedded in the clone URL is never echoed.
           SRC="${GITHUB_WORKSPACE}/templates/system/.claude"
           [ -d "$SRC" ] || { echo "FAIL: .claude source not found at $SRC" >&2; exit 1; }
-          # gcp-hands-client skill is a hard requirement (factory-integration contract).
-          [ -f "$SRC/skills/gcp-hands-client/SKILL.md" ] \
-            || { echo "FAIL: gcp-hands-client SKILL.md missing at $SRC/skills/gcp-hands-client/SKILL.md" >&2; exit 1; }
           COUNT=$(find "$SRC/commands" -maxdepth 1 -name '*.md' | wc -l | tr -d ' ')
           [ "$COUNT" -ge 1 ] || { echo "FAIL: no command-skill files to push (found $COUNT)" >&2; exit 1; }
 
@@ -788,7 +784,7 @@ jobs:
             || { echo "FAIL: could not push scaffold to edri2or/${SYSTEM_NAME}:main" >&2; exit 1; }
 
           rm -rf "$CLONE_DIR"
-          echo "PASS: .claude package + Agent Router + Caddy gateway + CI governance bundle pushed to edri2or/${SYSTEM_NAME}:main (${COUNT} commands + gcp-hands-client skill + ${N8N_COUNT} n8n workflows + configure-agent-router.yml + Caddyfile + Dockerfile.caddy + caddy/hmacguard + 6 CI workflows (incl. e2e-gate + e2e-verify) + 15 portable scripts (incl. compile-changelog + devplan gate/hook + workflow↔skill pairing gate + E2E gate/driver) + workflow-skill-exempt.txt + .claude/settings.json (devplan SessionStart hook) + templates/devplan/ seed + .yamllint + CHANGELOG.md + changelog.d/ seed)."
+          echo "PASS: .claude package + Agent Router + Caddy gateway + CI governance bundle pushed to edri2or/${SYSTEM_NAME}:main (${COUNT} commands + ${N8N_COUNT} n8n workflows + configure-agent-router.yml + Caddyfile + Dockerfile.caddy + caddy/hmacguard + 6 CI workflows (incl. e2e-gate + e2e-verify) + 15 portable scripts (incl. compile-changelog + devplan gate/hook + workflow↔skill pairing gate + E2E gate/driver) + workflow-skill-exempt.txt + .claude/settings.json (devplan SessionStart hook) + templates/devplan/ seed + .yamllint + CHANGELOG.md + changelog.d/ seed)."
 
       - name: Push system orientation docs (AGENTS.md + CLAUDE.md) to system repo
         continue-on-error: true
