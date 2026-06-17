@@ -142,3 +142,7 @@ templates/system/.github/workflows/bootstrap-gmail-oauth.yml
 # The agent-repo provisioner: GitHub-scaffold-only creation of a new agent-repo from
 # templates/agent-repo/ + bind to the WIF door. workflow_dispatch only; no cadence to prove.
 .github/workflows/provision-agent-repo.yml
+# The agent-repo refresh loop: syncs a chosen non-.template subpath (default the worker
+# agent-main.yml) from the factory tree into a live agent-repo, direct-push to main.
+# workflow_dispatch only (dispatched via the GitHub API); no cadence to prove.
+.github/workflows/refresh-agent-repo.yml

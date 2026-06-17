@@ -1,0 +1,171 @@
+name: Refresh Agent-repo (apply current factory templates to a live agent-repo)
+
+# The cheap "iterate on ONE live agent-repo" loop — the agent-repo twin of
+# refresh-system-agents.yml. Applies the factory's CURRENT templates/agent-repo files to an
+# ALREADY-PROVISIONED agent-repo, in place, WITHOUT a re-provision (provision-agent-repo.yml
+# re-scaffolds the whole tree; this surgically syncs a chosen subset).
+#
+# Unlike the system twin (which lands changes through the system's PROTECTED PR + an n8n
+# reimport), an agent-repo's main is WRITABLE (an explicit MVP tradeoff, see
+# provision-agent-repo.yml), so this DIRECT-pushes to main — mirroring the provisioner's
+# scaffold push. There is no live "apply" workflow to dispatch afterwards (agent-repos have
+# no n8n); the pushed files are picked up by the worker's next run.
+#
+# Branch-prove mode (`source_ref`): set it to a work-branch to copy the templates FROM that
+# branch instead of main, so a worker-logic change can be proven on a live agent-repo BEFORE
+# it is merged. WIF still authenticates as the broker on main (only the template SOURCE ref
+# changes), enforced by the `if: refs/heads/main` guard.
+#
+# Scope & safety:
+#   - Syncs ONLY non-.template paths under templates/agent-repo/, from the factory's trusted
+#     tree. *.template files are REFUSED: re-rendering them needs the agent-repo's original
+#     per-repo values (AGENT_NAME/AGENT_PURPOSE/...), a separate capability — so the rendered
+#     orientation files (AGENTS.md, CLAUDE.md, .mcp.json) are out of scope here. The default
+#     target is the worker .github/workflows/agent-main.yml (verbatim — no placeholders).
+#   - Broker App token scoped to the ONE target repo (contents:write + workflows:write;
+#     workflows:write is required to push files under .github/workflows/).
+#   - HARD-refuses the control project and the factory repo; validates agent_repo_name shape.
+#   - Idempotent: byte-identical files -> no commit, no push.
+#   - Dispatched via the GitHub API / actions_run_trigger (NOT on the dispatch_workflow
+#     allowlist — keeps the MCP surface unchanged; symmetric with mirror-secret-to-system.yml).
+
+on:
+  workflow_dispatch:
+    inputs:
+      agent_repo_name:
+        description: "Existing agent-repo to refresh (bare repo under edri2or, e.g. natan-research)."
+        required: true
+        type: string
+      paths:
+        description: "Comma-separated NON-.template subpaths under templates/agent-repo/ to sync (file or dir). Default: the worker workflow."
+        required: false
+        default: ".github/workflows/agent-main.yml"
+        type: string
+      source_ref:
+        description: "Optional git ref (branch/tag/SHA) in or-factory-master to copy the templates FROM, instead of main. Use to prove a not-yet-merged worker change on a live agent-repo. Empty = copy main."
+        required: false
+        default: ""
+        type: string
+
+concurrency:
+  # Serialize refreshes that act on one agent-repo so two parallel runs can't race on its
+  # main. cancel-in-progress:false keeps them FIFO rather than dropping an in-flight push.
+  group: agent-repo-refresh-${{ inputs.agent_repo_name }}
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  refresh:
+    name: Refresh templates in a live agent-repo
+    runs-on: ubuntu-latest
+    environment: production
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      id-token: write
+
+    env:
+      CONTROL_PROJECT: or-factory-master-control
+      BROKER_SA: "factory-master-broker@or-factory-master-control.iam.gserviceaccount.com"
+      WIF_PROVIDER: "projects/140345952904/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
+
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
+        with:
+          # Default ('') checks out the triggering ref (main, per the `if` guard). When
+          # source_ref is set, copy templates from that work-branch instead — WIF auth still
+          # keys off github.ref (main), so only the template SOURCE ref changes.
+          ref: ${{ inputs.source_ref }}
+          persist-credentials: false
+
+      - name: Validate inputs
+        env:
+          NAME: ${{ inputs.agent_repo_name }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$NAME" | grep -Eq '^[a-z][a-z0-9-]{2,38}[a-z0-9]$' \
+            || { echo "FAIL: agent_repo_name '$NAME' must match ^[a-z][a-z0-9-]{2,38}[a-z0-9]\$ (4-40 chars)" >&2; exit 1; }
+          case "$NAME" in
+            or-factory-master|or-factory-master-control|*-control|factory|factory-control-*)
+              echo "FAIL: refusing to target a control/factory repo '$NAME'" >&2; exit 1 ;;
+          esac
+          echo "OK: target edri2or/${NAME}"
+
+      - name: Authenticate to GCP via WIF
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093  # v3.0.0
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.BROKER_SA }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db  # v3.0.1
+
+      - name: Sync requested templates into the live agent-repo (direct push to main)
+        env:
+          NAME: ${{ inputs.agent_repo_name }}
+          PATHS: ${{ inputs.paths }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -uo pipefail
+          # --- broker App creds ---
+          APP_ID=$(gcloud secrets versions access latest --secret=factory-master-broker-app-id --project="$CONTROL_PROJECT")
+          INSTALL_ID=$(gcloud secrets versions access latest --secret=factory-master-broker-app-installation-id --project="$CONTROL_PROJECT")
+          gcloud secrets versions access latest --secret=factory-master-broker-app-private-key --project="$CONTROL_PROJECT" > /tmp/bk.pem
+          echo "::add-mask::$APP_ID"; echo "::add-mask::$INSTALL_ID"
+
+          # --- mint a token scoped to JUST this repo (contents + workflows to push .github/workflows/*) ---
+          TOKEN=$(bash scripts/generate-app-token.sh /tmp/bk.pem "$APP_ID" "$INSTALL_ID" "" '{"contents":"write","workflows":"write"}' "[\"$NAME\"]" 2>/dev/null || true)
+          rm -f /tmp/bk.pem
+          [ -n "$TOKEN" ] || { echo "FAIL: could not mint a scoped token for edri2or/${NAME}" >&2; exit 1; }
+          echo "::add-mask::$TOKEN"
+
+          # --- clone the agent-repo (shallow, one-shot auth in the URL only) ---
+          CLONE=$(mktemp -d)
+          if ! cerr=$(git clone --depth 1 "https://x-access-token:${TOKEN}@github.com/edri2or/${NAME}.git" "$CLONE" 2>&1); then
+            echo "FAIL: clone edri2or/${NAME}: $(printf '%s' "$cerr" | sed "s/${TOKEN}/***/g")" >&2; exit 1
+          fi
+
+          # --- copy the requested NON-.template subpaths from the factory tree ---
+          git -C "$CLONE" config user.name "or-factory-master[bot]"
+          git -C "$CLONE" config user.email "factory-master-broker@or-factory-master-control.iam.gserviceaccount.com"
+          IFS=',' read -ra SYNC_PATHS <<< "${PATHS:-.github/workflows/agent-main.yml}"
+          for raw in "${SYNC_PATHS[@]}"; do
+            p="${raw// /}"; [ -n "$p" ] || continue
+            case "$p" in
+              /*|*..*) echo "FAIL: path '$p' must be relative under templates/agent-repo/ (no leading / and no '..')" >&2; exit 1 ;;
+              *.template) echo "FAIL: refusing '$p' — .template files need per-repo rendering (use provision-agent-repo.yml), not a verbatim refresh" >&2; exit 1 ;;
+            esac
+            src="templates/agent-repo/${p}"
+            [ -e "$src" ] || { echo "FAIL: ${src} not found in the factory tree (note: rendered files like AGENTS.md are not refreshable here)" >&2; exit 1; }
+            dest_parent="$CLONE/$(dirname "$p")"
+            mkdir -p "$dest_parent"
+            cp -r "$src" "$dest_parent/"
+            git -C "$CLONE" add "$p"
+            echo "INFO: synced templates/agent-repo/${p} -> ${p}"
+          done
+
+          # --- direct-push to main if anything changed (agent-repo main is writable, MVP) ---
+          if git -C "$CLONE" diff --cached --quiet; then
+            echo "PASS: edri2or/${NAME} already current for [${PATHS}] — nothing to push (idempotent)."
+          else
+            git -C "$CLONE" commit -q -m "ci: refresh ${PATHS} from or-factory-master templates/agent-repo (run ${RUN_ID})"
+            if ! perr=$(git -C "$CLONE" push "https://x-access-token:${TOKEN}@github.com/edri2or/${NAME}.git" HEAD:main 2>&1); then
+              echo "FAIL: push to edri2or/${NAME}:main: $(printf '%s' "$perr" | sed "s/${TOKEN}/***/g")" >&2; exit 1
+            fi
+            echo "PASS: refreshed [${PATHS}] into edri2or/${NAME}:main."
+          fi
+
+      - name: Summary
+        env:
+          NAME: ${{ inputs.agent_repo_name }}
+          PATHS: ${{ inputs.paths }}
+          SOURCE_REF: ${{ inputs.source_ref }}
+        run: |
+          {
+            echo "## Refreshed agent-repo: edri2or/${NAME}"
+            echo ""
+            echo "- Synced: \`${PATHS}\` (from ${SOURCE_REF:-main})"
+            echo "- Direct push to main (agent-repo main is writable — MVP)"
+            echo "- The worker picks up the change on its next broker-dispatched run."
+          } >> "$GITHUB_STEP_SUMMARY"
