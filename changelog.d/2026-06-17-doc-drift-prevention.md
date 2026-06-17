@@ -1,0 +1,11 @@
+# Changelog fragment — doc-drift-prevention (2026-06-17)
+
+> Per-development changelog fragment (date + slug ⇒ collision-free), written here instead of
+> the head of `CHANGELOG.md`. Folded into `CHANGELOG.md` with a running Stage number by
+> `scripts/compile-changelog.sh`.
+
+## feat: documentation drift prevention — native content-drift CI gates (factory-side v1)
+
+| Type | Summary |
+|---|---|
+| feat | **Stage 1 (C5 + C1) — the rule + the n8n normalizer.** New `docs/doc-drift-prevention.md` is the canonical reference for a running guard against documentation **content** drift (the doc says X while the code says Y — the recorded "8 vs 4" named-queries event in `docs/master-integrity-matrix.md`), distinct from the *presence/structural-sync* gates the factory already runs. The mechanism is a layered native bash gate (no external action, no third-party dependency — deliberately not `tj-actions/changed-files`, CVE-2025-30066): Layer 1 binding + Layer 2 fact-check (blocking, built in Stages 2–3), and a deferred advisory LLM judge (Layer 3). New `scripts/lib/normalize-n8n.sh` (sourced helper, like `scripts/lib/event-formatter.sh`) canonicalizes an n8n workflow JSON — drops `position`/`id`/`webhookId` and top-level `id`/`versionId`/`meta`/`pinData`/`tags`/`staticData`, sorts keys — so a cosmetic editor diff is not mistaken for a real change by the binding gate. `CLAUDE.md` (Key files) + `monitoring/README.md` point to the new doc. **Implementation decision (documented, diverges from the handoff's `.yml`):** the two manifests are **JSON read with `jq`**, not YAML+`yq` — the runner's `yq` build is environment-dependent (Go/mikefarah vs Python/kislyuk, incompatible dialects), and JSON+`jq` matches the factory's dominant machine-read-config pattern (`watchdog-registry.json`, `e2e-surfaces.json`) and the "native, no external dependency" rule. Scope v1 = factory-side only (reads `templates/system/**` as data; no live system touched, no golden refresh). Verified: `shellcheck -S error` clean; `scripts/tests/normalize-n8n.bats` 8/8 (position/id/key-order normalize equal; parameter change / added node normalize unequal; malformed JSON fails loudly; the real `postgres-named-queries.json` normalizes intact). |
