@@ -25,9 +25,9 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
 | 0 | פתיחת תיק (devplan + changelog) | completed | `devplans/`, `changelog.d/` |
-| 1 | fan-out חי "לפני" (נחשון→נתן+ספי→נחשון) — תכן+רשומה+ראיית-רלוונטיות | pending | (לולאות `agent-action.yml`) |
-| 2 | הוכחת-שדרוג דטרמיניסטית (before/after) + bats | pending | `tests/agent-repo-extractor.bats` |
-| 3 | תיקון התבנית (durable) + PR | pending | `templates/agent-repo/.github/workflows/agent-main.yml` |
+| 1 | fan-out חי "לפני" (נחשון→נתן+ספי→נחשון) — תכן+רשומה+ראיית-רלוונטיות | completed | (לולאות `agent-action.yml`) |
+| 2 | הוכחת-שדרוג דטרמיניסטית (before/after) + bats | completed | `scripts/tests/agent-repo-extractor.bats` |
+| 3 | תיקון התבנית (durable) + PR | in-progress | `templates/agent-repo/.github/workflows/agent-main.yml` |
 | 4 | ★אישור Or★ → יישום חי (3 ריפויים) + הוכחת "אחרי" | pending | (refresh ×3 חי) |
 | 5 | סגירה + דיווח ל-Or | pending | `devplans/`, `changelog.d/` |
 
@@ -69,7 +69,12 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 
 **הוכחת E2E (artifact):** לא-התנהגותי (ריפו-סוכן, אין inbound-Telegram).
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם ✅ — fan-out חי מקצה-לקצה. SPLIT — נחשון (broker `27718697788`
+→ `results/wex1.json`): תוכנית-פיצול תקינה ל-natan-research+sapi-docs. FAN-OUT — נתן (broker
+`27718961583` → `wex1-a.json`): תכן מלא, ממליץ על בלוק-אחרון-מעוגן+jq, וגם **קרא את הקוד החי
+שלו** (שורה 98). ספי (broker `27719494584` → `wex1-b.json`): רשומת 6-בלוקים מסווגת (Admiralty B/3).
+UNIFY — נחשון (broker `27719786761`). **ראיית-רלוונטיות חיה:** כל שלוש התוצאות חזרו
+`status:"unstructured"` תחת ה-extractor הישן (כולל תוכנית-הפיצול של נחשון עצמו) — התוכן נשמר ב-`answer`.
 
 **שינוי תוכנית:** —
 
@@ -81,13 +86,15 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 - [ ] `tests/agent-repo-extractor.bats` — fixture (פרוזה + בלוק json דוגמה + בלוק json סנטינל).
 - [ ] ה-awk הישן נכשל (תופס דוגמה/`unstructured`); ה-awk החדש מצליח (תופס סנטינל `status:"ok"`).
 
-**הוכחה תפקודית (באותו שלב):** `bats tests/agent-repo-extractor.bats` ירוק — fail-before/pass-after מקובע.
+**הוכחה תפקודית (באותו שלב):** `bats scripts/tests/agent-repo-extractor.bats` ירוק — fail-before/pass-after מקובע.
 
 **הוכחת E2E (artifact):** לא-התנהגותי.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם ✅ — `scripts/tests/agent-repo-extractor.bats` נכתב ועובר (4/4),
+וכל חבילת ה-bats ירוקה (אפס כשלים). אומת גם על הנתונים החיים של נחשון: הישן→ריק→`unstructured`,
+החדש→משחזר תוכנית-פיצול מלאה.
 
-**שינוי תוכנית:** —
+**שינוי תוכנית:** מיקום הבדיקה `scripts/tests/` (שם CI מריץ bats), לא `tests/`.
 
 ---
 
@@ -101,7 +108,8 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 
 **הוכחת E2E (artifact):** לא-התנהגותי.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** התיקון הוחל מקומית על התבנית + bats + changelog, קומיט מקומי. **ממתין
+לאישור Or** לפני push/PR/מיזוג/יישום-חי (כפי שביקש: "באישור שלי תיישם").
 
 **שינוי תוכנית:** —
 
@@ -146,3 +154,6 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 > שורה פשוטה אחת לכל שלב שהסתיים — בשפה ש-Or מבין, בלי ז'רגון.
 
 - שלב 0 הושלם — פתחתי תיק-פיתוח להקשחת ה-extractor של ה-worker, עם תוכנית שלב-אחר-שלב והוכחות.
+- שלב 1 הושלם — הרצתי את הצוות חי: נחשון פיצל, נתן תכנן את הפתרון הכי אמין, ספי תיעד אותו כרשומה, ונחשון איחד. תוך כדי תפסנו את הבאג חי שלוש פעמים — אפילו על תוכנית-הפיצול של נחשון עצמו.
+- שלב 2 הושלם — בניתי בדיקה שמוכיחה שחור-על-לבן: הקוד הישן מחזיר "לא-מובנה", החדש מחזיר את התשובה הנכונה. עובר.
+- שלב 3 (מוכן, ממתין לך) — תיקנתי את התבנית. הכל מוכן; לא נוגע בשום דבר חי עד שתאשר.
