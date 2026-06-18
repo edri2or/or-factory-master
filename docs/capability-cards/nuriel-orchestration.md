@@ -23,7 +23,7 @@
 |---|---|---|---|---|---|
 | A coordinator session (Nuriel) splits Or's request, fans the sub-tasks to sibling agents **through the existing broker**, collects the results, and synthesizes one unified answer to Or — no new privilege, never agent→agent direct, RED gate intact | **SPLIT:** the session decides the routing plan (Nachshon's `[MODE:SPLIT]` machinery reused). **FAN-OUT:** for each plan entry, `mcp__github__actions_run_trigger` → `agent-action.yml` (`worker_repo=<sibling>`, `requester_repo=<nuriel/nachshon>`, `correlation_id=<parent>-<sub_id>`, `phase=propose`) → each `results/<parent>-<sub_id>.json` lands. **UNIFY:** the session reads the collected sub-results and synthesizes one Hebrew answer to Or | a real two-domain Hebrew request from Or — **שלב 1:** driven from the factory session over the 3 live repos (`natan-research`/`sapi-docs`, unify via `nachshon`); **שלב 5:** driven from the live `nuriel` session itself | the unified answer **demonstrably synthesizes both** sibling sub-results, returned to Or in one window; every dispatch is a plain `agent-action.yml` call | **pending** (שלב 1 → fill; שלב 5 → confirm from the nuriel session) | (1) The session dispatches only `agent-action.yml propose` via the scoped GitHub MCP — not the broad `dispatch_workflow`; RED tasks still gate on Telegram ✅. (2) The orchestrator drops any plan entry outside the sibling allow-list; `subtask` is untrusted DATA to each worker. (3) Serialize broker dispatches that target the **same** worker repo (the parallel-same-repo race learned in `firstwave-fanout.md`); fan out in parallel only across distinct repos. (4) Risk: the nuriel web-session environment may need a one-time connector configuration to expose the GitHub MCP → proven in שלב 5, not assumed. |
 
-verdict: pending
+verdict: go (שלב 1 — לולאת-המתאם מוכחת מסשן הפקטורי; קריטריון 5 — מסשן נוריאל עצמו — מאומת בשלב 5)
 
 ## GO criteria (declare `go` iff ALL hold — filled live in שלב 1, confirmed from the nuriel session in שלב 5)
 
@@ -35,6 +35,43 @@ verdict: pending
 
 A **no-go / partial** verdict stops the build and re-scopes (the capability-first feasibility gate) — e.g. tighten the routing contract, add a deterministic plan-validation step, or reconsider how the nuriel session reaches the broker — **before** the cost boundary is crossed.
 
-## Evidence
+## Evidence — שלב 1 PROVEN ✅ → verdict `go` (2026-06-18)
 
-_(To be filled live in שלב 1 — the orchestration loop proven from the factory session over the three live repos — and confirmed in שלב 5 from the live `nuriel` session. Record broker run-ids, worker run-ids, and the result files per pass, mirroring `firstwave-fanout.md`.)_
+Proven from the **factory session** (the existing privileged session) over the **three live repos**
+(`nachshon` router + `natan-research` + `sapi-docs`). Real two-domain Hebrew request from Or:
+*"חקור 3 דרכים מומלצות לתעדף משימות כשיש ADHD, והכן מהן רשימת-בדיקה קצרה ליישום יומי."*
+Every step was an ordinary `agent-action.yml` (`phase=propose`, classified **green**) broker call,
+dispatched via the scoped GitHub MCP (`mcp__github__actions_run_trigger`).
+
+| Pass | broker run | result file (in `nachshon`) | content |
+|---|---|---|---|
+| **SPLIT** | [`27775449119`](https://github.com/edri2or/or-factory-master/actions/runs/27775449119) | `results/nuriel-s1.json` | valid JSON `mode:"fanout"`, `plan[]` = 2 entries, **both inside the allow-list** (`natan-research`, `sapi-docs`), + `unify_hint` + routing `trace` |
+| **FAN-OUT a** (natan) | [`27775601926`](https://github.com/edri2or/or-factory-master/actions/runs/27775601926) | `results/nuriel-s1-a.json` | valid JSON — 3 methods (MIT, Eisenhower, Eat the Frog) + ADHD-fit reasoning |
+| **FAN-OUT b** (sapi, 1st) | [`27775612573`](https://github.com/edri2or/or-factory-master/actions/runs/27775612573) | `results/nuriel-s1-b.json` | valid JSON — **role refusal** ("research/generate is not my role; route to research, then I document") → **Learning L1/L2** |
+| **FAN-OUT b2** (sapi, chained) | [`27775853131`](https://github.com/edri2or/or-factory-master/actions/runs/27775853131) | `results/nuriel-s1-b2.json` | valid JSON — full 6-block classified record over natan's findings (Admiralty scales, MECE cat (5), confidence note); declined the embedded "make a checklist" instruction → **Learning L2/L3** |
+| **UNIFY** | [`27776102732`](https://github.com/edri2or/or-factory-master/actions/runs/27776102732) | `results/nuriel-s1-final.json` | valid JSON `mode:"unify"` — **synthesizes both**: natan's 3 methods + a daily checklist the unifier **composed** + sapi's reliability note ("שיטות מוכרות; אין מחקר ADHD ייעודי מצוטט") |
+
+GO criteria 1–4, all met: (1) SPLIT valid JSON with `plan[]` restricted to the sibling allow-list;
+(2) both sub-tasks brokered green and returned valid JSON; (3) the UNIFY answer **demonstrably draws
+on both** — natan's methods AND sapi's reliability classification (hand-verified — the reliability note
+could only have come from sapi); (4) no new privilege — every dispatch was a plain `agent-action.yml`
+call, workers stayed read-only (`Read,Grep,Glob`), no worker minted a broker token. **Criterion 5
+(the loop run from the `nuriel` session itself) is confirmed in שלב 5.**
+
+### Routing learnings (gold for Nuriel's persona — שלב 3 + the routing contract)
+
+- **L1 — chain dependent tasks, don't parallelize them.** sapi (docs) needs research findings as
+  **input**; the first parallel fan-out to sapi (no findings) was correctly refused. The coordinator
+  must sequence **research → docs** when the doc task depends on the research output.
+- **L2 — route to each agent's REAL capability, not an idealized one.** sapi documents+classifies
+  ready findings into its fixed 6-block record; it does **not** research or generate arbitrary formats.
+  nachshon's SPLIT over-asked ("produce a checklist") — a clean coordinator routes only what the agent
+  actually does.
+- **L3 — the coordinator composes the final user-facing deliverable in the UNIFY.** The specialists
+  supply raw material (research + classified record); **Nuriel/nachshon** assembles the actual
+  checklist Or asked for. The system degraded gracefully (sapi documented instead of failing) and the
+  unify still produced the deliverable — but by design the format-composition belongs to the unifier.
+
+These refine **how** Nuriel routes and unifies; they do not weaken the capability — the loop ran
+end-to-end, safely, with the answer synthesizing both specialists. **Proceed to the cost boundary
+(שלב 2 — provision `nuriel`).**
