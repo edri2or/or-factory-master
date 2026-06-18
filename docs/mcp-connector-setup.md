@@ -79,6 +79,25 @@ confirm" step inside claude.ai is therefore the only manual link in the chain. T
 הפער: ה-deploy עצמו מספר לך מה הכתובת המדויקת, והמסמך פה נשאר נכון כי שורת
 `EXPECTED_CONNECTOR_ISSUER` נבדקת מול הערך החי בכל ריצה.
 
+## Claude Code on the web — the Google tools work too
+
+The same gateway connector also serves Claude Code **on the web**: the Workspace tools
+(`/workspace/<system>/mcp`) surface automatically in a Code web session, just like in claude.ai
+(connectors added at the claude.ai account level surface in Code web — proven live: both the factory
+`/mcp` connector and the Workspace connector appear in-session). A new Code web session may be needed
+to pick up a freshly-added connector. **You generally do not add a second connector** — if claude.ai
+says *"A server with this URL already exists"*, the connector is already there; just use it.
+
+⚠️ **The `localhost:3002` trap is NOT a connector problem — it is a wrong `user_google_email`.**
+A tool call that errors with an OAuth prompt to `http://localhost:3002/oauth2callback` means the
+caller passed the wrong `user_google_email`. The `workspace-mcp` sidecar is single-user with the
+shared token filed under the label **`edriorp38@or-infra.com`**; any other value (e.g. the
+natural-but-wrong `edri2or@gmail.com`) finds no credential and falls back to the sidecar's internal
+localhost OAuth. **Fix: pass `user_google_email="edriorp38@or-infra.com"`** (the data is still Or's
+`edri2or@gmail.com` — the label is only a storage key). Proven live from a Code web session
+2026-06-17 (`search_drive_files` returned real Drive files, no localhost). Full detail:
+`.claude/commands/google-workspace-guide.md` › "Known failure".
+
 ## Cross-links
 
 - `CLAUDE.md` § "Web-session connector gate — never tell Or to 'click Allow' (there is no button)" — קשור אבל שונה: הוא על gating server-side של *כלים* במחבר; הקובץ הזה על הכתובת *של המחבר עצמו*.

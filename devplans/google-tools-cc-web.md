@@ -6,7 +6,7 @@ DEVPLAN — google-tools-cc-web
 dev_name: גישת כלי Google מ-Claude Code on the web
 slug: google-tools-cc-web
 opened: 2026-06-17
-status: active
+status: completed
 ---
 
 # תוכנית פיתוח — גישת כלי Google מ-Claude Code on the web
@@ -31,8 +31,8 @@ Drive אמיתית (`search_drive_files` על `edri2or@gmail.com`) בסשן Clau
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
 | 1 | אימות צד-שרת (קריאה בלבד, ללא Or) | completed | — (כלי MCP בלבד) |
-| 3 | הוכחה חיה (Or-gated) — Drive read ב-Claude Code web | in-progress | — (סשן חי) |
-| 2 | תיעוד הכתובת + מלכודת ה-localhost + הרחבת `/prove-connector` | pending | `docs/mcp-connector-setup.md`, `CLAUDE.md`, `.claude/commands/google-workspace-guide.md`, `.claude/commands/prove-connector.md` |
+| 3 | הוכחה חיה — Drive read ב-Claude Code web | completed | — (סשן חי) |
+| 2 | תיעוד מיפוי-הכשל (localhost:3002 → התווית edriorp38) | completed | `docs/mcp-connector-setup.md`, `CLAUDE.md`, `.claude/commands/google-workspace-guide.md` |
 
 > **סדר עודכן (prove-first):** שלב 3 (הוכחה חיה) רץ **לפני** שלב 2 (תיעוד) — מתעדים מציאות
 > מאומתת, לא ניחוש. עיקרון dev-stage-factory: מוכיחים חי, ואז נועלים בתיעוד.
@@ -86,16 +86,17 @@ Drive אמיתית (`search_drive_files` על `edri2or@gmail.com`) בסשן Clau
 - [ ] התוצאה המאומתת נרשמת בקובץ הזה; `status: completed`.
 - [ ] אם מתברר קיר-פלטפורמה: מתועד עם מקור (תיעוד Claude Code) + חלופה נתמכת, במקום ניחוש.
 
-**הוכחה תפקודית (באותו שלב):** קריאת Drive חיה בסשן Claude Code web — זו הגדרת ההצלחה.
+**הערת התקדמות אחרונה:** **הושלם — הוכח חי 2026-06-17.** `search_drive_files(user_google_email="edriorp38@or-infra.com", query="trashed = false")` בסשן Claude Code web החזיר 5 קבצים אמיתיים מ-Drive של Or (Phoenix_Sheets, SAPI-*, "ספי — תיעוד ומיון מחקרים.md" וכו', "Last Edited By: Or Edri <edri2or@gmail.com>") — **ללא OAuth-localhost**. **גילוי root-cause:** המחבר מעולם לא היה שבור — הוא כבר מותקן ב-Code web (זה ה-server `mcp__af26d714…`, שכולל את הכלי הסינתטי `edit_drive_file_content` שרק ה-gateway מזריק → ודאי מסלול `/workspace`). ה"כישלון עם localhost:3002" קורה כשקוראים לכלי עם `user_google_email` **לא-נכון** (למשל `edri2or@gmail.com`): ה-sidecar (taylorwilsdon, single-user) לא מוצא credential תחת השם הזה ונופל ל-OAuth אינטראקטיבי שה-redirect שלו הוא `localhost:3002/oauth2callback` (פנימי, חסר-תועלת). עם התווית `edriorp38@or-infra.com` (כפי שמתועד ב-google-workspace-guide) זה פוגע בטוקן המשותף ועובד. כך שהתיקון אינו הוספת-מחבר אלא **בהירות-שימוש**: מיפוי הכשל localhost:3002 → "השתמש בתווית edriorp38".
 
-**הוכחת E2E (artifact):** לא-התנהגותי.
-
-**הערת התקדמות אחרונה:** —
-
-**שינוי תוכנית:** —
+**שינוי תוכנית:** ה-root-cause התגלה כשונה מההשערה הראשונית (לא חיבור-מחבר אלא פרמטר `user_google_email` שגוי). שלב 2 מתמקד עכשיו במיפוי-הכשל הזה, לא בהוראות הוספת-מחבר.
 
 ---
 
 ## יומן ל-Or (עברית)
 
 - 2026-06-17: התוכנית פתוחה. חקרתי לעומק (קוד ה-gateway + תיעוד Claude Code) — ההשערה אומתה: ה-gateway שלנו מחזיק את טוקן-גוגל אצלו, אז אפשר לחבר אותו כ-connector ל-Claude Code web והכלים יעבדו ללא localhost. נשאר להוכיח חי.
+- 2026-06-17: **הושלם והוכח חי.** התברר שהמחבר מעולם לא היה שבור — הוא כבר מותקן ועובד ב-Claude Code web. הרצתי קריאת Drive אמיתית (5 קבצים מ-Drive של Or, ללא localhost). הבעיה האמיתית הייתה קטנה: קריאה עם כתובת-מייל שגויה (`edri2or@gmail.com`) במקום שם-התיק `edriorp38@or-infra.com` — זה מה שגרם לשגיאת ה-localhost:3002. תיעדתי את מיפוי-הכשל בשלושה מקומות כדי ששום סשן עתידי לא יפול שוב. הפיתוח סגור.
+
+## אפשרות עתידית (לא בוצע — להחלטת Or)
+
+ה-root-cause הוא שהפרמטר `user_google_email` דורש את התווית הלא-אינטואיטיבית `edriorp38`. אפשר (פיתוח נפרד, עם עלות/הוכחה משלו) להזריק את התווית **בצד-שרת** ב-`workspace-mcp-proxy.ts` כברירת-מחדל, כך שאף קורא (כולל Or) לא יצטרך לדעת אותה. לא נדרש כדי לסגור את הפיתוח הזה (הגישה עובדת ומוכחת) — רק שיפור נוחות אפשרי.
