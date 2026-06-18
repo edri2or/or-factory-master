@@ -107,3 +107,16 @@
     smoke חי: סט-כלים מדויק (`dispatch_workflow` נעדר), propose אמיתי לעובד-מורשה, וסירוב לא-מורשה/נתיב-לא-מוכר/בלי-bearer.
   - `CLAUDE.md` — תיעוד ערוץ `/coordinator` בסעיף ה-MCP.
 - **נשאר:** 5c (★עלות, אישור Or★ — מיזוג → redeploy אוטומטי), 5d (smoke), 5e (repoint `.mcp.json`), 5f (הוכחה מסשן נוריאל).
+
+## נוריאל — שלב 5 (5c/5d/5e): פרוס, מאומת חי, ומחובר
+
+- **5c — redeploy (Or אישר):** PR #533 מוזג (squash `6350377`); ה-`push: main` על `services/mcp-server/**`
+  הפעיל את `deploy-mcp-server.yml` (run `27784556064`, success) — הערוץ הצר חי בשרת ה-MCP.
+- **5d — smoke חי 7/7:** `coordinator-mcp-smoke.yml` (run `27784794323`, success): סט-הכלים המדויק עם
+  **`dispatch_workflow` נעדר**, `route_to_agent` שלח propose אמיתי ל-`natan-research`, ושלושת הקירות
+  (עובד-לא-מורשה / נתיב-קואורדינטור-לא-מוכר / בלי-bearer) — נדחו.
+- **5e — repoint חי:** `.mcp.json` של `edri2or/nuriel` הופנה ל-`/coordinator/nuriel/mcp` בלבד (ענף זרוק
+  `wave/mcp-nuriel` נושא `templates/agent-repo/.mcp.json` מילולי → `refresh-agent-repo.yml` run
+  `27784945347`, success). אומת חי: `get_file_contents nuriel/.mcp.json` = ערוץ-המתאם בלבד, בלי `/mcp`
+  הרחב. התבנית `.mcp.json.template` ב-main נשארה גנרית — golden לא נדרס.
+- **נשאר 5f בלבד:** Or פותח סשן עם נוריאל ומאמת חי (נוריאל מנתב דרך הערוץ הצר) → כרטיס-היכולת `go` + סגירת התיק.
