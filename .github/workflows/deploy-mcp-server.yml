@@ -79,6 +79,13 @@ jobs:
       # factory telemetry subset at /factory/<system>/mcp ("*" = any valid
       # system name; each bearer is hard-bound to one system). Empty = off.
       FACTORY_TOOLS_ALLOWED_SYSTEMS: "*"
+      # The narrow coordinator dispatch surface at /coordinator/<repo>/mcp: which
+      # agent-repos may be the REQUESTER (the coordinator path repo, e.g. nuriel)
+      # and which sibling agent-repos route_to_agent may dispatch to (the WORKERS).
+      # Both fail-closed: an EMPTY value admits NOTHING (no coordinator route, no
+      # routable worker). Pin them explicitly; never "*".
+      COORDINATOR_REQUESTER_REPOS: "nuriel"
+      COORDINATOR_WORKER_REPOS: "nachshon,natan-research,sapi-docs"
       # Google-login email allowlist for the operator OAuth flow (gateway-native
       # Google IdP). Only these emails may authenticate interactively — and since
       # the Workspace sidecar exposes Drive WRITE tools (update_drive_file:
@@ -721,6 +728,8 @@ jobs:
             OAUTH_ALLOWED_EMAILS="${OAUTH_ALLOWED_EMAILS}" \
             WORKSPACE_ALLOWED_SYSTEMS="${WORKSPACE_ALLOWED_SYSTEMS}" \
             FACTORY_TOOLS_ALLOWED_SYSTEMS="${FACTORY_TOOLS_ALLOWED_SYSTEMS}" \
+            COORDINATOR_REQUESTER_REPOS="${COORDINATOR_REQUESTER_REPOS}" \
+            COORDINATOR_WORKER_REPOS="${COORDINATOR_WORKER_REPOS}" \
             bash scripts/render-mcp-service-yaml.sh > /tmp/mcp-service.yaml || return 1
             gcloud run services replace /tmp/mcp-service.yaml \
               --region="${GCP_REGION}" \

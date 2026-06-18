@@ -82,3 +82,28 @@
   `refresh-agent-repo.yml`.
 - בוצע לפני שלב 5 (סדר התהפך): שלב 6 עצמאי בפקטורי ולא דורש את Or, אז הושלם בזמן ההמתנה לשלב 5
   (ההוכחה החיה מסשן נוריאל). אין שינוי קוד — תיעוד בלבד.
+
+## נוריאל — שלב 5 (ממצא חי + 5a/5b): ערוץ-ניתוב צר ומאובטח לנוריאל
+
+**ממצא חי:** בבדיקת שלב 5, הסשן של נוריאל הבין מושלם וניסה לנתב, אך נחסם — אין לו גישה ל-broker
+(`or-factory-master`). Or בחר את הדרך **המאובטחת**: לא "מפתח רחב" לסביבת נוריאל, אלא ערוץ-MCP ייעודי וצר.
+
+- **5a (capability-first, go):** מסלול ה-propose `nuriel→natan-research` כבר הוכח round-trip בשלב 1.
+- **5b — קוד הערוץ הצר (חדש/משונה):**
+  - `services/mcp-server/src/coordinator-scope.ts` (חדש) — facade שחושף **רק** READ subset
+    (`list_workflow_runs`/`get_workflow_run`/`get_run_jobs`/`get_file_contents`/`list_commits`/`get_repo`/
+    `get_pull_request`/`list_pull_request_files`) + כלי-הכתיבה היחיד `route_to_agent`. ה-broad `dispatch_workflow`
+    **נעדר**. `route_to_agent` מקודד-קשיח ל-`agent-action.yml` `phase=propose`; `worker_repo` מול allow-list
+    (`COORDINATOR_WORKER_REPOS`, fail-closed); `requester_repo` מוזרק מהנתיב (לא ארגומנט → לא ניתן לזיוף);
+    שער-ה-RED נשמר אוטומטית. שימוש-חוזר ב-`dispatchWorkflow()`/`getLatestWorkflowRun()` (github-client).
+  - `services/mcp-server/src/index.ts` — ערוץ `/coordinator/:repo/mcp` (מראה של `/factory/:system/mcp`;
+    auth operator-grade `oauth`/`admin`; **בלי** endpoint של token).
+  - `.github/workflows/deploy-mcp-server.yml` + `scripts/render-mcp-service-yaml.sh` — env חדשים
+    `COORDINATOR_REQUESTER_REPOS`/`COORDINATOR_WORKER_REPOS` (ברירת-מחדל ריקה = fail-closed; מוזנים
+    `nuriel` / `nachshon,natan-research,sapi-docs`).
+  - `services/mcp-server/test/coordinator-scope.test.mjs` (חדש) — סט-הכלים המדויק; ש-`route_to_agent` אין לו
+    `phase`/`requester_repo`; סירוב עובד-לא-מורשה/control לפני dispatch. **134/134 + tsc נקי.**
+  - `scripts/coordinator-mcp-smoke.py` + `.github/workflows/coordinator-mcp-smoke.yml` (חדש, registry-exempt) —
+    smoke חי: סט-כלים מדויק (`dispatch_workflow` נעדר), propose אמיתי לעובד-מורשה, וסירוב לא-מורשה/נתיב-לא-מוכר/בלי-bearer.
+  - `CLAUDE.md` — תיעוד ערוץ `/coordinator` בסעיף ה-MCP.
+- **נשאר:** 5c (★עלות, אישור Or★ — מיזוג → redeploy אוטומטי), 5d (smoke), 5e (repoint `.mcp.json`), 5f (הוכחה מסשן נוריאל).
