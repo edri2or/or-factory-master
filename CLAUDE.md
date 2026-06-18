@@ -136,7 +136,7 @@ exchange units of work **only through the central broker** (`agent-action.yml` o
 
 | Agent-repo | Role |
 |---|---|
-| **`nuriel`** | **The coordinator — the single agent Or talks to.** Or speaks *only* to Nuriel (a Claude Code session on `edri2or/nuriel`); Nuriel routes work to the rest of the fleet (current + future) and returns one unified Hebrew answer. Persona: `docs/agent-specs/nuriel.md`. |
+| **`nuriel`** | **The CEO — the single agent Or talks to.** Or (the **owner**) speaks *only* to Nuriel (a Claude Code session on `edri2or/nuriel`); the rest of the fleet are Nuriel's **soldiers** (every agent's persona now states the chain of command: Or=owner, Nuriel=CEO). Nuriel does **no work itself** — it understands Or, **asks a soldier** (it does not read/analyze/search itself; `get_file_contents` only to read the result a soldier returned), and composes one Hebrew answer. It is **skills-native** (`.claude/commands/`: `/delegate`, `/report-to-or`, `/lead-dev`). Persona: `docs/agent-specs/nuriel.md`; CEO+skills development `devplans/nuriel-knowledge-action.md` (proven live 2026-06-18). NB: the headless workers are **not** skills-native (worker tools are `Read,Grep,Glob` only, and a worker reads only its own repo + the task — never the factory) — the hand-off protocol lives on Nuriel's side; see `docs/capability-cards/agent-repo-skills.md`. |
 | `nachshon` | Project-manager / technical router (`[MODE:SPLIT\|WORKER\|UNIFY]`) — splits a multi-domain request and unifies the results. `docs/agent-specs/firstwave/nachshon.md`. |
 | `natan-research` | Research & planning. `docs/agent-specs/firstwave/natan.md`. |
 | `sapi-docs` | Documentation & classification of **ready** findings (does not generate). `docs/agent-specs/firstwave/sapi.md`. |
