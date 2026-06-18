@@ -107,3 +107,35 @@
     smoke חי: סט-כלים מדויק (`dispatch_workflow` נעדר), propose אמיתי לעובד-מורשה, וסירוב לא-מורשה/נתיב-לא-מוכר/בלי-bearer.
   - `CLAUDE.md` — תיעוד ערוץ `/coordinator` בסעיף ה-MCP.
 - **נשאר:** 5c (★עלות, אישור Or★ — מיזוג → redeploy אוטומטי), 5d (smoke), 5e (repoint `.mcp.json`), 5f (הוכחה מסשן נוריאל).
+
+## נוריאל — שלב 5 (5c/5d/5e): פרוס, מאומת חי, ומחובר
+
+- **5c — redeploy (Or אישר):** PR #533 מוזג (squash `6350377`); ה-`push: main` על `services/mcp-server/**`
+  הפעיל את `deploy-mcp-server.yml` (run `27784556064`, success) — הערוץ הצר חי בשרת ה-MCP.
+- **5d — smoke חי 7/7:** `coordinator-mcp-smoke.yml` (run `27784794323`, success): סט-הכלים המדויק עם
+  **`dispatch_workflow` נעדר**, `route_to_agent` שלח propose אמיתי ל-`natan-research`, ושלושת הקירות
+  (עובד-לא-מורשה / נתיב-קואורדינטור-לא-מוכר / בלי-bearer) — נדחו.
+- **5e — repoint חי:** `.mcp.json` של `edri2or/nuriel` הופנה ל-`/coordinator/nuriel/mcp` בלבד (ענף זרוק
+  `wave/mcp-nuriel` נושא `templates/agent-repo/.mcp.json` מילולי → `refresh-agent-repo.yml` run
+  `27784945347`, success). אומת חי: `get_file_contents nuriel/.mcp.json` = ערוץ-המתאם בלבד, בלי `/mcp`
+  הרחב. התבנית `.mcp.json.template` ב-main נשארה גנרית — golden לא נדרס.
+- **נשאר 5f בלבד:** Or פותח סשן עם נוריאל ומאמת חי (נוריאל מנתב דרך הערוץ הצר) → כרטיס-היכולת `go` + סגירת התיק.
+
+## נוריאל — שלב 5f (GO) + סגירה: הדלת המקצועית = connector
+
+**הדלת התגלגלה לפתרון מקצועי.** ניסיון 5f הראשון/שני חשפו שני דברים: (1) האופי כיוון לנתיב-GitHub
+ישן (תוקן → `route_to_agent`); (2) סביבת ה-Claude-Code-**web** חוסמת egress למארח ה-gateway. Or דחה
+את התיקון-הידני (Network access → Custom) כלא-מקצועי. מחקר (2 חוקרים) שקל **connector** (ניתוב דרך
+שרתי Anthropic, בלי allowlist) מול **דלת-טלגרם** (בנייה מלאה, אפס-הגדרות). Or בחר לנסות קודם connector.
+
+✅ **CONN-1 = GO (אומת אובייקטיבית 2026-06-18).** Or הוסיף custom connector ב-claude.ai
+(`https://factory-master-actions-mcp-risl6twm4a-zf.a.run.app/coordinator/nuriel/mcp`) + Login עם Google,
+ופתח סשן נוריאל חדש. **שער-הפלטפורמה לא חסם את `route_to_agent`.** נוריאל ניתב בקשת-ADHD לנתן דרך
+הערוץ הצר, נתן חקר, ונוריאל הרכיב תשובה. **הוכחה מהשרת:** broker run `27788706190`
+(`triggering_actor=factory-master-broker[bot]` → דרך הכלי המאובטח), commit `2347a617` בריפו נוריאל.
+תיקון-אופי 5f: `docs/agent-specs/nuriel.md` + AGENTS.md החי כוונו ל-`route_to_agent` (לא נתיב-GitHub).
+
+**סגירה:** `devplans/nuriel-coordinator.md` → `status: completed`; כרטיס-היכולת `nuriel-orchestration.md`
+→ `verdict: go` (כל 5 הקריטריונים). **הדלת הסופית = connector** (הקמה חד-פעמית של Or, נשמרת לכל
+הסשנים, אותו מנגנון של כלי-ה-Drive). **דלת-הטלגרם** נחקרה+תוכננה (כ-fallback) אך לא נדרשה — נשארת
+אופציית-עתיד מתועדת ב-`/root/.claude/plans` ובכרטיס. אין שינוי קוד בשלב הסגירה — תיעוד-אמת בלבד.

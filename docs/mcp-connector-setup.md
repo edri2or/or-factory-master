@@ -79,6 +79,21 @@ confirm" step inside claude.ai is therefore the only manual link in the chain. T
 הפער: ה-deploy עצמו מספר לך מה הכתובת המדויקת, והמסמך פה נשאר נכון כי שורת
 `EXPECTED_CONNECTOR_ISSUER` נבדקת מול הערך החי בכל ריצה.
 
+## Coordinator connector — Nuriel's door (proven 2026-06-18)
+
+The coordinator agent-repo **Nuriel** is reached the SAME way: a claude.ai **custom connector** at
+the coordinator route — `https://<issuer-host>/coordinator/nuriel/mcp` (issuer host as above + the
+`/coordinator/nuriel/mcp` path). This is **the door** Or uses to talk to Nuriel from Claude Code on
+the web. **Why a connector, not the repo's `.mcp.json` direct URL:** a Claude Code **web** session's
+sandbox blocks outbound egress to the gateway host (network policy), so the direct `.mcp.json` HTTP
+server is unreachable — but **connector traffic routes through Anthropic's servers, bypassing the
+egress allowlist** (per the Claude Code web docs, §Network access). Added once + Google login, reused
+across all nuriel sessions; no per-environment network setting. Proven live: Nuriel's session called
+`route_to_agent` (the narrow coordinator write tool) through the connector and it was **NOT** blocked
+by the platform connector-gate — the broker dispatched to `natan-research` (run `27788706190`,
+`triggering_actor=factory-master-broker[bot]`) and the result landed in `edri2or/nuriel`. Full record:
+`devplans/nuriel-coordinator.md` (שלב 5) + `docs/capability-cards/nuriel-orchestration.md` (`verdict: go`).
+
 ## Cross-links
 
 - `CLAUDE.md` § "Web-session connector gate — never tell Or to 'click Allow' (there is no button)" — קשור אבל שונה: הוא על gating server-side של *כלים* במחבר; הקובץ הזה על הכתובת *של המחבר עצמו*.
