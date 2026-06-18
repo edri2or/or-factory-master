@@ -6,7 +6,7 @@ Or לא פותח אותו; הסוכן קורא ממנו ומסכם לו בעבר
 dev_name: נוריאל — המנכ"ל של המערכת (knowledge + action-clean + skills-native)
 slug: nuriel-knowledge-action
 opened: 2026-06-18
-status: active   # active בזמן פיתוח → completed בסיום (משחרר את שער ה-CI)
+status: completed   # active בזמן פיתוח → completed בסיום (משחרר את שער ה-CI)
 ---
 
 # תוכנית פיתוח — נוריאל — המנכ"ל של המערכת
@@ -29,8 +29,8 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 | 1 | מחקר + הוכחת-יכולת-סקילים (capability-first) | completed | `docs/capability-cards/agent-repo-skills.md`, broker runs |
 | 2 | טיוטת הפרסונה + סט-הסקילים | completed | `docs/agent-specs/nuriel.md`, `docs/agent-specs/nuriel/skills/*`, `docs/agent-specs/firstwave/*` |
 | 3 | נחיתה על הריפוז החיים (refresh) | completed | `edri2or/nuriel` (+חיילים), ענפים-זמניים |
-| 4 | הוכחה חיה מסשן נוריאל | pending | — (broker run + הוכחה) |
-| 5 | סגירה | pending | `CLAUDE.md`, devplan |
+| 4 | הוכחה חיה מסשן נוריאל | completed | — (broker run + הוכחה) |
+| 5 | סגירה | completed | `CLAUDE.md`, devplan |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
 > **הוכחה בכל שלב:** שלב נסגר רק כשהוכח על קלט אמיתי באותו שלב. בנייה מלמטה-למעלה; החיבור החי
@@ -140,7 +140,9 @@ Anthropic *Building Effective Agents* + *multi-agent research system* + *Agent S
 
 **הוכחת E2E (artifact):** לא-התנהגותי.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** ✅ הושלם ואומת חי ע"י Or (2026-06-18). Or פתח סשן נוריאל ובקשה אמיתית;
+**נוריאל ניתב לנתן** (`route_to_agent`, לא ענה/קרא בעצמו), נתן החזיר, **ונוריאל הרכיב והחזיר ל-Or
+תשובה אחת**. מנכ"ל נקי, skills-native — הוכח. (מאשש את verdict (A) ב-`agent-repo-skills.md`.)
 
 **שינוי תוכנית:** —
 
@@ -157,7 +159,11 @@ Anthropic *Building Effective Agents* + *multi-agent research system* + *Agent S
 
 **הוכחת E2E (artifact):** לא-התנהגותי.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם. כרטיס `agent-repo-skills.md` → verdict (A) `go` מאומת חי; רוסטר
+ה-CLAUDE.md עודכן (מסגרת מנכ"ל/חיילים + skills-native); `status: completed`; PR #536 מוזג ל-main;
+ענפים-זמניים נמחקו. **תובנה לפיתוח-עתיד** (נרשמה בכרטיס): שתי הרחבות אפשריות — (1) חייל
+skills-native (הוספת `Skill` ל-allowedTools של ה-worker), (2) חייל גישת-אינטרנט/קריאת-פקטורי חיה.
+שתיהן capability-first נפרד.
 
 **שינוי תוכנית:** —
 
@@ -171,3 +177,5 @@ Anthropic *Building Effective Agents* + *multi-agent research system* + *Agent S
 - שלב 1 הושלם — חקרתי באינטרנט (אישש בדיוק את הגישה: מנכ"ל "דק", יודע את המפה ולא את השיטות), הוכחתי שסקילים יעבדו לנוריאל אבל לא לחיילים ה-headless, והרצתי את הצוות חי כמבחן (נתן חקר, ספי תיעד — שניהם עבדו יפה).
 - שלב 2 הושלם — כתבתי את הפרסונה החדשה של נוריאל (מנכ"ל), 3 סקילים, ושרשרת-פיקוד לכל החיילים. אישרת.
 - שלב 3 הושלם — הכל נחת חי: נוריאל קיבל פרסונת-מנכ"ל + 3 סקילים, וכל חייל (נתן/ספי/נחשון) יודע עכשיו שאתה הבעלים ונוריאל המנכ"ל. נשאר רק לראות את זה עובד מסשן נוריאל אמיתי (שלב 4 — דורש אותך).
+- שלב 4 הושלם — בדקת חי: נוריאל ניתב לנתן, נתן ענה, ונוריאל הרכיב לך תשובה אחת. מנכ"ל נקי, עובד.
+- שלב 5 הושלם — הפיתוח סגור. נוריאל רשמית המנכ"ל-מספר-1 שלך: יודע את מי לבקש, לא עושה כלום בעצמו, ועובד דרך סקילים. מכאן — הכל מולו. 🚀

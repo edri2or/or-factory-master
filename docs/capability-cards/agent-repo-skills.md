@@ -17,7 +17,16 @@
 | **(A) An interactive coordinator session (Nuriel)** loads a repo-local `.claude/commands/<name>.md` and invokes it as a `/<name>` skill | Nuriel is reached as **Claude Code on the web** on `edri2or/nuriel` (the repo is checked out). Claude Code surfaces every `.claude/commands/*.md` in the working repo as an available skill + exposes the `Skill` tool — the **identical** mechanism by which this factory session sees `.claude/commands/*.md` (e.g. `/dev-stage`). Land a skill on `nuriel` → it surfaces in Or's session | a real `/lead-dev` (or `/delegate`) skill landed on `edri2or/nuriel`, invoked from Or's nuriel session | the skill's instructions take effect (Nuriel follows them — e.g. `/delegate` shapes the `route_to_agent` hand-off) | **go** (mechanism-grounded; **live-confirmed in שלב 4** from Or's nuriel session) | (1) The skill is read-only instructions — it cannot widen Nuriel's tools; the narrow `/coordinator` route + RED gate are unchanged. (2) Live confirm in שלב 4 — not assumed. |
 | **(B) The headless worker (`agent-main.yml`)** invokes a `/<name>` skill | The worker runs `claude_args: --model … --max-turns 12 --allowedTools Read,Grep,Glob --disallowedTools Bash,Edit,Write,MultiEdit,NotebookEdit,WebFetch,WebSearch` (`templates/agent-repo/.github/workflows/agent-main.yml:92`). The **`Skill` tool is NOT in the allowlist** → a non-interactive run cannot invoke a skill; the worker also has **no `.claude/commands`** and **no usable MCP** (factory `/mcp` needs gateway auth a headless run lacks; MCP tool names aren't in `--allowedTools`) | the as-shipped worker config | a `/skill` invocation is **denied** (tool not permitted) | **no-go (as-shipped)** | Making workers skills-native = a deliberate worker-config change (add `Skill` to `--allowedTools`) touching the read-only safety contract → **out of scope here; flagged as a future capability-first change.** Until then the inter-agent protocol is enforced **Nuriel-side** (a skill that shapes the hand-off) + embedded in each worker's **persona/AGENTS** (read as orientation, not invoked). |
 
-verdict: go for (A) the interactive coordinator session (skills-native Nuriel) — live-confirmed in שלב 4; no-go for (B) the headless worker as-shipped (documented limit; future change)
+verdict: go for (A) the interactive coordinator session (skills-native Nuriel) — **live-confirmed in שלב 4 (2026-06-18)**; no-go for (B) the headless worker as-shipped (documented limit; future change)
+
+## Evidence — (A) live-confirmed ✅ (2026-06-18, שלב 4)
+
+Or opened a Claude Code session on `edri2or/nuriel` (via the connector) and asked Nuriel a real
+request. **Nuriel acted as a clean skills-native CEO:** it did NOT answer/read by itself — it routed
+the work to `natan-research` via `route_to_agent` (the `/delegate` flow), natan returned the answer,
+and Nuriel composed and returned one answer to Or (the `/report-to-or` flow). Confirmed live by Or.
+This closes criterion (A): the interactive coordinator session works through its skills, and the
+action-clean rule holds (route, don't self-execute).
 
 ## מה זה אומר לעיצוב (the design consequence)
 
