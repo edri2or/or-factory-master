@@ -27,8 +27,8 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 |---|---|---|---|
 | 0 | פתיחת הפיתוח (devplan + changelog) | completed | `devplans/`, `changelog.d/` |
 | 1 | מחקר + הוכחת-יכולת-סקילים (capability-first) | completed | `docs/capability-cards/agent-repo-skills.md`, broker runs |
-| 2 | טיוטת הפרסונה + סט-הסקילים | in-progress | `docs/agent-specs/nuriel.md`, `docs/agent-specs/nuriel/skills/*`, `docs/agent-specs/firstwave/*` |
-| 3 | נחיתה על הריפוז החיים (refresh) | pending | `edri2or/nuriel` (+חיילים), ענף-זמני |
+| 2 | טיוטת הפרסונה + סט-הסקילים | completed | `docs/agent-specs/nuriel.md`, `docs/agent-specs/nuriel/skills/*`, `docs/agent-specs/firstwave/*` |
+| 3 | נחיתה על הריפוז החיים (refresh) | completed | `edri2or/nuriel` (+חיילים), ענפים-זמניים |
 | 4 | הוכחה חיה מסשן נוריאל | pending | — (broker run + הוכחה) |
 | 5 | סגירה | pending | `CLAUDE.md`, devplan |
 
@@ -119,7 +119,12 @@ Anthropic *Building Effective Agents* + *multi-agent research system* + *Agent S
 
 **הוכחת E2E (artifact):** לא-התנהגותי.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם ואומת חי. 4 ריצות `refresh-agent-repo.yml` הצליחו (נוריאל
+`27793508565` + 3 חיילים `27793533668`/`27793540021`/`27793544603`), כל אחת מענף-זמני נושא קבצים
+ליטרליים (`wave/nuriel-mnkl` + `wave/{natan,sapi,nachshon}-chain`). אומת ב-`get_file_contents`:
+`nuriel/AGENTS.md` = פרסונת-המנכ"ל; `nuriel/.claude/commands/{delegate,report-to-or,lead-dev}.md`
+נחתו; `natan-research`/`sapi-docs`/`nachshon` קיבלו את שרשרת-הפיקוד (ב-nachshon גם "Or הבעלים").
+התבנית הגנרית ב-main לא נגעה (golden לא נדרס).
 
 **שינוי תוכנית:** —
 
@@ -164,3 +169,5 @@ Anthropic *Building Effective Agents* + *multi-agent research system* + *Agent S
 
 - שלב 0 הושלם — פתחתי את תיק-הפיתוח. נוריאל יחוזק כ"מנכ"ל": יודע את מי לבקש מה, לא עושה כלום בעצמו, ועובד דרך סקילים.
 - שלב 1 הושלם — חקרתי באינטרנט (אישש בדיוק את הגישה: מנכ"ל "דק", יודע את המפה ולא את השיטות), הוכחתי שסקילים יעבדו לנוריאל אבל לא לחיילים ה-headless, והרצתי את הצוות חי כמבחן (נתן חקר, ספי תיעד — שניהם עבדו יפה).
+- שלב 2 הושלם — כתבתי את הפרסונה החדשה של נוריאל (מנכ"ל), 3 סקילים, ושרשרת-פיקוד לכל החיילים. אישרת.
+- שלב 3 הושלם — הכל נחת חי: נוריאל קיבל פרסונת-מנכ"ל + 3 סקילים, וכל חייל (נתן/ספי/נחשון) יודע עכשיו שאתה הבעלים ונוריאל המנכ"ל. נשאר רק לראות את זה עובד מסשן נוריאל אמיתי (שלב 4 — דורש אותך).
