@@ -26,6 +26,13 @@ WORKSPACE_ALLOWED_SYSTEMS="${WORKSPACE_ALLOWED_SYSTEMS:-*}"
 # /factory/<system>/mcp ("*" = any valid system name — each bearer is already
 # hard-bound to one system). Set empty to kill-switch the surface (all 404).
 FACTORY_TOOLS_ALLOWED_SYSTEMS="${FACTORY_TOOLS_ALLOWED_SYSTEMS:-*}"
+# The narrow coordinator dispatch surface at /coordinator/<repo>/mcp. Both
+# fail-closed: an EMPTY default admits NOTHING (the route 404s and route_to_agent
+# has no allowlisted worker), so the surface is OFF unless deploy-mcp-server.yml
+# pins them. REQUESTER = the coordinator path repo(s) (e.g. nuriel); WORKER = the
+# sibling agent-repos route_to_agent may dispatch agent-action.yml propose to.
+COORDINATOR_REQUESTER_REPOS="${COORDINATOR_REQUESTER_REPOS:-}"
+COORDINATOR_WORKER_REPOS="${COORDINATOR_WORKER_REPOS:-}"
 # The credential-file STORAGE-KEY label: the sidecar files the credential under
 # "<this>.json" and callers pass it as user_google_email. It is NOT the token's real
 # account — a 2026-06-15 live test proved the deployed token authenticates as
@@ -156,6 +163,8 @@ emit_env CONTROL_PROJECT "or-factory-master-control"
 emit_env WORKSPACE_MCP_URL "http://localhost:3002/mcp/"
 emit_env WORKSPACE_ALLOWED_SYSTEMS "${WORKSPACE_ALLOWED_SYSTEMS}"
 emit_env FACTORY_TOOLS_ALLOWED_SYSTEMS "${FACTORY_TOOLS_ALLOWED_SYSTEMS}"
+emit_env COORDINATOR_REQUESTER_REPOS "${COORDINATOR_REQUESTER_REPOS}"
+emit_env COORDINATOR_WORKER_REPOS "${COORDINATOR_WORKER_REPOS}"
 for pair in "${GATEWAY_SECRETS[@]}"; do
   emit_secret "${pair%%=*}" "${pair#*=}"
 done

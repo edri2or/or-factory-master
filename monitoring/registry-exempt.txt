@@ -113,6 +113,11 @@ templates/system/.github/workflows/bootstrap-gmail-oauth.yml
 # bearer -> handshake -> exact 8-tool list -> real n8n read + two cross-tenant
 # blocks). workflow_dispatch only; no cadence to prove.
 .github/workflows/factory-mcp-smoke.yml
+# Manual smoke: proves the narrow coordinator MCP (/coordinator/<repo>/mcp) live —
+# exact scoped tool set (dispatch_workflow absent), one real route_to_agent propose
+# dispatch, and the walls (non-allowlisted worker / unknown path / no token).
+# workflow_dispatch only; no cadence to prove.
+.github/workflows/coordinator-mcp-smoke.yml
 # One-shot: bulk-delete unused org repos (keep-list; dry-run gated).
 .github/workflows/bulk-delete-repos.yml
 # Proposal-only: sends the Telegram repo-delete card; cannot delete (deletion is in the MCP callback).

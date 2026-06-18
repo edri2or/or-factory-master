@@ -9,6 +9,7 @@ import { registerOrgReadTools } from './org-read-tools.js';
 import { verifyGitHubOidc } from './oidc-verifier.js';
 import { signBearer, verifyBearer, revokeBearer, type BearerPayload, type BearerKind } from './bearer.js';
 import { registerFactoryScopedTools, isAllowedFactorySystem } from './factory-scope.js';
+import { registerCoordinatorScopedTools, isAllowedCoordinatorRepo } from './coordinator-scope.js';
 import { sendTelegramMessage, emitEvent } from './observability-client.js';
 import { validateEmitBody, isEmitAllowedSystem, createRateLimiter } from './emit-route.js';
 import { handleLinearWebhook, registerLinearWebhook } from './oil-autofix.js';
@@ -1062,6 +1063,58 @@ app.post('/factory/:system/emit', async (req: Request, res: Response) => {
     telegram: result.telegram.status,
     linear: result.linear.status,
   });
+});
+
+// ── Coordinator MCP — the narrow dispatch surface for the coordinator agent ────
+//
+// /coordinator/<repo>/mcp serves an IN-PROCESS per-request McpServer (same
+// stateless pattern as /factory/<system>/mcp) that registers ONLY a small read
+// subset + route_to_agent (coordinator-scope.ts). The coordinator agent-repo
+// (Nuriel) reaches THIS route — not the broad /mcp — so its session's MAXIMUM
+// capability is: read a few things + dispatch agent-action.yml (propose) to an
+// allowlisted sibling. The broad dispatch_workflow and every provisioning tool
+// are absent. Auth is operator-grade only (an `oauth` bearer from Or's Google
+// login, or an `admin` bearer for the smoke) — there is NO per-coordinator token
+// endpoint: Nuriel's session authenticates exactly like today's read-only `/mcp`
+// entry in its .mcp.json (Or's login), so no secret lives in the repo.
+app.all('/coordinator/:repo/mcp', async (req: Request, res: Response) => {
+  const repo = req.params.repo;
+  if (!isAllowedCoordinatorRepo(repo)) {
+    res.status(404).json({ error: 'unknown_coordinator' });
+    return;
+  }
+  const authHeader = req.headers['authorization'] ?? '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
+  const payload = token ? verifyBearer(token) : null;
+  if (!token || payload === null) {
+    res
+      .status(401)
+      .set(
+        'WWW-Authenticate',
+        `Bearer realm="${BASE_URL}", resource_metadata="${BASE_URL}/.well-known/oauth-protected-resource"`,
+      )
+      .json({ error: 'unauthorized' });
+    return;
+  }
+  // Operator-grade only: the coordinator dispatch is a write, gated to Or's
+  // authenticated session (oauth) — the same principal that drives the Drive
+  // write tools — or an admin bearer (the smoke's server-to-server path). No
+  // dedicated coordinator bearer kind exists.
+  if (payload.kind !== 'oauth' && payload.kind !== 'admin') {
+    res.status(403).json({ error: 'operator_only' });
+    return;
+  }
+
+  const server = new McpServer({ name: 'factory-coordinator-mcp', version: '1.0.0' });
+  registerCoordinatorScopedTools(server, repo);
+  const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+
+  try {
+    await server.connect(transport);
+    await transport.handleRequest(req, res, req.body);
+  } finally {
+    await server.close().catch(() => undefined);
+  }
 });
 
 // Must be registered after all routes so it sees errors thrown by handlers.
