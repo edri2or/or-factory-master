@@ -59,3 +59,14 @@
   ו**3 כללי-הניתוב שנלמדו חיים בשלב 1** (שרשור משימות תלויות / ניתוב ליכולת אמיתית / המתאם מרכיב את
   התוצר הסופי). האופי טרם הולבש על הריפו החי — זה שלב 4 (דרך ענף זרוק + `refresh-agent-repo.yml`,
   אחרי אישור Or).
+
+## נוריאל — שלב 4: הלבשת האופי על הריפו החי
+
+האופי הולבש על `edri2or/nuriel` החי דרך המנגנון המוכח מהגל הראשון (ענף זרוק + refresh), כך
+שהתבנית ב-main נשארת גנרית:
+- **ענף זרוק `wave/persona-nuriel`** (לא ממוזג) נושא `templates/agent-repo/AGENTS.md` מילולי
+  (בלי placeholders) — אופי-המתאם המלא.
+- **`refresh-agent-repo.yml`** (run `27781868879`, success) הורץ עם `source_ref=wave/persona-nuriel`,
+  `paths=AGENTS.md` → דחף ישירות ל-`nuriel:main`.
+- אומת חי: `get_file_contents nuriel/AGENTS.md` = אופי-המתאם המלא (תפקיד, צוות רשום, 3 כללי-ניתוב,
+  אבטחה). `templates/agent-repo/AGENTS.md.template` ב-main נשאר גנרי — **golden לא נדרס**.
