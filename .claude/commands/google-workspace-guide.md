@@ -29,6 +29,19 @@ name). The label is a filename, not the account — see `docs/google-identities.
 *(In a provisioned system this is set inside the `google_workspace` n8n tool's config, so you don't
 type it.)*
 
+> **Known failure — an OAuth prompt to `http://localhost:3002/oauth2callback` is NOT a broken
+> connector; it means you passed the WRONG `user_google_email`.** The `workspace-mcp` sidecar is
+> single-user with the shared token pre-filed under the label `edriorp38@or-infra.com`. Call a tool
+> with any *other* value (e.g. the natural-but-wrong `edri2or@gmail.com`) and the sidecar finds no
+> credential under that name and falls back to its own interactive OAuth, whose redirect is the
+> sidecar's internal `localhost:3002/oauth2callback` — useless from any client (claude.ai **or**
+> Claude Code on the web) and the source of the "localhost" error. **Fix: pass
+> `user_google_email="edriorp38@or-infra.com"`** and the call hits the shared token and works.
+> Proven live from a Claude Code **web** session 2026-06-17 (`search_drive_files` returned real
+> Drive files). The connector itself works in Claude Code web exactly as in claude.ai — it surfaces
+> automatically (it is the `/workspace/<system>/mcp` route; you can tell it apart from the raw
+> package by the gateway-only synthetic `edit_drive_file_content` tool).
+
 ## The 12 tool groups (what exists)
 
 Read + write across: **gmail**, **calendar**, **drive**, **docs**, **sheets**, **slides**, **forms**,
