@@ -27,7 +27,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 |---|---|---|---|
 | 0 | פתיחת הפיתוח (devplan + changelog) | completed | `devplans/`, `changelog.d/` |
 | 1 | מחקר + הוכחת-יכולת-סקילים (capability-first) | completed | `docs/capability-cards/agent-repo-skills.md`, broker runs |
-| 2 | טיוטת הפרסונה + סט-הסקילים | pending | `docs/agent-specs/nuriel.md`, `docs/agent-specs/firstwave/*`, קבצי-סקיל |
+| 2 | טיוטת הפרסונה + סט-הסקילים | in-progress | `docs/agent-specs/nuriel.md`, `docs/agent-specs/nuriel/skills/*`, `docs/agent-specs/firstwave/*` |
 | 3 | נחיתה על הריפוז החיים (refresh) | pending | `edri2or/nuriel` (+חיילים), ענף-זמני |
 | 4 | הוכחה חיה מסשן נוריאל | pending | — (broker run + הוכחה) |
 | 5 | סגירה | pending | `CLAUDE.md`, devplan |
@@ -96,7 +96,12 @@ Anthropic *Building Effective Agents* + *multi-agent research system* + *Agent S
 
 **הוכחת E2E (artifact):** לא-התנהגותי.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** טיוטה מוכנה — **ממתין לסקירת Or לפני נחיתה חיה (שלב 3).** נכתבו:
+`docs/agent-specs/nuriel.md` (7 סעיפים: Or עשיר / מנכ"ל+שרשרת-פיקוד / מפת-צוות עם מגבלת-החיילים /
+3 כללים / סקילים+פרוטוקול / הובלת-פיתוח / ניקיון+אבטחה + מקורות-מחקר); 3 סקילים תחת
+`docs/agent-specs/nuriel/skills/` (`delegate`, `report-to-or`, `lead-dev`); תוספת שרשרת-פיקוד
+ל-`firstwave/{natan,sapi,nachshon}.md` (ב-nachshon תוקן גם "Or המנכ"ל"→"Or הבעלים"). הסקילים
+מחוץ ל-`.claude/commands` של הפקטורי בכוונה (לא מפעילים את שער-המראה); ינחתו על נוריאל בשלב 3.
 
 **שינוי תוכנית:** —
 
