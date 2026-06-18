@@ -70,3 +70,15 @@
   `paths=AGENTS.md` → דחף ישירות ל-`nuriel:main`.
 - אומת חי: `get_file_contents nuriel/AGENTS.md` = אופי-המתאם המלא (תפקיד, צוות רשום, 3 כללי-ניתוב,
   אבטחה). `templates/agent-repo/AGENTS.md.template` ב-main נשאר גנרי — **golden לא נדרס**.
+
+## נוריאל — שלב 6: סגירת פער-התיעוד ב-CLAUDE.md
+
+נסגר הפער ש-Or הצביע עליו (סשן חדש לא הכיר את סוכני-הריפו כי הם לא ב-CLAUDE.md):
+- **סעיף חדש ב-`CLAUDE.md`** ("Agent-repos (the agent roster) — Or talks only to Nuriel", אחרי
+  `## Skills available`): טיפוס-המוצר "ריפו-סוכן", ה-broker, **מצבת ארבעת הסוכנים** (nuriel המתאם +
+  nachshon/natan-research/sapi-docs) עם הפניות לאופי כל אחד, כלל-ההפעלה ("Or מדבר רק עם נוריאל"),
+  3 כללי-הניתוב, ומה נדחה (fan-out אוטונומי, טלגרם).
+- **3 שורות חדשות בטבלת-ה-Workflows:** `agent-action.yml` (ה-broker), `provision-agent-repo.yml`,
+  `refresh-agent-repo.yml`.
+- בוצע לפני שלב 5 (סדר התהפך): שלב 6 עצמאי בפקטורי ולא דורש את Or, אז הושלם בזמן ההמתנה לשלב 5
+  (ההוכחה החיה מסשן נוריאל). אין שינוי קוד — תיעוד בלבד.
