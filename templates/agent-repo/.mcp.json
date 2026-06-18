@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "coordinator": {
+      "type": "http",
+      "url": "https://factory-master-actions-mcp-140345952904.me-west1.run.app/coordinator/nuriel/mcp"
+    }
+  }
+}
