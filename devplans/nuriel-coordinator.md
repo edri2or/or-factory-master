@@ -206,6 +206,17 @@ env fail-closed (`COORDINATOR_WORKER_REPOS`/`COORDINATOR_REQUESTER_REPOS`) ב-`d
 לערוץ ה-`coordinator` (שער-האבטחה; 30 יום). אחרי שניהם — ניסיון 5f שני אמור לעבור. (האבטחה עבדה
 כמתוכנן: נוריאל לא הגיע ל-broker בלי אישור Or.)
 
+🔎 **ניסיון 5f שני (ממצא עמוק יותר, 2026-06-18):** עם האופי המתוקן, נוריאל הלך **ישר** ל-
+`route_to_agent` — אך נחסם **ברמת-הרשת**: סביבת ה-Claude-Code-**web** של נוריאל לא מתירה egress
+למארח ה-gateway (`factory-master-actions-mcp-140345952904.me-west1.run.app`) — חסום עוד לפני ה-OAuth.
+**שורש:** Or עובד ב-Claude Code **בדפדפן** (לא טרמינל); לסביבת-web יש מדיניות-רשת (default `Trusted`)
+שמתירה רק allowlist. **הפתרון (פעולת-Or חד-פעמית, לא קוד):** בהגדרות סביבת `nuriel` → Network access
+→ **Custom** → Allowed domains += `*.run.app` (לכסות גם את מארח ה-MCP וגם את ה-OAuth issuer host של
+Cloud Run) → שמירה → סשן חדש. (תיעוד: code.claude.com/docs/en/claude-code-on-the-web, §Network access.)
+זה תאום-בנושא ל-PR #530 (כלי-Google מהדפדפן — אותה משפחת-חסם reach-from-web), אך פיתוח נפרד. אחרי
+ה-allow + ה-OAuth החד-פעמי → ניסיון 5f שלישי אמור לעבור. **הקוד+התשתית שלנו מאומתים (smoke 7/7);
+מה שנותר הוא הגדרת-סביבה בצד-Or.**
+
 **שינוי תוכנית:** שלב 5 התרחב בעקבות הממצא החי — מ"הגדר את סביבת נוריאל" ל"בנה ערוץ-ניתוב צר ומאובטח".
 זו ההחלטה המאובטחת של Or; נכנס לאותו תיק (לא פיתוח נפרד).
 
