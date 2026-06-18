@@ -23,7 +23,28 @@
 |---|---|---|---|---|---|
 | A coordinator session (Nuriel) splits Or's request, fans the sub-tasks to sibling agents **through the existing broker**, collects the results, and synthesizes one unified answer to Or — no new privilege, never agent→agent direct, RED gate intact | **SPLIT:** the session decides the routing plan (Nachshon's `[MODE:SPLIT]` machinery reused). **FAN-OUT:** for each plan entry, `mcp__github__actions_run_trigger` → `agent-action.yml` (`worker_repo=<sibling>`, `requester_repo=<nuriel/nachshon>`, `correlation_id=<parent>-<sub_id>`, `phase=propose`) → each `results/<parent>-<sub_id>.json` lands. **UNIFY:** the session reads the collected sub-results and synthesizes one Hebrew answer to Or | a real two-domain Hebrew request from Or — **שלב 1:** driven from the factory session over the 3 live repos (`natan-research`/`sapi-docs`, unify via `nachshon`); **שלב 5:** driven from the live `nuriel` session itself | the unified answer **demonstrably synthesizes both** sibling sub-results, returned to Or in one window; every dispatch is a plain `agent-action.yml` call | **pending** (שלב 1 → fill; שלב 5 → confirm from the nuriel session) | (1) The session dispatches only `agent-action.yml propose` via the scoped GitHub MCP — not the broad `dispatch_workflow`; RED tasks still gate on Telegram ✅. (2) The orchestrator drops any plan entry outside the sibling allow-list; `subtask` is untrusted DATA to each worker. (3) Serialize broker dispatches that target the **same** worker repo (the parallel-same-repo race learned in `firstwave-fanout.md`); fan out in parallel only across distinct repos. (4) Risk: the nuriel web-session environment may need a one-time connector configuration to expose the GitHub MCP → proven in שלב 5, not assumed. |
 
-verdict: go (שלב 1 — לולאת-המתאם מוכחת מסשן הפקטורי; קריטריון 5 — מסשן נוריאל עצמו — מאומת בשלב 5)
+verdict: go (שלב 1 — מסשן הפקטורי; שלב 5 — מסשן נוריאל עצמו, דרך הערוץ הצר `route_to_agent` + connector — אומת חי 2026-06-18, כל 5 הקריטריונים מתקיימים)
+
+## Evidence — שלב 5 PROVEN ✅ (2026-06-18, criterion 5 met)
+
+Or opened a Claude Code (web) session on `edri2or/nuriel` and asked Nuriel (Hebrew) to research 3 ways
+to manage an ADHD day without burnout. **The full loop ran from the nuriel session itself, with the
+factory session out of the loop:**
+- Nuriel reached the narrow `/coordinator/nuriel/mcp` route via an **Anthropic connector** (routed
+  through Anthropic's servers — no per-environment network-egress setting; the platform connector-gate
+  did **NOT** block the write tool).
+- Nuriel called **`route_to_agent`** → server-side `dispatchWorkflow` (broker App) → `agent-action.yml`
+  broker run [`27788706190`](https://github.com/edri2or/or-factory-master/actions/runs/27788706190)
+  (`triggering_actor=factory-master-broker[bot]` — objective proof it went through the secure server-side
+  tool, not a side path), worker `natan-research`.
+- The broker wrote the result back to `edri2or/nuriel` (commit `2347a617`, "agent-action result
+  adhd-day-mgmt-3-ways").
+- Nuriel read it (`get_file_contents` on the coordinator route) and composed the final Hebrew answer
+  (3 methods + a transparency note, offering to deepen via natan or document via sapi).
+
+All 5 GO criteria met, objectively verified server-side. **The connector door works with zero
+network setting** — Or did a one-time claude.ai custom-connector add + Google login (the same
+mechanism the factory's Drive tools use), reused across all nuriel sessions.
 
 ## GO criteria (declare `go` iff ALL hold — filled live in שלב 1, confirmed from the nuriel session in שלב 5)
 
