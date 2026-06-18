@@ -1,0 +1,109 @@
+## נוריאל — סוכן-המתאם שאיתו בלבד Or מדבר (nuriel-coordinator) — שלב 0
+
+פתיחת פיתוח מדורג (`/dev-stage`) ל-**נוריאל**: ריפו-סוכן רביעי מסוג חדש — לא עוד עובד, אלא
+**סוכן-המתאם היחיד שאיתו Or מדבר**. היום Or חייב לדבר עם הפקטורי כדי שיעביר משימות לסוכני-הריפו
+(נחשון/נתן/ספי); נוריאל מחליף את זה — Or מדבר רק עם נוריאל, ונוריאל מנתב לכל היתר (הקיימים +
+עתידיים) ומחזיר תשובה אחת. רוכבים על טיפוס-המוצר "ריפו-סוכן" המוכח (`docs/agent-repo-product.md`).
+
+**החלטת Or — "הדלת" מדורגת:** שלב A (הפיתוח הזה) = **צ'אט עם הריפו של נוריאל** (Or פותח סשן על
+`edri2or/nuriel`); שלב B (פיתוח נפרד, עתיד) = **טלגרם מהטלפון**. טלגרם נדחה במפורש.
+
+שלב 0 הוא scaffolding-תיעוד בלבד (קבצי-md); אף שער-קוד לא מופעל מלבד שער ה-devplan שזה הקובץ שמשחרר אותו.
+
+- **`devplans/nuriel-coordinator.md` (חדש, `status: active`)** — תיק-הפיתוח החי: מטרה, 8 שלבים (0–7),
+  Acceptance + הוכחה-תפקודית פר-שלב, יומן ל-Or. מצהיר במפורש על הארכיטקטורה: היכולת **לא חדשה אלא
+  מועברת** — "סשן מורשה שמריץ fan-out של ה-broker" כבר מוכח (`firstwave-fanout.md`, `go`), והדבר
+  היחיד החדש הוא להזיז את הסשן מהפקטורי ל-`edri2or/nuriel`. הניתוב צר ומאובטח: הסשן של נוריאל
+  מדסַפֵּץ' דרך **GitHub MCP מתוחם ל-`or-factory-master`** (`agent-action.yml` `phase=propose`),
+  לא דרך `dispatch_workflow` הרחב; שער-האישור-האדום נשאר בלתי-עקיף. **נוריאל מול נחשון:** נוריאל =
+  החזית האנושית; נחשון = הנתב הטכני ברמת-העובד — נוריאל משתמש-מחדש במכונת `[MODE:SPLIT|WORKER|UNIFY]`,
+  לא משכפל.
+- **`docs/capability-cards/nuriel-orchestration.md` (חדש, skeleton, `verdict: pending`)** — כרטיס
+  היכולת ל"סשן-נוריאל מריץ fan-out ומחזיר תשובה מאוחדת ל-Or": היכולת הגולמית, ה-fixture המתוכנן,
+  וקריטריוני ה-go/no-go. יתמלא בשלב 1 (הוכחה מסשן הפקטורי) ויאומת ב-`go` בשלב 5 (מסשן נוריאל עצמו).
+
+עטיפת `/dev-stage` (לא factory): אין נגיעה ב-`templates/system/**` (שער הזהב לא נדרס), ב-
+`templates/agent-repo/**` ב-main (golden לא נדרס — האופי נוחת על הריפו החי דרך ענף זרוק +
+`refresh-agent-repo.yml`), ולא בקבצי-התנהגות-בוט (שער ה-E2E no-op). אין שינוי קוד-מוצר — רוכבים על
+ה-workflows הקיימים (`provision-agent-repo.yml` / `refresh-agent-repo.yml` / `agent-action.yml`).
+
+## נוריאל — שלב 1: הוכחת לולאת-המתאם על קלט אמיתי (verdict go)
+
+הוכחה capability-first של לולאת-המתאם **מסשן הפקטורי** (הסשן המורשה הקיים) על שלושת הריפויים החיים,
+לפני הקמת `nuriel`. בקשה דו-תחומית עברית אמיתית ("חקור 3 דרכים לתעדף משימות עם ADHD → רשימת-בדיקה")
+רצה מקצה-לקצה דרך `agent-action.yml` (כולן `phase=propose`, classified **green**), שנשלחו דרך
+ה-GitHub MCP המתוחם:
+- **SPLIT** (נחשון, broker `27775449119`) → `plan[]` בן 2, **שניהם ב-allow-list** (`natan-research`/`sapi-docs`).
+- **FAN-OUT** — נתן (`27775601926`, 3 שיטות + נימוק-ADHD) + ספי. ספי **סירב בצדק** בריצה הראשונה
+  (`27775612573` — מחקר/יצירה אינם תפקידו), ובריצה השנייה (`27775853131`, b2, עם ממצאי-נתן כחומר)
+  תיעד+סיווג לרשומת 6-בלוקים.
+- **UNIFY** (נחשון, broker `27776102732`) → סנתז **באמת** את שניהם: 3 השיטות + רשימת-בדיקה שהמאחד
+  הרכיב + הערת-האמינות של ספי.
+
+- **`docs/capability-cards/nuriel-orchestration.md`** עודכן ל-`verdict: go` (קריטריונים 1–4) עם כל
+  ה-run-ids; קריטריון 5 (מסשן נוריאל עצמו) — שלב 5.
+- **3 תובנות-ניתוב (L1/L2/L3)** נרשמו ויזינו את אופי-המתאם של נוריאל (שלב 3): שרשור משימות תלויות
+  (מחקר→תיעוד), ניתוב ליכולת האמיתית של כל סוכן, והרכבת התוצר הסופי ע"י המאחד.
+
+אין שינוי קוד — רוכבים על ה-broker הקיים; כל הסוכנים נשארו קריאה-בלבד, אף אחד לא קיבל הרשאה חדשה.
+
+## נוריאל — שלבים 2–3: הקמת הריפו + אופי-המתאם
+
+- **שלב 2 — הקמת `nuriel`** (provision run `27779503732`, success): ריפו פרטי `edri2or/nuriel`
+  נולד מהתבנית עם 4 הקבצים, `AGENTS.md` מרונדר (`name: nuriel`, השם "נוריאל" + התכלית), וקושר
+  לדלת-ה-WIF המשותפת. עלות אפסית (בלי GCP/n8n/Railway). דרך ה-`provision-agent-repo.yml` הקיים.
+- **שלב 3 — `docs/agent-specs/nuriel.md` (חדש)** — אופי-המתאם של נוריאל (מקור-האמת, מראה את
+  `docs/agent-specs/firstwave/*.md`): תפקיד נקודת-הקשר היחידה; הצוות הרשום (nachshon/natan-research/
+  sapi-docs + מקום לעתידיים); שני מצבי-ריצה (סשן אינטראקטיבי = מנתב ומסנתז; נתיב-עובד = קריאה-בלבד);
+  חוזה-ניתוב דרך `agent-action.yml`+GitHub MCP מתוחם (לא `dispatch_workflow` הרחב; שער-RED בתוקף);
+  ו**3 כללי-הניתוב שנלמדו חיים בשלב 1** (שרשור משימות תלויות / ניתוב ליכולת אמיתית / המתאם מרכיב את
+  התוצר הסופי). האופי טרם הולבש על הריפו החי — זה שלב 4 (דרך ענף זרוק + `refresh-agent-repo.yml`,
+  אחרי אישור Or).
+
+## נוריאל — שלב 4: הלבשת האופי על הריפו החי
+
+האופי הולבש על `edri2or/nuriel` החי דרך המנגנון המוכח מהגל הראשון (ענף זרוק + refresh), כך
+שהתבנית ב-main נשארת גנרית:
+- **ענף זרוק `wave/persona-nuriel`** (לא ממוזג) נושא `templates/agent-repo/AGENTS.md` מילולי
+  (בלי placeholders) — אופי-המתאם המלא.
+- **`refresh-agent-repo.yml`** (run `27781868879`, success) הורץ עם `source_ref=wave/persona-nuriel`,
+  `paths=AGENTS.md` → דחף ישירות ל-`nuriel:main`.
+- אומת חי: `get_file_contents nuriel/AGENTS.md` = אופי-המתאם המלא (תפקיד, צוות רשום, 3 כללי-ניתוב,
+  אבטחה). `templates/agent-repo/AGENTS.md.template` ב-main נשאר גנרי — **golden לא נדרס**.
+
+## נוריאל — שלב 6: סגירת פער-התיעוד ב-CLAUDE.md
+
+נסגר הפער ש-Or הצביע עליו (סשן חדש לא הכיר את סוכני-הריפו כי הם לא ב-CLAUDE.md):
+- **סעיף חדש ב-`CLAUDE.md`** ("Agent-repos (the agent roster) — Or talks only to Nuriel", אחרי
+  `## Skills available`): טיפוס-המוצר "ריפו-סוכן", ה-broker, **מצבת ארבעת הסוכנים** (nuriel המתאם +
+  nachshon/natan-research/sapi-docs) עם הפניות לאופי כל אחד, כלל-ההפעלה ("Or מדבר רק עם נוריאל"),
+  3 כללי-הניתוב, ומה נדחה (fan-out אוטונומי, טלגרם).
+- **3 שורות חדשות בטבלת-ה-Workflows:** `agent-action.yml` (ה-broker), `provision-agent-repo.yml`,
+  `refresh-agent-repo.yml`.
+- בוצע לפני שלב 5 (סדר התהפך): שלב 6 עצמאי בפקטורי ולא דורש את Or, אז הושלם בזמן ההמתנה לשלב 5
+  (ההוכחה החיה מסשן נוריאל). אין שינוי קוד — תיעוד בלבד.
+
+## נוריאל — שלב 5 (ממצא חי + 5a/5b): ערוץ-ניתוב צר ומאובטח לנוריאל
+
+**ממצא חי:** בבדיקת שלב 5, הסשן של נוריאל הבין מושלם וניסה לנתב, אך נחסם — אין לו גישה ל-broker
+(`or-factory-master`). Or בחר את הדרך **המאובטחת**: לא "מפתח רחב" לסביבת נוריאל, אלא ערוץ-MCP ייעודי וצר.
+
+- **5a (capability-first, go):** מסלול ה-propose `nuriel→natan-research` כבר הוכח round-trip בשלב 1.
+- **5b — קוד הערוץ הצר (חדש/משונה):**
+  - `services/mcp-server/src/coordinator-scope.ts` (חדש) — facade שחושף **רק** READ subset
+    (`list_workflow_runs`/`get_workflow_run`/`get_run_jobs`/`get_file_contents`/`list_commits`/`get_repo`/
+    `get_pull_request`/`list_pull_request_files`) + כלי-הכתיבה היחיד `route_to_agent`. ה-broad `dispatch_workflow`
+    **נעדר**. `route_to_agent` מקודד-קשיח ל-`agent-action.yml` `phase=propose`; `worker_repo` מול allow-list
+    (`COORDINATOR_WORKER_REPOS`, fail-closed); `requester_repo` מוזרק מהנתיב (לא ארגומנט → לא ניתן לזיוף);
+    שער-ה-RED נשמר אוטומטית. שימוש-חוזר ב-`dispatchWorkflow()`/`getLatestWorkflowRun()` (github-client).
+  - `services/mcp-server/src/index.ts` — ערוץ `/coordinator/:repo/mcp` (מראה של `/factory/:system/mcp`;
+    auth operator-grade `oauth`/`admin`; **בלי** endpoint של token).
+  - `.github/workflows/deploy-mcp-server.yml` + `scripts/render-mcp-service-yaml.sh` — env חדשים
+    `COORDINATOR_REQUESTER_REPOS`/`COORDINATOR_WORKER_REPOS` (ברירת-מחדל ריקה = fail-closed; מוזנים
+    `nuriel` / `nachshon,natan-research,sapi-docs`).
+  - `services/mcp-server/test/coordinator-scope.test.mjs` (חדש) — סט-הכלים המדויק; ש-`route_to_agent` אין לו
+    `phase`/`requester_repo`; סירוב עובד-לא-מורשה/control לפני dispatch. **134/134 + tsc נקי.**
+  - `scripts/coordinator-mcp-smoke.py` + `.github/workflows/coordinator-mcp-smoke.yml` (חדש, registry-exempt) —
+    smoke חי: סט-כלים מדויק (`dispatch_workflow` נעדר), propose אמיתי לעובד-מורשה, וסירוב לא-מורשה/נתיב-לא-מוכר/בלי-bearer.
+  - `CLAUDE.md` — תיעוד ערוץ `/coordinator` בסעיף ה-MCP.
+- **נשאר:** 5c (★עלות, אישור Or★ — מיזוג → redeploy אוטומטי), 5d (smoke), 5e (repoint `.mcp.json`), 5f (הוכחה מסשן נוריאל).
