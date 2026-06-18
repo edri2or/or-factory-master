@@ -26,7 +26,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
 | 0 | פתיחת הפיתוח (devplan + changelog) | completed | `devplans/`, `changelog.d/` |
-| 1 | מחקר + הוכחת-יכולת-סקילים (capability-first) | pending | `docs/capability-cards/`, dog-food broker runs |
+| 1 | מחקר + הוכחת-יכולת-סקילים (capability-first) | completed | `docs/capability-cards/agent-repo-skills.md`, broker runs |
 | 2 | טיוטת הפרסונה + סט-הסקילים | pending | `docs/agent-specs/nuriel.md`, `docs/agent-specs/firstwave/*`, קבצי-סקיל |
 | 3 | נחיתה על הריפוז החיים (refresh) | pending | `edri2or/nuriel` (+חיילים), ענף-זמני |
 | 4 | הוכחה חיה מסשן נוריאל | pending | — (broker run + הוכחה) |
@@ -66,7 +66,20 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 
 **הוכחת E2E (artifact):** לא-התנהגותי (אין שינוי בקבצי-התנהגות n8n).
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם.
+**(א) מחקר-web** (מסונתז ל-7 כללים לפרסונה, מקורות ב-`agent-repo-skills.md`/הפרסונה):
+(1) אתה מנתב — לעולם לא מייצר את התוצר; (2) דע את המפה לא את השיטות — הטמע רוסטר+כללי-ניתוב+איך-לדבר-עם-Or,
+שלוף ידע חי ע"י האצלה לא מזיכרון (נמנע מידע-מתיישן; progressive disclosure של Skills); (3) תן לכל חייל
+brief בן-4: יעד / פורמט-פלט / כלים-ומקורות / גבולות; (4) סקֵל מאמץ לפי מורכבות (1/מעט/הרבה) — נגד over-spawning;
+(5) האצל כלפי-מטה בלבד — חיילים לא מתכננים-מחדש ולא מאצילים-חזרה; (6) שמור הקשר נקי — קבל מהחיילים תוצר
+מסונתז לא dump גולמי; (7) שפה אחת לניתוב ולסקילים (description של Skill = חוזה-הניתוב). מקורות ראשיים:
+Anthropic *Building Effective Agents* + *multi-agent research system* + *Agent Skills*; A2A Agent Cards; MS ISE *Coordinator patterns*.
+**(ב) הוכחת-יכולת סקילים (go/no-go):** **go** לסשן נוריאל האינטראקטיבי (Claude Code טוען `.claude/commands` —
+אותו מנגנון כמו הסשן הזה; live-confirm בשלב 4); **no-go** ל-worker ה-headless כפי-שהוא (`--allowedTools Read,Grep,Glob`
+לא כולל `Skill`, ואין לו MCP שמיש) → הפרוטוקול-הבין-סוכני מיושם בצד נוריאל (סקיל `/delegate`) + בפרסונת-החייל,
+לא כסקיל שהחייל מריץ. הרחבת-חיילים = שינוי עתידי נפרד. הכל ב-`docs/capability-cards/agent-repo-skills.md`.
+**(ג) dog-food (broker חי):** שרשרת L1 מלאה — נתן (run `27792616149`) חקר → ספי (run `27792785963`) תיעד
+לרשומת-6-בלוקים; שניהם success, requester=`nuriel`, פעלו ביכולתם האמיתית והיו ישרים על מגבלותיהם.
 
 **שינוי תוכנית:** —
 
@@ -145,3 +158,4 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 > שורה פשוטה אחת לכל שלב שהסתיים.
 
 - שלב 0 הושלם — פתחתי את תיק-הפיתוח. נוריאל יחוזק כ"מנכ"ל": יודע את מי לבקש מה, לא עושה כלום בעצמו, ועובד דרך סקילים.
+- שלב 1 הושלם — חקרתי באינטרנט (אישש בדיוק את הגישה: מנכ"ל "דק", יודע את המפה ולא את השיטות), הוכחתי שסקילים יעבדו לנוריאל אבל לא לחיילים ה-headless, והרצתי את הצוות חי כמבחן (נתן חקר, ספי תיעד — שניהם עבדו יפה).

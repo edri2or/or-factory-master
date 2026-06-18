@@ -25,3 +25,27 @@
 עטיפת `/dev-stage` (לא factory): אין נגיעה ב-`templates/system/**` (שער הזהב לא נדרס) ולא בקבצי-
 התנהגות-בוט (שער ה-E2E no-op). האופי והסקילים נוחתים על הריפוז החיים דרך ענף-זמני +
 `refresh-agent-repo.yml`, כך ש-`templates/agent-repo/**` ב-main נשאר גנרי.
+
+## נוריאל — שלב 1: מחקר + הוכחת-יכולת-סקילים (capability-first)
+
+**(א) מחקר-web** (מסשן הפקטורי — חינם) אישש את הגישה ותימצת ל-7 כללים לפרסונה: מנכ"ל מנתב ולא מייצר
+את התוצר; יודע את המפה (רוסטר+כללי-ניתוב+איך-לדבר-עם-Or) ולא את השיטות, ושולף ידע חי ע"י האצלה לא
+מזיכרון (נמנע מידע-מתיישן); brief בן-4 לכל חייל (יעד/פורמט/כלים/גבולות); סקֵל-מאמץ-לפי-מורכבות נגד
+over-spawning; האצלה כלפי-מטה בלבד; הקשר נקי (תוצר מסונתז לא dump); שפה אחת לניתוב ולסקילים. מקורות
+ראשיים: Anthropic *Building Effective Agents* / *multi-agent research system* / *Agent Skills*;
+A2A Agent Cards; MS ISE *Coordinator patterns*.
+
+**(ב) הוכחת-יכולת סקילים (capability-first, go/no-go)** — `docs/capability-cards/agent-repo-skills.md` (חדש):
+ממצא מהקוד (`templates/agent-repo/.github/workflows/agent-main.yml:92`) — ה-worker רץ `--allowedTools
+Read,Grep,Glob` (בלי `Skill`, בלי MCP שמיש). הכרעה: **go** לסשן נוריאל האינטראקטיבי (Claude Code טוען
+`.claude/commands` — אותו מנגנון כמו סשן-הפקטורי; live-confirm בשלב 4); **no-go** ל-worker ה-headless
+כפי-שהוא. משמעות-עיצוב: נוריאל skills-native; הפרוטוקול-הבין-סוכני מיושם בצד נוריאל (`/delegate`) +
+בפרסונת-החייל (אוריינטציה), לא כסקיל שהחייל מריץ; הרחבת-חיילים ל-skills-native = שינוי עתידי נפרד.
+
+**(ג) dog-food (broker חי, Or אישר את גבול-העלות)** — שרשרת L1 מלאה: מחקר→`natan-research`
+(run `27792616149`, success, `results/nka-natan-1.json`) → תיעוד→`sapi-docs` (run `27792785963`,
+success, `results/nka-sapi-1.json`), requester=`nuriel`, שניהם green. נתן החזיר 3 עקרונות והיה ישר
+על בסיס-הראיות; ספי תיעד לרשומת-6-בלוקים (Admiralty B/3/בינוני, סיווג MECE קטגוריה 2) בלי לחקור.
+מאשש את מגבלת-החיילים (קוראים רק טקסט-משימה + ריפו-עצמם) שמזינה את חוזה-הניתוב.
+
+אין שינוי קוד — רוכבים על ה-broker הקיים; כל הסוכנים נשארו קריאה-בלבד, אף אחד לא קיבל הרשאה חדשה.
