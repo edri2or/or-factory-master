@@ -39,7 +39,7 @@ status: active   # active בזמן פיתוח → completed בסיום
 | 0 | הוכחת-יכולת (capability-first) — הלבנה הקשה | completed | spike (local scaffold + live PR #540 + isolation probe) |
 | 1 | מדיניות-סיכון: builder כ-write + allowlist + סף | completed | `policy/agent-risk-tiers.yml`, `scripts/agent-classify.sh`, `tests/agent-classify-fixtures.yml` |
 | 2 | נתיב-כתיבה בברוקר (apply→draft PR), שער RED | completed | `.github/workflows/agent-action.yml`, `scripts/builder-apply.sh` |
-| 3 | תבנית worker כותב (Write/Edit לתוך `out/`, בלי Bash/טוקן) | pending | `templates/agent-repo-builder/**` |
+| 3 | תבנית worker כותב (Write/Edit לתוך `out/`, בלי Bash/טוקן) | completed | `templates/agent-repo-builder/**`, `provision-agent-repo.yml`, `pipeline-tests.yml` |
 | 4 | הקמת ריפו-הבנאי `edri2or/agent-builder` 🔴 | pending | `provision-agent-repo.yml`, `refresh-agent-repo.yml` |
 | 5 | יצירת `edri2or/personal-life` + הגנת-main 🔴 | pending | `scripts/ensure-protect-main-ruleset.sh` |
 | 6 | dry-run → ריצה אמיתית ראשונה 🔴 | pending | (תפעולי — dispatch דרך הברוקר) |
@@ -101,13 +101,13 @@ status: active   # active בזמן פיתוח → completed בסיום
 - [ ] worker variant עם `--allowedTools Read,Grep,Glob,Write,Edit`, בלי Bash, בלי טוקן GitHub, מעלה `out/`.
 - [ ] שערי golden / skills-mirror ירוקים.
 
-**הוכחה תפקודית (באותו שלב):** render + הרצת ה-worker בשלב 6.
+**הוכחה תפקודית (באותו שלב):** render של התבנית (אותו envsubst allow-list של provision) → 4 קבצים, אפס tokens שנותרו, mcp.json תקין; ה-worker עבר `bash -n`+`shellcheck -S error`; סימולציית בניית-המניפסט מפיקה בדיוק את הצורה ש-`builder-apply.sh` מצפה לה. הרצת ה-worker החיה היא שלב 6.
 
 **הוכחת E2E (artifact):** לא-התנהגותי.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** ✅ הושלם (2026-06-19). נוצרה `templates/agent-repo-builder/**` (4 קבצים): worker עם `--allowedTools Read,Grep,Glob,Write,Edit` (בלי Bash, בלי טוקן GitHub) שכותב הצעות **רק** ל-`result/out/` ובונה מניפסט `result/<corr>.json`, מעלה כ-`agent-result`; `AGENTS.md.template` עם persona-בנאי (שרשרת-פיקוד, allowlist personal-life בלבד + 3 שכבות + איסורים); `CLAUDE.md.template`+`.mcp.json.template`. `provision-agent-repo.yml`: input `template_dir` (enum: agent-repo / agent-repo-builder, fail-closed). `templates/agent-repo/` הזהב לא נגע (gate נשאר ירוק); הוספתי כיסוי yamllint לתבנית-הבנאי.
 
-**שינוי תוכנית:** —
+**שינוי תוכנית:** תבנית נפרדת (`agent-repo-builder`) במקום לשנות את `agent-repo` — שומר על golden-הזהב נקי ומבדל את ה-worker הכותב לבדיקה.
 
 ---
 
