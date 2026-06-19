@@ -236,6 +236,16 @@ jobs:
           # --- 1) dispatch the worker's agent-main.yml (actions token, that repo only) ---
           WORKER_TOKEN=$(mint '{"actions":"write"}' "$WORKER") || fail "could not mint worker token for ${WORKER}"
           echo "::add-mask::$WORKER_TOKEN"
+          export GH_TOKEN="$WORKER_TOKEN"
+
+          # High-water mark: the worker's latest run id BEFORE we dispatch. Run ids increase
+          # monotonically, so the run THIS dispatch creates is the first one with id > BEFORE_RID
+          # — never a stale prior/concurrent run. (0 when the worker has no prior run.)
+          BEFORE_RID=$(gh run list --repo "edri2or/${WORKER}" --workflow agent-main.yml -L 1 \
+            --json databaseId --jq '.[0].databaseId // 0' 2>/dev/null || echo 0)
+          case "$BEFORE_RID" in ''|*[!0-9]*) BEFORE_RID=0 ;; esac
+          echo "INFO: worker high-water run id before dispatch = ${BEFORE_RID}."
+
           code=$(curl -sS -m 30 -o /tmp/disp.body -w '%{http_code}' -X POST \
             "https://api.github.com/repos/edri2or/${WORKER}/actions/workflows/agent-main.yml/dispatches" \
             -H "Authorization: Bearer ${WORKER_TOKEN}" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" \
@@ -245,18 +255,16 @@ jobs:
           emit "factory.agent_action.dispatched" "info" "false" \
             "$(jq -cn --arg c "$CORR_VAL" --arg w "$WORKER" '{correlation_id:$c, worker:$w}')"
 
-          export GH_TOKEN="$WORKER_TOKEN"
-
-          # --- 2) find + poll the worker run to terminal (broker-PULL) ---
+          # --- 2) find the NEW worker run (id > high-water mark), then poll to terminal ---
           RID=""
           for a in $(seq 1 18); do
-            RID=$(gh run list --repo "edri2or/${WORKER}" --workflow agent-main.yml -L 5 \
+            RID=$(gh run list --repo "edri2or/${WORKER}" --workflow agent-main.yml -L 10 \
               --json databaseId,event \
-              --jq "[.[] | select(.event==\"workflow_dispatch\")] | .[0].databaseId // empty" 2>/dev/null || true)
+              --jq "[.[] | select(.event==\"workflow_dispatch\") | .databaseId | select(. > ${BEFORE_RID})] | max // empty" 2>/dev/null || true)
             [ -n "$RID" ] && break
             sleep 5
           done
-          [ -n "$RID" ] || fail "worker run never appeared in ${WORKER}"
+          [ -n "$RID" ] || fail "new worker run (id > ${BEFORE_RID}) never appeared in ${WORKER}"
           echo "INFO: worker run id=${RID}; polling to terminal…"
           concl=""
           for a in $(seq 1 60); do
@@ -275,9 +283,11 @@ jobs:
           rm -rf dl && mkdir -p dl
           gh run download "$RID" --repo "edri2or/${WORKER}" --name agent-result --dir dl 2>/dev/null \
             || fail "could not download agent-result artifact from worker run ${RID}"
-          RESULT_FILE="dl/${CORR_VAL}.json"
-          [ -f "$RESULT_FILE" ] || RESULT_FILE=$(find dl -name '*.json' | head -1)
-          [ -n "$RESULT_FILE" ] && [ -f "$RESULT_FILE" ] || fail "result json not found in the artifact"
+          # corr-strict: require dl/<corr>.json (the worker names its artifact result/<corr>.json).
+          # No "first json" fallback — a missing corr file is a loud failure, never a wrong write
+          # (so a polled-wrong run can't land another task's result under this correlation_id).
+          RESULT_FILE=$(bash scripts/select-result-file.sh dl "$CORR_VAL") \
+            || fail "corr-strict result dl/${CORR_VAL}.json not found in worker run ${RID}'s artifact"
           RESULT_JSON=$(cat "$RESULT_FILE")
           printf '%s' "$RESULT_JSON" | jq -e . >/dev/null 2>&1 || fail "worker result is not valid JSON"
           echo "INFO: result: $(printf '%s' "$RESULT_JSON" | head -c 300)"

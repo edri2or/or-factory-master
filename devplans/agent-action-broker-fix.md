@@ -20,7 +20,7 @@ status: active
 | 1 | סיווג מודע-יכולת (Fix 1) | completed | `policy/agent-risk-tiers.yml`, `scripts/agent-classify.sh`, `scripts/test-agent-classify.sh`, `tests/agent-classify-fixtures.yml`, `.github/workflows/pipeline-tests.yml`, `.github/workflows/agent-action.yml` |
 | 2 | תיקון run_id ב-coordinator (Fix 3) | completed | `services/mcp-server/src/github-client.ts`, `coordinator-scope.ts`, `tools.ts`, `services/mcp-server/test/*` |
 | 3 | כשל-רך + טלגרם לכרטיס גדול (Fix 2) | completed | `scripts/notify-card-failure.sh`, `.github/workflows/agent-action.yml`, `scripts/tests/*.bats` |
-| 4 | קשירת correlation_id בברוקר (Fix 4) | pending | `scripts/select-result-file.sh`, `.github/workflows/agent-action.yml`, `scripts/tests/*.bats` |
+| 4 | קשירת correlation_id בברוקר (Fix 4) | completed | `scripts/select-result-file.sh`, `.github/workflows/agent-action.yml`, `scripts/tests/*.bats` |
 | 5 | קבלה live + תיעוד + סגירה | pending | `docs/agent-repo-product.md`, devplan, changelog |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
@@ -98,17 +98,18 @@ shellcheck (`--severity=error scripts/*.sh`) + yamllint (כל ה-workflow dirs) 
 ### שלב 4 — קשירת correlation_id בברוקר (Fix 4)
 
 **Acceptance:**
-- [ ] `scripts/select-result-file.sh`: dl-dir + corr → מחזיר `dl/<corr>.json` או נכשל (ללא fallback ל-json הראשון)
-- [ ] `agent-action.yml` לוכד high-water-mark של ריצות ה-worker ובוחר ריצה חדשה (id≠before) במקום `.[0]`
-- [ ] `agent-action.yml` משתמש ב-`select-result-file.sh` במקום ה-fallback
-- [ ] bats test ירוק
+- [x] `scripts/select-result-file.sh`: dl-dir + corr → מחזיר `dl/<corr>.json` או נכשל (ללא fallback ל-json הראשון)
+- [x] `agent-action.yml` לוכד high-water-mark של ריצות ה-worker ובוחר ריצה חדשה (id>before) במקום `.[0]`
+- [x] `agent-action.yml` משתמש ב-`select-result-file.sh` במקום ה-fallback
+- [x] bats test ירוק
 
 **הוכחה תפקודית (באותו שלב):** bats ל-`select-result-file.sh`: dir עם רק `B.json` + CORR=A → נכשל
 (קוד≠0); dir עם `A.json` → מודפס הנתיב הנכון. (גילוי-ריצה ה-high-water-mark נבדק חי בשלב 5.)
 
 **הוכחת E2E (artifact):** לא-התנהגותי.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** ✅ הושלם 2026-06-19. bats select-result-file 5/5; כל חבילת bats 229/229; לוגיקת ה-jq של
+ה-high-water אומתה עצמאית; shellcheck+yamllint נקיים. שתי שכבות: גילוי id>BEFORE_RID + הורדה corr-strict (בלי fallback). ממתין ל-CI.
 
 **שינוי תוכנית:** —
 
@@ -141,3 +142,4 @@ shellcheck (`--severity=error scripts/*.sh`) + yamllint (כל ה-workflow dirs) 
 - שלב 1 הושלם — מעכשיו, סוכן קריאה-בלבד לא ייחסם לאישור שלך סתם בגלל מילה "מסוכנת" בטקסט. שער-האישור נשמר לסוכנים שבאמת כותבים/בונים.
 - שלב 2 הושלם — תיקנו את "מספר-המעקב הקודם". מעכשיו נוריאל תמיד מקבל את המספר של הריצה הנכונה, אז הוא לא יתבלבל יותר בין משימות.
 - שלב 3 הושלם — אם משימה גדולה מדי לכרטיס-האישור, מעכשיו תקבל הודעת-טלגרם ברורה במקום שהכל ייפול בשקט בלי שתדע.
+- שלב 4 הושלם — הברוקר חוזק כך שלעולם לא יכתוב תוצאה של משימה אחת תחת שם של אחרת, גם אם שתי משימות רצות בו-זמנית. כל ארבעת התיקונים בקוד הושלמו.

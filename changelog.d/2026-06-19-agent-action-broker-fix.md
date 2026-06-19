@@ -69,3 +69,23 @@
 **הוכחה תפקודית (שלב 3):** `bats scripts/tests/notify-card-failure.bats` → 3/3; כל חבילת ה-bats → 224/224;
 shellcheck (`--severity=error scripts/*.sh`) + yamllint נקיים. (נתיב ה-413→Telegram החי דורש worker כותב עם
 משימה ענקית — לא קיים אחרי Fix 1; הענף מוכח ביחידת-bats + lint, ונתיב-ההצלחה לא השתנה.)
+
+## תיקון צינור ה-broker (agent-action-broker-fix) — שלב 4: הקשחת קשירת correlation_id בברוקר
+
+הליבה הלגיטימית של "כשל 3" (קשירה מקצה-לקצה). ב-step "Broker the work" של `agent-action.yml` גילוי
+ריצת-ה-worker לקח `.[0]` של הריצות (לא קשור ל-corr), וההורדה נפלה ל-`find dl -name '*.json' | head -1` —
+כך ששני dispatch מקבילים לאותו worker יכלו לכתוב תוצאה של משימה אחת תחת שם של אחרת. הוקשח בשתי שכבות:
+
+- **(א) גילוי-ריצה high-water-mark:** לוכדים את ה-run-id האחרון של ה-worker **לפני** ה-dispatch (`BEFORE_RID`),
+  ובוחרים את הריצה החדשה ביותר עם `databaseId > BEFORE_RID` (run-ids מונוטוניים → הריצה החדשה היא הראשונה
+  מעל הסף, לעולם לא ריצה קודמת/מקבילה). `export GH_TOKEN` הוקדם כדי לקרוא את ה-baseline.
+- **(ב) הורדה corr-strict** — **`scripts/select-result-file.sh`** (חדש): דורש בדיוק `dl/<corr>.json`
+  (ה-worker כבר ממנה `result/<corr>.json`); הוסר ה-fallback ל"json הראשון". קובץ-corr חסר = כישלון **רועש**,
+  לעולם לא כתיבה שגויה — גם אם הגילוי תפס בטעות ריצה אחרת, אסור שתיכתב תוצאה לא-תואמת.
+- **`scripts/tests/select-result-file.bats`** (חדש) — 5 מקרים, כולל **רק `bbb.json` + corr=aaa → נכשל**
+  (מקרה אנטי-אי-ההתאמה), ושמירת ה-corr כשיש json נוסף-רעש.
+
+**הוכחה תפקודית (שלב 4):** `bats scripts/tests/select-result-file.bats` → 5/5; כל חבילת bats → 229/229;
+לוגיקת ה-jq של ה-high-water אומתה עצמאית (ריצה חדשה→מוחזרת; אין-חדשה→empty/ממשיך לסקור; אין-קודמת→החדשה ביותר;
+baseline ריק→0); shellcheck + yamllint נקיים. שכבה (ב) — ערובת-הנכונות (לעולם לא תוצאה לא-תואמת) — מוכחת ב-bats;
+שכבה (א) נבדקת חי בשלב 5.
