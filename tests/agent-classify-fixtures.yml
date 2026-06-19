@@ -35,3 +35,14 @@
 - task: "deploy to railway now"
   worker: ""
   expected_tier: red
+
+# Builder-soldier (always_red_workers): a benign-sounding task with NO red/yellow keyword is
+# STILL forced to red — a cross-repo write is red by construction → Or's Telegram ✅ on every run.
+- task: "add a notes folder and a readme"
+  worker: "agent-builder"
+  expected_tier: red
+
+# Builder-soldier, owner/repo form, green-content task → still red (the always-red override wins).
+- task: "summarise then create the initial scaffold"
+  worker: "edri2or/agent-builder"
+  expected_tier: red

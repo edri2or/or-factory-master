@@ -36,8 +36,8 @@ status: active   # active בזמן פיתוח → completed בסיום
 
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
-| 0 | הוכחת-יכולת (capability-first) — הלבנה הקשה | pending | spike (throwaway repo + סקריפט) |
-| 1 | מדיניות-סיכון: builder כ-write + allowlist + סף | pending | `policy/agent-risk-tiers.yml`, `scripts/agent-classify.sh` |
+| 0 | הוכחת-יכולת (capability-first) — הלבנה הקשה | completed | spike (local scaffold + live PR #540 + isolation probe) |
+| 1 | מדיניות-סיכון: builder כ-write + allowlist + סף | completed | `policy/agent-risk-tiers.yml`, `scripts/agent-classify.sh`, `tests/agent-classify-fixtures.yml` |
 | 2 | נתיב-כתיבה בברוקר (apply→draft PR), שער RED | pending | `.github/workflows/agent-action.yml` |
 | 3 | תבנית worker כותב (Write/Edit לתוך `out/`, בלי Bash/טוקן) | pending | `templates/agent-repo-builder/**` |
 | 4 | הקמת ריפו-הבנאי `edri2or/agent-builder` 🔴 | pending | `provision-agent-repo.yml`, `refresh-agent-repo.yml` |
@@ -60,9 +60,9 @@ status: active   # active בזמן פיתוח → completed בסיום
 
 **הוכחת E2E (artifact):** לא-התנהגותי (agent-repo, לא n8n).
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** ✅ GO (2026-06-19). לבנה 1 (ייצור scaffold בארגז-חול) הוכחה מקומית — 3 קבצים ל-`out/`. לבנה 2 (זהות-הברוקר פותחת PR) הוכחה חיה — PR #540 עצמו נפתח ע"י אינטגרציית-הברוקר (כולל הרשאת `pull_requests:write`). לבנה 3 (בידוד): הזהות נחסמה על ריפו אחר (`create_branch` על `edri2or/nuriel` → refused; וגם יצירת-ריפו בארגון → 403) — בידוד הוכח בשכבת-ה-connector. הוכחת-הבידוד ברמת-טוקן-ה-App (`generate-app-token.sh` עם `repository_ids` → 403 מ-GitHub API) **נעוצה כשער-הכניסה הראשון של שלב 2 על main**, כי סשן לא יכול לנפק טוקן-ברוקר (בכוונה — הכוח הזה חי רק ב-workflow על main). אין חוב-ניקיון (לא נוצר ריפו-זרוק).
 
-**שינוי תוכנית:** —
+**שינוי תוכנית:** ויתור על ריפו-זרוק (Or אישר את החלופה "להוכיח חסימה מול ריפו קיים בלי לגעת בו"). הוכחת-הבידוד ברמת-הטוקן הועברה לשער-הכניסה של שלב 2 על main — שם הקוד באמת חי, וההוכחה טרייה וקבועה.
 
 ---
 
@@ -77,7 +77,7 @@ status: active   # active בזמן פיתוח → completed בסיום
 
 **הוכחת E2E (artifact):** לא-התנהגותי.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** ✅ הושלם (2026-06-19). `policy/agent-risk-tiers.yml`: נוסף `agent-builder: write`, `builder_allowed_targets: [edri2or/personal-life]`, `builder_limits` (50 קבצים / 256KB), ו-`always_red_workers: [agent-builder]`. `agent-classify.sh`: נוסף override "always-red" (גובר על ה-cap ועל verdict-הטקסט) — כך **כל** משימת-בנאי נכפית ל-red→טלגרם, גם אם הטקסט נקי. נוספו 2 fixtures; כל 8 ה-fixtures עוברים; shellcheck+yamllint נקי.
 
 **שינוי תוכנית:** —
 
@@ -181,4 +181,6 @@ status: active   # active בזמן פיתוח → completed בסיום
 
 > שורה פשוטה אחת לכל שלב שהסתיים.
 
-- 2026-06-19: הוקם הפיתוח. תיקנתי את הבלופרינט של נוריאל לעיצוב מאובטח (בלי App/SA חדשים — הברוקר כותב). ממתין לאישורך בטלגרם לפני הצעד הרגיש הראשון (הוכחת-היכולת, שדורשת ריפו-זרוק זמני).
+- 2026-06-19: הוקם הפיתוח. תיקנתי את הבלופרינט של נוריאל לעיצוב מאובטח (בלי App/SA חדשים — הברוקר כותב).
+- 2026-06-19: שלב 0 (הוכחת-יכולת) ✅ GO — הוכחתי שהלבנים עובדות (ייצור-קבצים בארגז-חול, פתיחת-PR ע"י הברוקר, חסימה על ריפו אחר). לא נוצר ריפו-זרוק.
+- 2026-06-19: שלב 1 ✅ — מדיניות-הסיכון עודכנה כך שכל ריצת-בנאי תמיד דורשת ✅ שלך בטלגרם, ועם בלם-בטיחות (50 קבצים) ורשימת-יעד מותרת (personal-life בלבד).

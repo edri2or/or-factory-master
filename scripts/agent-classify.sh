@@ -54,6 +54,25 @@ read_default_worker_capability() {
   printf '%s' "${d:-write}"
 }
 
+# True (exit 0) if the worker is listed under `always_red_workers:` — a write-capable worker
+# whose every task crosses a repo boundary, so it is RED by construction (forces the Telegram ✅
+# gate regardless of the keyword verdict or the read-only cap). Normalises owner/repo → repo.
+worker_is_always_red() {
+  local worker="${1:-}"
+  [[ -n "$worker" ]] || return 1
+  worker="${worker##*/}"
+  awk -v w="$worker" '
+    /^always_red_workers:[[:space:]]*$/ { inlist=1; next }
+    inlist && /^[[:space:]]*#/          { next }
+    inlist && /^[^[:space:]]/           { inlist=0 }
+    inlist && /^[[:space:]]*-[[:space:]]+/ {
+      v=$0; sub(/^[[:space:]]*-[[:space:]]+/,"",v); gsub(/"/,"",v); sub(/[[:space:]]+$/,"",v)
+      n=split(v,a,"/"); if (a[n]==w) { found=1; exit }
+    }
+    END { exit(found?0:1) }
+  ' "$POLICY_FILE"
+}
+
 # Look up a worker's capability from the `worker_capabilities:` map. Normalises owner/repo →
 # repo. Empty/unlisted worker → fail-safe default (no cap).
 read_worker_capability() {
@@ -102,6 +121,11 @@ cap="$(read_worker_capability "$worker_repo")"
 effective="$content_tier"
 if [[ "$cap" == "read-only" && "$content_tier" == "red" ]]; then
   effective="yellow"
+fi
+# Always-red override (wins over both the keyword verdict and the cap): a write-capable worker
+# that writes across a repo boundary (the builder-soldier) is RED on every task → Telegram ✅.
+if worker_is_always_red "$worker_repo"; then
+  effective="red"
 fi
 
 if [[ -n "$matched" ]]; then

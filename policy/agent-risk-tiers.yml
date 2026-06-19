@@ -28,6 +28,24 @@ worker_capabilities:
   nachshon: read-only
   natan-research: read-only
   sapi-docs: read-only
+  # The builder-soldier — the FIRST write-capable worker. It does not hold a GitHub key:
+  # it PROPOSES files (sandboxed Write/Edit into out/), and the BROKER applies them as a
+  # scoped draft PR into an allowlisted target repo. write → never RED-capped to yellow.
+  agent-builder: write
+
+# Builder-soldier configuration — read by .github/workflows/agent-action.yml (the broker, the
+# only writer). A cross-repo WRITE is red by construction, so EVERY builder task is forced to RED
+# (Or's Telegram ✅) regardless of keyword match — see always_red_workers below. Defense-in-depth
+# target allowlist (L1; L3 is the per-run token scoped to the one repo; L2 is the builder AGENTS.md).
+builder_allowed_targets:
+  - edri2or/personal-life
+builder_limits:
+  max_files: 50              # hard refuse a proposal touching more files (runaway / poisoned-task guard)
+  max_total_bytes: 262144    # ~256 KB — hard refuse a larger total payload
+# Workers whose EVERY task is forced to RED (Telegram ✅), overriding both the keyword verdict
+# and the read-only cap. A write-capable worker that writes ACROSS a repo boundary is red always.
+always_red_workers:
+  - agent-builder
 
 tiers:
   red:
