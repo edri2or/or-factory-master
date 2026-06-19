@@ -36,6 +36,11 @@ on:
         required: false
         default: "TODO: describe this agent-repo's purpose."
         type: string
+      template_dir:
+        description: "Scaffold source: templates/agent-repo (read-only worker, default) or templates/agent-repo-builder (the write-capable builder-soldier)."
+        required: false
+        default: "templates/agent-repo"
+        type: string
 
 permissions: {}
 
@@ -62,6 +67,7 @@ jobs:
       - name: Validate inputs
         env:
           NAME: ${{ inputs.agent_repo_name }}
+          TEMPLATE_DIR: ${{ inputs.template_dir }}
         run: |
           set -euo pipefail
           printf '%s' "$NAME" | grep -Eq '^[a-z][a-z0-9-]{2,38}[a-z0-9]$' \
@@ -70,7 +76,14 @@ jobs:
             or-factory-master|or-factory-master-control|*-control|factory|factory-control-*)
               echo "FAIL: refusing to provision a control/factory repo name '$NAME'" >&2; exit 1 ;;
           esac
-          echo "OK: will provision edri2or/${NAME}"
+          # template_dir is an allow-listed enum (not free text) — refuse anything else so a
+          # dispatch can never point the scaffold at an arbitrary path.
+          case "$TEMPLATE_DIR" in
+            templates/agent-repo|templates/agent-repo-builder) ;;
+            *) echo "FAIL: template_dir must be templates/agent-repo or templates/agent-repo-builder (got '$TEMPLATE_DIR')" >&2; exit 1 ;;
+          esac
+          [ -d "$TEMPLATE_DIR" ] || { echo "FAIL: template_dir '$TEMPLATE_DIR' not found in checkout" >&2; exit 1; }
+          echo "OK: will provision edri2or/${NAME} from ${TEMPLATE_DIR}"
 
       - name: Authenticate to GCP via WIF
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093  # v3.0.0
@@ -86,6 +99,7 @@ jobs:
           NAME: ${{ inputs.agent_repo_name }}
           AGENT_NAME_IN: ${{ inputs.agent_name }}
           AGENT_PURPOSE: ${{ inputs.agent_purpose }}
+          TEMPLATE_DIR: ${{ inputs.template_dir }}
         run: |
           set -euo pipefail
           APP_ID=$(gcloud secrets versions access latest --secret=factory-master-broker-app-id --project="$CONTROL_PROJECT")
@@ -116,7 +130,7 @@ jobs:
           [ -n "$REPO_TOKEN" ] || { echo "FAIL: could not mint a scoped token for edri2or/${NAME}" >&2; exit 1; }
           echo "::add-mask::$REPO_TOKEN"
 
-          # --- render templates/agent-repo with the SAME allow-list the golden uses ---
+          # --- render the chosen template dir with the SAME allow-list the golden uses ---
           export AGENT_REPO_NAME="$NAME"
           export REPO_URL="https://github.com/edri2or/${NAME}"
           export ISO_TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -126,7 +140,7 @@ jobs:
           export AGENT_PURPOSE="$AGENT_PURPOSE"
           ALLOWLIST='${AGENT_REPO_NAME} ${REPO_URL} ${ISO_TIMESTAMP} ${GITHUB_RUN_ID} ${GITHUB_RUN_URL} ${AGENT_NAME} ${AGENT_PURPOSE}'
           SCAFFOLD=$(mktemp -d)
-          cp -a templates/agent-repo/. "$SCAFFOLD/"
+          cp -a "${TEMPLATE_DIR}/." "$SCAFFOLD/"
           while IFS= read -r -d '' t; do
             envsubst "$ALLOWLIST" < "$t" > "${t%.template}"
             rm -f "$t"
@@ -144,7 +158,7 @@ jobs:
           if git -C "$CLONE" diff --cached --quiet; then
             echo "INFO: edri2or/${NAME} scaffold already current — nothing to push."
           else
-            git -C "$CLONE" commit -q -m "scaffold: agent-repo from or-factory-master templates/agent-repo"
+            git -C "$CLONE" commit -q -m "scaffold: agent-repo from or-factory-master ${TEMPLATE_DIR}"
             if ! perr=$(git -C "$CLONE" push "https://x-access-token:${REPO_TOKEN}@github.com/edri2or/${NAME}.git" HEAD:main 2>&1); then
               echo "FAIL: push scaffold: $(printf '%s' "$perr" | sed "s/${REPO_TOKEN}/***/g")" >&2; exit 1
             fi
