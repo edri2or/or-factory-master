@@ -118,11 +118,14 @@ jobs:
         id: classify
         env:
           TASK: ${{ inputs.task }}
+          WORKER: ${{ inputs.worker_repo }}
         run: |
           set -euo pipefail
           # An agent task is FREEFORM text — the classifier substring-matches it
-          # case-insensitively (no normalization needed, unlike gcp-action.yml).
-          OUT=$(bash scripts/agent-classify.sh "$TASK")
+          # case-insensitively (no normalization needed, unlike gcp-action.yml), then
+          # CAPS the tier by the worker's capability (a read-only worker → red→yellow,
+          # so a task that merely mentions a risky word is not falsely RED-gated).
+          OUT=$(bash scripts/agent-classify.sh "$TASK" "$WORKER")
           echo "classifier: $OUT"
           TIER=$(printf '%s' "$OUT" | sed -n 's/.*"tier":[[:space:]]*"\([^"]*\)".*/\1/p')
           [ -n "$TIER" ] || { echo "FAIL: classifier returned no tier" >&2; exit 1; }

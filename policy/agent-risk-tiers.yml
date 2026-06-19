@@ -15,6 +15,20 @@
 # is inherently safe → default GREEN. Revisit this default when write-capable workers exist.
 version: "1.0"
 default_tier: green
+
+# Worker capability map (Fix 1 — capability-aware risk cap). A READ-ONLY worker
+# (Read/Grep/Glob, no write tools — see templates/agent-repo/.github/workflows/agent-main.yml)
+# cannot perform ANY red action, so a task routed to it is capped at YELLOW: the RED Telegram
+# gate is skipped, because it would only add false friction on a task that merely *mentions* a
+# risky word (the exact false-positive that blocked Nuriel's read-only research). The RED gate
+# stays fully active for write-capable workers. Fail-safe: a worker NOT listed here falls back
+# to default_worker_capability (write) → still RED-gated. scripts/agent-classify.sh reads this.
+default_worker_capability: write
+worker_capabilities:
+  nachshon: read-only
+  natan-research: read-only
+  sapi-docs: read-only
+
 tiers:
   red:
     patterns:

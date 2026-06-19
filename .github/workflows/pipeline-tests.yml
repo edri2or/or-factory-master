@@ -47,3 +47,9 @@ jobs:
         # expected green/yellow/red tier (the risk gate's logic core) — pure
         # bash, no live GCP. Consolidated from edri2or/gcp-hands.
         run: bash scripts/test-gcp-classify.sh
+
+      - name: Agent classifier self-test
+        # Proves scripts/agent-classify.sh classifies every fixture (task + worker)
+        # to its expected EFFECTIVE tier, incl. the capability-aware cap (read-only
+        # worker → red capped to yellow) — pure bash, no live broker.
+        run: bash scripts/test-agent-classify.sh
