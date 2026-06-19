@@ -62,6 +62,11 @@ on:
         required: false
         default: ""
         type: string
+      dry_run:
+        description: "Builder only: run the worker + validate/list the proposal but open NO PR (safe preview; does not write the target). Bypasses the RED card (no target write)."
+        required: false
+        default: "false"
+        type: string
 
 permissions: {}
 
@@ -142,8 +147,10 @@ jobs:
         uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db  # v3.0.1
 
       # ---- red + propose: ask the MCP to send the Telegram approval card --------
+      # A builder dry-run (inputs.dry_run==true) is exempt: it opens NO PR and never writes the
+      # target (it only reads the worker proposal and lists it), so it needs no Telegram gate.
       - name: Send Telegram approval card (red, propose)
-        if: inputs.phase == 'propose' && steps.classify.outputs.tier == 'red'
+        if: inputs.phase == 'propose' && steps.classify.outputs.tier == 'red' && inputs.dry_run != 'true'
         env:
           WORKER: ${{ inputs.worker_repo }}
           REQUESTER: ${{ inputs.requester_repo }}
@@ -185,11 +192,12 @@ jobs:
           rm -f /tmp/agent-reg.body
           echo "PASS: RED task — approval card sent to Telegram (awaiting Or's ✅). Work NOT brokered."
 
-      # ---- green/yellow (propose) OR execute (post-approval): broker the work ----
+      # ---- green/yellow (propose) OR execute (post-approval) OR builder dry-run: broker the work ----
       - name: Broker the work (dispatch worker -> poll -> write result to requester)
         if: >-
           (inputs.phase == 'propose' && (steps.classify.outputs.tier == 'green' || steps.classify.outputs.tier == 'yellow'))
           || inputs.phase == 'execute'
+          || (inputs.phase == 'propose' && inputs.dry_run == 'true')
         env:
           WORKER: ${{ inputs.worker_repo }}
           REQUESTER: ${{ inputs.requester_repo }}
@@ -197,6 +205,7 @@ jobs:
           CORR: ${{ inputs.correlation_id }}
           TIER: ${{ steps.classify.outputs.tier }}
           PHASE: ${{ inputs.phase }}
+          DRY_RUN_IN: ${{ inputs.dry_run }}
         run: |
           set -uo pipefail
           WORKER="${WORKER##*/}"; REQUESTER="${REQUESTER##*/}"
@@ -291,6 +300,34 @@ jobs:
           RESULT_JSON=$(cat "$RESULT_FILE")
           printf '%s' "$RESULT_JSON" | jq -e . >/dev/null 2>&1 || fail "worker result is not valid JSON"
           echo "INFO: result: $(printf '%s' "$RESULT_JSON" | head -c 300)"
+
+          # --- 3b) builder-soldier: apply the proposed file tree as a scoped DRAFT PR ---
+          # The builder worker emits a manifest with .target_repo and a proposed tree under dl/out/.
+          # When that shape is present we land it as a draft PR via builder-apply.sh — which enforces
+          # the L1 target allowlist + the size brake and (real run) uses a token scoped to ONLY the
+          # target repo (L3). This path is reached only in execute (post-✅) or a propose dry-run
+          # (DRY_RUN_IN=true → no PR, no target write). git stays the source of truth: Or merges.
+          TARGET_REPO_RAW=$(printf '%s' "$RESULT_JSON" | jq -r '.target_repo // empty')
+          if [ -n "$TARGET_REPO_RAW" ] && [ -d dl/out ]; then
+            TARGET_BARE="${TARGET_REPO_RAW##*/}"
+            SUMMARY_TXT=$(printf '%s' "$RESULT_JSON" | jq -r '.summary // empty')
+            if [ "${DRY_RUN_IN:-false}" = "true" ]; then
+              APPLY_JSON=$(TARGET_REPO="$TARGET_REPO_RAW" CORR="$CORR_VAL" OUT_DIR=dl/out \
+                POLICY_FILE=policy/agent-risk-tiers.yml DRY_RUN=true SUMMARY="$SUMMARY_TXT" \
+                bash scripts/builder-apply.sh) || fail "builder-apply (dry-run) failed for ${TARGET_REPO_RAW}"
+            else
+              TGT_TOKEN=$(mint '{"contents":"write","pull_requests":"write"}' "$TARGET_BARE") \
+                || fail "could not mint target token for ${TARGET_BARE}"
+              echo "::add-mask::$TGT_TOKEN"
+              APPLY_JSON=$(TARGET_REPO="$TARGET_REPO_RAW" CORR="$CORR_VAL" OUT_DIR=dl/out \
+                POLICY_FILE=policy/agent-risk-tiers.yml SUMMARY="$SUMMARY_TXT" TOKEN="$TGT_TOKEN" \
+                bash scripts/builder-apply.sh) || fail "builder-apply failed for ${TARGET_REPO_RAW}"
+            fi
+            echo "INFO: builder-apply -> ${APPLY_JSON}"
+            RESULT_JSON=$(printf '%s' "$RESULT_JSON" | jq -c --argjson a "$APPLY_JSON" '. + {builder:$a}')
+            emit "factory.agent_action.builder_applied" "info" "false" \
+              "$(jq -cn --arg c "$CORR_VAL" --argjson a "$APPLY_JSON" '{correlation_id:$c, builder:$a}')"
+          fi
 
           # --- 4) write the result back to the requester repo (contents token, that repo only) ---
           REQ_TOKEN=$(mint '{"contents":"write"}' "$REQUESTER") || fail "could not mint requester token for ${REQUESTER}"

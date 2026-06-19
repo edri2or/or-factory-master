@@ -38,7 +38,7 @@ status: active   # active בזמן פיתוח → completed בסיום
 |---|---|---|---|
 | 0 | הוכחת-יכולת (capability-first) — הלבנה הקשה | completed | spike (local scaffold + live PR #540 + isolation probe) |
 | 1 | מדיניות-סיכון: builder כ-write + allowlist + סף | completed | `policy/agent-risk-tiers.yml`, `scripts/agent-classify.sh`, `tests/agent-classify-fixtures.yml` |
-| 2 | נתיב-כתיבה בברוקר (apply→draft PR), שער RED | pending | `.github/workflows/agent-action.yml` |
+| 2 | נתיב-כתיבה בברוקר (apply→draft PR), שער RED | completed | `.github/workflows/agent-action.yml`, `scripts/builder-apply.sh` |
 | 3 | תבנית worker כותב (Write/Edit לתוך `out/`, בלי Bash/טוקן) | pending | `templates/agent-repo-builder/**` |
 | 4 | הקמת ריפו-הבנאי `edri2or/agent-builder` 🔴 | pending | `provision-agent-repo.yml`, `refresh-agent-repo.yml` |
 | 5 | יצירת `edri2or/personal-life` + הגנת-main 🔴 | pending | `scripts/ensure-protect-main-ruleset.sh` |
@@ -89,17 +89,13 @@ status: active   # active בזמן פיתוח → completed בסיום
 - [ ] `agent-action.yml` מושך `out/`, מאמת target∈allowlist + סף, מנפק טוקן מצומצם, פותח DRAFT PR, כותב `results/<corr>.json`.
 - [ ] כתיבה cross-repo עוברת בשער RED→טלגרם הקיים לפני execute.
 
-**הוכחה תפקודית (באותו שלב):** הוכחה משלב 0 + ריצת-broker אמיתית בשלב 6.
+**הוכחה תפקודית (באותו שלב):** יחידתית הושלמה — `builder-apply.sh` ב-DRY_RUN (offline, בלי רשת): יעד-מותר→JSON תקין, יעד-אסור→כשל, מעל-50-קבצים→כשל, ריק→כשל, path-traversal/.git→נדחה. הברוקר עבר `bash -n` + `shellcheck -S error`. **ההוכחה החיה המורכבת** (PR-טיוטה אמיתי + חסימת-403 ברמת-טוקן-ה-App) היא הלבנה האחרונה — שלב 6 (אין ריפו-יעד עד שלבים 4–5).
 
 **הוכחת E2E (artifact):** לא-התנהגותי.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** ✅ קוד הושלם (2026-06-19). `scripts/builder-apply.sh`: validate (allowlist L1 + בלם `builder_limits` + דחיית path-traversal/.git/ריק) → ב-apply: ענף `builder/<corr>` מ-default, push כל קובץ (trailer `[builder-agent]`), פתיחת **DRAFT PR**, idempotent (422 על ענף/PR קיים = שימוש-חוזר). `agent-action.yml`: input `dry_run`; זיהוי builder-mode (`.target_repo` במניפסט + `dl/out/`); ב-execute (אחרי ✅) מנפק טוקן מצומצם `{contents,pull_requests}:write` ליעד ומריץ apply; ב-propose+dry_run מריץ preview בלי PR ובלי כרטיס (אין כתיבה ליעד). התוצאה ממוזגת ל-`results/<corr>.json` של ה-requester + emit `factory.agent_action.builder_applied`.
 
-**שינוי תוכנית:** —
-
----
-
-### שלב 3 — תבנית worker כותב
+**שינוי תוכנית:** dry_run פטור משער-הכרטיס (הוא לא כותב ליעד — preview בלבד), כדי שתוכל לראות את רשימת-הקבצים לפני ה-✅ האמיתי.
 
 **Acceptance:**
 - [ ] worker variant עם `--allowedTools Read,Grep,Glob,Write,Edit`, בלי Bash, בלי טוקן GitHub, מעלה `out/`.
