@@ -89,3 +89,13 @@ shellcheck (`--severity=error scripts/*.sh`) + yamllint נקיים. (נתיב ה
 לוגיקת ה-jq של ה-high-water אומתה עצמאית (ריצה חדשה→מוחזרת; אין-חדשה→empty/ממשיך לסקור; אין-קודמת→החדשה ביותר;
 baseline ריק→0); shellcheck + yamllint נקיים. שכבה (ב) — ערובת-הנכונות (לעולם לא תוצאה לא-תואמת) — מוכחת ב-bats;
 שכבה (א) נבדקת חי בשלב 5.
+
+## תיקון צינור ה-broker (agent-action-broker-fix) — שלב 5: תיעוד + קבלה live + סגירה
+
+- **`docs/agent-repo-product.md`** — עודכן לארבעת התיקונים: cap מודע-יכולת (read-only → תקרת yellow,
+  עם `content_tier`/`worker_capability`), כשל-רך לכרטיס-413 (Telegram אנושי + emit info), וקשירת
+  correlation_id בברוקר (גילוי high-water + הורדה corr-strict ללא fallback). שורת ה-MVP על false-positive
+  עודכנה. (שינוי-דוק וולונטרי; שער ה-binding לא נדרס — הוא חד-כיווני: artifact→doc, לא doc→artifact.)
+- **קבלה live (post-merge):** מיזוג ל-main → `deploy-mcp-server.yml` מתעדכן → דיספאצ' חי של משימת מחקר
+  קריאה-בלבד ל-`natan-research` → אימות `classifier: {"tier":"yellow"}` (לא red), "Broker the work" רץ,
+  ותוצאה נכתבת ל-`results/<corr>.json`. (תוצאת ה-live נרשמת ביומן ה-devplan + ב-PR-הסגירה.)

@@ -21,7 +21,7 @@ status: active
 | 2 | תיקון run_id ב-coordinator (Fix 3) | completed | `services/mcp-server/src/github-client.ts`, `coordinator-scope.ts`, `tools.ts`, `services/mcp-server/test/*` |
 | 3 | כשל-רך + טלגרם לכרטיס גדול (Fix 2) | completed | `scripts/notify-card-failure.sh`, `.github/workflows/agent-action.yml`, `scripts/tests/*.bats` |
 | 4 | קשירת correlation_id בברוקר (Fix 4) | completed | `scripts/select-result-file.sh`, `.github/workflows/agent-action.yml`, `scripts/tests/*.bats` |
-| 5 | קבלה live + תיעוד + סגירה | pending | `docs/agent-repo-product.md`, devplan, changelog |
+| 5 | קבלה live + תיעוד + סגירה | in-progress | `docs/agent-repo-product.md`, devplan, changelog |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
 >
@@ -129,7 +129,9 @@ shellcheck (`--severity=error scripts/*.sh`) + yamllint (כל ה-workflow dirs) 
 
 **הוכחת E2E (artifact):** לא-התנהגותי (הצינור הוא broker/MCP, לא בוט-n8n).
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** בעבודה. `docs/agent-repo-product.md` עודכן (4 התיקונים). הבא: מיזוג #538 ל-main
+(Or אישר) → המתנה ל-`deploy-mcp-server.yml` → דיספאצ' חי של משימת מחקר קריאה-בלבד ואימות yellow+brokered+תוצאה
+→ סגירת ה-devplan ב-PR-תיעוד נפרד (connector-url-clear עדיין active, אז הסגירה לא נכנסת ל-PR-קוד).
 
 **שינוי תוכנית:** —
 
