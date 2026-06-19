@@ -42,7 +42,7 @@ status: active   # active בזמן פיתוח → completed בסיום
 | 3 | תבנית worker כותב (Write/Edit לתוך `out/`, בלי Bash/טוקן) | completed | `templates/agent-repo-builder/**`, `provision-agent-repo.yml`, `pipeline-tests.yml` |
 | 4 | הקמת ריפו-הבנאי `edri2or/agent-builder` 🔴 | completed | `provision-agent-repo.yml`, `refresh-agent-repo.yml` |
 | 5 | יצירת `edri2or/personal-life` + הגנת-main 🔴 | completed | `scripts/ensure-protect-main-ruleset.sh` |
-| 6 | dry-run → ריצה אמיתית ראשונה 🔴 | pending | (תפעולי — dispatch דרך הברוקר) |
+| 6 | dry-run → ריצה אמיתית ראשונה 🔴 | in-progress | `scripts/builder-apply.sh` (תיקון-באג) |
 | 7 | רישום ב-`route_to_agent` (חובה אחרון) 🔴 | pending | `deploy-mcp-server.yml`, `policy/…`, `docs/agent-specs/nuriel.md` |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`. 🔴 = עוצר לאישור-Or בטלגרם.
@@ -151,9 +151,9 @@ status: active   # active בזמן פיתוח → completed בסיום
 
 **הוכחת E2E (artifact):** לא-התנהגותי.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** 🔄 בתהליך (2026-06-19). **dry-run עבר** (`smoke-builder-1`, run 27851231639): ה-worker הציע 3 קבצים (README + notes/ + goals/, 237B), הברוקר אימת מול allowlist+בלם ולא כתב כלום ל-personal-life. **ריצה אמיתית ראשונה** (execute אחרי ✅ של Or, run 27852749681): ה-worker הצליח (3 קבצים, מניפסט תקין) אבל `builder-apply.sh` נכשל ב-`GH_CODE: unbound variable` — `gh_api` נקראת ב-`$(…)` (subshell) וההצבה אבדה להורה (תחת `set -u`). לקח capability-first: נתיב-הרשת של ה-apply נבדק לראשונה רק חי. **תוקן** (PR בדרך): קוד-HTTP נכתב ל-`/tmp/ba.code` וההורה קורא אותו אחרי כל קריאה. personal-life נקי (כשל בקריאה הראשונה, לפני ענף/PR). נשאר: למזג את התיקון → להריץ שוב את ה-execute (propose→✅→execute) → לאמת PR-טיוטה חי.
 
-**שינוי תוכנית:** —
+**שינוי תוכנית:** הריצה האמיתית חשפה באג ב-`builder-apply.sh` שה-dry-run לא יכול היה לתפוס (הוא יוצא לפני חלק-הרשת) — נדרש תיקון-קוד באמצע שלב 6.
 
 ---
 
@@ -183,3 +183,4 @@ status: active   # active בזמן פיתוח → completed בסיום
 - 2026-06-19: שלבים 2–3 ✅ נעולים ב-main (PR #540) — נתיב-הכתיבה בברוקר (פותח PR-טיוטה) ותבנית החייל-הכותב מוכנים.
 - 2026-06-19: שלב 4 ✅ — הוקם החייל עצמו: ריפו פרטי `edri2or/agent-builder` עם אישיות-הבנאי. עדיין בלי מפתחות לכלום — "שולחן וכיסא".
 - 2026-06-19: שלב 5 ✅ — נוצר הבית שהבנאי יבנה לתוכו: `edri2or/personal-life` (פרטי), ננעל ה-main (כלום לא נכנס בלי PR, אין מחיקה/דחיפה-בכוח). תוך כדי תיקנתי באג קטן במנגנון-ההגנה (ריפו בלי CI).
+- 2026-06-19: שלב 6 🔄 — הבנאי רץ בפעם הראשונה. ה"הצצה" (dry-run) עברה מצוין. בריצה האמיתית הראשונה הבנאי הכין את הקבצים יפה, אבל שלב פתיחת-ה-PR נפל על באג קטן בקוד. תיקנתי, וברגע שהתיקון נכנס נריץ שוב — תקבל שוב כרטיס לאישור.

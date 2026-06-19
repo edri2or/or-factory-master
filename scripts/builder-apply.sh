@@ -125,7 +125,14 @@ fi
 [ -n "$TOKEN" ] || die "TOKEN is required to apply (set DRY_RUN=true to validate only)"
 BRANCH="builder/${CORR}"
 
-gh_api() {  # gh_api <method> <path> [data] ; prints body, sets GH_CODE
+# gh_api <method> <path> [data] : writes the response body to /tmp/ba.body and the HTTP code to
+# /tmp/ba.code, and echoes the body on stdout. IMPORTANT: gh_api is always invoked as $(gh_api …),
+# i.e. in a SUBSHELL, so any variable it assigns (the old `GH_CODE="$code"`) is LOST to the parent.
+# The HTTP code is therefore persisted to a FILE; the caller MUST read it in the PARENT scope right
+# after the call: `GH_CODE=$(cat /tmp/ba.code)`. (Bug fix — the real-run apply path died on
+# "GH_CODE: unbound variable" under `set -u`; the dry-run path returns before this section, so it
+# never surfaced until the first live apply.)
+gh_api() {
   local method="$1" path="$2" data="${3:-}" code
   if [ -n "$data" ]; then
     code=$(curl -sS -m 30 -o /tmp/ba.body -w '%{http_code}' -X "$method" "${API}${path}" \
@@ -136,16 +143,18 @@ gh_api() {  # gh_api <method> <path> [data] ; prints body, sets GH_CODE
       -H "Authorization: Bearer ${TOKEN}" -H "Accept: application/vnd.github+json" \
       -H "X-GitHub-Api-Version: 2022-11-28" || echo "000")
   fi
-  GH_CODE="$code"
+  printf '%s' "$code" > /tmp/ba.code
   cat /tmp/ba.body
 }
 
 # default branch + its head sha
 repo_body=$(gh_api GET "/repos/${TARGET_FULL}")
+GH_CODE=$(cat /tmp/ba.code)
 [ "$GH_CODE" = "200" ] || die "GET repo ${TARGET_FULL} -> HTTP ${GH_CODE}: $(printf '%s' "$repo_body" | jq -r '.message // empty')"
 BASE=$(printf '%s' "$repo_body" | jq -r '.default_branch // "main"')
 
 ref_body=$(gh_api GET "/repos/${TARGET_FULL}/git/ref/heads/${BASE}")
+GH_CODE=$(cat /tmp/ba.code)
 [ "$GH_CODE" = "200" ] || die "GET base ref ${BASE} -> HTTP ${GH_CODE}: $(printf '%s' "$ref_body" | jq -r '.message // empty')"
 BASE_SHA=$(printf '%s' "$ref_body" | jq -r '.object.sha // empty')
 [ -n "$BASE_SHA" ] || die "could not resolve base sha for ${BASE}"
@@ -153,6 +162,7 @@ BASE_SHA=$(printf '%s' "$ref_body" | jq -r '.object.sha // empty')
 # create the builder branch (idempotent: 422 'Reference already exists' is OK — reuse it)
 mk_body=$(gh_api POST "/repos/${TARGET_FULL}/git/refs" \
   "$(jq -cn --arg r "refs/heads/${BRANCH}" --arg s "$BASE_SHA" '{ref:$r, sha:$s}')")
+GH_CODE=$(cat /tmp/ba.code)
 case "$GH_CODE" in
   201) echo "builder-apply: created branch ${BRANCH}" >&2 ;;
   422) echo "builder-apply: branch ${BRANCH} already exists — reusing" >&2 ;;
@@ -164,6 +174,7 @@ for rel in "${FILES[@]}"; do
   b64=$(base64 -w0 < "${OUT_DIR}/${rel}")
   # existing file on the branch needs its blob sha for an update
   cur=$(gh_api GET "/repos/${TARGET_FULL}/contents/${rel}?ref=${BRANCH}")
+  GH_CODE=$(cat /tmp/ba.code)
   sha=""
   [ "$GH_CODE" = "200" ] && sha=$(printf '%s' "$cur" | jq -r '.sha // empty')
   if [ -n "$sha" ]; then
@@ -174,6 +185,7 @@ for rel in "${FILES[@]}"; do
       '{message:$m, content:$c, branch:$br}')
   fi
   pb=$(gh_api PUT "/repos/${TARGET_FULL}/contents/${rel}" "$put")
+  GH_CODE=$(cat /tmp/ba.code)
   case "$GH_CODE" in
     200|201) ;;
     *) die "PUT ${rel} -> HTTP ${GH_CODE}: $(printf '%s' "$pb" | jq -r '.message // empty')" ;;
@@ -188,6 +200,7 @@ body=$(printf '🤖 **builder-soldier** draft proposal — correlation `%s`.\n\n
   "$(printf -- '- `%s`\n' "${FILES[@]}")")
 pr_body=$(gh_api POST "/repos/${TARGET_FULL}/pulls" \
   "$(jq -cn --arg t "$title" --arg h "$BRANCH" --arg b "$BASE" --arg bd "$body" '{title:$t, head:$h, base:$b, body:$bd, draft:true}')")
+GH_CODE=$(cat /tmp/ba.code)
 PR_URL=""; PR_NUM=""
 case "$GH_CODE" in
   201)
@@ -203,7 +216,7 @@ case "$GH_CODE" in
     echo "builder-apply: reusing existing PR ${PR_URL}" >&2 ;;
   *) die "open draft PR -> HTTP ${GH_CODE}: $(printf '%s' "$pr_body" | jq -r '.message // empty')" ;;
 esac
-rm -f /tmp/ba.body
+rm -f /tmp/ba.body /tmp/ba.code
 
 jq -cn --arg t "$TARGET_FULL" --arg br "$BRANCH" --arg u "$PR_URL" --arg pn "$PR_NUM" \
   --argjson n "$FILE_COUNT" --argjson b "$TOTAL_BYTES" \
