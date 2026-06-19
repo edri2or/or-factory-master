@@ -18,7 +18,7 @@ status: active
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
 | 1 | סיווג מודע-יכולת (Fix 1) | completed | `policy/agent-risk-tiers.yml`, `scripts/agent-classify.sh`, `scripts/test-agent-classify.sh`, `tests/agent-classify-fixtures.yml`, `.github/workflows/pipeline-tests.yml`, `.github/workflows/agent-action.yml` |
-| 2 | תיקון run_id ב-coordinator (Fix 3) | pending | `services/mcp-server/src/github-client.ts`, `coordinator-scope.ts`, `tools.ts`, `services/mcp-server/test/*` |
+| 2 | תיקון run_id ב-coordinator (Fix 3) | completed | `services/mcp-server/src/github-client.ts`, `coordinator-scope.ts`, `tools.ts`, `services/mcp-server/test/*` |
 | 3 | כשל-רך + טלגרם לכרטיס גדול (Fix 2) | pending | `scripts/notify-card-failure.sh`, `.github/workflows/agent-action.yml`, `scripts/tests/*.bats` |
 | 4 | קשירת correlation_id בברוקר (Fix 4) | pending | `scripts/select-result-file.sh`, `.github/workflows/agent-action.yml`, `scripts/tests/*.bats` |
 | 5 | קבלה live + תיעוד + סגירה | pending | `docs/agent-repo-product.md`, devplan, changelog |
@@ -57,17 +57,19 @@ shellcheck (`--severity=error scripts/*.sh`) + yamllint (כל ה-workflow dirs) 
 ### שלב 2 — תיקון run_id ב-coordinator (Fix 3)
 
 **Acceptance:**
-- [ ] helper טהור `discoverDispatchedRun(getLatest, beforeId, opts)` ב-`github-client.ts`
-- [ ] `route_to_agent` לוכד `beforeId` לפני dispatch ומחזיר רק ריצה חדשה (`id !== beforeId`)
-- [ ] אותו helper מוחל על `tools.ts` `dispatch_workflow`
-- [ ] `COORDINATOR_SCOPED_TOOL_NAMES` ללא שינוי (exact-set test ירוק)
+- [x] helper טהור `discoverDispatchedRun(getLatest, beforeId, opts)` ב-`github-client.ts`
+- [x] `route_to_agent` לוכד `beforeId` לפני dispatch ומחזיר רק ריצה חדשה (`id !== beforeId`)
+- [x] אותו helper מוחל על `tools.ts` `dispatch_workflow`
+- [x] `COORDINATOR_SCOPED_TOOL_NAMES` ללא שינוי (exact-set test ירוק)
 
 **הוכחה תפקודית (באותו שלב):** node unit test ל-`discoverDispatchedRun`: getLatest מחזיר תחילה beforeId
 ואז newId → ה-helper מחזיר newId; getLatest שלא משתנה → מחזיר null. `npm test` ירוק (כולל exact-set).
 
 **הוכחת E2E (artifact):** לא-התנהגותי.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** ✅ הושלם 2026-06-19. `npm test` → 138/138 PASS (4 חדשים ל-discoverDispatchedRun
++ exact-set של coordinator 6/6); `tsc` נקי. שני call-sites (coordinator route_to_agent + tools.ts dispatch_workflow)
+עברו ל-helper המשותף עם baseline לפני dispatch. ממתין ל-CI על ה-PR.
 
 **שינוי תוכנית:** —
 
@@ -135,3 +137,4 @@ shellcheck (`--severity=error scripts/*.sh`) + yamllint (כל ה-workflow dirs) 
 > שורה פשוטה אחת לכל שלב שהסתיים.
 
 - שלב 1 הושלם — מעכשיו, סוכן קריאה-בלבד לא ייחסם לאישור שלך סתם בגלל מילה "מסוכנת" בטקסט. שער-האישור נשמר לסוכנים שבאמת כותבים/בונים.
+- שלב 2 הושלם — תיקנו את "מספר-המעקב הקודם". מעכשיו נוריאל תמיד מקבל את המספר של הריצה הנכונה, אז הוא לא יתבלבל יותר בין משימות.

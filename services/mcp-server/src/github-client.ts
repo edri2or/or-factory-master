@@ -359,6 +359,45 @@ export async function getLatestWorkflowRun(
   };
 }
 
+export interface DispatchedRun {
+  id: number;
+  html_url: string;
+  status: string;
+  created_at: string;
+}
+
+// Discover the run CREATED by a just-issued workflow_dispatch, distinguishing it from a
+// stale "latest" run that predates the dispatch. workflow_dispatch is ASYNC — the new run
+// may not exist for a few seconds — and getLatestWorkflowRun returns the most-recent run on
+// the branch, which (before the new one materialises) is the PREVIOUS dispatch. Returning
+// that stale run mis-binds a caller's run↔correlation_id bookkeeping (the off-by-one that
+// made the coordinator read the wrong agent-action run). Polling until a run whose id differs
+// from the pre-dispatch baseline appears returns the NEW run, never the stale one.
+//
+// `getLatest` is injected (the real getLatestWorkflowRun bound to a workflow/ref, or a stub in
+// tests) and `sleep` is injectable (no-op in tests → instant), so this is unit-testable with
+// no network. `beforeId` null (no prior run) means the first run found is the new one.
+export async function discoverDispatchedRun(
+  getLatest: () => Promise<DispatchedRun | null>,
+  beforeId: number | null,
+  opts: { attempts?: number; delayMs?: number; sleep?: (ms: number) => Promise<void> } = {},
+): Promise<DispatchedRun | null> {
+  const attempts = opts.attempts ?? 6;
+  const delayMs = opts.delayMs ?? 2000;
+  const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  for (let i = 0; i < attempts; i++) {
+    await sleep(delayMs);
+    let run: DispatchedRun | null = null;
+    try {
+      run = await getLatest();
+    } catch {
+      /* transient (GitHub eventual consistency / blip) — keep polling */
+    }
+    if (run && run.id !== beforeId) return run;
+  }
+  return null;
+}
+
 // 5 MB default ceiling. The MCP transport handles multi-MB payloads and the
 // Claude Code harness spills large tool outputs to a local file the agent reads
 // in chunks, so this only exists to bound a pathological 100 MB log — not to
