@@ -1,0 +1,5 @@
+## fix: oil-autofix — OIL-61
+
+| Type | Summary |
+|---|---|
+| fix | Auto-fix proposed by oil-autofix for **OIL-61** (repo `or-factory-master`). תוקן: gh_api() כותב את קוד ה-HTTP לקובץ /tmp/ba.code במקום להשים GH_CODE במשתנה גלובלי (שהיה אובד בתוך subshell); כל 7 נקודות הקריאה קוראות GH_CODE=$(</tmp/ba.code) אחרי ה-$(...). Root cause: gh_api() sets GH_CODE as a side-effect global, but every call-site uses command substitution (repo_body=$(gh_api ...)), which runs the function in a subshell. The assignment GH_CODE="$code" (line 139) is lost when the subshell exits. With set -uo pipefail active, line 145's first reference to $GH_CODE hits 'unbound variable' and aborts.. Opened as a DRAFT PR by the broker App; awaits human Telegram approval (merged by the separate oil-autofix-approver identity). The fix + repro test passed the deterministic safety gate (<=2 AI-authored files / <=100 lines, no forbidden paths, no secrets, fail-before/pass-after). This changelog fragment is written by the workflow, not the AI. |
