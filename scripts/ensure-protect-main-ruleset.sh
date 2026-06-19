@@ -41,6 +41,13 @@ fi
 # strict_required_status_checks_policy:false = non-strict (branches don't need to
 # be up-to-date before merging — merge queue is the right tool at higher throughput,
 # not strict rebasing at current factory PR volume).
+#
+# The required_status_checks rule is included ONLY when there is at least one
+# context. A repo with no factory CI (e.g. a plain target repo like
+# edri2or/personal-life, REQUIRED_CONTEXTS_JSON='[]') still gets PR-required +
+# no-force-push + no-deletion, but no status-check gate — emitting that rule with an
+# empty list is both rejected by the rulesets API (HTTP 4xx) and, if it were
+# accepted, would wedge the repo (a check that never runs never passes → no merge).
 PAYLOAD=$(jq -cn --argjson contexts "${CONTEXTS}" '{
   name: "protect-main",
   target: "branch",
@@ -58,27 +65,33 @@ PAYLOAD=$(jq -cn --argjson contexts "${CONTEXTS}" '{
       bypass_mode: "always"
     }
   ],
-  rules: [
-    {
-      type: "pull_request",
-      parameters: {
-        required_approving_review_count: 0,
-        require_code_owner_review: false,
-        require_last_push_approval: false,
-        dismiss_stale_reviews_on_push: false,
-        required_review_thread_resolution: false
+  rules: (
+    [
+      {
+        type: "pull_request",
+        parameters: {
+          required_approving_review_count: 0,
+          require_code_owner_review: false,
+          require_last_push_approval: false,
+          dismiss_stale_reviews_on_push: false,
+          required_review_thread_resolution: false
+        }
       }
-    },
-    {
-      type: "required_status_checks",
-      parameters: {
-        required_status_checks: $contexts,
-        strict_required_status_checks_policy: false
-      }
-    },
-    {type: "non_fast_forward"},
-    {type: "deletion"}
-  ]
+    ]
+    + (if ($contexts | length) > 0 then [
+        {
+          type: "required_status_checks",
+          parameters: {
+            required_status_checks: $contexts,
+            strict_required_status_checks_policy: false
+          }
+        }
+      ] else [] end)
+    + [
+      {type: "non_fast_forward"},
+      {type: "deletion"}
+    ]
+  )
 }')
 
 _api() {

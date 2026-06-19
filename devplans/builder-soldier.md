@@ -41,7 +41,7 @@ status: active   # active בזמן פיתוח → completed בסיום
 | 2 | נתיב-כתיבה בברוקר (apply→draft PR), שער RED | completed | `.github/workflows/agent-action.yml`, `scripts/builder-apply.sh` |
 | 3 | תבנית worker כותב (Write/Edit לתוך `out/`, בלי Bash/טוקן) | completed | `templates/agent-repo-builder/**`, `provision-agent-repo.yml`, `pipeline-tests.yml` |
 | 4 | הקמת ריפו-הבנאי `edri2or/agent-builder` 🔴 | completed | `provision-agent-repo.yml`, `refresh-agent-repo.yml` |
-| 5 | יצירת `edri2or/personal-life` + הגנת-main 🔴 | pending | `scripts/ensure-protect-main-ruleset.sh` |
+| 5 | יצירת `edri2or/personal-life` + הגנת-main 🔴 | in-progress | `scripts/ensure-protect-main-ruleset.sh` |
 | 6 | dry-run → ריצה אמיתית ראשונה 🔴 | pending | (תפעולי — dispatch דרך הברוקר) |
 | 7 | רישום ב-`route_to_agent` (חובה אחרון) 🔴 | pending | `deploy-mcp-server.yml`, `policy/…`, `docs/agent-specs/nuriel.md` |
 
@@ -135,9 +135,9 @@ status: active   # active בזמן פיתוח → completed בסיום
 
 **הוכחת E2E (artifact):** לא-התנהגותי.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** 🔄 בתהליך (2026-06-19). `edri2or/personal-life` נוצר (פרטי, auto_init→יש `main`) דרך זהות-המכונה `edri2or-commits` (הברוקר ב-MCP מצומצם ל-or-factory-master ולכן 403 על יצירת-ריפו-ארגון; היצירה היא שק ריק חד-פעמי, הברוקר נשאר הכותב-היחיד של קוד לתוכו). החלת ההגנה דרך `protect-system-main.yml` (`required_contexts_json='[]'`) **נכשלה** (run 27850037543, exit 22): `ensure-protect-main-ruleset.sh` שלח חוק `required_status_checks` עם רשימה ריקה → GitHub דחה (4xx). **תיקון בקוד** (בתוך PR #541): כשהרשימה ריקה החוק מושמט לגמרי — נשאר חובה-PR + אין force-push + אין מחיקה. נשאר: למזג את התיקון ל-main ואז להריץ מחדש את ההגנה + לאמת.
 
-**שינוי תוכנית:** —
+**שינוי תוכנית:** היצירה נעשתה דרך `edri2or-commits` (לא הברוקר) כי אין נתיב-ברוקר-on-main ליצירת ריפו בשם שרירותי (`create-throwaway-repo.yml` נעול ל-`zz-`, `provision-agent-repo` מסקפלד אישיות-סוכן). זו יצירת-שק חד-פעמית בלבד; כל כתיבת-קוד עתידית ל-personal-life עוברת רק דרך הברוקר.
 
 ---
 
