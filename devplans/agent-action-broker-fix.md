@@ -19,7 +19,7 @@ status: active
 |---|---|---|---|
 | 1 | סיווג מודע-יכולת (Fix 1) | completed | `policy/agent-risk-tiers.yml`, `scripts/agent-classify.sh`, `scripts/test-agent-classify.sh`, `tests/agent-classify-fixtures.yml`, `.github/workflows/pipeline-tests.yml`, `.github/workflows/agent-action.yml` |
 | 2 | תיקון run_id ב-coordinator (Fix 3) | completed | `services/mcp-server/src/github-client.ts`, `coordinator-scope.ts`, `tools.ts`, `services/mcp-server/test/*` |
-| 3 | כשל-רך + טלגרם לכרטיס גדול (Fix 2) | pending | `scripts/notify-card-failure.sh`, `.github/workflows/agent-action.yml`, `scripts/tests/*.bats` |
+| 3 | כשל-רך + טלגרם לכרטיס גדול (Fix 2) | completed | `scripts/notify-card-failure.sh`, `.github/workflows/agent-action.yml`, `scripts/tests/*.bats` |
 | 4 | קשירת correlation_id בברוקר (Fix 4) | pending | `scripts/select-result-file.sh`, `.github/workflows/agent-action.yml`, `scripts/tests/*.bats` |
 | 5 | קבלה live + תיעוד + סגירה | pending | `docs/agent-repo-product.md`, devplan, changelog |
 
@@ -78,16 +78,18 @@ shellcheck (`--severity=error scripts/*.sh`) + yamllint (כל ה-workflow dirs) 
 ### שלב 3 — כשל-רך + טלגרם לכרטיס גדול (Fix 2)
 
 **Acceptance:**
-- [ ] `scripts/notify-card-failure.sh` בונה הודעת-טלגרם ברורה (corr + סיבה) ושולח דרך bot-token
-- [ ] `agent-action.yml` קורא לו כש-POST לכרטיס מחזיר non-200, מוסיף `emit-event --severity=warning`, ואז `exit 1`
-- [ ] bats test ירוק
+- [x] `scripts/notify-card-failure.sh` בונה הודעת-טלגרם ברורה (corr + סיבה) ושולח דרך bot-token
+- [x] `agent-action.yml` קורא לו כש-POST לכרטיס מחזיר non-200, מוסיף `emit-event --severity=info` (Axiom-בלבד), ואז `exit 1`
+- [x] bats test ירוק
 
 **הוכחה תפקודית (באותו שלב):** bats עם curl-מוקפא: קלט (corr, reason, bot, chat) → ההודעה מורכבת
-נכון (מכילה את ה-corr ואת ה-reason), curl נקרא עם ה-URL הנכון, והסקריפט יוצא בקוד≠0 בנתיב-הכישלון.
+נכון (מכילה את ה-corr ואת ה-reason), curl נקרא עם ה-URL הנכון. (הסקריפט עצמו רך `exit 0`; ה-exit≠0 נעשה
+בוורקפלו אחרי הקריאה — הופרד כדי שהשליחה לעולם לא תפיל את הריצה.)
 
 **הוכחת E2E (artifact):** לא-התנהגותי.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** ✅ הושלם 2026-06-19. bats notify-card-failure 3/3; כל חבילת bats 224/224; shellcheck+yamllint נקיים.
+ענף-הכישלון: notify-card-failure.sh (Telegram אנושי) + emit info (Axiom-audit, בלי Telegram כפול) + exit 1. ממתין ל-CI.
 
 **שינוי תוכנית:** —
 
@@ -138,3 +140,4 @@ shellcheck (`--severity=error scripts/*.sh`) + yamllint (כל ה-workflow dirs) 
 
 - שלב 1 הושלם — מעכשיו, סוכן קריאה-בלבד לא ייחסם לאישור שלך סתם בגלל מילה "מסוכנת" בטקסט. שער-האישור נשמר לסוכנים שבאמת כותבים/בונים.
 - שלב 2 הושלם — תיקנו את "מספר-המעקב הקודם". מעכשיו נוריאל תמיד מקבל את המספר של הריצה הנכונה, אז הוא לא יתבלבל יותר בין משימות.
+- שלב 3 הושלם — אם משימה גדולה מדי לכרטיס-האישור, מעכשיו תקבל הודעת-טלגרם ברורה במקום שהכל ייפול בשקט בלי שתדע.

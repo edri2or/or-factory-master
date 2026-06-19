@@ -47,3 +47,25 @@
 **הוכחה תפקודית (שלב 2):** `cd services/mcp-server && npm test` → 138/138 PASS (כולל 4 החדשים + שמירת
 ה-exact-set של ה-coordinator 6/6); `tsc` נקי (מאמת את טיפוסיות שלוש העריכות). `COORDINATOR_SCOPED_TOOL_NAMES`
 ללא שינוי. אין השפעת golden (קוד-MCP, לא תחת `templates/**`).
+
+## תיקון צינור ה-broker (agent-action-broker-fix) — שלב 3: כשל-רך לכרטיס-אישור גדול מדי
+
+כשמשימת-RED ארוכה מדי לכרטיס-טלגרם, `agent-approval.ts` מחזיר HTTP 413 `task_too_large_for_card`,
+וה-step "Send Telegram approval card" ב-`agent-action.yml` עשה `exit 1` — הריצה נפלה **ו-Or לא קיבל
+שום הודעה** (כשל שקט). מעכשיו הכישלון רועש: Or מקבל הודעת-טלגרם ברורה.
+
+- **`scripts/notify-card-failure.sh`** (חדש) — מקבל `<corr> <http_code> [reason]`, מרכיב הודעת-עברית אחת
+  (שם ה-corr; ל-`task_too_large_for_card` → "ארוכה מדי — קצר/פצל"; אחרת מצרף את הסיבה; תמיד "לא נכנסה
+  לתור"), מדפיס ללוג, ואם יש creds — שולח דרך בוט-הטלגרם. רך (`exit 0` תמיד; הוורקפלו עושה את ה-exit הקשה).
+  זו ההתראה האנושית המותאמת, **בנפרד** מה-Telegram הגנרי של `emit-event.sh` (כדי למנוע שליחה-כפולה — אותה
+  הפרדה כמו ב-`workspace-token-audit.yml`).
+- **`scripts/tests/notify-card-failure.bats`** (חדש) — מקפיא `curl` ב-PATH ובודק 3 מקרים: 413 → הודעה עם
+  ה-corr + "ארוכה מדי" וקריאת curl ל-`…/bot<token>/sendMessage`; בלי creds → נרשם ללוג, curl לא נקרא, exit 0;
+  סיבה גנרית → מצורפת. נאסף אוטומטית ע"י `bats scripts/tests/*.bats` ב-Playground.
+- **`.github/workflows/agent-action.yml`** — ענף הכישלון של ה-step קורא את ה-creds מ-SM (ה-step כבר מאומת),
+  קורא ל-`notify-card-failure.sh`, פולט `factory.agent_action.card_failed` ב-`severity=info`
+  (Axiom-בלבד → בלי Telegram כפול / רעש-Linear), ואז `exit 1` (הריצה האדומה כנה — העבודה לא נכנסה לתור).
+
+**הוכחה תפקודית (שלב 3):** `bats scripts/tests/notify-card-failure.bats` → 3/3; כל חבילת ה-bats → 224/224;
+shellcheck (`--severity=error scripts/*.sh`) + yamllint נקיים. (נתיב ה-413→Telegram החי דורש worker כותב עם
+משימה ענקית — לא קיים אחרי Fix 1; הענף מוכח ביחידת-bats + lint, ונתיב-ההצלחה לא השתנה.)

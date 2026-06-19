@@ -165,7 +165,21 @@ jobs:
             --data "$REQ" || echo "000")
           echo "POST /agent-action-register -> HTTP ${CODE}"
           if [ "$CODE" != "200" ]; then
-            echo "FAIL: could not send approval card (HTTP ${CODE}): $(jq -r '.error // empty' /tmp/agent-reg.body 2>/dev/null || true)" >&2
+            ERR=$(jq -r '.error // empty' /tmp/agent-reg.body 2>/dev/null || true)
+            echo "FAIL: could not send approval card (HTTP ${CODE}): ${ERR}" >&2
+            # Don't fail SILENTLY (the old behaviour — Or never learned a RED task was dropped).
+            # Tell Or plainly with a custom Hebrew Telegram; keep it SEPARATE from the generic
+            # emit Telegram (emitted below at severity=info → Axiom-only) to avoid a double-send
+            # — the same split workspace-token-audit.yml uses.
+            BOT=$(gcloud secrets versions access latest --secret=telegram-bot-token --project="$CONTROL_PROJECT" 2>/dev/null | tr -d '\r\n' || true)
+            CHAT=$(gcloud secrets versions access latest --secret=telegram-chat-id --project="$CONTROL_PROJECT" 2>/dev/null | tr -d '\r\n' || true)
+            if [ -n "$BOT" ]; then echo "::add-mask::$BOT"; fi
+            TELEGRAM_BOT_TOKEN="$BOT" TELEGRAM_CHAT_ID="$CHAT" \
+              bash scripts/notify-card-failure.sh "$CORR_VAL" "$CODE" "$ERR" || true
+            # Axiom-only audit (info + action_required=false → no second Telegram, no Linear noise).
+            bash scripts/emit-event.sh --name="factory.agent_action.card_failed" --severity=info --layer=factory \
+              --workflow=agent-action.yml --run-id="${GITHUB_RUN_ID}" --action-required=false \
+              --body="$(jq -cn --arg c "$CORR_VAL" --arg code "$CODE" --arg e "$ERR" '{correlation_id:$c, http_code:$code, error:$e}')" || true
             rm -f /tmp/agent-reg.body; exit 1
           fi
           rm -f /tmp/agent-reg.body
