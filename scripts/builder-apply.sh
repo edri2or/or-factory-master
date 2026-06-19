@@ -125,7 +125,7 @@ fi
 [ -n "$TOKEN" ] || die "TOKEN is required to apply (set DRY_RUN=true to validate only)"
 BRANCH="builder/${CORR}"
 
-gh_api() {  # gh_api <method> <path> [data] ; prints body, sets GH_CODE
+gh_api() {  # gh_api <method> <path> [data] ; prints body, writes code to /tmp/ba.code
   local method="$1" path="$2" data="${3:-}" code
   if [ -n "$data" ]; then
     code=$(curl -sS -m 30 -o /tmp/ba.body -w '%{http_code}' -X "$method" "${API}${path}" \
@@ -136,16 +136,18 @@ gh_api() {  # gh_api <method> <path> [data] ; prints body, sets GH_CODE
       -H "Authorization: Bearer ${TOKEN}" -H "Accept: application/vnd.github+json" \
       -H "X-GitHub-Api-Version: 2022-11-28" || echo "000")
   fi
-  GH_CODE="$code"
+  printf '%s' "$code" > /tmp/ba.code
   cat /tmp/ba.body
 }
 
 # default branch + its head sha
 repo_body=$(gh_api GET "/repos/${TARGET_FULL}")
+GH_CODE=$(</tmp/ba.code)
 [ "$GH_CODE" = "200" ] || die "GET repo ${TARGET_FULL} -> HTTP ${GH_CODE}: $(printf '%s' "$repo_body" | jq -r '.message // empty')"
 BASE=$(printf '%s' "$repo_body" | jq -r '.default_branch // "main"')
 
 ref_body=$(gh_api GET "/repos/${TARGET_FULL}/git/ref/heads/${BASE}")
+GH_CODE=$(</tmp/ba.code)
 [ "$GH_CODE" = "200" ] || die "GET base ref ${BASE} -> HTTP ${GH_CODE}: $(printf '%s' "$ref_body" | jq -r '.message // empty')"
 BASE_SHA=$(printf '%s' "$ref_body" | jq -r '.object.sha // empty')
 [ -n "$BASE_SHA" ] || die "could not resolve base sha for ${BASE}"
@@ -153,6 +155,7 @@ BASE_SHA=$(printf '%s' "$ref_body" | jq -r '.object.sha // empty')
 # create the builder branch (idempotent: 422 'Reference already exists' is OK — reuse it)
 mk_body=$(gh_api POST "/repos/${TARGET_FULL}/git/refs" \
   "$(jq -cn --arg r "refs/heads/${BRANCH}" --arg s "$BASE_SHA" '{ref:$r, sha:$s}')")
+GH_CODE=$(</tmp/ba.code)
 case "$GH_CODE" in
   201) echo "builder-apply: created branch ${BRANCH}" >&2 ;;
   422) echo "builder-apply: branch ${BRANCH} already exists — reusing" >&2 ;;
@@ -164,6 +167,7 @@ for rel in "${FILES[@]}"; do
   b64=$(base64 -w0 < "${OUT_DIR}/${rel}")
   # existing file on the branch needs its blob sha for an update
   cur=$(gh_api GET "/repos/${TARGET_FULL}/contents/${rel}?ref=${BRANCH}")
+  GH_CODE=$(</tmp/ba.code)
   sha=""
   [ "$GH_CODE" = "200" ] && sha=$(printf '%s' "$cur" | jq -r '.sha // empty')
   if [ -n "$sha" ]; then
@@ -174,6 +178,7 @@ for rel in "${FILES[@]}"; do
       '{message:$m, content:$c, branch:$br}')
   fi
   pb=$(gh_api PUT "/repos/${TARGET_FULL}/contents/${rel}" "$put")
+  GH_CODE=$(</tmp/ba.code)
   case "$GH_CODE" in
     200|201) ;;
     *) die "PUT ${rel} -> HTTP ${GH_CODE}: $(printf '%s' "$pb" | jq -r '.message // empty')" ;;
@@ -188,6 +193,7 @@ body=$(printf '🤖 **builder-soldier** draft proposal — correlation `%s`.\n\n
   "$(printf -- '- `%s`\n' "${FILES[@]}")")
 pr_body=$(gh_api POST "/repos/${TARGET_FULL}/pulls" \
   "$(jq -cn --arg t "$title" --arg h "$BRANCH" --arg b "$BASE" --arg bd "$body" '{title:$t, head:$h, base:$b, body:$bd, draft:true}')")
+GH_CODE=$(</tmp/ba.code)
 PR_URL=""; PR_NUM=""
 case "$GH_CODE" in
   201)
@@ -197,6 +203,7 @@ case "$GH_CODE" in
   422)
     # likely a PR already exists for this head — find it
     existing=$(gh_api GET "/repos/${TARGET_FULL}/pulls?head=edri2or:${BRANCH}&state=open")
+    GH_CODE=$(</tmp/ba.code)
     PR_URL=$(printf '%s' "$existing" | jq -r '.[0].html_url // empty')
     PR_NUM=$(printf '%s' "$existing" | jq -r '.[0].number // empty')
     [ -n "$PR_URL" ] || die "open PR -> HTTP 422 and no existing PR found: $(printf '%s' "$pr_body" | jq -r '.message // empty')"
