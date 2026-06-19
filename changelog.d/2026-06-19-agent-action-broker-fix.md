@@ -96,6 +96,11 @@ baseline ריק→0); shellcheck + yamllint נקיים. שכבה (ב) — ערו
   עם `content_tier`/`worker_capability`), כשל-רך לכרטיס-413 (Telegram אנושי + emit info), וקשירת
   correlation_id בברוקר (גילוי high-water + הורדה corr-strict ללא fallback). שורת ה-MVP על false-positive
   עודכנה. (שינוי-דוק וולונטרי; שער ה-binding לא נדרס — הוא חד-כיווני: artifact→doc, לא doc→artifact.)
-- **קבלה live (post-merge):** מיזוג ל-main → `deploy-mcp-server.yml` מתעדכן → דיספאצ' חי של משימת מחקר
-  קריאה-בלבד ל-`natan-research` → אימות `classifier: {"tier":"yellow"}` (לא red), "Broker the work" רץ,
-  ותוצאה נכתבת ל-`results/<corr>.json`. (תוצאת ה-live נרשמת ביומן ה-devplan + ב-PR-הסגירה.)
+- **קבלה live (post-merge) — ✅ עברה:** #538 מוזג ל-main (squash 421724a); `deploy-mcp-server.yml`
+  (run 27805830546) הסתיים בהצלחה. דיספאצ' חי של משימת מחקר קריאה-בלבד שמזכירה "deploy" ל-`natan-research`
+  (run 27805997979, corr=`broker-fix-accept-1`): הלוג מראה
+  `classifier: {"tier":"yellow","content_tier":"red","matched_pattern":"deploy","worker_capability":"read-only"}`,
+  כרטיס-ה-RED **דולג**, "Broker the work" רץ, גילוי high-water (`BEFORE_RID=27801114839` → ריצה חדשה `27806011943`),
+  הורדה corr-strict, ו-`PASS: wrote result to edri2or/nuriel/results/broker-fix-accept-1.json` (התוכן אומת — נכון).
+  בדיוק מקרה-האירוע שחסם את נוריאל — עכשיו נוסע. Fixes 1+4 מוכחים live; Fix 3 מוכח-יחידה + ה-MCP נפרס;
+  Fix 2 מוכח-יחידה (נתיב ה-413 החי דורש worker כותב, שלא קיים).
