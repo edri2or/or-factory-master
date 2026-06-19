@@ -2,7 +2,7 @@
 dev_name: חייל-הבנאי (the builder-soldier)
 slug: builder-soldier
 opened: 2026-06-19
-status: active   # active בזמן פיתוח → completed בסיום
+status: completed   # active בזמן פיתוח → completed בסיום
 ---
 
 # תוכנית פיתוח — חייל-הבנאי (the builder-soldier)
@@ -43,7 +43,7 @@ status: active   # active בזמן פיתוח → completed בסיום
 | 4 | הקמת ריפו-הבנאי `edri2or/agent-builder` 🔴 | completed | `provision-agent-repo.yml`, `refresh-agent-repo.yml` |
 | 5 | יצירת `edri2or/personal-life` + הגנת-main 🔴 | completed | `scripts/ensure-protect-main-ruleset.sh` |
 | 6 | dry-run → ריצה אמיתית ראשונה 🔴 | completed | `scripts/builder-apply.sh` (תיקון-באג) |
-| 7 | רישום ב-`route_to_agent` (חובה אחרון) 🔴 | in-progress | `deploy-mcp-server.yml`, `coordinator-scope.test.mjs`, `docs/agent-specs/nuriel.md`, `CLAUDE.md` |
+| 7 | רישום ב-`route_to_agent` (חובה אחרון) 🔴 | completed | `deploy-mcp-server.yml`, `coordinator-scope.test.mjs`, `docs/agent-specs/nuriel.md`, `CLAUDE.md` |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`. 🔴 = עוצר לאישור-Or בטלגרם.
 
@@ -167,7 +167,7 @@ status: active   # active בזמן פיתוח → completed בסיום
 
 **הוכחת E2E (artifact):** לא-התנהגותי.
 
-**הערת התקדמות אחרונה:** 🔄 בתהליך (2026-06-19). הקוד מוכן: `agent-builder` נוסף ל-`COORDINATOR_WORKER_REPOS` ב-`deploy-mcp-server.yml`; בדיקת-היחידה `coordinator-scope.test.mjs` עודכנה (allowlist + assertion) — `tsc` + 138/138 בדיקות עוברות; שורת-רוסטר נוספה ב-`docs/agent-specs/nuriel.md` (חייל כותב, יעד personal-life בלבד, כל ריצה RED→✅, לא ממזג) וב-CLAUDE.md. ה-capability ב-policy (`agent-builder: write`+`builder_allowed_targets`+`always_red_workers`) כבר קיים משלב 1. route_to_agent גנרי — אין צורך בקוד ייעודי-בנאי בקואורדינטור. **נשאר:** מיזוג ל-main (מפעיל פריסת-MCP אוטומטית) → אימות חי שה-env החדש הוחל (`verify_mcp_server`/route).
+**הערת התקדמות אחרונה:** ✅ הושלם ואומת (2026-06-19). `agent-builder` נוסף ל-`COORDINATOR_WORKER_REPOS` (PR #546, מוזג `4b90745`); `coordinator-scope.test.mjs` עודכן (allowlist+assertion, 138/138+tsc); שורות-רוסטר ב-`docs/agent-specs/nuriel.md`+`CLAUDE.md`. ה-capability ב-policy כבר קיים משלב 1. המיזוג הפעיל פריסת-MCP אוטומטית (run 27853539000, success, כולל smoke-gate). **אומת חי:** לוג-הפריסה מראה ש-Cloud Run נפרס עם `COORDINATOR_WORKER_REPOS: nachshon,natan-research,sapi-docs,agent-builder` — `agent-builder` רשום בפועל ב-allowlist של נוריאל. route_to_agent גנרי, אין קוד ייעודי-בנאי בקואורדינטור.
 
 **שינוי תוכנית:** ה-capability ב-policy כבר היה קיים משלב 1, אז שלב 7 הוא בעיקר allowlist (`COORDINATOR_WORKER_REPOS`) + רוסטר. הוספתי גם עדכון ל-`CLAUDE.md` (הרוסטר העובדתי) ולבדיקת-היחידה (כיסוי), שלא נכללו במקור.
 
@@ -184,3 +184,4 @@ status: active   # active בזמן פיתוח → completed בסיום
 - 2026-06-19: שלב 4 ✅ — הוקם החייל עצמו: ריפו פרטי `edri2or/agent-builder` עם אישיות-הבנאי. עדיין בלי מפתחות לכלום — "שולחן וכיסא".
 - 2026-06-19: שלב 5 ✅ — נוצר הבית שהבנאי יבנה לתוכו: `edri2or/personal-life` (פרטי), ננעל ה-main (כלום לא נכנס בלי PR, אין מחיקה/דחיפה-בכוח). תוך כדי תיקנתי באג קטן במנגנון-ההגנה (ריפו בלי CI).
 - 2026-06-19: שלב 6 ✅ — הבנאי עבד מקצה-לקצה! ה"הצצה" עברה, התיקון לבאג נכנס, והריצה האמיתית פתחה PR-טיוטה ל-personal-life עם 3 הקבצים (edri2or/personal-life#1). עכשיו זה אצלך לבדוק ולמזג ידנית — הבנאי לא יכול למזג בעצמו.
+- 2026-06-19: שלב 7 ✅ — הבנאי נרשם רשמית אצל נוריאל. נוריאל יכול עכשיו לנתב אליו משימות-בנייה (כל אחת עדיין נעצרת ל-✅ שלך). **הפיתוח כולו הושלם** 🎉 — יש לך חייל-בנאי חדש בצוות, שבונה לתוך personal-life דרך הדלת המאובטחת בלבד.
