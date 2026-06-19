@@ -46,10 +46,15 @@ for work; `agent-action.yml` then:
 1. **WIF → broker SA**; mints a per-request broker-App token scoped to the WORKER
    repo with `{"actions":"write"}` (`scripts/generate-app-token.sh`).
 2. **Dispatches** the worker's `agent-main.yml` with `task` + `correlation_id`.
-3. **Polls** that worker run to terminal (broker-PULL — the worker never reaches
-   outward).
+3. **Finds the run THIS dispatch created** — a high-water mark: the first worker
+   run with `databaseId >` the pre-dispatch baseline (run ids are monotonic), never
+   a stale or concurrent run — and **polls** it to terminal (broker-PULL — the
+   worker never reaches outward).
 4. On success, mints a fresh token scoped to the WORKER (`actions:read`) and
-   **downloads** the worker's `agent-result` artifact.
+   **downloads** the worker's `agent-result` artifact, requiring **exactly**
+   `result/<correlation_id>.json` (corr-strict, `scripts/select-result-file.sh` —
+   no "first json" fallback, so a mis-polled run can never land another task's
+   result under this `correlation_id`).
 5. Mints a fresh token scoped to the REQUESTER (`contents:write`) and **writes the
    result** to `results/<correlation_id>.json` in the requester repo.
 6. **Audits** every step via `scripts/emit-event.sh`
@@ -106,9 +111,17 @@ a task is freeform text). Routing:
   POSTs `/agent-action-register`; Or gets one Telegram card with ✅/❌; only Or's
   ✅ dispatches the **execute** phase, which brokers the work regardless of tier.
 
-The current worker is **read-only**, so an unflagged task is inherently safe and
-the default tier is **green**; the RED gate is defense-in-depth + future-proofing
-for write-capable workers. Revisit the default when such workers exist.
+**Capability-aware cap (2026-06-19).** `agent-classify.sh` also takes the **worker
+repo** and caps the effective tier by its capability in `policy/agent-risk-tiers.yml`
+(`worker_capabilities:`; fail-safe `default_worker_capability: write`). A **read-only**
+worker (Read/Grep/Glob — the whole current fleet) can perform no RED action, so its
+tier is capped at **yellow**: a task that merely *mentions* a risky word (e.g. one
+that *describes* the RED list, the exact case that blocked Nuriel's read-only
+research) is brokered immediately, not falsely gated. The classifier emits both the
+effective `tier` (what the broker routes on) and the raw `content_tier`. The RED gate
+stays fully active for any future **write-capable** worker (an unlisted worker
+defaults to `write` → still gated) — the cap, not the default, is what keeps the
+read-only fleet flowing.
 
 **State-free approval transport.** Unlike the GCP gate's single charset-restricted
 command, an agent work unit is four fields and the task is freeform, so the whole
@@ -119,6 +132,13 @@ state. base64's alphabet can never contain the sentinel glyphs, so the boundarie
 are unambiguous, and on ✅ the recovered payload's `correlation_id` **must equal**
 the button's correlation id (binds button ↔ blob). The approver allowlist is the
 shared `OIL_APPROVER_TELEGRAM_ALLOWLIST` (= Or), closed by default.
+
+**A card too large to send is loud, not silent (2026-06-19).** A task too big for one
+Telegram card is refused at register time (`task_too_large_for_card`, HTTP 413). The
+broker no longer drops that case silently: it sends Or a plain Hebrew Telegram naming
+the `correlation_id` + reason (`scripts/notify-card-failure.sh`) and emits
+`factory.agent_action.card_failed` (severity `info` → Axiom-only, so no double-send),
+then exits non-zero — the task genuinely was not queued.
 
 **Why execute cannot be bypassed.** `agent-action.yml` is allowlisted for
 `phase=propose` only; the `dispatch_workflow` MCP tool refuses a `phase=execute`
@@ -169,7 +189,8 @@ golden:
   `results/<corr>.json` directly to `main`). Hard branch protection that still
   admits the broker's result-write (a dedicated ref, or a 0-context PR) is a
   separate hardening step.
-- The classifier is a heuristic keyword scanner, not a parser — false positives
-  merely route to Or's ✅ (safe); the read-only worker cannot act dangerously
-  regardless.
+- The classifier is a heuristic keyword scanner, not a parser. A false positive on a
+  **read-only** worker is now capped to yellow (brokered, not gated — see the
+  capability-aware cap above); for a future write-capable worker a false positive
+  still routes to Or's ✅ (safe).
 - First wave (נחשון / נתן / ספי) + multi-agent fan-out is a separate development.

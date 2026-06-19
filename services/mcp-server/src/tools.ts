@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { apiGet, apiGetRepo, fetchJobLogs, filterLogText, dispatchWorkflow, getLatestWorkflowRun } from './github-client.js';
+import { apiGet, apiGetRepo, fetchJobLogs, filterLogText, dispatchWorkflow, getLatestWorkflowRun, discoverDispatchedRun } from './github-client.js';
 import {
   getProject as gcpGetProject,
   listEnabledServices as gcpListEnabledServices,
@@ -450,6 +450,14 @@ export function registerTools(server: McpServer): void {
         };
       }
       const targetRef = ref ?? 'main';
+      // Baseline the latest run BEFORE dispatching, so we return the freshly-created run and
+      // not a stale "latest" that predates this dispatch (workflow_dispatch is async — the old
+      // 5×2s poll would return whatever run already existed, the same off-by-one the coordinator
+      // hit).
+      let beforeId: number | null = null;
+      try {
+        beforeId = (await getLatestWorkflowRun(workflow_id, targetRef, owner, repo))?.id ?? null;
+      } catch { /* best-effort baseline */ }
       try {
         await dispatchWorkflow(workflow_id, targetRef, inputs ?? {}, owner, repo);
       } catch (e) {
@@ -457,15 +465,14 @@ export function registerTools(server: McpServer): void {
           content: [{ type: 'text' as const, text: JSON.stringify({ error: 'dispatch_failed', workflow_id, detail: String(e).slice(0, 400) }, null, 2) }],
         };
       }
-      // The dispatch API returns 204 with no body — poll briefly for the run.
+      // The dispatch API returns 204 with no body — discover the NEW run (id != baseline).
       let run: Awaited<ReturnType<typeof getLatestWorkflowRun>> = null;
-      for (let i = 0; i < 5; i++) {
-        await new Promise((r) => setTimeout(r, 2000));
-        try {
-          run = await getLatestWorkflowRun(workflow_id, targetRef, owner, repo);
-          if (run) break;
-        } catch { /* transient — keep polling */ }
-      }
+      try {
+        run = await discoverDispatchedRun(
+          () => getLatestWorkflowRun(workflow_id, targetRef, owner, repo),
+          beforeId,
+        );
+      } catch { /* best-effort — the dispatch already succeeded */ }
       const result = {
         dispatched: true,
         owner: owner ?? 'edri2or',

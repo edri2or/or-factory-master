@@ -1,0 +1,37 @@
+# Self-test table for scripts/agent-classify.sh, exercised by pipeline-tests.yml on every
+# PR. Each row: a task, the worker it's routed to, and the EFFECTIVE tier the classifier must
+# return (after the capability-aware cap). Proves Fix 1 (capability-aware risk cap).
+#
+# nachshon / natan-research / sapi-docs are READ-ONLY in policy/agent-risk-tiers.yml (red→yellow
+# cap). A worker absent from that map (or no worker at all) defaults to write → no cap.
+
+# THE INCIDENT: the builder task DESCRIBES the red-pattern list, so its content is red — but
+# routed to a read-only worker it MUST be capped to yellow (no false RED gate on Or).
+- task: "design + safety proof for a builder soldier; note red includes deploy/provision/secret/.github/ and cross-repo"
+  worker: "natan-research"
+  expected_tier: yellow
+
+# Same red-content task routed to a worker NOT in the map → write default → stays red (gate kept).
+- task: "design + safety proof for a builder soldier; note red includes deploy/provision/secret/.github/ and cross-repo"
+  worker: "future-builder"
+  expected_tier: red
+
+# An explicit red ACTION, read-only worker → capped to yellow (the worker can't act on it).
+- task: "delete the production secret and force-push to main"
+  worker: "sapi-docs"
+  expected_tier: yellow
+
+# Green content (pure read/summary) is unaffected by the cap.
+- task: "summarise the readme and list the main modules"
+  worker: "natan-research"
+  expected_tier: green
+
+# Yellow content (self-write class) stays yellow on a read-only worker (cap only lowers red).
+- task: "open a pull request that refactors the parser"
+  worker: "nachshon"
+  expected_tier: yellow
+
+# Backward compatibility: NO worker passed → write default → no cap → red stays red.
+- task: "deploy to railway now"
+  worker: ""
+  expected_tier: red

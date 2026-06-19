@@ -30,7 +30,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { registerTools } from './tools.js';
 import { registerOrgReadTools } from './org-read-tools.js';
-import { dispatchWorkflow, getLatestWorkflowRun } from './github-client.js';
+import { dispatchWorkflow, getLatestWorkflowRun, discoverDispatchedRun } from './github-client.js';
 
 const OWNER = 'edri2or';
 const FACTORY_REPO = 'or-factory-master';
@@ -159,6 +159,17 @@ export function registerCoordinatorScopedTools(server: McpServer, requesterRepo:
       const corr = rawCorr || `nuriel-${Date.now().toString(36)}`;
       if (!CORR_RE.test(corr)) return asText({ error: 'bad_correlation_id', got: corr });
 
+      // Baseline: the latest agent-action run BEFORE we dispatch. workflow_dispatch is async,
+      // so reading "latest" right after the dispatch returns the PREVIOUS run until the new one
+      // materialises — the stale run_id that shifted the coordinator's run↔corr bookkeeping by
+      // one. Capturing the baseline here lets discoverDispatchedRun return the NEW run instead.
+      let beforeId: number | null = null;
+      try {
+        beforeId = (await getLatestWorkflowRun(AGENT_ACTION_WORKFLOW, 'main', OWNER, FACTORY_REPO))?.id ?? null;
+      } catch {
+        /* best-effort baseline — discover tolerates a null baseline */
+      }
+
       try {
         await dispatchWorkflow(
           AGENT_ACTION_WORKFLOW,
@@ -179,7 +190,10 @@ export function registerCoordinatorScopedTools(server: McpServer, requesterRepo:
 
       let run: { id: number; html_url: string } | null = null;
       try {
-        run = await getLatestWorkflowRun(AGENT_ACTION_WORKFLOW, 'main', OWNER, FACTORY_REPO);
+        run = await discoverDispatchedRun(
+          () => getLatestWorkflowRun(AGENT_ACTION_WORKFLOW, 'main', OWNER, FACTORY_REPO),
+          beforeId,
+        );
       } catch {
         /* best-effort — the dispatch already succeeded */
       }
@@ -190,7 +204,9 @@ export function registerCoordinatorScopedTools(server: McpServer, requesterRepo:
         correlation_id: corr,
         run_id: run?.id ?? null,
         run_url: run?.html_url ?? null,
-        note: `the answer will be written to ${requesterRepo}/results/${corr}.json (read it with get_file_contents). A RED task waits for Or's Telegram ✅.`,
+        note: run
+          ? `the answer will be written to ${requesterRepo}/results/${corr}.json (read it with get_file_contents). A RED task waits for Or's Telegram ✅.`
+          : `dispatched (corr=${corr}); the run is not visible yet — find it by correlation_id, or just read ${requesterRepo}/results/${corr}.json. A RED task waits for Or's Telegram ✅.`,
       });
     },
   );
