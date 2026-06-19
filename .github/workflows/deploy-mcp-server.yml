@@ -85,7 +85,7 @@ jobs:
       # Both fail-closed: an EMPTY value admits NOTHING (no coordinator route, no
       # routable worker). Pin them explicitly; never "*".
       COORDINATOR_REQUESTER_REPOS: "nuriel"
-      COORDINATOR_WORKER_REPOS: "nachshon,natan-research,sapi-docs"
+      COORDINATOR_WORKER_REPOS: "nachshon,natan-research,sapi-docs,agent-builder"
       # Google-login email allowlist for the operator OAuth flow (gateway-native
       # Google IdP). Only these emails may authenticate interactively — and since
       # the Workspace sidecar exposes Drive WRITE tools (update_drive_file:

@@ -17,7 +17,7 @@ process.env.GITHUB_APP_INSTALLATION_ID ??= 'test-install-id';
 process.env.GITHUB_APP_PRIVATE_KEY ??= 'test-key';
 // The allowlists are read at module load — pin them BEFORE the dynamic import.
 process.env.COORDINATOR_REQUESTER_REPOS = 'nuriel';
-process.env.COORDINATOR_WORKER_REPOS = 'nachshon,natan-research,sapi-docs';
+process.env.COORDINATOR_WORKER_REPOS = 'nachshon,natan-research,sapi-docs,agent-builder';
 
 const {
   isAllowedCoordinatorRepo,
@@ -86,7 +86,7 @@ test('route_to_agent refuses a non-allowlisted worker BEFORE any dispatch', asyn
   const res = await handler({ worker_repo: 'or-factory-master', task: 'x' });
   const payload = JSON.parse(res.content[0].text);
   assert.equal(payload.error, 'worker_not_allowlisted');
-  assert.deepEqual(payload.allowed.sort(), ['nachshon', 'natan-research', 'sapi-docs']);
+  assert.deepEqual(payload.allowed.sort(), ['agent-builder', 'nachshon', 'natan-research', 'sapi-docs']);
 });
 
 test('route_to_agent refuses an unlisted-but-valid worker', async () => {

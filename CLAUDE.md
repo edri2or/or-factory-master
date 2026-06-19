@@ -140,6 +140,7 @@ exchange units of work **only through the central broker** (`agent-action.yml` o
 | `nachshon` | Project-manager / technical router (`[MODE:SPLIT\|WORKER\|UNIFY]`) — splits a multi-domain request and unifies the results. `docs/agent-specs/firstwave/nachshon.md`. |
 | `natan-research` | Research & planning. `docs/agent-specs/firstwave/natan.md`. |
 | `sapi-docs` | Documentation & classification of **ready** findings (does not generate). `docs/agent-specs/firstwave/sapi.md`. |
+| `agent-builder` | **The fleet's first WRITE-capable soldier.** Proposes files (sandboxed, no token); the broker lands them as a **draft PR into `edri2or/personal-life` only** — every run is RED → Or's Telegram ✅, and Or merges manually (the builder never merges). Routable by Nuriel via `route_to_agent` (in `COORDINATOR_WORKER_REPOS`). Persona: `templates/agent-repo-builder/AGENTS.md.template`; development `devplans/builder-soldier.md`. |
 
 **Operating rule:** Or's single point of contact is **Nuriel**. A coordinator session reaches the
 fleet by dispatching `agent-action.yml` (`phase=propose`) via the GitHub MCP scoped to
