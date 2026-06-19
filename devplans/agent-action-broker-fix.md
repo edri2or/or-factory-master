@@ -2,7 +2,7 @@
 dev_name: תיקון צינור ה-broker (agent-action)
 slug: agent-action-broker-fix
 opened: 2026-06-19
-status: active
+status: completed
 ---
 
 # תוכנית פיתוח — תיקון צינור ה-broker (agent-action)
@@ -21,7 +21,7 @@ status: active
 | 2 | תיקון run_id ב-coordinator (Fix 3) | completed | `services/mcp-server/src/github-client.ts`, `coordinator-scope.ts`, `tools.ts`, `services/mcp-server/test/*` |
 | 3 | כשל-רך + טלגרם לכרטיס גדול (Fix 2) | completed | `scripts/notify-card-failure.sh`, `.github/workflows/agent-action.yml`, `scripts/tests/*.bats` |
 | 4 | קשירת correlation_id בברוקר (Fix 4) | completed | `scripts/select-result-file.sh`, `.github/workflows/agent-action.yml`, `scripts/tests/*.bats` |
-| 5 | קבלה live + תיעוד + סגירה | in-progress | `docs/agent-repo-product.md`, devplan, changelog |
+| 5 | קבלה live + תיעוד + סגירה | completed | `docs/agent-repo-product.md`, devplan, changelog |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
 >
@@ -118,10 +118,10 @@ shellcheck (`--severity=error scripts/*.sh`) + yamllint (כל ה-workflow dirs) 
 ### שלב 5 — קבלה live + תיעוד + סגירה
 
 **Acceptance:**
-- [ ] `docs/agent-repo-product.md` מתאר: cap מודע-יכולת, כשל-רך לכרטיס, תיקון run_id
-- [ ] (post-merge) `deploy-mcp-server.yml` רץ והסתיים בהצלחה
-- [ ] ניתוב-מחדש live של משימת קריאה-בלבד → classifier=yellow, worker רץ, תוצאה ל-`nuriel/results/<corr>.json`, run_id נכון
-- [ ] devplan `status: completed`, changelog fragment מלא
+- [x] `docs/agent-repo-product.md` מתאר: cap מודע-יכולת, כשל-רך לכרטיס, תיקון run_id
+- [x] (post-merge) `deploy-mcp-server.yml` רץ והסתיים בהצלחה (run 27805830546, head_sha 421724a)
+- [x] ניתוב live של משימת קריאה-בלבד → classifier=yellow, worker רץ, תוצאה ל-`nuriel/results/broker-fix-accept-1.json`
+- [x] devplan `status: completed`, changelog fragment מלא
 
 **הוכחה תפקודית (באותו שלב):** ריצת `agent-action.yml` חיה על משימת מחקר קריאה-בלבד אמיתית: בלוג —
 `classifier: {"tier":"yellow",...}` (לא red), "Broker the work" רץ, תוצאה נכתבת, וה-run_id ש-route_to_agent
@@ -129,9 +129,13 @@ shellcheck (`--severity=error scripts/*.sh`) + yamllint (כל ה-workflow dirs) 
 
 **הוכחת E2E (artifact):** לא-התנהגותי (הצינור הוא broker/MCP, לא בוט-n8n).
 
-**הערת התקדמות אחרונה:** בעבודה. `docs/agent-repo-product.md` עודכן (4 התיקונים). הבא: מיזוג #538 ל-main
-(Or אישר) → המתנה ל-`deploy-mcp-server.yml` → דיספאצ' חי של משימת מחקר קריאה-בלבד ואימות yellow+brokered+תוצאה
-→ סגירת ה-devplan ב-PR-תיעוד נפרד (connector-url-clear עדיין active, אז הסגירה לא נכנסת ל-PR-קוד).
+**הערת התקדמות אחרונה:** ✅ הושלם 2026-06-19. #538 מוזג ל-main (squash 421724a); `deploy-mcp-server.yml`
+(run 27805830546) הסתיים בהצלחה (health+issuer+smoke ירוקים). קבלה live (run 27805997979, corr=broker-fix-accept-1):
+`classifier: {"tier":"yellow","content_tier":"red","matched_pattern":"deploy","worker_capability":"read-only"}`,
+כרטיס-RED **דולג**, "Broker the work" רץ; high-water `BEFORE_RID=27801114839` → ריצה חדשה `27806011943`;
+הורדה corr-strict; `PASS: wrote result to edri2or/nuriel/results/broker-fix-accept-1.json` (אומת — תוכן נכון).
+Fixes 1+4 מוכחים live; Fix 3 מוכח-יחידה + ה-MCP נפרס; Fix 2 מוכח-יחידה (נתיב 413 חי דורש worker כותב).
+ה-devplan נסגר ב-PR-תיעוד נפרד (connector-url-clear עדיין active).
 
 **שינוי תוכנית:** —
 
@@ -145,3 +149,4 @@ shellcheck (`--severity=error scripts/*.sh`) + yamllint (כל ה-workflow dirs) 
 - שלב 2 הושלם — תיקנו את "מספר-המעקב הקודם". מעכשיו נוריאל תמיד מקבל את המספר של הריצה הנכונה, אז הוא לא יתבלבל יותר בין משימות.
 - שלב 3 הושלם — אם משימה גדולה מדי לכרטיס-האישור, מעכשיו תקבל הודעת-טלגרם ברורה במקום שהכל ייפול בשקט בלי שתדע.
 - שלב 4 הושלם — הברוקר חוזק כך שלעולם לא יכתוב תוצאה של משימה אחת תחת שם של אחרת, גם אם שתי משימות רצות בו-זמנית. כל ארבעת התיקונים בקוד הושלמו.
+- שלב 5 הושלם — מוזג ל-main ונבדק חי: שלחתי משימת מחקר קריאה-בלבד שמזכירה "deploy", והיא עברה חלק כ"צהוב" (לא נחסמה), החייל רץ, והתשובה נכתבה נכון. בדיוק מה שהיה שבור — עכשיו עובד. ✅ הפיתוח הושלם.
