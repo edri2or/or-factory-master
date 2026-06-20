@@ -29,7 +29,7 @@ FACTORY_TOOLS_ALLOWED_SYSTEMS="${FACTORY_TOOLS_ALLOWED_SYSTEMS:-*}"
 # The narrow coordinator dispatch surface at /coordinator/<repo>/mcp. Both
 # fail-closed: an EMPTY default admits NOTHING (the route 404s and route_to_agent
 # has no allowlisted worker), so the surface is OFF unless deploy-mcp-server.yml
-# pins them. REQUESTER = the coordinator path repo(s) (e.g. nuriel); WORKER = the
+# pins them. REQUESTER = the coordinator path repo(s); WORKER = the
 # sibling agent-repos route_to_agent may dispatch agent-action.yml propose to.
 COORDINATOR_REQUESTER_REPOS="${COORDINATOR_REQUESTER_REPOS:-}"
 COORDINATOR_WORKER_REPOS="${COORDINATOR_WORKER_REPOS:-}"

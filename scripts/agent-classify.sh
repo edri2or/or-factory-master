@@ -10,7 +10,7 @@
 # task is routed to. A READ-ONLY worker (per `worker_capabilities` in the policy) cannot perform
 # any RED action — Read/Grep/Glob only — so its EFFECTIVE tier is capped at YELLOW (the RED
 # Telegram gate is skipped; it would only add false friction on a task that merely *mentions* a
-# risky word — the exact false-positive that blocked Nuriel's read-only research). The RED gate
+# risky word — the exact false-positive that would block a read-only worker's research). The RED gate
 # stays fully active for write-capable workers. Fail-safe: a worker absent from the map defaults
 # to `default_worker_capability` (write) → still RED-gated. With NO worker passed, behaviour is
 # unchanged (treated as the write default → no cap) — backward compatible.

@@ -7,8 +7,10 @@ product is a stateful service, an agent-repo is a **lightweight, private GitHub
 repo driven by Claude Code** that exchanges units of work with other agent-repos
 **only through a central broker** — never agent→agent directly.
 
-> Development plan: `devplans/agent-repo-product.md`. Capability-first proof:
-> `docs/capability-cards/agent-broker-handoff.md`.
+> Development plan (historical): `devplans/agent-repo-product.md`.
+>
+> **Current state:** there are no live agent-repos — the generic machinery described here remains,
+> dormant. See `CLAUDE.md` › "Agent-repos (the agent-repo product) — a dormant capability".
 
 ## What an agent-repo is
 
@@ -114,9 +116,9 @@ a task is freeform text). Routing:
 **Capability-aware cap (2026-06-19).** `agent-classify.sh` also takes the **worker
 repo** and caps the effective tier by its capability in `policy/agent-risk-tiers.yml`
 (`worker_capabilities:`; fail-safe `default_worker_capability: write`). A **read-only**
-worker (Read/Grep/Glob — the whole current fleet) can perform no RED action, so its
-tier is capped at **yellow**: a task that merely *mentions* a risky word (e.g. one
-that *describes* the RED list, the exact case that blocked Nuriel's read-only
+worker (Read/Grep/Glob) can perform no RED action, so its tier is capped at
+**yellow**: a task that merely *mentions* a risky word (e.g. one that *describes*
+the RED list — the exact false-positive that would gate a read-only worker's
 research) is brokered immediately, not falsely gated. The classifier emits both the
 effective `tier` (what the broker routes on) and the raw `content_tier`. The RED gate
 stays fully active for any future **write-capable** worker (an unlisted worker

@@ -33,7 +33,7 @@ on:
   workflow_dispatch:
     inputs:
       agent_repo_name:
-        description: "Existing agent-repo to refresh (bare repo under edri2or, e.g. natan-research)."
+        description: "Existing agent-repo to refresh (bare repo under edri2or, e.g. my-agent-repo)."
         required: true
         type: string
       paths:

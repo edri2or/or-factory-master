@@ -9,6 +9,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FIXTURES="${FIXTURES:-$SCRIPT_DIR/../tests/agent-classify-fixtures.yml}"
 CLASSIFY="$SCRIPT_DIR/agent-classify.sh"
+# Drive the classifier against the test-only policy fixture (generic worker names), so the
+# capability-aware cap stays exercised independent of the live production policy's worker list.
+export POLICY_FILE="${POLICY_FILE:-$SCRIPT_DIR/../tests/agent-classify-policy.yml}"
 
 if [[ ! -r "$FIXTURES" ]]; then
   echo "ERROR: fixtures file not readable: $FIXTURES" >&2

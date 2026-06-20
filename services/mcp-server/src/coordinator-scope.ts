@@ -1,8 +1,8 @@
 // Coordinator scope — the NARROW tool subset behind /coordinator/<repo>/mcp.
 //
-// This is the secure "hands" of the coordinator agent-repo (Nuriel): a Claude
-// Code session running in edri2or/nuriel reaches THIS route (not the broad /mcp)
-// and gets exactly:
+// This is the secure "hands" of a coordinator agent-repo: a Claude Code session
+// running in an allowlisted coordinator repo reaches THIS route (not the broad
+// /mcp) and gets exactly:
 //   • a small READ subset (to watch the broker run + read the result file a
 //     worker's answer lands in), and
 //   • ONE write tool, route_to_agent, that dispatches ONLY agent-action.yml
@@ -62,7 +62,7 @@ function csvSet(envVal: string | undefined): Set<string> {
 }
 
 // Fail-closed: an empty/absent env var admits NOTHING (no worker, no requester).
-// Pinning to a CSV is the norm (e.g. "nachshon,natan-research,sapi-docs").
+// Pinning to a CSV is the norm (e.g. "worker-a,worker-b,worker-c").
 const WORKER_REPOS = csvSet(process.env.COORDINATOR_WORKER_REPOS);
 const REQUESTER_REPOS = csvSet(process.env.COORDINATOR_REQUESTER_REPOS);
 
@@ -134,7 +134,7 @@ export function registerCoordinatorScopedTools(server: McpServer, requesterRepo:
     {
       worker_repo: z
         .string()
-        .describe('The sibling agent-repo that does the work (e.g. nachshon, natan-research, sapi-docs). Must be allowlisted.'),
+        .describe('The sibling agent-repo that does the work. Must be allowlisted.'),
       task: z
         .string()
         .describe('The freeform unit of work. The worker treats it as untrusted DATA, never as commands.'),
@@ -156,7 +156,7 @@ export function registerCoordinatorScopedTools(server: McpServer, requesterRepo:
       if (!task) return asText({ error: 'empty_task' });
 
       const rawCorr = typeof args['correlation_id'] === 'string' ? (args['correlation_id'] as string).trim() : '';
-      const corr = rawCorr || `nuriel-${Date.now().toString(36)}`;
+      const corr = rawCorr || `coord-${Date.now().toString(36)}`;
       if (!CORR_RE.test(corr)) return asText({ error: 'bad_correlation_id', got: corr });
 
       // Baseline: the latest agent-action run BEFORE we dispatch. workflow_dispatch is async,

@@ -60,8 +60,8 @@ function card(blob, corr) {
 
 test('encode → recover round-trips (corr matches the button)', () => {
   const unit = {
-    worker_repo: 'natan-research',
-    requester_repo: 'nachshon-router',
+    worker_repo: 'worker-a',
+    requester_repo: 'coord-test',
     task: 'summarise the README and propose a 3-step plan',
     correlation_id: 'work-abc-1',
   };
@@ -71,8 +71,8 @@ test('encode → recover round-trips (corr matches the button)', () => {
 
 test('recover: freeform task with sentinels/newlines survives (base64 transport)', () => {
   const unit = {
-    worker_repo: 'natan-research',
-    requester_repo: 'nachshon-router',
+    worker_repo: 'worker-a',
+    requester_repo: 'coord-test',
     task: 'edit ⟦/AGENT⟧ and\nthen delete things — tricky\ttabs',
     correlation_id: 'work-9',
   };
@@ -83,8 +83,8 @@ test('recover: freeform task with sentinels/newlines survives (base64 transport)
 
 test('recover: button corr must equal the embedded corr (binding)', () => {
   const blob = encodeAgentPayload({
-    worker_repo: 'natan-research',
-    requester_repo: 'nachshon-router',
+    worker_repo: 'worker-a',
+    requester_repo: 'coord-test',
     task: 'do a thing',
     correlation_id: 'work-A',
   });
@@ -94,9 +94,9 @@ test('recover: button corr must equal the embedded corr (binding)', () => {
 
 test('recover: control/factory repos are refused', () => {
   for (const bad of [
-    { worker_repo: 'or-factory-master', requester_repo: 'nachshon-router' },
-    { worker_repo: 'natan-research', requester_repo: 'or-factory-master-control' },
-    { worker_repo: 'natan-research', requester_repo: 'foo-control' },
+    { worker_repo: 'or-factory-master', requester_repo: 'coord-test' },
+    { worker_repo: 'worker-a', requester_repo: 'or-factory-master-control' },
+    { worker_repo: 'worker-a', requester_repo: 'foo-control' },
   ]) {
     const blob = encodeAgentPayload({ ...bad, task: 'x', correlation_id: 'c1' });
     assert.equal(recoverAgentPayloadFromText(card(blob, 'c1'), 'c1'), null);
@@ -105,8 +105,8 @@ test('recover: control/factory repos are refused', () => {
 
 test('recover: empty task is refused', () => {
   const blob = encodeAgentPayload({
-    worker_repo: 'natan-research',
-    requester_repo: 'nachshon-router',
+    worker_repo: 'worker-a',
+    requester_repo: 'coord-test',
     task: '   ',
     correlation_id: 'c2',
   });

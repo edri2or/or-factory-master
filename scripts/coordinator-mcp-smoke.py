@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Live smoke for the narrow coordinator MCP (/coordinator/<repo>/mcp).
 
-Proves the secure "hands" of the coordinator agent (Nuriel) end to end — and,
+Proves the secure "hands" of a coordinator agent end to end — and,
 just as important, proves the surface is NARROW: the broad dispatch_workflow is
 absent, and route_to_agent dispatches ONLY agent-action.yml (propose) to an
 allowlisted worker. The admin secret is read by the workflow from Secret Manager
@@ -17,8 +17,8 @@ Steps (each asserted):
   6. an UNKNOWN coordinator path -> HTTP 404
   7. no token -> HTTP 401
 
-Env: GATEWAY_URL, ADMIN_SECRET, SMOKE_REQUESTER (default nuriel),
-     SMOKE_WORKER (default natan-research, must be allowlisted),
+Env: GATEWAY_URL, ADMIN_SECRET, SMOKE_REQUESTER (an allowlisted coordinator repo),
+     SMOKE_WORKER (an allowlisted worker repo),
      SMOKE_BAD_WORKER (default zz-not-a-worker), SMOKE_RUN_ID (for the corr id).
 """
 import json
@@ -29,8 +29,8 @@ import urllib.error
 
 GATEWAY = os.environ["GATEWAY_URL"].rstrip("/")
 ADMIN = os.environ["ADMIN_SECRET"]
-REQUESTER = os.environ.get("SMOKE_REQUESTER", "nuriel")
-WORKER = os.environ.get("SMOKE_WORKER", "natan-research")
+REQUESTER = os.environ.get("SMOKE_REQUESTER", "")
+WORKER = os.environ.get("SMOKE_WORKER", "")
 BAD_WORKER = os.environ.get("SMOKE_BAD_WORKER", "zz-not-a-worker")
 RUN_ID = os.environ.get("SMOKE_RUN_ID", "manual")
 MCP_URL = f"{GATEWAY}/coordinator/{REQUESTER}/mcp"

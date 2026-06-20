@@ -4,3 +4,7 @@
 # or smoke step that commits) would otherwise capture it. Per the action's
 # official guidance (google-github-actions/auth README, Issue #298), ignore it.
 gha-creds-*.json
+
+# Python bytecode cache
+__pycache__/
+*.pyc

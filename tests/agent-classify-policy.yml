@@ -1,0 +1,50 @@
+# Test-only policy fixture for scripts/agent-classify.sh, used by scripts/test-agent-classify.sh
+# (POLICY_FILE override). It mirrors the SHAPE of policy/agent-risk-tiers.yml but pins GENERIC
+# worker names so the capability-aware cap (Fix 1) stays fully exercised in CI, independent of
+# whatever live workers the production policy lists. The tier patterns are kept byte-identical to
+# the production policy so the red/yellow content detection is the same code path under test.
+version: "1.0"
+default_tier: green
+
+default_worker_capability: write
+worker_capabilities:
+  worker-readonly: read-only
+
+builder_allowed_targets: []
+builder_limits:
+  max_files: 50
+  max_total_bytes: 262144
+always_red_workers:
+  - worker-alwaysred
+
+tiers:
+  red:
+    patterns:
+      - "delete"
+      - "deploy"
+      - "provision"
+      - "decommission"
+      - "teardown"
+      - "secret"
+      - "credential"
+      - "private key"
+      - "api key"
+      - "branch protection"
+      - "force-push"
+      - "force push"
+      - ".github/"
+      - "agents.md"
+      - "claude.md"
+      - "rm -rf"
+      - "drop table"
+      - "another repo"
+      - "cross-repo"
+  yellow:
+    patterns:
+      - "commit"
+      - "pull request"
+      - "open a pr"
+      - "push to"
+      - "refactor"
+      - "create file"
+      - "write to"
