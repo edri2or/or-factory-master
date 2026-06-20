@@ -8,9 +8,9 @@
 # fan-out): (1) an EXAMPLE ```json block before the real one was captured instead of the
 # result; (2) when a JSON content line itself contains the literal text ```json (because the
 # answer describes this very bug), the line was mis-read as a new opening fence and skipped, so
-# the block came out empty — exactly what wrapped Nachshon's own split-plan as
+# the block came out empty — exactly what wrapped a worker's own split-plan as
 # status:"unstructured". The NEW extractor captures the LAST block with FULL-LINE-ANCHORED
-# fence patterns, then validates with jq (design by natan-research, verified live).
+# fence patterns, then validates with jq (verified live).
 #
 # These tests pin fail-before / pass-after so the regression cannot silently return.
 
@@ -66,7 +66,7 @@ EOF
 }
 
 # --- Fixture B: the real bug — a JSON content line embeds the literal ```json token ---------
-# (mirrors Nachshon's live split-plan, which came back status:"unstructured").
+# (mirrors a worker's live split-plan, which came back status:"unstructured").
 fixture_fence_in_content() {
   cat <<'EOF'
 The task is to route this.
@@ -100,7 +100,7 @@ EOF
   [ "$(answer_of "$new")" = "real result" ]
 }
 
-@test "Fixture B — OLD loses the block (unstructured); NEW recovers it (the live Nachshon bug)" {
+@test "Fixture B — OLD loses the block (unstructured); NEW recovers it (the live worker bug)" {
   fixture="$(fixture_fence_in_content)"
   old="$(printf '%s' "$fixture" | old_extract)"
   new="$(printf '%s' "$fixture" | new_extract)"

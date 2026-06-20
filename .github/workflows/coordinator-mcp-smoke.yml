@@ -16,14 +16,14 @@ on:
   workflow_dispatch:
     inputs:
       requester:
-        description: "Coordinator (requester) repo to smoke (must be on COORDINATOR_REQUESTER_REPOS)"
+        description: "Coordinator (requester) repo to smoke (must be on COORDINATOR_REQUESTER_REPOS — none live by default)"
         required: false
-        default: "nuriel"
+        default: ""
         type: string
       worker:
-        description: "Allowlisted worker to dispatch the no-op probe to"
+        description: "Allowlisted worker to dispatch the no-op probe to (must be on COORDINATOR_WORKER_REPOS — none live by default)"
         required: false
-        default: "natan-research"
+        default: ""
         type: string
 
 concurrency:

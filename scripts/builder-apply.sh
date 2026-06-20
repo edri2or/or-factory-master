@@ -60,7 +60,7 @@ TARGET_FULL="edri2or/${repo_bare}"
 allowed=0
 while IFS= read -r entry; do
   [ -n "$entry" ] || continue
-  # compare on the bare repo name (entries are like edri2or/personal-life)
+  # compare on the bare repo name (entries are like edri2or/<repo>)
   [ "${entry##*/}" = "$repo_bare" ] && { allowed=1; break; }
 done < <(awk '
   /^builder_allowed_targets:[[:space:]]*$/ { inlist=1; next }

@@ -1,5 +1,5 @@
 // Unit tests for discoverDispatchedRun (github-client) — the fix for the stale run_id that
-// shifted the coordinator's run↔correlation_id bookkeeping by one (Nuriel's "the task swapped"
+// shifted the coordinator's run↔correlation_id bookkeeping by one (a live "the task swapped"
 // report). Pure function: getLatest + sleep are injected, so there is NO network and the test
 // runs instantly. Mirrors coordinator-scope.test.mjs (tsc-gated: build first, then `npm test`).
 import { test } from 'node:test';

@@ -68,5 +68,5 @@ dispatch, the artifact, the result file, and the audit events together.
 
 ## Further reading
 
-The product is documented in `edri2or/or-factory-master` (`docs/`, `devplans/agent-repo-product.md`,
-`docs/capability-cards/agent-broker-handoff.md`). The broker is `agent-action.yml` there.
+The product is documented in `edri2or/or-factory-master` (`docs/agent-repo-product.md`). The broker
+is `agent-action.yml` there.

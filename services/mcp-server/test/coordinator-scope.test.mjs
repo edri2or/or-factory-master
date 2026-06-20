@@ -16,8 +16,8 @@ process.env.GITHUB_APP_ID ??= 'test-app-id';
 process.env.GITHUB_APP_INSTALLATION_ID ??= 'test-install-id';
 process.env.GITHUB_APP_PRIVATE_KEY ??= 'test-key';
 // The allowlists are read at module load — pin them BEFORE the dynamic import.
-process.env.COORDINATOR_REQUESTER_REPOS = 'nuriel';
-process.env.COORDINATOR_WORKER_REPOS = 'nachshon,natan-research,sapi-docs,agent-builder';
+process.env.COORDINATOR_REQUESTER_REPOS = 'coord-test';
+process.env.COORDINATOR_WORKER_REPOS = 'worker-a,worker-b,worker-c,worker-d';
 
 const {
   isAllowedCoordinatorRepo,
@@ -49,8 +49,8 @@ function captureRegistrations(repo) {
 }
 
 test('isAllowedCoordinatorRepo: only a shape-valid, allowlisted requester repo passes', () => {
-  assert.equal(isAllowedCoordinatorRepo('nuriel'), true);
-  assert.equal(isAllowedCoordinatorRepo('nachshon'), false); // valid shape, not a requester
+  assert.equal(isAllowedCoordinatorRepo('coord-test'), true);
+  assert.equal(isAllowedCoordinatorRepo('worker-a'), false); // valid shape, not a requester
   assert.equal(isAllowedCoordinatorRepo('Bad_Name'), false); // shape violation
   assert.equal(isAllowedCoordinatorRepo('ab'), false); // too short
   assert.equal(isAllowedCoordinatorRepo(''), false);
@@ -58,7 +58,7 @@ test('isAllowedCoordinatorRepo: only a shape-valid, allowlisted requester repo p
 });
 
 test('facade registers EXACTLY the read subset + route_to_agent — nothing else', () => {
-  const tools = captureRegistrations('nuriel');
+  const tools = captureRegistrations('coord-test');
   assert.deepEqual([...tools.keys()].sort(), EXPECTED);
   assert.deepEqual(COORDINATOR_SCOPED_TOOL_NAMES, EXPECTED);
   // The dangerous / broad surfaces are NOT registered here (allowlist, not blocklist).
@@ -70,7 +70,7 @@ test('facade registers EXACTLY the read subset + route_to_agent — nothing else
 });
 
 test('route_to_agent schema: caller controls only worker_repo/task/correlation_id — never phase or requester_repo', () => {
-  const tools = captureRegistrations('nuriel');
+  const tools = captureRegistrations('coord-test');
   const schema = tools.get('route_to_agent').schema;
   assert.equal('worker_repo' in schema, true);
   assert.equal('task' in schema, true);
@@ -81,28 +81,28 @@ test('route_to_agent schema: caller controls only worker_repo/task/correlation_i
 });
 
 test('route_to_agent refuses a non-allowlisted worker BEFORE any dispatch', async () => {
-  const tools = captureRegistrations('nuriel');
+  const tools = captureRegistrations('coord-test');
   const { handler } = tools.get('route_to_agent');
   const res = await handler({ worker_repo: 'or-factory-master', task: 'x' });
   const payload = JSON.parse(res.content[0].text);
   assert.equal(payload.error, 'worker_not_allowlisted');
-  assert.deepEqual(payload.allowed.sort(), ['agent-builder', 'nachshon', 'natan-research', 'sapi-docs']);
+  assert.deepEqual(payload.allowed.sort(), ['worker-a', 'worker-b', 'worker-c', 'worker-d']);
 });
 
 test('route_to_agent refuses an unlisted-but-valid worker', async () => {
-  const tools = captureRegistrations('nuriel');
+  const tools = captureRegistrations('coord-test');
   const { handler } = tools.get('route_to_agent');
   const res = await handler({ worker_repo: 'some-other-repo', task: 'x' });
   assert.equal(JSON.parse(res.content[0].text).error, 'worker_not_allowlisted');
 });
 
 test('route_to_agent refuses an empty task and a malformed correlation_id (before dispatch)', async () => {
-  const tools = captureRegistrations('nuriel');
+  const tools = captureRegistrations('coord-test');
   const { handler } = tools.get('route_to_agent');
-  const empty = JSON.parse((await handler({ worker_repo: 'natan-research', task: '   ' })).content[0].text);
+  const empty = JSON.parse((await handler({ worker_repo: 'worker-a', task: '   ' })).content[0].text);
   assert.equal(empty.error, 'empty_task');
   const badCorr = JSON.parse(
-    (await handler({ worker_repo: 'natan-research', task: 'real', correlation_id: 'bad corr!' })).content[0].text,
+    (await handler({ worker_repo: 'worker-a', task: 'real', correlation_id: 'bad corr!' })).content[0].text,
   );
   assert.equal(badCorr.error, 'bad_correlation_id');
 });

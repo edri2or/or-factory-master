@@ -88,9 +88,10 @@ jobs:
             3. Keep the proposal small and focused on the task (this lands as a reviewable draft PR).
 
             End your response with a fenced json block EXACTLY like (target_repo is the repo the
-            files are FOR — for this builder it is always edri2or/personal-life):
+            files are FOR — it must be the single repo allowlisted for this builder by the broker's
+            builder_allowed_targets; the broker refuses any other target):
             ```json
-            {"summary":"one line describing the proposal","target_repo":"edri2or/personal-life","status":"ok"}
+            {"summary":"one line describing the proposal","target_repo":"edri2or/<your-target-repo>","status":"ok"}
             ```
           claude_args: --model claude-sonnet-4-6 --max-turns 20 --allowedTools Read,Grep,Glob,Write,Edit --disallowedTools Bash,MultiEdit,NotebookEdit,WebFetch,WebSearch
 
@@ -114,7 +115,9 @@ jobs:
           ')
           printf '%s' "$META" | jq -e . >/dev/null 2>&1 || META='{}'
           SUMMARY=$(printf '%s' "$META" | jq -r '.summary // ""')
-          TARGET=$(printf '%s' "$META" | jq -r '.target_repo // ""'); [ -n "$TARGET" ] || TARGET="edri2or/personal-life"
+          # Empty when the proposal omits target_repo — the broker is fail-closed on
+          # builder_allowed_targets, so an empty/unlisted target is refused at apply time.
+          TARGET=$(printf '%s' "$META" | jq -r '.target_repo // ""')
           mkdir -p result/out
           FILES_JSON=$( (cd result/out && find . -type f -printf '%P\n' | LC_ALL=C sort) | jq -R . | jq -cs 'map(select(length>0))' )
           CNT=$(printf '%s' "$FILES_JSON" | jq 'length')

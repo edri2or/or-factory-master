@@ -1069,13 +1069,13 @@ app.post('/factory/:system/emit', async (req: Request, res: Response) => {
 //
 // /coordinator/<repo>/mcp serves an IN-PROCESS per-request McpServer (same
 // stateless pattern as /factory/<system>/mcp) that registers ONLY a small read
-// subset + route_to_agent (coordinator-scope.ts). The coordinator agent-repo
-// (Nuriel) reaches THIS route — not the broad /mcp — so its session's MAXIMUM
+// subset + route_to_agent (coordinator-scope.ts). A coordinator agent-repo
+// reaches THIS route — not the broad /mcp — so its session's MAXIMUM
 // capability is: read a few things + dispatch agent-action.yml (propose) to an
 // allowlisted sibling. The broad dispatch_workflow and every provisioning tool
 // are absent. Auth is operator-grade only (an `oauth` bearer from Or's Google
 // login, or an `admin` bearer for the smoke) — there is NO per-coordinator token
-// endpoint: Nuriel's session authenticates exactly like today's read-only `/mcp`
+// endpoint: a coordinator session authenticates exactly like today's read-only `/mcp`
 // entry in its .mcp.json (Or's login), so no secret lives in the repo.
 app.all('/coordinator/:repo/mcp', async (req: Request, res: Response) => {
   const repo = req.params.repo;
