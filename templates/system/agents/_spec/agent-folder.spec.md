@@ -22,11 +22,25 @@ agents/<name>/
 ├── agent.yaml          # identity + routing (required)
 ├── instructions.md     # the role body → @@SYSTEM_MESSAGE@@ (required)
 ├── tools.yaml          # the agent's tools (required; empty list for a no-tools agent)
+├── README.md           # hybrid card: human prose + a machine-managed metadata block (required)
 ├── prompts/            # optional — extra prompt fragments referenced by instructions.md
 ├── schemas/            # optional — JSON schemas for structured tool I/O
 ├── knowledge/          # optional — static reference text the agent may be primed with
 └── tests/              # optional — golden routing/fixture cases for this agent
 ```
+
+### `README.md` — the agent's human-readable card (required)
+
+A **hybrid** document: human prose (the agent's role + boundaries, authored by hand) plus a
+machine-managed metadata block between the markers `<!-- BEGIN_AGENT_HOME -->` and
+`<!-- END_AGENT_HOME -->`. The block (intent / architecture / model / temperature /
+confidence_threshold / fallback / tools) is generated from `agent.yaml` + `tools.yaml` by
+`scripts/build-agent-readme.sh` — **never edit it by hand**. Scaffold a new agent's README
+from `agents/_spec/README.template.md`, write the prose, then run
+`bash scripts/build-agent-readme.sh <name>`. The CI gate `scripts/check-agent-readme.sh`
+(in the "Changelog gates" job) fails if a README is missing, lacks the marker pair, or its
+managed block drifted from the YAML — keeping the card and the config in sync. Both scripts
+ship into every provisioned system and run the same gate there.
 
 `<name>` is the agent **slug**: one lowercase word, `^[a-z][a-z0-9-]*$`, unique across `agents/`.
 It is the same string that becomes the n8n workflow name `factory-master: <name>-agent`, the file

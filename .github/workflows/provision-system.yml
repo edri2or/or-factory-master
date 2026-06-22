@@ -734,7 +734,7 @@ jobs:
                     check-actions-pinned check-workflow-permissions \
                     check-no-pull-request-target check-no-privileged-pr-workflows \
                     check-devplan-updated check-agent-single-voice check-workflow-skill-pair \
-                    check-agent-folder \
+                    check-agent-folder build-agent-readme check-agent-readme \
                     devplan-session-start-hook \
                     capability-session-start-hook \
                     check-e2e-proof e2e-verify-inbound deploy-verify; do
