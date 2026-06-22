@@ -1,0 +1,52 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "agent-folder/agent.schema.json",
+  "title": "agent.yaml — specialist agent identity + routing",
+  "description": "Schema for agents/<name>/agent.yaml. Mapped field-by-field from agents.manifest.json, subagent.template.json, and agent-design-spec.md. See agent-folder.spec.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["slug", "description", "model", "architecture"],
+  "properties": {
+    "slug": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "description": "Agent slug = folder name. Becomes @@AGENT_SLUG@@ (workflow name, file, node name) and the manifest intent."
+    },
+    "intent": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "description": "Classifier intent the orchestrator dispatches on (routed agents only; usually == slug)."
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The manifest registry description / routing hint. Keep it sharp."
+    },
+    "confidence_threshold": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "description": "Router dispatch threshold (routed agents). 0.7 normal, 0.0 for the fallback."
+    },
+    "fallback": {
+      "type": "boolean",
+      "description": "true only for the single fallback agent (unknown); omit otherwise."
+    },
+    "model": {
+      "type": "string",
+      "minLength": 1,
+      "description": "@@MODEL@@. Default openrouter/auto; a specific model only with a reason."
+    },
+    "architecture": {
+      "type": "string",
+      "enum": ["single-llm", "single-agent", "orchestrating-workflow", "multi-agent"],
+      "description": "From the design-spec. Default single-agent (no tools); single-llm = trivial one-shot, no tools."
+    },
+    "temperature": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 2.0,
+      "description": "OpenRouter sampling temperature; default 0.3."
+    }
+  }
+}
