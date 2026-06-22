@@ -962,11 +962,11 @@ jobs:
           # Agent-as-a-folder (agent-folder-structure, Change 5): the canonical
           # agent-folders (agents/<slug>/) are the source of truth, from which the
           # deterministic compiler (scripts/compile-agent.sh) DERIVES the n8n JSON.
-          # Below, for any agent that has a compilable folder, we regenerate its JSON
-          # FROM the folder before the install-time sed pass; the committed
-          # workflows/n8n/<file> is the fallback (agents not yet foldered, or carrying
-          # tools — compiler v1 is no-tools only). Purely additive + soft-fail: any
-          # miss falls back to the committed JSON, so the install path never regresses.
+          # Below, for any agent that has a folder, we regenerate its JSON FROM the
+          # folder before the install-time sed pass; the committed workflows/n8n/<file>
+          # is the fallback for agents not yet foldered. Compiler v2 handles BOTH
+          # no-tools (chainLlm) and tool-carrying (agent) shapes. Purely additive +
+          # soft-fail: any miss falls back to the committed JSON, so it never regresses.
           COMPILE_AGENT="${GITHUB_WORKSPACE}/scripts/compile-agent.sh"
           AGENTS_SRC_DIR="${GITHUB_WORKSPACE}/agents"
           AGENT_COMPILE_OK="no"
@@ -986,24 +986,18 @@ jobs:
             wf_name="${spec%%|*}"; tmp="${spec#*|}"; file="${tmp%%|*}"; slot="${tmp##*|}"
             src="${WF_DIR}/${file}"
             [ -f "$src" ] || _soft_exit0 "קובץ ${file} לא נמצא בריפו"
-            # Agent-as-a-folder (Change 5): regenerate this agent's JSON from its
-            # canonical folder when one exists and the compiler can render it
-            # (no-tools, v1). Leaves install-time @@...@@ intact, so the sed below is
-            # unchanged. Soft-fail → committed JSON. Only `code` is foldered today;
-            # the rest fall through to their committed JSON until Change 7.
+            # Agent-as-a-folder (Change 7): regenerate this agent's JSON from its
+            # canonical folder when one exists (compiler v2 handles no-tools AND
+            # tool-carrying agents). Leaves install-time @@...@@ intact, so the sed
+            # below is unchanged. Soft-fail → committed JSON on any compile error.
             if [ "$AGENT_COMPILE_OK" = "yes" ]; then
               slug_lc="$(printf '%s' "$slot" | tr '[:upper:]' '[:lower:]')"
               if [ -f "${AGENTS_SRC_DIR}/${slug_lc}/agent.yaml" ]; then
-                tcount="$(python3 -c 'import yaml,sys; d=yaml.safe_load(open(sys.argv[1])) or {}; print(len(d.get("tools") or []))' "${AGENTS_SRC_DIR}/${slug_lc}/tools.yaml" 2>/dev/null || echo "?")"
-                if [ "$tcount" = "0" ]; then
-                  if bash "$COMPILE_AGENT" "$slug_lc" --agents-dir "$AGENTS_SRC_DIR" > "/tmp/ar-folder-${file}" 2>"/tmp/ar-folder-${file}.err"; then
-                    src="/tmp/ar-folder-${file}"
-                    echo "INFO: ${file} regenerated from agents/${slug_lc}/ (folder = source of truth)"
-                  else
-                    echo "WARN: compile agents/${slug_lc} failed — using committed ${file}: $(head -c 200 "/tmp/ar-folder-${file}.err" 2>/dev/null)" >&2
-                  fi
+                if bash "$COMPILE_AGENT" "$slug_lc" --agents-dir "$AGENTS_SRC_DIR" > "/tmp/ar-folder-${file}" 2>"/tmp/ar-folder-${file}.err"; then
+                  src="/tmp/ar-folder-${file}"
+                  echo "INFO: ${file} regenerated from agents/${slug_lc}/ (folder = source of truth)"
                 else
-                  echo "INFO: agents/${slug_lc}/ carries tools — compiler v1 is no-tools only; using committed ${file}"
+                  echo "WARN: compile agents/${slug_lc} failed — using committed ${file}: $(head -c 200 "/tmp/ar-folder-${file}.err" 2>/dev/null)" >&2
                 fi
               fi
             fi
