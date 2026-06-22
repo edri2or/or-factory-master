@@ -47,5 +47,14 @@ jobs:
           python3 -c 'import yaml' 2>/dev/null || pip install --quiet pyyaml
           bash scripts/check-agent-folder.sh
 
+      - name: Check agent READMEs valid + in sync
+        # Fail-closed gate: every agent-folder (agents/<name>/) must carry a hybrid
+        # README.md whose managed block (generated from agent.yaml + tools.yaml by
+        # scripts/build-agent-readme.sh) is up to date. Twin of the agent-folder gate above;
+        # no-op when there is no agents/ dir. pyyaml guard mirrors the generator's bridge.
+        run: |
+          python3 -c 'import yaml' 2>/dev/null || pip install --quiet pyyaml
+          bash scripts/check-agent-readme.sh
+
       - name: Check changelog size
         run: bash scripts/check-changelog-size.sh
