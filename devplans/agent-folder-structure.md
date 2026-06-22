@@ -26,7 +26,7 @@ n8n/טלגרם הם כלים. תוספת עוטפת, מדורגת, הוכחת-ה
 | 4 | שער CI: ולידציה + generated-in-sync | completed | `scripts/check-agent-folder.sh`, `changelog-check.yml` (factory) |
 | 5 | חיווט המתרגם למנוע ההרכבה | completed | `configure-agent-router.yml`, `templates/system/scripts/compile-agent.sh` |
 | 6 | `/build-agent` → "צור תיקיית-סוכן" | completed | `.claude/commands/build-agent.md` + מראה-מערכת |
-| 7 | הגירת 5 הסוכנים הגנריים | in-progress | `compile-agent.sh` v2, `agents/{ops,code,research,infra,unknown}/`, `agents/_spec/tools/**` |
+| 7 | הגירת 5 הסוכנים הגנריים | completed | `compile-agent.sh` v2, `agents/{ops,code,research,infra,unknown}/`, `agents/_spec/tools/**` |
 | 8 | תיעוד + מניפסט (סגירה) | pending | `AGENTS.md.template`, `agents.manifest.json` |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
@@ -208,9 +208,11 @@ n8n/טלגרם הם כלים. תוספת עוטפת, מדורגת, הוכחת-ה
 
 **הוכחת E2E (artifact):** `e2e-proofs/agent-folder-structure.json` טרי (router עדיין מנתב ל-5) — לפני מיזוג.
 
-**הערת התקדמות אחרונה:** 7א+7ב+7ג הושלמו (אופליין): מתרגם v2 משחזר את כל 5 הסוכנים (round-trip ריק),
-ספריית-כלים + דריסות, חיווט ל-provision + שער צד-מערכת (layout-aware). נותר 7ד — הוכחה חיה על
-or-edri-4 (כמו שלב 5). שערים + bats + זהב ירוקים.
+**הערת התקדמות אחרונה:** הושלם — כולל 7ד (הוכחה חיה). 7א+7ב+7ג אופליין: מתרגם v2 משחזר את כל 5
+הסוכנים (round-trip ריק), ספריית-כלים + דריסות, חיווט ל-provision + שער צד-מערכת (layout-aware).
+7ד: הוחל על or-edri-4 (refresh — מיזג agents + compile-agent.sh + configure; configure החדש מחדש את
+**כל 5** מהתיקיות), ו-`e2e-verify` (run 27957338001) הניע הודעה אמיתית — הבוט ענה →
+`e2e-proofs/agent-folder-structure.json` (`result: pass`, content_hash מעודכן) נדחף; שער ה-E2E ב-PR ירוק.
 
 **שינוי תוכנית:** התגלה ש-`ops`/`unknown` חולקים כלים עם **תיאור שונה** (postgres_named_query,
 request_write_action) → נוסף מנגנון override per-agent. גם: ה-Format Reply שונה בין סוכנים
@@ -255,3 +257,7 @@ request_write_action) → נוסף מנגנון override per-agent. גם: ה-For
 - שלב 6 הושלם — עדכנתי את ההוראות של "בניית סוכן" (`/build-agent`): מעכשיו בונים סוכן ע"י כתיבת
   **תיקייה אחת** ברורה, והמכונה גוזרת את כל השאר — במקום לסנכרן ידנית 5 מקומות. תיעוד בלבד, אפס נגיעה
   חיה.
+- שלב 7 הושלם — **השלב הכבד.** הפכתי את **כל 5 הסוכנים** לתיקיות (כולל המורכבים עם הכלים והזיכרון),
+  והרחבתי את המתרגם שיֵדע לבנות גם אותם. הוכחתי "על השולחן" שהמתרגם מייצר כל אחד מהם **זהה** למקור,
+  ואז הוכחתי **חי על or-edri-4** שהבוט ממשיך לענות כשורה אחרי שכולם נטענים מהתיקיות. גם מערכות חדשות
+  ייוולדו מעכשיו עם המבנה הזה. ההתנהגות לא השתנתה — רק *מקור* ההגדרה.

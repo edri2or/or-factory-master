@@ -110,7 +110,18 @@
   Change-4 deferral) with a `pyyaml` guard. Made `check-agent-folder.sh` **layout-aware** (auto-detects the
   factory mould `templates/system/agents` vs a system's root `agents/` + `scripts/compile-agent.sh`), so
   the same shipped gate works in both; verified by simulating a provisioned-system layout (all 5 round-trip
-  in-system). Golden refreshed. **Proven live on or-edri-4
+  in-system). Golden refreshed.
+- **Agent-as-a-folder standard — Change 7 (7d) of 8 (`agent-folder-structure`): proven live on or-edri-4.**
+  Dropped the no-tools guard in `configure-agent-router.yml`'s regenerate block so it regenerates **every**
+  foldered agent from `agents/<slug>/` (compiler v2 handles tools; still soft-fail → committed JSON).
+  Applied the branch to or-edri-4 via `refresh-system-agents.yml` (`source_ref=<branch>`,
+  `paths=agents,scripts/compile-agent.sh,.github/workflows/configure-agent-router.yml`) — PR merged, the
+  refresh's own live E2E self-check passed, and `configure-agent-router.yml` re-imported the router with
+  **all 5 agents regenerated from their folders**. Then `e2e-verify.yml` (`target_ref=<branch>`,
+  `system_name=or-edri-4`) drove a real inbound message and the live bot replied, committing a fresh signed
+  `e2e-proofs/agent-folder-structure.json` (`result: pass`, content_hash over the new templates) — the
+  `E2E verification gate` is green. Behavior unchanged (every compiled agent is normalized-identical to its
+  committed JSON); only the *source of truth* moved to the folders. Change 7 complete. **Proven live on or-edri-4
   (the merge-blocking E2E proof):** applied to or-edri-4 via `refresh-system-agents.yml`
   (`source_ref=<branch>`, `paths=.github/workflows/configure-agent-router.yml,scripts/compile-agent.sh,agents`)
   → PR #45 merged + `configure-agent-router.yml` re-imported the router live; then `e2e-verify.yml`
