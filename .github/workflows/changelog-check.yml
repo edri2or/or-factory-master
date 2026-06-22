@@ -60,6 +60,18 @@ jobs:
         # No-op when already in sync.
         run: bash scripts/check-agent-repo-golden-sync.sh
 
+      - name: Check agent-folders valid + in sync
+        # Fail-closed gate for the canonical agent-folders (templates/system/agents/):
+        # schema-validates each agent.yaml/tools.yaml against agents/_spec/*.schema.json
+        # and asserts the deterministic compiler (scripts/compile-agent.sh) reproduces
+        # each foldered agent's committed workflows/n8n/<name>-agent.json (normalized
+        # diff). Twin of the golden sync gate; no-op when there is no agents/ dir.
+        # See devplans/agent-folder-structure.md. pyyaml guard mirrors the compiler's
+        # YAML→JSON bridge (the repo deliberately avoids `yq`).
+        run: |
+          python3 -c 'import yaml' 2>/dev/null || pip install --quiet pyyaml
+          bash scripts/check-agent-folder.sh
+
       - name: Check n8n postgres queries quote interpolated values
         # Guards the JSON.stringify-in-SQL antipattern that silently killed three
         # scheduled workers (a {{ }} value must be a single-quoted SQL literal;

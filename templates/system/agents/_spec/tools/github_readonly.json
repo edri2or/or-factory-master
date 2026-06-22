@@ -1,0 +1,19 @@
+{
+  "parameters": {
+    "name": "github_readonly",
+    "description": "Call this tool with ONE input — a single raw string (do not wrap it in JSON or any object). Reads LIVE read-only data from this system's own GitHub repo (edri2or/<this system>) as the system's GitHub App. Valid inputs: ci_runs = the 10 most recent CI workflow runs (status/conclusion/created); recent_commits = the 10 most recent commits; open_prs = currently-open pull requests; OR read_file:<path> to read the text contents of a file in the repo — send the literal string 'read_file:' followed by the repo-relative path, e.g. read_file:AGENTS.md or read_file:workflows/n8n/ops-agent.json. Returns {ok, command, data}; for read_file, data has {path, size, content, truncated, html_url} (content may be truncated for large files); other commands return arrays whose items may include html_url links you may share. Use this for questions about what happened on GitHub (CI passing/failing, recent commits, open PRs) and to read what a specific repo file contains. Passing a folder path (e.g. read_file:workflows/n8n) returns a listing of that folder's entries (each with name/path/type) instead of file contents — use that to discover what files exist.",
+    "workflowId": {
+      "__rl": true,
+      "value": "@@WF_GITHUB_READONLY_ID@@",
+      "mode": "id"
+    }
+  },
+  "id": "b0000000-0000-0000-0000-00000000000a",
+  "name": "github_readonly",
+  "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+  "typeVersion": 2.1,
+  "position": [
+    1040,
+    560
+  ]
+}

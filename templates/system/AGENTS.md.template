@@ -125,6 +125,15 @@ operator → Telegram → ${PUBLIC_URL}/webhook/telegram-in/inbound
 The Agent Router and its five sub-agents (`ops`, `code`, `research`, `infra`, `unknown`)
 pre-date Phase F; `unknown-agent` and `ops-agent` were upgraded with the system-aware tools below.
 
+> **Each sub-agent is a folder — `agents/<name>/` is the source of truth** (`agent.yaml` identity +
+> routing, `instructions.md` the system prompt, `tools.yaml` the tools). The deterministic compiler
+> `scripts/compile-agent.sh` DERIVES the n8n workflow `workflows/n8n/<name>-agent.json` from the folder;
+> `configure-agent-router.yml` regenerates each agent from its folder before importing it into n8n.
+> So **edit the folder, not the generated JSON** — the committed JSON is a CI-verified build artifact
+> (the `check-agent-folder.sh` gate keeps them in sync). Spec: `agents/_spec/agent-folder.spec.md`;
+> to add an agent use `/build-agent`. ("Agent" here always means a *sub-agent* — a worker the Router
+> dispatches — never the system as a whole.)
+
 **Single-pick by default; conditional fan-out for multi-domain requests.** The classifier
 emits a primary `intent` and `Route by Intent` dispatches to exactly one sub-agent. It also
 emits `intents[]` + `multi`; when `multi=true` (≥2 distinct domains from ops/code/research/infra)

@@ -1,0 +1,9 @@
+slug: ops
+intent: ops
+description: Operations, monitoring, status, deployments, CI, commits, PRs, execution history; carries read-only system tools + approved write requests.
+confidence_threshold: 0.7
+model: anthropic/claude-sonnet-4.5
+architecture: single-agent
+temperature: 0.3
+reply_node_name: Ops Agent
+reply_expression: "={{ $json.output || $json.text }}"

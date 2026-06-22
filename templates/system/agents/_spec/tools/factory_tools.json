@@ -1,0 +1,23 @@
+{
+  "parameters": {
+    "endpointUrl": "https://factory-master-actions-mcp-140345952904.me-west1.run.app/factory/@@SYSTEM_NAME@@/mcp",
+    "serverTransport": "httpStreamable",
+    "authentication": "bearerAuth",
+    "include": "all",
+    "options": {}
+  },
+  "id": "b0000000-0000-0000-0000-00000000000e",
+  "name": "factory_tools",
+  "type": "@n8n/n8n-nodes-langchain.mcpClientTool",
+  "typeVersion": 1.2,
+  "position": [
+    1840,
+    560
+  ],
+  "credentials": {
+    "httpBearerAuth": {
+      "id": "@@CRED_FACTORY_MCP_ID@@",
+      "name": "Factory MCP"
+    }
+  }
+}

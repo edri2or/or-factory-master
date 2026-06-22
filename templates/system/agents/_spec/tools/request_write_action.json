@@ -1,0 +1,22 @@
+{
+  "parameters": {
+    "name": "request_write_action",
+    "description": "Call this to request an approved write action — when the operator asks to RUN / EXECUTE / ACTIVATE / ENABLE / TURN ON / STOP / DEACTIVATE / DISABLE / TURN OFF an n8n automation, or to RUN a GitHub Actions workflow. Calling this tool IS how the operator's ✅/❌ approval buttons get sent in Telegram; the action runs ONLY after they tap ✅. Fill in the fields. For n8n, get target_id (the workflow id) from the n8n API tool first if you don't have it. Call it immediately when the operator asks for the action — do NOT ask them for permission first and do NOT describe it in words instead of calling. After it returns, tell the operator you've sent them an approval request to confirm.",
+    "workflowId": {
+      "__rl": true,
+      "value": "@@WF_REQUEST_WRITE_ID@@",
+      "mode": "id"
+    },
+    "specifyInputSchema": true,
+    "schemaType": "manual",
+    "inputSchema": "{\"type\":\"object\",\"required\":[\"target_system\",\"action_type\",\"target_id\",\"human_summary\"],\"properties\":{\"target_system\":{\"type\":\"string\",\"enum\":[\"n8n\",\"github\"],\"description\":\"n8n for an n8n automation; github for a GitHub Actions workflow\"},\"action_type\":{\"type\":\"string\",\"description\":\"for n8n use activate or deactivate; for github use dispatch\"},\"target_id\":{\"type\":\"string\",\"description\":\"for n8n: the workflow id from the n8n API tool; for github: the workflow file name, e.g. deploy.yml\"},\"human_summary\":{\"type\":\"string\",\"description\":\"one short, clear Hebrew sentence describing exactly what will happen\"}}}"
+  },
+  "id": "b0000000-0000-0000-0000-00000000000c",
+  "name": "request_write_action",
+  "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+  "typeVersion": 2.1,
+  "position": [
+    1440,
+    560
+  ]
+}

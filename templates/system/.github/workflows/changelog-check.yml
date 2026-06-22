@@ -37,5 +37,15 @@ jobs:
       - name: Check devplan updated
         run: bash scripts/check-devplan-updated.sh
 
+      - name: Check agent-folders valid + in sync
+        # Fail-closed gate for this system's canonical agent-folders (agents/<name>/):
+        # schema-validates each agent.yaml/tools.yaml and asserts the deterministic
+        # compiler (scripts/compile-agent.sh) reproduces each foldered agent's committed
+        # workflows/n8n/<name>-agent.json (normalized). No-op when there is no agents/ dir.
+        # pyyaml guard mirrors the compiler's YAML→JSON bridge (the repo avoids `yq`).
+        run: |
+          python3 -c 'import yaml' 2>/dev/null || pip install --quiet pyyaml
+          bash scripts/check-agent-folder.sh
+
       - name: Check changelog size
         run: bash scripts/check-changelog-size.sh

@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "agent-folder/tools.schema.json",
+  "title": "tools.yaml — a specialist agent's tools",
+  "description": "Schema for agents/<name>/tools.yaml. Each tool maps to the n8n tool/sub-workflow node the install-time compiler injects. Writes route ONLY through request_write_action. See agent-folder.spec.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["tools"],
+  "properties": {
+    "tools": {
+      "type": "array",
+      "description": "The agent's tools (empty for a no-tools agent). Drawn from the known set; never free SQL or a direct write tool.",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "enum": [
+          "postgres_named_query",
+          "github_readonly",
+          "railway_readonly",
+          "request_write_action",
+          "factory_tools",
+          "google_workspace",
+          "web_search_quick",
+          "web_search_extended",
+          "n8n_api",
+          "list_workflows",
+          "recent_errors"
+        ]
+      }
+    }
+  }
+}

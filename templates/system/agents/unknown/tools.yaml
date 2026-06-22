@@ -1,0 +1,9 @@
+tools:
+  - list_workflows
+  - recent_errors
+  - postgres_named_query
+  - github_readonly
+  - railway_readonly
+  - request_write_action
+  - web_search_quick
+  - web_search_extended
