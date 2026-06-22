@@ -25,9 +25,14 @@ Read these before scaffolding (independent — read in parallel):
 
 1. `templates/n8n/subagent.contract.md` — the input/output contract, the four CI-enforced
    rules, the placeholder split, and the canonical registration steps.
-2. `templates/n8n/subagent.template.json` — the scaffold you copy.
-3. `workflows/n8n/agents.manifest.json` — the source-of-truth registry; never duplicate an
-   existing `intent`.
+2. `agents/_spec/agent-folder.spec.md` — **the canonical way an agent is declared: a folder
+   `agents/<intent>/` (`agent.yaml` + `instructions.md` + `tools.yaml`).** The folder is the
+   single source of truth; the deterministic compiler (`scripts/compile-agent.sh`) DERIVES the
+   n8n workflow JSON from it. You author the folder; you do **not** hand-write the agent JSON.
+   `templates/n8n/subagent.template.json` is the base scaffold the compiler renders from (read it
+   to understand the shape, not to copy by hand).
+3. `workflows/n8n/agents.manifest.json` — the registry (intent + path + threshold); never
+   duplicate an existing `intent`. A foldered agent's routing keys live in its `agent.yaml`.
 4. `templates/agent-design-spec.md` — the Step 0 design-spec template (fast + full variants;
    the full variant carries the per-component **fixture → expected-output → test-method**
    column). Its rationale + decision matrix + the bottom-up "4 phases / 3 gates" discipline
@@ -105,22 +110,35 @@ re-ask), then fill any remaining fields. Collect:
   confirm with Or first. Writes route only through the approved `request_write_action` HITL
   path — never free SQL or a direct write tool.
 
-### Step 2: Scaffold from the template
-- Copy `templates/n8n/subagent.template.json` → `workflows/n8n/<intent>-agent.json`.
-- Substitute scaffold-time placeholders: `@@AGENT_SLUG@@` → intent, `@@MODEL@@` → model,
-  `@@SYSTEM_MESSAGE@@` → the job framed as a system prompt. Leave install-time placeholders
-  (`@@CRED_*@@`, `@@CHAT_ID@@`) untouched.
+### Step 2: Author the agent folder (the compiler derives the JSON)
+Write **one folder** `agents/<intent>/` per `agents/_spec/agent-folder.spec.md` — you do not
+hand-write the n8n JSON:
+- `agent.yaml` — `slug` (= intent), `intent`, `description`, `confidence_threshold` (0.7),
+  `model`, `architecture`, `temperature`. (Routing keys live here — they are the agent's row in
+  the registry.)
+- `instructions.md` — the role body only (the `@@SYSTEM_MESSAGE@@`); the compiler appends the
+  fixed tail + style clause, so do **not** repeat them (see the spec).
+- `tools.yaml` — `tools: []` for the default no-tools agent; else the tool list from the known set.
+- Then **render the JSON from the folder**: `bash scripts/compile-agent.sh <intent> > workflows/n8n/<intent>-agent.json`
+  (it fills scaffold-time tokens, leaves install-time `@@…@@` intact). The generated-in-sync gate
+  (`scripts/check-agent-folder.sh`) keeps the folder and the committed JSON locked together.
+- **Compiler v1 = no-tools agents only.** A tool-carrying agent: author its `tools.yaml` and, until
+  the compiler grows tool-node injection, also add the tool nodes to the rendered JSON by hand
+  (model on `ops-agent.json`); the folder still owns identity/instructions/tool-list.
 - `jq empty workflows/n8n/<intent>-agent.json` must pass.
 
-### Step 3: Register with the orchestrator (keep all sources in sync)
-Per `subagent.contract.md`, update **all** of:
-1. `workflows/n8n/agents.manifest.json` — add `{intent, file, confidence_threshold: 0.7, description}`.
+### Step 3: Wire it to the orchestrator (the parts the compiler does NOT derive)
+The compiler renders the agent's OWN workflow from its folder; the orchestrator-side wiring is
+still authored once:
+1. `workflows/n8n/agents.manifest.json` — add `{intent, file, confidence_threshold: 0.7, description}`
+   matching the folder's `agent.yaml` (keep them identical; the folder is the source of truth).
 2. `workflows/n8n/agent-router.json` — add the intent to the `Classify Intent` system prompt,
    add a `Route by Intent` switch branch, add an `Execute Workflow` node
    `Call <intent> Sub-workflow` (placeholder `@@SUB_<INTENT>_WF_ID@@`) wired to egress.
 3. `.github/workflows/configure-agent-router.yml` — add the agent to the sub-agent upsert
    loop (so it is created and its id captured) and add the
    `-e "s#@@SUB_<INTENT>_WF_ID@@#${SUB_<INTENT>_WF_ID}#g"` substitution to the router prep.
+   (The loop already regenerates each foldered agent from `agents/<intent>/` before upsert.)
 4. `AGENTS.md` — add a one-line entry to the agent catalogue.
 5. **Paired Claude skill (capability card).** A new `workflows/n8n/<intent>-agent.json` is an
    operable workflow, so it needs a paired skill at `.claude/skills/<intent>-agent/SKILL.md`
@@ -164,7 +182,9 @@ each part was proven alone, that it's wired to the orchestrator and passed the g
 
 ## Safety Rules
 
-1. **Always scaffold from `templates/n8n/subagent.template.json`** — never hand-roll an agent.
+1. **Always declare an agent as a folder `agents/<intent>/`** and render its JSON with
+   `scripts/compile-agent.sh` — never hand-roll the agent JSON. The folder is the source of truth;
+   the committed JSON is a generated, gate-verified artifact.
 2. **Never add a Telegram node** (or any `webhook` / `telegramTrigger`) to a sub-agent — only
    the orchestrator (tg-inbound) speaks to the operator. Must pass `check-agent-single-voice.sh`.
 3. **Never report a gate done while it is red, or skip a gate's functional proof.** CI-green
@@ -185,14 +205,15 @@ each part was proven alone, that it's wired to the orchestrator and passed the g
 **User:** "בנה סוכן שעונה על שאלות חשבוניות ותשלומים"
 
 **Agent behaviour:**
-Verdict: single agent. Confirms the intent (`billing`), asks for 3–5 example phrases, and in
-the fast-path spec writes a **prove-alone fixture** (one real billing question → the expected
-answer shape). Copies the template to `workflows/n8n/billing-agent.json`, fills
-slug/model/system-message, registers it (manifest + router + configure + AGENTS), adds the
-phrases to `tests/router_battery.yaml`. Gate 1: runs the agent alone on the fixture (Pin data
-+ Test step) and confirms the answer; `check-agent-single-voice.sh` passes. Gate 3: routing
-check, then reports to Or in Hebrew and waits for approval to deploy — never letting the agent
-send Telegram.
+Verdict: single agent, no tools. Confirms the intent (`billing`), asks for 3–5 example phrases,
+and in the fast-path spec writes a **prove-alone fixture** (one real billing question → the
+expected answer shape). Authors the folder `agents/billing/` (`agent.yaml` with
+slug/intent/model/threshold, `instructions.md` with the role body, `tools.yaml: tools: []`), then
+renders `workflows/n8n/billing-agent.json` with `compile-agent.sh billing`; wires the orchestrator
+(manifest + router + configure + AGENTS) and adds the phrases to `tests/router_battery.yaml`.
+Gate 1: runs the agent alone on the fixture (Pin data + Test step) and confirms the answer;
+`check-agent-single-voice.sh` + `check-agent-folder.sh` pass. Gate 3: routing check, then reports
+to Or in Hebrew and waits for approval to deploy — never letting the agent send Telegram.
 
 **User:** "בנה סוכן שמטפל בטפסים מתוך מיילים — מזהה מייל רלוונטי, מושך את הטופס, ממלא מה שידוע עליי, ומשאיר לי מה שחסר"
 

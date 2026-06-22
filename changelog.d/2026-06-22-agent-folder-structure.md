@@ -90,3 +90,16 @@
   `e2e-surfaces.json` `proof_systems` pin to or-edri-4. (Journey note: the first refresh clone hit a
   transient "Repository not found"; a re-run succeeded cleanly — the broker has standing clone+push access
   to or-edri-4.)
+- **Agent-as-a-folder standard — Change 6 of 8 (`agent-folder-structure`): `/build-agent` writes a
+  folder.** Updated `.claude/commands/build-agent.md` (and its byte-identical system mirror via
+  `scripts/sync-skills-mirror.sh`) so the scaffold step authors **one folder** `agents/<intent>/`
+  (`agent.yaml`+`instructions.md`+`tools.yaml`, per `agents/_spec/agent-folder.spec.md`) and renders the
+  n8n JSON with `scripts/compile-agent.sh` — instead of hand-copying `subagent.template.json`. Step 3
+  collapsed from a 5-place hand-sync to "wire only the parts the compiler does NOT derive" (the
+  orchestrator router branch / configure upsert entry / AGENTS catalogue / paired skill); the agent's
+  identity + routing keys now live in `agent.yaml` as the source of truth, kept identical to the manifest
+  row. Added `agent-folder.spec.md` to the Context reading, updated Safety-rule 1 and the worked example,
+  and honestly flagged the **compiler v1 = no-tools** limit (a tool-carrying agent still authors its tool
+  nodes by hand until the compiler grows tool injection in Change 7). The bottom-up capability-first
+  discipline and the three ordered proof gates are unchanged. Doc-only; `check-skills-mirror.sh` green,
+  golden refreshed.

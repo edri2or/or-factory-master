@@ -25,7 +25,7 @@ n8n/טלגרם הם כלים. תוספת עוטפת, מדורגת, הוכחת-ה
 | 3 | המתרגם הדטרמיניסטי (round-trip) | completed | `scripts/compile-agent.sh`, `scripts/tests/compile-agent.bats` |
 | 4 | שער CI: ולידציה + generated-in-sync | completed | `scripts/check-agent-folder.sh`, `changelog-check.yml` (factory) |
 | 5 | חיווט המתרגם למנוע ההרכבה | completed | `configure-agent-router.yml`, `templates/system/scripts/compile-agent.sh` |
-| 6 | `/build-agent` → "צור תיקיית-סוכן" | pending | `.claude/commands/build-agent.md` + מראה-מערכת |
+| 6 | `/build-agent` → "צור תיקיית-סוכן" | completed | `.claude/commands/build-agent.md` + מראה-מערכת |
 | 7 | הגירת 5 הסוכנים הגנריים | pending | `templates/system/agents/{ops,code,research,infra,unknown}/` |
 | 8 | תיעוד + מניפסט (סגירה) | pending | `AGENTS.md.template`, `agents.manifest.json` |
 
@@ -178,15 +178,20 @@ n8n/טלגרם הם כלים. תוספת עוטפת, מדורגת, הוכחת-ה
 ### שלב 6 — `/build-agent` → "צור תיקיית-סוכן"
 
 **Acceptance:**
-- [ ] `.claude/commands/build-agent.md` (+ מראה-המערכת) — הסקאפולד כותב **תיקייה אחת**,
-      ו-Step 3 מצטמצם מ-sync-של-5-מקומות ל-"כתוב את התיקייה; המתרגם גוזר את השאר".
-- [ ] capability-first + 3 השערים נשמרים. `scripts/sync-skills-mirror.sh` הורץ אם תגי audience השתנו.
+- [x] `.claude/commands/build-agent.md` (+ מראה-המערכת) — Step 2 הפך ל-"כתוב תיקייה אחת
+      `agents/<intent>/` והמתרגם גוזר את ה-JSON" (`compile-agent.sh`), ו-Step 3 צומצם ל"חיווט
+      ה-orchestrator בלבד" (החלקים שהמתרגם לא גוזר). נוסף תיעוד `agent-folder.spec.md` ל-Context,
+      ועודכנו Safety-rule 1 והדוגמה. מגבלת v1 (ללא כלים) מצוינת בכנות.
+- [x] capability-first + 3 השערים (Gates) נשמרו. `scripts/sync-skills-mirror.sh` הורץ; המראה
+      byte-identical והזהב רוענן.
 
-**הוכחה תפקודית (באותו שלב):** תוכן בלבד (תיעוד-סקיל). אימות: `check-skills-mirror.sh` ירוק.
+**הוכחה תפקודית (באותו שלב):** תוכן בלבד (תיעוד-סקיל). ✅ `check-skills-mirror.sh` ירוק (70 shared),
+זהב ירוק.
 
 **הוכחת E2E (artifact):** לא-התנהגותי.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם — הסקיל מתאר עכשיו את מודל התיקייה. ממתין לאישור Or לשלב 7
+(הגירת 5 הסוכנים — שלב חי).
 
 **שינוי תוכנית:** —
 
@@ -246,3 +251,6 @@ n8n/טלגרם הם כלים. תוספת עוטפת, מדורגת, הוכחת-ה
   הבוט, החלתי את השינוי חי על or-edri-4, ושלחתי הודעת-בדיקה אמיתית — **הבוט ענה כשורה**. כלומר מעכשיו
   סוכן-הקוד של or-edri-4 נבנה מהתיקייה, וההתנהגות לא השתנתה (כמו שהבטחנו). היתה תקלת-רשת חולפת בניסיון
   הראשון; הרצה חוזרת עברה חלק.
+- שלב 6 הושלם — עדכנתי את ההוראות של "בניית סוכן" (`/build-agent`): מעכשיו בונים סוכן ע"י כתיבת
+  **תיקייה אחת** ברורה, והמכונה גוזרת את כל השאר — במקום לסנכרן ידנית 5 מקומות. תיעוד בלבד, אפס נגיעה
+  חיה.
