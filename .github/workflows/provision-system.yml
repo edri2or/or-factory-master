@@ -734,6 +734,7 @@ jobs:
                     check-actions-pinned check-workflow-permissions \
                     check-no-pull-request-target check-no-privileged-pr-workflows \
                     check-devplan-updated check-agent-single-voice check-workflow-skill-pair \
+                    check-agent-folder \
                     devplan-session-start-hook \
                     capability-session-start-hook \
                     check-e2e-proof e2e-verify-inbound deploy-verify; do
@@ -773,9 +774,23 @@ jobs:
             cp "${GITHUB_WORKSPACE}/${src}" "$CLONE_DIR/${dst}"
           done
 
+          # Agent-as-a-folder (agent-folder-structure, Change 7): ship the deterministic
+          # compiler + the canonical agent-folders so the system is BORN foldered — its
+          # configure-agent-router.yml regenerates each agent's JSON from agents/<slug>/,
+          # and its CI runs the agent-folder gate. The committed workflows/n8n/*.json
+          # (copied above) stay the install input + the compiler's round-trip target.
+          COMPILE_SRC="${GITHUB_WORKSPACE}/templates/system/scripts/compile-agent.sh"
+          AGENTS_SRC="${GITHUB_WORKSPACE}/templates/system/agents"
+          [ -f "$COMPILE_SRC" ] || { echo "FAIL: templates/system/scripts/compile-agent.sh not found" >&2; exit 1; }
+          [ -d "$AGENTS_SRC" ]  || { echo "FAIL: templates/system/agents not found" >&2; exit 1; }
+          cp "$COMPILE_SRC" "$CLONE_DIR/scripts/compile-agent.sh"
+          chmod +x "$CLONE_DIR/scripts/compile-agent.sh"
+          mkdir -p "$CLONE_DIR/agents"
+          cp -r "$AGENTS_SRC"/. "$CLONE_DIR/agents/"
+
           git -C "$CLONE_DIR" config user.name "or-factory-master[bot]"
           git -C "$CLONE_DIR" config user.email "factory-master-broker@or-factory-master-control.iam.gserviceaccount.com"
-          git -C "$CLONE_DIR" add .claude workflows .github/workflows Caddyfile Dockerfile.caddy Dockerfile.worker caddy scripts templates docs monitoring .yamllint CHANGELOG.md changelog.d e2e-surfaces.json
+          git -C "$CLONE_DIR" add .claude workflows .github/workflows Caddyfile Dockerfile.caddy Dockerfile.worker caddy scripts templates docs monitoring agents .yamllint CHANGELOG.md changelog.d e2e-surfaces.json
           # Guard the commit: a reuse-mode re-provision with byte-identical files would
           # otherwise abort this step under `set -e` ("nothing to commit").
           git -C "$CLONE_DIR" diff --cached --quiet \

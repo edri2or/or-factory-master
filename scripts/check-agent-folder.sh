@@ -24,10 +24,19 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-AGENTS_DIR="${AGENTS_DIR:-$REPO_ROOT/templates/system/agents}"
-WF_DIR="${WF_DIR:-$REPO_ROOT/templates/system/workflows/n8n}"
+# Layout auto-detect: the factory keeps the mould under templates/system/; a
+# provisioned system carries agents/ + workflows/n8n/ + scripts/compile-agent.sh at
+# its repo root. Pick defaults accordingly so the same shipped gate works in both.
+if [ -d "$REPO_ROOT/templates/system/agents" ]; then
+  AGENTS_DIR="${AGENTS_DIR:-$REPO_ROOT/templates/system/agents}"
+  WF_DIR="${WF_DIR:-$REPO_ROOT/templates/system/workflows/n8n}"
+  COMPILER="${COMPILER:-$REPO_ROOT/templates/system/scripts/compile-agent.sh}"
+else
+  AGENTS_DIR="${AGENTS_DIR:-$REPO_ROOT/agents}"
+  WF_DIR="${WF_DIR:-$REPO_ROOT/workflows/n8n}"
+  COMPILER="${COMPILER:-$SCRIPT_DIR/compile-agent.sh}"
+fi
 SPEC_DIR="$AGENTS_DIR/_spec"
-COMPILER="${COMPILER:-$REPO_ROOT/templates/system/scripts/compile-agent.sh}"
 # shellcheck source=lib/normalize-n8n.sh
 . "$REPO_ROOT/scripts/lib/normalize-n8n.sh"
 

@@ -99,8 +99,18 @@
   `agent-folder.spec.md` to the v2 model, extended the round-trip normalizer to also `sort_by(.name)` the
   nodes array (emission order is cosmetic), and grew `check-agent-folder.sh` + `compile-agent.bats` (15
   tests) to round-trip **all** foldered agents. Offline only — no `workflows/n8n/*.json` changed, behavior
-  unchanged. Still pending in Change 7: ship the compiler + folders into NEW systems via
-  `provision-system.yml` + the system-side gate (7c), and the live or-edri-4 proof (7d). **Proven live on or-edri-4
+  unchanged. Still pending in Change 7: the live or-edri-4 proof (7d).
+- **Agent-as-a-folder standard — Change 7 (7c) of 8 (`agent-folder-structure`): ship into NEW systems +
+  system-side gate.** `provision-system.yml` now copies `templates/system/scripts/compile-agent.sh` →
+  the system's `scripts/compile-agent.sh`, the whole `templates/system/agents/**` → the system's `agents/`,
+  and ships `check-agent-folder.sh` in the portable check-scripts set — so a freshly provisioned system is
+  **born foldered** (its `configure-agent-router.yml` regenerates each agent from `agents/<slug>/`; the
+  committed `workflows/n8n/*.json` stay the install input + round-trip target). Wired the agent-folder gate
+  into the **Changelog gates** job of `templates/system/.github/workflows/changelog-check.yml` (the
+  Change-4 deferral) with a `pyyaml` guard. Made `check-agent-folder.sh` **layout-aware** (auto-detects the
+  factory mould `templates/system/agents` vs a system's root `agents/` + `scripts/compile-agent.sh`), so
+  the same shipped gate works in both; verified by simulating a provisioned-system layout (all 5 round-trip
+  in-system). Golden refreshed. **Proven live on or-edri-4
   (the merge-blocking E2E proof):** applied to or-edri-4 via `refresh-system-agents.yml`
   (`source_ref=<branch>`, `paths=.github/workflows/configure-agent-router.yml,scripts/compile-agent.sh,agents`)
   → PR #45 merged + `configure-agent-router.yml` re-imported the router live; then `e2e-verify.yml`

@@ -208,13 +208,14 @@ n8n/טלגרם הם כלים. תוספת עוטפת, מדורגת, הוכחת-ה
 
 **הוכחת E2E (artifact):** `e2e-proofs/agent-folder-structure.json` טרי (router עדיין מנתב ל-5) — לפני מיזוג.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** 7א+7ב+7ג הושלמו (אופליין): מתרגם v2 משחזר את כל 5 הסוכנים (round-trip ריק),
+ספריית-כלים + דריסות, חיווט ל-provision + שער צד-מערכת (layout-aware). נותר 7ד — הוכחה חיה על
+or-edri-4 (כמו שלב 5). שערים + bats + זהב ירוקים.
 
-**שינוי תוכנית:** —
-
----
-
-### שלב 8 — תיעוד + מניפסט (סגירה)
+**שינוי תוכנית:** התגלה ש-`ops`/`unknown` חולקים כלים עם **תיאור שונה** (postgres_named_query,
+request_write_action) → נוסף מנגנון override per-agent. גם: ה-Format Reply שונה בין סוכנים
+(`output||text` מול `text||output`) → שדה `reply_expression`. שני אלו שומרים byte-exact בלי לשנות
+התנהגות.
 
 **Acceptance:**
 - [ ] `AGENTS.md.template` + `agents.manifest.json` מצהירים `agents/` כמקור-האמת, ומוסר
