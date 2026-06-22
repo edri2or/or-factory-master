@@ -26,7 +26,7 @@ n8n/טלגרם הם כלים. תוספת עוטפת, מדורגת, הוכחת-ה
 | 4 | שער CI: ולידציה + generated-in-sync | completed | `scripts/check-agent-folder.sh`, `changelog-check.yml` (factory) |
 | 5 | חיווט המתרגם למנוע ההרכבה | completed | `configure-agent-router.yml`, `templates/system/scripts/compile-agent.sh` |
 | 6 | `/build-agent` → "צור תיקיית-סוכן" | completed | `.claude/commands/build-agent.md` + מראה-מערכת |
-| 7 | הגירת 5 הסוכנים הגנריים | pending | `templates/system/agents/{ops,code,research,infra,unknown}/` |
+| 7 | הגירת 5 הסוכנים הגנריים | in-progress | `compile-agent.sh` v2, `agents/{ops,code,research,infra,unknown}/`, `agents/_spec/tools/**` |
 | 8 | תיעוד + מניפסט (סגירה) | pending | `AGENTS.md.template`, `agents.manifest.json` |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.

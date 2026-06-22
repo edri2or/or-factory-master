@@ -25,23 +25,27 @@ teardown() {
   common_teardown
 }
 
-# norm — STDIN n8n JSON -> canonical form with EVERY id stripped at any depth.
-# normalize_n8n drops top-level volatile fields + per-node position/id/webhookId;
-# the extra walk also strips nested ids (e.g. the Set node's assignments[].id),
-# which the stock normalizer leaves. The result is purely the semantic content.
-norm() { normalize_n8n | jq -S 'walk(if type=="object" and has("id") then del(.id) else . end)'; }
+# norm — STDIN n8n JSON -> canonical form with EVERY id stripped at any depth AND
+# the nodes array sorted by name. normalize_n8n drops top-level volatile fields +
+# per-node position/id/webhookId; the extra walk strips nested ids (e.g. the Set
+# node's assignments[].id); sort_by(.name) makes node emission ORDER a non-issue
+# (n8n executes by connections, not array order) so the compiler can emit tool
+# nodes in any deterministic order. The result is purely the semantic content.
+norm() { normalize_n8n | jq -S '(if has("nodes") then .nodes |= sort_by(.name) else . end) | walk(if type=="object" and has("id") then del(.id) else . end)'; }
 
 # --- the proof ---
 
-@test "compile-agent.sh code reproduces committed code-agent.json (normalized round-trip)" {
-  local compiled committed
-  compiled="$(bash "$REPO_ROOT/templates/system/scripts/compile-agent.sh" code | norm)"
-  committed="$(norm < "$REPO_ROOT/templates/system/workflows/n8n/code-agent.json")"
-  if [ "$compiled" != "$committed" ]; then
-    echo "round-trip mismatch — compiled (<) vs committed (>):" >&2
-    diff <(printf '%s\n' "$compiled") <(printf '%s\n' "$committed") >&2 || true
-    return 1
-  fi
+@test "compile-agent.sh reproduces every committed agent JSON (normalized round-trip, all 5)" {
+  local a compiled committed
+  for a in code infra research ops unknown; do
+    compiled="$(bash "$REPO_ROOT/templates/system/scripts/compile-agent.sh" "$a" | norm)"
+    committed="$(norm < "$REPO_ROOT/templates/system/workflows/n8n/${a}-agent.json")"
+    if [ "$compiled" != "$committed" ]; then
+      echo "round-trip mismatch for $a — compiled (<) vs committed (>):" >&2
+      diff <(printf '%s\n' "$compiled") <(printf '%s\n' "$committed") >&2 || true
+      return 1
+    fi
+  done
 }
 
 @test "compiled code agent leaves install-time placeholders intact" {
@@ -66,15 +70,15 @@ norm() { normalize_n8n | jq -S 'walk(if type=="object" and has("id") then del(.i
 
 # --- guards ---
 
-@test "v1 refuses a tool-carrying agent" {
+@test "a single-llm agent declaring tools is refused" {
   local agents
   agents="$(make_tmpdir)"
   mkdir -p "$agents/toolful"
   cat > "$agents/toolful/agent.yaml" <<'EOF'
 slug: toolful
-description: a toolful agent
+description: a single-llm agent that wrongly declares a tool
 model: openrouter/auto
-architecture: single-agent
+architecture: single-llm
 EOF
   printf 'do things\n' > "$agents/toolful/instructions.md"
   cat > "$agents/toolful/tools.yaml" <<'EOF'
@@ -83,7 +87,27 @@ tools:
 EOF
   run bash "$REPO_ROOT/templates/system/scripts/compile-agent.sh" toolful --agents-dir "$agents"
   assert_failure
-  assert_output --partial 'no-tools'
+  assert_output --partial 'single-llm'
+}
+
+@test "an unknown tool (no snippet) fails loudly" {
+  local agents
+  agents="$(make_tmpdir)"
+  mkdir -p "$agents/toolful"
+  cat > "$agents/toolful/agent.yaml" <<'EOF'
+slug: toolful
+description: an agent referencing a tool with no snippet
+model: openrouter/auto
+architecture: single-agent
+EOF
+  printf 'do things\n' > "$agents/toolful/instructions.md"
+  cat > "$agents/toolful/tools.yaml" <<'EOF'
+tools:
+  - no_such_tool
+EOF
+  run bash "$REPO_ROOT/templates/system/scripts/compile-agent.sh" toolful --agents-dir "$agents"
+  assert_failure
+  assert_output --partial 'snippet'
 }
 
 @test "missing agent folder fails loudly" {

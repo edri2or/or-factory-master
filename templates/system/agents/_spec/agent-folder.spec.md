@@ -47,8 +47,11 @@ the compiler/gate skip any folder whose name begins with `_`.
 | `confidence_threshold` | routed agents | `agents.manifest.json` › `agents[].confidence_threshold` | router dispatch threshold; `0.7` for normal agents, `0.0` for the fallback |
 | `fallback` | fallback only | `agents.manifest.json` › `agents[].fallback` | `true` only for the single fallback agent (`unknown`); omit otherwise |
 | `model` | yes | `subagent.template.json` › `OpenRouter Chat Model.parameters.model` | `@@MODEL@@`. Default `openrouter/auto`; a specific model only with a reason (design-spec §5). e.g. `anthropic/claude-haiku-4.5` |
-| `architecture` | yes | `agent-design-spec.md` frontmatter `architecture` | one of `single-llm` \| `single-agent` \| `orchestrating-workflow` \| `multi-agent`. The default is `single-agent` (no tools). `single-llm` = a trivial one-shot answer with no tools (today's `code`/`infra`). |
+| `architecture` | yes | `agent-design-spec.md` frontmatter `architecture` | one of `single-llm` \| `single-agent` \| `orchestrating-workflow` \| `multi-agent`. **`single-llm`** → the no-tools `@n8n/n8n-nodes-langchain.chainLlm` node (system prompt in `parameters.messages`; today's `code`/`infra`). **`single-agent`** → the `@n8n/n8n-nodes-langchain.agent` v2.2 node (system prompt in `parameters.options.systemMessage`) with the `tools.yaml` tools wired as `ai_tool` nodes (today's `ops`/`research`/`unknown`). A `single-llm` agent must have `tools: []`. |
 | `temperature` | no | `subagent.template.json` › `OpenRouter Chat Model.parameters.options.temperature` | OpenRouter sampling temperature; default `0.3` |
+| `reply_node_name` | no | the committed agent's LLM-node `name` | Display name of the LLM node. Default `"<Slug> Reply"` (`code`→`Code Reply`); set explicitly where the committed name differs (`ops`→`Ops Agent`, `unknown`→`Chat Agent`). |
+| `memory` | no | the committed `Conversation Memory` node | `postgres` injects the `memoryPostgresChat` `Conversation Memory` node (sessionKey `tg:@@CHAT_ID@@`) + an `ai_memory` edge (today's `unknown`). Omit for a stateless agent. |
+| `reply_expression` | no | the committed `Format Reply` value | Overrides the Format Reply value. Default = the template's `={{ $json.text \|\| $json.output }}`; agent-type agents that prioritise `.output` set `={{ $json.output \|\| $json.text }}` (`ops`/`unknown`). |
 
 Routing keys (`intent`, `confidence_threshold`, `fallback`) apply to agents the orchestrator
 dispatches (the manifest `agents[]`). A background worker (e.g. `deep-research`, dispatched by an
@@ -71,72 +74,79 @@ temperature: 0.3
 
 ## `instructions.md` — the role body (`@@SYSTEM_MESSAGE@@`)
 
-The natural-language system prompt for the agent — exactly the text that fills `@@SYSTEM_MESSAGE@@`
-in `subagent.template.json`. This is the role body only; the compiler appends the **fixed tail**
-common to every agent and the **style-profile clause**, so do **not** repeat them in
-`instructions.md`.
+The agent's **full** natural-language system prompt body. **Uniform model:** the compiler appends
+**only** the **style-profile clause** (below) — it does NOT append any other fixed tail. So
+`instructions.md` carries the entire prompt up to that clause, **including** the agent's own closing
+sentences (e.g. "Answer in the user's language…") and any literal install-time tokens it embeds
+(`ops`/`unknown` end with the `SYSTEM-INFO …: @@SYSTEM_INFO_JSON@@` block; `unknown` mentions
+`@@SYSTEM_NAME@@`). Those `@@…@@` are resolved per-system at deploy — leave them literal here.
 
-The compiler renders the chainLlm node's `SystemMessagePromptTemplate.message` as:
-
-```
-=<instructions.md body> <FIXED TAIL><STYLE-PROFILE CLAUSE>
-```
-
-where the **fixed tail** is exactly (note the leading space):
+The compiler renders the agent's system message as:
 
 ```
- Answer in the user's language (Hebrew or English, detected from the input). Never invent URLs or secrets, and never reveal the names of internal sub-agents or your own architectural role.
+=<instructions.md body><STYLE-PROFILE CLAUSE>
 ```
 
-and the **style-profile clause** is the verbatim mustache expression from the template:
+where the **style-profile clause** is the verbatim mustache expression (the single thing the compiler
+appends, identical across every agent):
 
 ```
 {{ ($('Read Style Profile').first()?.json?.profile) ? ' Style profile (match in tone, length, emoji density, humor; do not announce you are matching it): ' + JSON.stringify($('Read Style Profile').first().json.profile) : '' }}
 ```
 
-> **Known wrinkle (resolved in the compiler stage).** `subagent.template.json` carries an extra
-> sentence — " You return your answer to the orchestrator (the Agent Router); you never address the
-> operator directly." — between `@@SYSTEM_MESSAGE@@` and the fixed tail, but the committed
-> `code-agent.json` does **not** have it. So that orchestrator-return sentence is **not** part of the
-> guaranteed fixed tail; it is a **recommended opening line of `instructions.md`** (the single-voice
-> behavior is enforced structurally anyway — see the contract below). For a byte-exact round-trip of
-> an existing agent, put whatever that agent's committed prompt contains into `instructions.md`; the
-> compiler appends only the fixed tail above.
+It lands in `parameters.messages.messageValues[0].message` for a `single-llm` (chainLlm) agent, or
+`parameters.options.systemMessage` for a `single-agent` (`agent`-type) agent.
+
+> **Note.** `subagent.template.json` carries a " You return your answer to the orchestrator…" sentence
+> that the committed agents do **not** have — so it is NOT appended; the compiler ignores the template's
+> message text entirely and builds the message from `instructions.md` + the style clause. To migrate an
+> existing agent byte-exactly, extract its committed system message, strip the leading `=` and the
+> trailing style clause, and that is the `instructions.md` body. Single-voice is enforced structurally
+> (the contract + `check-agent-single-voice.sh`), not by any appended sentence.
 
 `instructions.md` is the place for the design-spec §7 "instructions" (goals, do/don't, edge cases,
-few-shot examples). Keep secrets and URLs out of it (the fixed tail forbids inventing them).
+few-shot examples). Keep real secrets and URLs out of it.
 
 ---
 
 ## `tools.yaml` — the agent's tools
 
-A no-tools agent (the default, e.g. `code`, `infra`) declares an empty list. A tool-carrying agent
-lists tools from the known set; each maps to the n8n tool/sub-workflow node the install-time
-compiler injects (the inverse of the credential-absent `jq` strip in `configure-agent-router.yml`).
+A no-tools agent (`architecture: single-llm`, e.g. `code`, `infra`) declares an empty list. A
+tool-carrying agent (`architecture: single-agent`) lists tools from the known set; the compiler
+injects each one's node + an `ai_tool` edge to the LLM node (the inverse of the credential-absent
+`jq` strip in `configure-agent-router.yml`).
 
 ```yaml
-tools: []          # no-tools agent (architecture: single-llm | single-agent)
+tools: []          # no-tools agent (architecture: single-llm)
 ```
 
 or
 
 ```yaml
 tools:
-  - postgres_named_query    # whitelisted read-only named SELECTs (postgres-named-queries)
-  - github_readonly         # read-only GitHub reads (github-readonly)
-  - railway_readonly        # read-only Railway service/deploy status (railway-readonly)
-  - request_write_action    # HITL write-request gate (request-write-action) — the ONLY write path
-  - factory_tools           # this system's own read-only telemetry (/factory/<system>/mcp)
-  - google_workspace        # the shared Google Workspace tools (/workspace/<system>/mcp)
-  - web_search              # web search for the research agent
+  - n8n_api                 # ops: live n8n workflow list (toolHttpRequest → /api/v1/workflows)
+  - list_workflows          # unknown: live n8n workflow list (toolHttpRequest)
+  - recent_errors           # unknown: recent FAILED executions (toolHttpRequest)
+  - postgres_named_query    # whitelisted read-only named SELECTs (toolWorkflow)
+  - github_readonly         # read-only GitHub reads (toolWorkflow)
+  - railway_readonly        # read-only Railway service/deploy status (toolWorkflow)
+  - request_write_action    # HITL write-request gate (toolWorkflow) — the ONLY write path
+  - factory_tools           # this system's own read-only telemetry MCP (/factory/<system>/mcp)
+  - google_workspace        # the shared Google Workspace MCP (/workspace/<system>/mcp)
+  - web_search_quick        # fast Tavily web search (toolHttpRequest)
+  - web_search_extended     # deeper Tavily web search (toolHttpRequest)
 ```
+
+**The snippet library.** Each tool name maps to a node snippet at `agents/_spec/tools/<tool>.json`
+(the exact n8n node, with `@@…@@` placeholders, no `id`/`position`). The compiler reads the snippet
+and wires it. Where a tool's LLM-facing **description differs between agents** (today only
+`unknown`'s `postgres_named_query` + `request_write_action`), the agent carries a **per-agent
+override** at `agents/<name>/tools/<tool>.json` — the compiler prefers the override, else the library
+default. (Memory is `agent.yaml`'s `memory:` key, not a tool — its snippet is `_spec/memory-postgres.json`.)
 
 **Hard rule (design-spec §6, contract rule 7):** a sub-agent never gets free SQL or a direct write
 tool. Writes route **only** through `request_write_action` (the HITL propose→approve→execute gate).
 High-risk (write / irreversible / costly) tools must go through that gate.
-
-> v1 of the compiler renders **no-tools** agents only (the chainLlm shape). Tool-node injection from
-> `tools.yaml` is added in a later sub-step, once the no-tools round-trip is proven.
 
 ---
 

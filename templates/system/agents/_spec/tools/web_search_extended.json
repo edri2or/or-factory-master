@@ -1,0 +1,23 @@
+{
+  "parameters": {
+    "toolDescription": "Use this tool when the operator asks to dig deeper, cross-check, or research a topic more thoroughly. Slower than web_search_quick and returns more sources. Input: a focused search query string.",
+    "method": "POST",
+    "url": "https://api.tavily.com/search",
+    "authentication": "predefinedCredentialType",
+    "nodeCredentialType": "httpHeaderAuth",
+    "sendBody": true,
+    "specifyBody": "json",
+    "jsonBody": "{\"query\": \"{query}\", \"search_depth\": \"advanced\", \"max_results\": 10, \"include_answer\": true}",
+    "placeholderDefinitions": {
+      "values": [
+        { "name": "query", "description": "The search query — what to research on the web", "type": "string" }
+      ]
+    }
+  },
+  "id": "t0000000-0000-0000-0000-000000000008",
+  "name": "web_search_extended",
+  "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+  "typeVersion": 1.1,
+  "position": [900, 540],
+  "credentials": { "httpHeaderAuth": { "id": "@@CRED_TAVILY_ID@@", "name": "Tavily (factory-master)" } }
+}

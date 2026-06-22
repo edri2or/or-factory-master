@@ -36,9 +36,10 @@ if [ ! -d "$AGENTS_DIR" ]; then
   exit 0
 fi
 
-# norm — STDIN n8n JSON -> canonical form, EVERY id stripped at any depth (the
-# round-trip normalizer; matches scripts/tests/compile-agent.bats).
-norm() { normalize_n8n | jq -S 'walk(if type=="object" and has("id") then del(.id) else . end)'; }
+# norm — STDIN n8n JSON -> canonical form: EVERY id stripped at any depth AND the
+# nodes array sorted by name (n8n executes by connections, not array order). Matches
+# scripts/tests/compile-agent.bats.
+norm() { normalize_n8n | jq -S '(if has("nodes") then .nodes |= sort_by(.name) else . end) | walk(if type=="object" and has("id") then del(.id) else . end)'; }
 
 # validate_schema DOC_YAML SCHEMA_JSON -> 0/1, prints errors. Generic draft-07
 # subset: required, additionalProperties:false, type, enum, pattern, min/max,
@@ -111,10 +112,10 @@ for dir in "$AGENTS_DIR"/*/; do
   if ! validate_schema "$dir/agent.yaml" "$SPEC_DIR/agent.schema.json" >&2; then rc=1; fi
   if ! validate_schema "$dir/tools.yaml" "$SPEC_DIR/tools.schema.json" >&2; then rc=1; fi
 
-  # 3. generated-in-sync (no-tools agents only — matches compiler v1)
-  tool_count="$(python3 -c 'import yaml,sys; d=yaml.safe_load(open(sys.argv[1])) or {}; print(len(d.get("tools") or []))' "$dir/tools.yaml" 2>/dev/null || echo "?")"
+  # 3. generated-in-sync: the compiler (v2 — no-tools AND tool agents) must reproduce
+  #    the committed JSON for every foldered agent that has one (normalized diff = empty).
   json="$WF_DIR/${name}-agent.json"
-  if [ -f "$json" ] && [ "$tool_count" = "0" ]; then
+  if [ -f "$json" ]; then
     if ! diff <(bash "$COMPILER" "$name" --agents-dir "$AGENTS_DIR" 2>/dev/null | norm) <(norm < "$json") >/dev/null 2>&1; then
       echo "ERROR: agents/$name סטה מ-$WF_DIR/${name}-agent.json — התיקייה והקובץ הנגזר לא תואמים." >&2
       echo "ERROR: agents/$name drifted from its committed JSON. Recompile and reconcile: bash scripts/compile-agent.sh $name" >&2

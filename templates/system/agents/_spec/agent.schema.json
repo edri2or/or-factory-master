@@ -47,6 +47,21 @@
       "minimum": 0.0,
       "maximum": 2.0,
       "description": "OpenRouter sampling temperature; default 0.3."
+    },
+    "reply_node_name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional display name of the LLM node. Default '<Slug> Reply' (code→Code Reply); set explicitly where it differs (ops→Ops Agent, unknown→Chat Agent)."
+    },
+    "memory": {
+      "type": "string",
+      "enum": ["postgres"],
+      "description": "Optional. 'postgres' injects the memoryPostgresChat 'Conversation Memory' node (sessionKey tg:@@CHAT_ID@@) + ai_memory edge. Omit for a stateless agent."
+    },
+    "reply_expression": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional override for the Format Reply value. Default is the template's '={{ $json.text || $json.output }}'; agent-type agents that prioritise .output set '={{ $json.output || $json.text }}'."
     }
   }
 }

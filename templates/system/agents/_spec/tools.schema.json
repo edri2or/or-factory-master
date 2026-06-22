@@ -20,7 +20,11 @@
           "request_write_action",
           "factory_tools",
           "google_workspace",
-          "web_search"
+          "web_search_quick",
+          "web_search_extended",
+          "n8n_api",
+          "list_workflows",
+          "recent_errors"
         ]
       }
     }

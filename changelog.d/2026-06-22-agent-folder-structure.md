@@ -81,7 +81,26 @@
   gate requires a fresh proof from the standing proving system **or-edri-4** — applied + proven live there
   (`e2e-verify.yml`, `target_ref=<branch>`) before this lands on `main`. **Scope:** shipping the compiler
   + agent-folders into NEW systems via `provision-system.yml` (and the system-side gate wiring) is deferred
-  to Change 7; until then new systems gracefully fall back to committed JSON. **Proven live on or-edri-4
+  to Change 7; until then new systems gracefully fall back to committed JSON.
+- **Agent-as-a-folder standard — Change 7 (7a+7b) of 8 (`agent-folder-structure`): compiler v2 + migrate
+  all 5 agents (offline).** Generalized `compile-agent.sh` to **v2**: a **uniform system-message model**
+  (the compiler appends ONLY the style-profile clause; `instructions.md` carries the full prompt body, so
+  the v1 `FIXED_TAIL` is gone and `agents/code/instructions.md` now includes its own tail), an
+  **architecture switch** (`single-llm`→`chainLlm`; `single-agent`→`@n8n/n8n-nodes-langchain.agent` v2.2
+  with the prompt in `options.systemMessage`), **tool-node injection** from a per-tool **snippet library**
+  `agents/_spec/tools/<tool>.json` (with per-agent description **overrides** at `agents/<name>/tools/<tool>.json`),
+  optional Postgres chat **memory** (`memory: postgres` → the `Conversation Memory` node), and optional
+  `reply_node_name` / `reply_expression` fields. Authored `agents/{infra,research,ops,unknown}/` (instructions
+  + tool snippets **extracted byte-exact** from the committed JSONs) so **all 5 agents now round-trip
+  empty** (normalized) against their committed `workflows/n8n/*-agent.json` — `code`, `infra` (no-tools),
+  `research` (2 web tools), `ops` (7 tools), `unknown` (8 tools + memory). Expanded `tools.schema.json`'s
+  enum to the real union (`n8n_api`/`list_workflows`/`recent_errors`/`web_search_quick`/`web_search_extended`
+  + the sub-workflow/MCP tools), added the new `agent.schema.json` optional keys, updated
+  `agent-folder.spec.md` to the v2 model, extended the round-trip normalizer to also `sort_by(.name)` the
+  nodes array (emission order is cosmetic), and grew `check-agent-folder.sh` + `compile-agent.bats` (15
+  tests) to round-trip **all** foldered agents. Offline only — no `workflows/n8n/*.json` changed, behavior
+  unchanged. Still pending in Change 7: ship the compiler + folders into NEW systems via
+  `provision-system.yml` + the system-side gate (7c), and the live or-edri-4 proof (7d). **Proven live on or-edri-4
   (the merge-blocking E2E proof):** applied to or-edri-4 via `refresh-system-agents.yml`
   (`source_ref=<branch>`, `paths=.github/workflows/configure-agent-router.yml,scripts/compile-agent.sh,agents`)
   → PR #45 merged + `configure-agent-router.yml` re-imported the router live; then `e2e-verify.yml`
