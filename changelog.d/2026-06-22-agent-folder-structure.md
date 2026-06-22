@@ -81,4 +81,12 @@
   gate requires a fresh proof from the standing proving system **or-edri-4** — applied + proven live there
   (`e2e-verify.yml`, `target_ref=<branch>`) before this lands on `main`. **Scope:** shipping the compiler
   + agent-folders into NEW systems via `provision-system.yml` (and the system-side gate wiring) is deferred
-  to Change 7; until then new systems gracefully fall back to committed JSON.
+  to Change 7; until then new systems gracefully fall back to committed JSON. **Proven live on or-edri-4
+  (the merge-blocking E2E proof):** applied to or-edri-4 via `refresh-system-agents.yml`
+  (`source_ref=<branch>`, `paths=.github/workflows/configure-agent-router.yml,scripts/compile-agent.sh,agents`)
+  → PR #45 merged + `configure-agent-router.yml` re-imported the router live; then `e2e-verify.yml`
+  (`target_ref=<branch>`, `system_name=or-edri-4`) drove a real inbound message and the live bot replied,
+  committing a fresh signed `e2e-proofs/agent-folder-structure.json` (`result: pass`) that satisfies the
+  `e2e-surfaces.json` `proof_systems` pin to or-edri-4. (Journey note: the first refresh clone hit a
+  transient "Repository not found"; a re-run succeeded cleanly — the broker has standing clone+push access
+  to or-edri-4.)

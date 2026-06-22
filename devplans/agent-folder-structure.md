@@ -24,7 +24,7 @@ n8n/טלגרם הם כלים. תוספת עוטפת, מדורגת, הוכחת-ה
 | 2 | הוכחה: code-agent כתיקייה | completed | `templates/system/agents/code/**` |
 | 3 | המתרגם הדטרמיניסטי (round-trip) | completed | `scripts/compile-agent.sh`, `scripts/tests/compile-agent.bats` |
 | 4 | שער CI: ולידציה + generated-in-sync | completed | `scripts/check-agent-folder.sh`, `changelog-check.yml` (factory) |
-| 5 | חיווט המתרגם למנוע ההרכבה | in-progress | `configure-agent-router.yml`, `templates/system/scripts/compile-agent.sh` |
+| 5 | חיווט המתרגם למנוע ההרכבה | completed | `configure-agent-router.yml`, `templates/system/scripts/compile-agent.sh` |
 | 6 | `/build-agent` → "צור תיקיית-סוכן" | pending | `.claude/commands/build-agent.md` + מראה-מערכת |
 | 7 | הגירת 5 הסוכנים הגנריים | pending | `templates/system/agents/{ops,code,research,infra,unknown}/` |
 | 8 | תיעוד + מניפסט (סגירה) | pending | `AGENTS.md.template`, `agents.manifest.json` |
@@ -151,8 +151,11 @@ n8n/טלגרם הם כלים. תוספת עוטפת, מדורגת, הוכחת-ה
       ה-upsert (בלוק עוטף + soft-fail: סוכן ללא תיקייה/עם כלים → נופל-לאחור ל-JSON המקומיט, אז
       מסלול ההתקנה לא יכול לסגת). המתרגם הועבר ל-`templates/system/scripts/compile-agent.sh`
       (מקור-אמת יחיד; ברירות-המחדל עובדות בפקטורי ובמערכת). הזהב רוענן.
-- [ ] **(הוכחה חיה — בהמתנה לביצוע)** הוחל על or-edri-4 + סוכן-הקוד עדיין עונה אחרי re-import
-      דרך המסלול החדש, ו-`e2e-proofs/agent-folder-structure.json` טרי נוצר.
+- [x] **(הוכחה חיה — בוצעה ✅)** הוחל על or-edri-4 דרך `refresh-system-agents.yml`
+      (`source_ref=הענף`, paths = configure + compile-agent.sh + agents; PR #45 מוזג, configure הופעל
+      חי run 27930531022). `e2e-verify.yml` (run 27930637538) הניע הודעה אמיתית דרך or-edri-4 — הבוט
+      ענה ("שם המערכת שלך הוא `or-edri-4`") → `e2e-proofs/agent-folder-structure.json` (`result: pass`,
+      content_hash תואם, חתום) נדחף לענף. שער ה-E2E ב-PR ירוק.
 
 **הוכחה תפקודית (באותו שלב):** ✅ סטטי: הודמה הפעלה-בתוך-מערכת — המתרגם רץ עם ברירות-מחדל,
 שומר install-time `@@…@@`, והפלט **זהה** (מנורמל) ל-`code-agent.json` המקומיט, כך שההתנהגות החיה
@@ -162,8 +165,9 @@ n8n/טלגרם הם כלים. תוספת עוטפת, מדורגת, הוכחת-ה
 מיזוג** (שער ה-E2E ב-`e2e-surfaces.json` מופעל ע"י שינוי ב-`configure-agent-router.yml` ומצמיד את
 ההוכחה ל-or-edri-4). עד שהוא ירוץ, ה-PR יראה את שער ה-E2E אדום — צפוי.
 
-**הערת התקדמות אחרונה:** הקוד הסטטי הושלם ונדחף. עוצר לפני הנגיעה החיה כדי להציג ל-Or את צעד
-ההוכחה על or-edri-4 (הרצת `e2e-verify.yml` עם `target_ref=<branch>`).
+**הערת התקדמות אחרונה:** הושלם — כולל ההוכחה החיה על or-edri-4. הערת מסע: ה-refresh הראשון נכשל
+ב-clone עם "Repository not found" — אובחן כתקלה חולפת (הברוקר קורא+דחף ל-or-edri-4 שוב ושוב ב-15.6,
+והקריאה דרך ה-MCP עבדה); הרצה חוזרת עברה נקי. ממתין לאישור Or למעבר לשלב 6/7.
 
 **שינוי תוכנית:** המתרגם הושכן תחת `templates/system/scripts/` (לא factory `scripts/`) כדי שיגיע חי
 ל-or-edri-4 דרך המנגנון התקני (שמעתיק רק תחת `templates/system/`). שליחת המתרגם + תיקיות-הסוכן
@@ -238,3 +242,7 @@ n8n/טלגרם הם כלים. תוספת עוטפת, מדורגת, הוכחת-ה
 - שלב 4 הושלם — הוספתי "שומר" אוטומטי שרץ על כל שינוי: הוא בודק שכל תיקיית-סוכן בנויה נכון, ושאם
   שינו תיקייה — מה שהמתרגם מייצר עדיין תואם להגדרה הקיימת. אם מישהו יקלקל תיקייה או ייצור פער, ה-CI
   יעצור אותו אדום. כתבתי גם מבחן שמוודא שהשומר באמת תופס תקלות. עדיין אפס נגיעה במערכת חיה.
+- שלב 5 הושלם — **המבחן החי הראשון, על המערכת שלך or-edri-4.** חיברתי את המתרגם למנוע שמטעין את
+  הבוט, החלתי את השינוי חי על or-edri-4, ושלחתי הודעת-בדיקה אמיתית — **הבוט ענה כשורה**. כלומר מעכשיו
+  סוכן-הקוד של or-edri-4 נבנה מהתיקייה, וההתנהגות לא השתנתה (כמו שהבטחנו). היתה תקלת-רשת חולפת בניסיון
+  הראשון; הרצה חוזרת עברה חלק.
