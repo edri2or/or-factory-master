@@ -2,13 +2,13 @@
   "schema": "e2e-proof/v1",
   "slug": "agent-folder-structure",
   "repo": "edri2or/or-factory-master",
-  "run_id": "27930637538",
-  "content_hash": "sha256:22e642b84ace8d905750aa62a32e0113b80d4a2fa73b1845f64e53b153a8d7f2",
+  "run_id": "27957338001",
+  "content_hash": "sha256:85fc825b6f6dfeda05511bafc23acd611758cc16a121be6ccc545802e7ac2786",
   "system": "or-edri-4",
   "domain": "n8n-or-edri-4.or-infra.com",
-  "execution_id": "1135",
-  "reply_excerpt": "שם המערכת שלך הוא `or-edri-4`.",
+  "execution_id": "1170",
+  "reply_excerpt": "שם המערכת שלך הוא **or-edri-4**.",
   "result": "pass",
-  "executed_at": "2026-06-22T05:00:34Z",
-  "signature": "hmac-sha256:ffdcbc1981d2fd4c36399032524d1a615d97c73e8f37fac7427d4a6676061d80"
+  "executed_at": "2026-06-22T13:45:53Z",
+  "signature": "hmac-sha256:e6a65262881bd3cd5777b71a021f3f2f34cb498ce0700c7ac233b81c0a309def"
 }
