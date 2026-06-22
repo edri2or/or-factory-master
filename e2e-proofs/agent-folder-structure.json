@@ -1,0 +1,14 @@
+{
+  "schema": "e2e-proof/v1",
+  "slug": "agent-folder-structure",
+  "repo": "edri2or/or-factory-master",
+  "run_id": "27930637538",
+  "content_hash": "sha256:22e642b84ace8d905750aa62a32e0113b80d4a2fa73b1845f64e53b153a8d7f2",
+  "system": "or-edri-4",
+  "domain": "n8n-or-edri-4.or-infra.com",
+  "execution_id": "1135",
+  "reply_excerpt": "שם המערכת שלך הוא `or-edri-4`.",
+  "result": "pass",
+  "executed_at": "2026-06-22T05:00:34Z",
+  "signature": "hmac-sha256:ffdcbc1981d2fd4c36399032524d1a615d97c73e8f37fac7427d4a6676061d80"
+}
