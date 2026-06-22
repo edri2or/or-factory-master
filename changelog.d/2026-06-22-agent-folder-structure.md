@@ -121,7 +121,16 @@
   `system_name=or-edri-4`) drove a real inbound message and the live bot replied, committing a fresh signed
   `e2e-proofs/agent-folder-structure.json` (`result: pass`, content_hash over the new templates) — the
   `E2E verification gate` is green. Behavior unchanged (every compiled agent is normalized-identical to its
-  committed JSON); only the *source of truth* moved to the folders. Change 7 complete. **Proven live on or-edri-4
+  committed JSON); only the *source of truth* moved to the folders. Change 7 complete.
+- **Agent-as-a-folder standard — Change 8 of 8 (`agent-folder-structure`): docs + manifest, close.**
+  Declared the folder the source of truth in both top-level docs: `AGENTS.md.template` now states each
+  sub-agent is a folder `agents/<name>/` (compiler-derived JSON; edit the folder, not the generated
+  JSON; `check-agent-folder.sh` gates sync) and that "agent" always means a *sub-agent*, never the
+  system; `agents.manifest.json`'s `_comment` reframed as a routing registry whose source of truth is
+  the per-agent folder. Closed the development (`devplans/agent-folder-structure.md` → `status:
+  completed`). Doc/manifest only; golden refreshed. **Development complete (8/8):** a system agent is now
+  one canonical folder — `agent.yaml` + `instructions.md` + `tools.yaml` — from which a deterministic
+  compiler derives the n8n workflow, CI-gated and proven live on or-edri-4; new systems are born foldered. **Proven live on or-edri-4
   (the merge-blocking E2E proof):** applied to or-edri-4 via `refresh-system-agents.yml`
   (`source_ref=<branch>`, `paths=.github/workflows/configure-agent-router.yml,scripts/compile-agent.sh,agents`)
   → PR #45 merged + `configure-agent-router.yml` re-imported the router live; then `e2e-verify.yml`

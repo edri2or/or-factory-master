@@ -1,5 +1,5 @@
 {
-  "_comment": "Source-of-truth registry of the orchestrator's specialist agents. The /build-agent skill keeps this in sync with agent-router.json, configure-agent-router.yml, and AGENTS.md. The orchestrator (the Agent Router) only dispatches to intents listed here. See templates/n8n/subagent.contract.md.",
+  "_comment": "Routing registry of the orchestrator's specialist agents (intent + path + threshold). The SOURCE OF TRUTH for each agent is its folder agents/<name>/ (agent.yaml + instructions.md + tools.yaml); scripts/compile-agent.sh derives workflows/n8n/<name>-agent.json from it, and each agent.yaml's routing keys mirror its row here. The /build-agent skill keeps this row in sync with the folder, agent-router.json, configure-agent-router.yml, and AGENTS.md; check-agent-folder.sh gates folder↔JSON. The orchestrator (the Agent Router) only dispatches to intents listed here. See agents/_spec/agent-folder.spec.md + templates/n8n/subagent.contract.md.",
   "orchestrator": {
     "name": "Agent Router",
     "router": "workflows/n8n/agent-router.json",

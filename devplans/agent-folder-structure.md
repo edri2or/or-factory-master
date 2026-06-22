@@ -2,7 +2,7 @@
 dev_name: סוכן-כתיקיה — איחוד מבנה הסוכן
 slug: agent-folder-structure
 opened: 2026-06-22
-status: active   # active בזמן פיתוח → completed בסיום (משחרר את שער ה-CI)
+status: completed   # active בזמן פיתוח → completed בסיום (משחרר את שער ה-CI)
 ---
 
 # תוכנית פיתוח — סוכן-כתיקיה (Agent-as-a-folder)
@@ -27,7 +27,7 @@ n8n/טלגרם הם כלים. תוספת עוטפת, מדורגת, הוכחת-ה
 | 5 | חיווט המתרגם למנוע ההרכבה | completed | `configure-agent-router.yml`, `templates/system/scripts/compile-agent.sh` |
 | 6 | `/build-agent` → "צור תיקיית-סוכן" | completed | `.claude/commands/build-agent.md` + מראה-מערכת |
 | 7 | הגירת 5 הסוכנים הגנריים | completed | `compile-agent.sh` v2, `agents/{ops,code,research,infra,unknown}/`, `agents/_spec/tools/**` |
-| 8 | תיעוד + מניפסט (סגירה) | pending | `AGENTS.md.template`, `agents.manifest.json` |
+| 8 | תיעוד + מניפסט (סגירה) | completed | `AGENTS.md.template`, `agents.manifest.json` |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
 >
@@ -200,9 +200,9 @@ n8n/טלגרם הם כלים. תוספת עוטפת, מדורגת, הוכחת-ה
 ### שלב 7 — הגירת 5 הסוכנים הגנריים  *(הוכחה-חיה)*
 
 **Acceptance:**
-- [ ] `ops`/`code`/`research`/`infra`/`unknown` הומרו ל-`agents/<name>/`; ה-JSON-ים שלהם
-      הפכו לתוצרי-מתרגם. רק אחרי שהמבנה+המתרגם+החיווט הוכחו על הדוגמה.
-- [ ] שער watchdog-registry (surfaces של n8n) ושער workflow↔skill-pair נשמרים ירוקים.
+- [x] `ops`/`code`/`research`/`infra`/`unknown` הומרו ל-`agents/<name>/`; ה-JSON-ים שלהם
+      הפכו לתוצרי-מתרגם (round-trip מנורמל ריק לכל 5). מתרגם v2 תומך בכלים+זיכרון.
+- [x] שער watchdog-registry (surfaces של n8n) ושער workflow↔skill-pair נשמרים ירוקים (כל ה-CI ירוק).
 
 **הוכחה תפקודית (באותו שלב):** דיף מנורמל ריק לכל 5 ה-JSON-ים מול הקיים + הזהב ירוק.
 
@@ -220,15 +220,16 @@ request_write_action) → נוסף מנגנון override per-agent. גם: ה-For
 התנהגות.
 
 **Acceptance:**
-- [ ] `AGENTS.md.template` + `agents.manifest.json` מצהירים `agents/` כמקור-האמת, ומוסר
-      הבלבול "agent"="system".
-- [ ] התוכנית נסגרת (`status: completed`).
+- [x] `AGENTS.md.template` + `agents.manifest.json` מצהירים `agents/` כמקור-האמת, ומוסר
+      הבלבול "agent"="system" (הערה מפורשת: "agent" = תמיד תת-סוכן, לא המערכת).
+- [x] התוכנית נסגרת (`status: completed`).
 
-**הוכחה תפקודית (באותו שלב):** תוכן בלבד.
+**הוכחה תפקודית (באותו שלב):** תוכן בלבד. ✅ זהב ירוק, שערים ירוקים.
 
 **הוכחת E2E (artifact):** לא-התנהגותי.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם — הפיתוח נסגר. כל 8 השלבים הושלמו; כל 5 הסוכנים מבוססי-תיקייה,
+מוכחים אופליין וחי על or-edri-4; מערכות חדשות נולדות עם המבנה. PR #550 ירוק.
 
 **שינוי תוכנית:** —
 
@@ -261,3 +262,6 @@ request_write_action) → נוסף מנגנון override per-agent. גם: ה-For
   והרחבתי את המתרגם שיֵדע לבנות גם אותם. הוכחתי "על השולחן" שהמתרגם מייצר כל אחד מהם **זהה** למקור,
   ואז הוכחתי **חי על or-edri-4** שהבוט ממשיך לענות כשורה אחרי שכולם נטענים מהתיקיות. גם מערכות חדשות
   ייוולדו מעכשיו עם המבנה הזה. ההתנהגות לא השתנתה — רק *מקור* ההגדרה.
+- שלב 8 הושלם — **סגרתי את הפיתוח.** עדכנתי את שני מסמכי-העל (AGENTS + המניפסט) שיצהירו במפורש:
+  התיקייה היא מקור-האמת, ה-JSON נגזר ממנה, ו"סוכן" = תמיד תת-סוכן (לא המערכת). זהו — הרעיון שהתחלנו
+  ממנו ("סוכן = תיקייה אחת ברורה, לא מפוזר על 5 מקומות") הושלם מקצה לקצה ומוכח חי. 🎉
