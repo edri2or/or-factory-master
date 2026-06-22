@@ -22,7 +22,7 @@ n8n/טלגרם הם כלים. תוספת עוטפת, מדורגת, הוכחת-ה
 |---|---|---|---|
 | 1 | תקן תיקיית-הסוכן (spec + schema) | completed | `templates/system/agents/_spec/**` |
 | 2 | הוכחה: code-agent כתיקייה | completed | `templates/system/agents/code/**` |
-| 3 | המתרגם הדטרמיניסטי (round-trip) | pending | `scripts/compile-agent.sh`, `templates/system/scripts/` |
+| 3 | המתרגם הדטרמיניסטי (round-trip) | completed | `scripts/compile-agent.sh`, `scripts/tests/compile-agent.bats` |
 | 4 | שער CI: ולידציה + generated-in-sync | pending | `scripts/check-agent-folder.sh`, `changelog-check.yml` (×2) |
 | 5 | חיווט המתרגם למנוע ההרכבה | pending | `templates/system/.github/workflows/configure-agent-router.yml` |
 | 6 | `/build-agent` → "צור תיקיית-סוכן" | pending | `.claude/commands/build-agent.md` + מראה-מערכת |
@@ -87,24 +87,35 @@ n8n/טלגרם הם כלים. תוספת עוטפת, מדורגת, הוכחת-ה
 
 ---
 
-### שלב 3 — המתרגם הדטרמיניסטי (round-trip)  *(הוכחה-חיה)*
+### שלב 3 — המתרגם הדטרמיניסטי (round-trip)  *(הוכחה אופליין; ההרצה החיה נדחתה לשלב 5)*
 
 **Acceptance:**
-- [ ] `scripts/compile-agent.sh` קורא `agents/<name>/`, מרנדר מ-`subagent.template.json`,
-      ממלא scaffold-time, משאיר install-time `@@…@@`, וכותב `workflows/n8n/<name>-agent.json`
-      + מעדכן `agents.manifest.json`. v1 = ללא כלים.
-- [ ] מוחלט איך משיגים byte-exact מול ה-id-ים של n8n (נרמול id-ים בדיף או `node_id_prefix`
-      ב-`agent.yaml`) + יישוב פער משפט-ה-orchestrator משלב 1.
+- [x] `scripts/compile-agent.sh` קורא `agents/<name>/`, מרנדר מ-`subagent.template.json`,
+      ממלא scaffold-time, **משאיר install-time `@@…@@`**, ופולט את ה-JSON ל-STDOUT. v1 = ללא כלים
+      (מסרב לסוכן עם כלים בהודעה ברורה). כתיבת הקובץ עצמו + סנכרון `agents.manifest.json` נדחים
+      לשלב 5 (כשהחיווט באמת משתמש במתרגם) — כדי לא לשנות קובץ מקומיט עכשיו.
+- [x] שאלת ה-byte-exact הוכרעה: **נרמול id-ים בדיף** (לא `node_id_prefix`) — המבחן עוטף את
+      `scripts/lib/normalize-n8n.sh` בנוסף-walk שמוחק כל `.id` בכל עומק (כולל ה-id המקונן ב-Set).
+      פער משפט-ה-orchestrator יושב: המתרגם **בונה** את הודעת-המערכת (גוף `instructions.md` + הזנב
+      הקבוע + פסקת-הסגנון) ולא מזריק לתבנית, אז המשפט מ-הקיים בתבנית פשוט לא נכלל.
 
-**הוכחה תפקודית (באותו שלב):** פלט `compile-agent.sh code` == `code-agent.json` הקיים
-(דיף מנורמל = ריק). זו הוכחת-הלבנה על fixture אמיתי.
+**הוכחה תפקודית (באותו שלב):** ✅ `scripts/tests/compile-agent.bats` (6 מבחנים, עוברים): דיף
+מנורמל ריק מול `code-agent.json` הקיים + install-time `@@…@@` נשמרים + JSON תקין/single-voice +
+3 שערי-סירוב (כלים, תיקייה חסרה, slug≠שם). זו הוכחת-הלבנה על fixture אמיתי. shellcheck נקי.
 
-**הוכחת E2E (artifact):** החלה על or-edri-4 + re-import דרך `configure-agent-router.yml` +
-הודעת-קוד אמיתית עוברת → `e2e-proofs/agent-folder-structure.json` טרי — לפני מיזוג.
+**הוכחת E2E (artifact):** **נדחתה לשלב 5** (החלטה מאושרת מול Or): בשלב 3 המתרגם לא מחובר לשום
+מסלול חי, אז אין מה להוכיח חי. ההרצה החיה הראשונה על or-edri-4 (re-import דרך
+`configure-agent-router.yml` + הודעת-קוד אמיתית → `e2e-proofs/agent-folder-structure.json` טרי)
+תקרה בשלב 5, כשהחיווט מפעיל את המתרגם.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם — נכתב `compile-agent.sh` (bash+jq+גשר Python YAML→JSON, ללא `yq`)
+ומבחן ה-round-trip. הוכח אופליין שהמתרגם משחזר את `code-agent.json` בדיוק (אחרי נרמול). ממתין
+לאישור Or למעבר לשלב 4 (שער ה-CI).
 
-**שינוי תוכנית:** —
+**שינוי תוכנית:** שניים, שניהם מצמצמים סיכון/עלות: (1) ההרצה החיה נדחתה משלב 3 לשלב 5 (אין מסלול
+חי בשלב 3). (2) עותק-המערכת של הסקריפט (`templates/system/scripts/compile-agent.sh`) **לא** נשלח
+עכשיו — יישלח בשלב 5 יחד עם החיווט שמשתמש בו + התלות (`normalize`/`subagent.template.json`), כדי
+לא לשלוח קוד-מת ולא לרענן זהב לחינם. לכן שלב 3 לא נגע כלל ב-`templates/system/`.
 
 ---
 
@@ -205,3 +216,6 @@ n8n/טלגרם הם כלים. תוספת עוטפת, מדורגת, הוכחת-ה
 - שלב 2 הושלם — לקחתי את סוכן-הקוד הקיים והצגתי אותו בפעם הראשונה כ**תיקייה אחת** (3 קבצים
   קטנים וברורים), כל ערך הועתק מילה-במילה מההגדרה הקיימת. בדקתי שזה תקין ושהטקסט זהה במדויק
   למקור — זו ההוכחה שהמבנה החדש נאמן. עדיין לא נגעתי בשום מערכת חיה.
+- שלב 3 הושלם — בניתי את ה"מתרגם": תוכנה פשוטה שלוקחת את תיקיית-הסוכן ובונה ממנה אוטומטית את
+  ההגדרה שה-n8n מריץ. הוכחתי "על השולחן" (בלי לגעת במערכת חיה) שמה שהמתרגם מייצר עבור סוכן-הקוד
+  **זהה** למה שקיים היום. כלומר אפשר לסמוך עליו שהוא נאמן למקור. אפס עלות, אפס נגיעה במערכת חיה.
