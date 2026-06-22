@@ -64,3 +64,21 @@
   wiring (and shipping `check-agent-folder.sh` + the compiler into systems via `provision-system.yml`) is
   deferred to **Change 7**, when agent-folders actually ship into systems; until then a system has no
   `agents/` dir to gate. So Change 4 touches no `templates/system/**` file and needs no golden refresh.
+- **Agent-as-a-folder standard — Change 5 of 8 (`agent-folder-structure`): wire the compiler into the
+  assembly engine.** Relocated the compiler to `templates/system/scripts/compile-agent.sh` (single source
+  of truth — its default paths resolve relative to its parent dir, so the same file works unflagged in the
+  factory checkout AND inside a provisioned system repo) and taught the system's
+  `configure-agent-router.yml` to **regenerate each agent's n8n JSON from its canonical `agents/<slug>/`
+  folder** (via the compiler) before the existing install-time `sed` pass. The wiring is **purely additive
+  and soft-fail**: it regenerates only agents that have a compilable folder (no-tools, compiler v1) and
+  **falls back to the committed `workflows/n8n/<name>.json`** for any agent not yet foldered or carrying
+  tools, so the install path can never regress. Today only `code` is foldered, so only `code` is folder-
+  driven; the other four still come from their committed JSON until Change 7. Verified by simulating the
+  in-system invocation: the compiler runs with defaults, leaves the install-time `@@…@@` tokens intact,
+  and the regenerated `code` JSON is **normalized-identical** to the committed `code-agent.json` (live
+  behavior provably unchanged). Refreshed the system golden. **Live proof (required before merge):** this
+  change touches `configure-agent-router.yml`, a behavior-bearing surface, so the `e2e-surfaces.json` E2E
+  gate requires a fresh proof from the standing proving system **or-edri-4** — applied + proven live there
+  (`e2e-verify.yml`, `target_ref=<branch>`) before this lands on `main`. **Scope:** shipping the compiler
+  + agent-folders into NEW systems via `provision-system.yml` (and the system-side gate wiring) is deferred
+  to Change 7; until then new systems gracefully fall back to committed JSON.

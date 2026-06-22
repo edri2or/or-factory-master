@@ -49,10 +49,16 @@ yaml2json() {
 }
 
 # --- args ---
+# Canonical home: templates/system/scripts/compile-agent.sh. REPO_ROOT is this
+# script's parent dir, so the defaults resolve correctly in BOTH layouts with no
+# flags — factory checkout (REPO_ROOT=templates/system) and a provisioned system
+# repo (REPO_ROOT=the repo root), since both carry agents/ + templates/n8n/ under
+# REPO_ROOT. configure-agent-router.yml relies on these defaults; the factory gate
+# and bats pass --agents-dir explicitly.
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-AGENTS_DIR="$REPO_ROOT/templates/system/agents"
-TEMPLATE="$REPO_ROOT/templates/system/templates/n8n/subagent.template.json"
+AGENTS_DIR="$REPO_ROOT/agents"
+TEMPLATE="$REPO_ROOT/templates/n8n/subagent.template.json"
 NAME=""
 while [ $# -gt 0 ]; do
   case "$1" in

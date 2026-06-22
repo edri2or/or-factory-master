@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# compile-agent.bats — the round-trip brick-proof for scripts/compile-agent.sh.
+# compile-agent.bats — the round-trip brick-proof for templates/system/scripts/compile-agent.sh.
 #
 # The faithfulness proof of the agent-folder compiler (agent-folder-structure
 # devplan, Change 3): compiling the canonical `code` agent-folder must reproduce
@@ -35,7 +35,7 @@ norm() { normalize_n8n | jq -S 'walk(if type=="object" and has("id") then del(.i
 
 @test "compile-agent.sh code reproduces committed code-agent.json (normalized round-trip)" {
   local compiled committed
-  compiled="$(bash "$REPO_ROOT/scripts/compile-agent.sh" code | norm)"
+  compiled="$(bash "$REPO_ROOT/templates/system/scripts/compile-agent.sh" code | norm)"
   committed="$(norm < "$REPO_ROOT/templates/system/workflows/n8n/code-agent.json")"
   if [ "$compiled" != "$committed" ]; then
     echo "round-trip mismatch — compiled (<) vs committed (>):" >&2
@@ -45,7 +45,7 @@ norm() { normalize_n8n | jq -S 'walk(if type=="object" and has("id") then del(.i
 }
 
 @test "compiled code agent leaves install-time placeholders intact" {
-  run bash "$REPO_ROOT/scripts/compile-agent.sh" code
+  run bash "$REPO_ROOT/templates/system/scripts/compile-agent.sh" code
   assert_success
   assert_output --partial '@@CRED_POSTGRES_ID@@'
   assert_output --partial '@@CRED_OPENROUTER_ID@@'
@@ -54,7 +54,7 @@ norm() { normalize_n8n | jq -S 'walk(if type=="object" and has("id") then del(.i
 
 @test "compiled code agent is valid JSON and a single-voice agent (no Telegram, executeWorkflowTrigger, {reply})" {
   local out
-  out="$(bash "$REPO_ROOT/scripts/compile-agent.sh" code)"
+  out="$(bash "$REPO_ROOT/templates/system/scripts/compile-agent.sh" code)"
   # valid JSON
   printf '%s' "$out" | jq empty
   # executeWorkflowTrigger present, no telegram/webhook trigger
@@ -81,13 +81,13 @@ EOF
 tools:
   - github_readonly
 EOF
-  run bash "$REPO_ROOT/scripts/compile-agent.sh" toolful --agents-dir "$agents"
+  run bash "$REPO_ROOT/templates/system/scripts/compile-agent.sh" toolful --agents-dir "$agents"
   assert_failure
   assert_output --partial 'no-tools'
 }
 
 @test "missing agent folder fails loudly" {
-  run bash "$REPO_ROOT/scripts/compile-agent.sh" nope --agents-dir "$(make_tmpdir)"
+  run bash "$REPO_ROOT/templates/system/scripts/compile-agent.sh" nope --agents-dir "$(make_tmpdir)"
   assert_failure
   assert_output --partial 'agent folder not found'
 }
@@ -104,7 +104,7 @@ architecture: single-llm
 EOF
   printf 'body\n' > "$agents/mismatch/instructions.md"
   printf 'tools: []\n' > "$agents/mismatch/tools.yaml"
-  run bash "$REPO_ROOT/scripts/compile-agent.sh" mismatch --agents-dir "$agents"
+  run bash "$REPO_ROOT/templates/system/scripts/compile-agent.sh" mismatch --agents-dir "$agents"
   assert_failure
   assert_output --partial 'slug'
 }

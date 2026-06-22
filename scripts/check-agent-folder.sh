@@ -27,7 +27,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 AGENTS_DIR="${AGENTS_DIR:-$REPO_ROOT/templates/system/agents}"
 WF_DIR="${WF_DIR:-$REPO_ROOT/templates/system/workflows/n8n}"
 SPEC_DIR="$AGENTS_DIR/_spec"
-COMPILER="${COMPILER:-$REPO_ROOT/scripts/compile-agent.sh}"
+COMPILER="${COMPILER:-$REPO_ROOT/templates/system/scripts/compile-agent.sh}"
 # shellcheck source=lib/normalize-n8n.sh
 . "$REPO_ROOT/scripts/lib/normalize-n8n.sh"
 
