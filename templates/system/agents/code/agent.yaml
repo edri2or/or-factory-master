@@ -1,0 +1,7 @@
+slug: code
+intent: code
+description: Writing, editing, reviewing code (minimal LLM, no tools).
+confidence_threshold: 0.7
+model: anthropic/claude-haiku-4.5
+architecture: single-llm
+temperature: 0.3

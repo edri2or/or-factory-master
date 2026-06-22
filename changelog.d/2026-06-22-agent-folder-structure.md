@@ -15,3 +15,15 @@
   `code-agent.json` omits the template's "You return your answer to the orchestrator…" sentence, so the
   guaranteed fixed prompt tail is defined to begin at " Answer in the user's language…". Refreshed the
   system golden (`tests/golden/system/`).
+- **Agent-as-a-folder standard — Change 2 of 8 (`agent-folder-structure`).** Authored the first real
+  agent-folder, `templates/system/agents/code/` (`agent.yaml` + `instructions.md` + `tools.yaml`),
+  faithfully representing today's committed `workflows/n8n/code-agent.json` — the round-trip proof
+  target for the deterministic compiler (Change 3). Every value is extracted verbatim from the existing
+  artifacts: `model`/`temperature` from the `OpenRouter Chat Model` node, `description`/`intent`/
+  `confidence_threshold` from the `code` row of `agents.manifest.json`, and `instructions.md` is the
+  `Code Reply` chainLlm system-message body **minus** the compiler's fixed tail and style-profile clause
+  (confirmed byte-exact against the committed prompt). `code` is a no-tools `single-llm` agent, so
+  `tools.yaml` is `tools: []`. Both YAML files validate against the Change-1 schemas
+  (`_spec/agent.schema.json` / `_spec/tools.schema.json`). This is **doc/content-only** — it adds no
+  compiler and changes nothing a freshly-provisioned system runs today (the live install path still
+  consumes the committed JSON). Refreshed the system golden (`tests/golden/system/`).
