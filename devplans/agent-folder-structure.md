@@ -23,7 +23,7 @@ n8n/טלגרם הם כלים. תוספת עוטפת, מדורגת, הוכחת-ה
 | 1 | תקן תיקיית-הסוכן (spec + schema) | completed | `templates/system/agents/_spec/**` |
 | 2 | הוכחה: code-agent כתיקייה | completed | `templates/system/agents/code/**` |
 | 3 | המתרגם הדטרמיניסטי (round-trip) | completed | `scripts/compile-agent.sh`, `scripts/tests/compile-agent.bats` |
-| 4 | שער CI: ולידציה + generated-in-sync | pending | `scripts/check-agent-folder.sh`, `changelog-check.yml` (×2) |
+| 4 | שער CI: ולידציה + generated-in-sync | completed | `scripts/check-agent-folder.sh`, `changelog-check.yml` (factory) |
 | 5 | חיווט המתרגם למנוע ההרכבה | pending | `templates/system/.github/workflows/configure-agent-router.yml` |
 | 6 | `/build-agent` → "צור תיקיית-סוכן" | pending | `.claude/commands/build-agent.md` + מראה-מערכת |
 | 7 | הגירת 5 הסוכנים הגנריים | pending | `templates/system/agents/{ops,code,research,infra,unknown}/` |
@@ -122,19 +122,25 @@ n8n/טלגרם הם כלים. תוספת עוטפת, מדורגת, הוכחת-ה
 ### שלב 4 — שער CI: ולידציה + generated-in-sync
 
 **Acceptance:**
-- [ ] `scripts/check-agent-folder.sh` מאמת `agent.yaml`/`tools.yaml` מול הסכמות (fail-closed, `yq`).
-- [ ] בדיקת generated-in-sync: שינוי בתיקייה ⇒ ה-JSON הנגזר חודש ותואם (תאום ל-`check-golden-sync.sh`).
-- [ ] השער מחווט ל-"Changelog gates" ב-`.github/workflows/changelog-check.yml` וב-
-      `templates/system/.github/workflows/changelog-check.yml`.
+- [x] `scripts/check-agent-folder.sh` מאמת `agent.yaml`/`tools.yaml` מול הסכמות (fail-closed) —
+      דרך בודק draft-07 ב-`python3`+`pyyaml` (לא `yq`, שהריפו נמנע ממנו במכוון).
+- [x] בדיקת generated-in-sync: לכל סוכן-תיקייה שיש לו גם JSON מקומיט, פלט המתרגם חייב לשחזר אותו
+      (דיף מנורמל = ריק) — תאום ל-`check-golden-sync.sh`. no-op כשאין תיקיית `agents/`.
+- [x] השער מחווט ל-"Changelog gates" ב-`.github/workflows/changelog-check.yml` (השער הנדרש שחוסם מיזוג).
 
-**הוכחה תפקודית (באותו שלב):** הרצה מקומית — תיקייה תקינה עוברת, תיקייה פגומה (שדה חסר)
-נכשלת ב-exit 1; שינוי-תיקייה-בלי-regenerate נכשל.
+**הוכחה תפקודית (באותו שלב):** ✅ `scripts/tests/check-agent-folder.bats` (8 מבחנים, עוברים):
+העץ האמיתי עובר; אין-תיקייה = no-op; שדה-חובה חסר / enum פסול / מפתח לא-מוכר / כלי לא-מוכר —
+כולם נכשלים ב-exit 1; drift בין תיקייה ל-JSON נכשל. shellcheck + yamllint נקיים.
 
 **הוכחת E2E (artifact):** לא-התנהגותי (שער CI בלבד).
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם — נכתב השער + מבחן ה-bats שמוכיח את השיניים שלו, וחוּוט ל-CI.
+ממתין לאישור Or למעבר לשלב 5 (חיווט המתרגם למנוע ההרכבה — **שלב ההוכחה-החיה הראשון** על or-edri-4).
 
-**שינוי תוכנית:** —
+**שינוי תוכנית:** השער חוּוט ל-workflow של **הפקטורי בלבד**. החיווט לצד-המערכת
+(`templates/system/.github/workflows/changelog-check.yml`) + שליחת `check-agent-folder.sh` והמתרגם
+לתוך מערכות דרך `provision-system.yml` — נדחים ל**שלב 7**, כשתיקיות-הסוכן באמת נשלחות למערכות (עד אז
+למערכת אין `agents/` לבדוק). לכן שלב 4 לא נגע ב-`templates/system/` ולא נדרש רענון זהב — עקבי עם שלב 3.
 
 ---
 
@@ -219,3 +225,6 @@ n8n/טלגרם הם כלים. תוספת עוטפת, מדורגת, הוכחת-ה
 - שלב 3 הושלם — בניתי את ה"מתרגם": תוכנה פשוטה שלוקחת את תיקיית-הסוכן ובונה ממנה אוטומטית את
   ההגדרה שה-n8n מריץ. הוכחתי "על השולחן" (בלי לגעת במערכת חיה) שמה שהמתרגם מייצר עבור סוכן-הקוד
   **זהה** למה שקיים היום. כלומר אפשר לסמוך עליו שהוא נאמן למקור. אפס עלות, אפס נגיעה במערכת חיה.
+- שלב 4 הושלם — הוספתי "שומר" אוטומטי שרץ על כל שינוי: הוא בודק שכל תיקיית-סוכן בנויה נכון, ושאם
+  שינו תיקייה — מה שהמתרגם מייצר עדיין תואם להגדרה הקיימת. אם מישהו יקלקל תיקייה או ייצור פער, ה-CI
+  יעצור אותו אדום. כתבתי גם מבחן שמוודא שהשומר באמת תופס תקלות. עדיין אפס נגיעה במערכת חיה.

@@ -47,3 +47,20 @@
   (`templates/system/scripts/compile-agent.sh`) is deferred to Change 5 too (ships with the wiring that
   uses it, avoiding dead code) — so Change 3 touches no `templates/system/**` file and needs no golden
   refresh. Factory-side only; nothing a provisioned system runs changes.
+- **Agent-as-a-folder standard — Change 4 of 8 (`agent-folder-structure`).** Added the fail-closed CI gate
+  `scripts/check-agent-folder.sh` (+ its teeth-proving test `scripts/tests/check-agent-folder.bats`, 8
+  tests) and wired it into the **Changelog gates** job (the required, merge-blocking context) of
+  `.github/workflows/changelog-check.yml`. The gate enforces two invariants over `templates/system/agents/`:
+  (1) **schema** — every `agents/<name>/` folder has the 3 required files and its `agent.yaml`/`tools.yaml`
+  validate against `agents/_spec/*.schema.json` (required keys, types, enums, patterns,
+  `additionalProperties:false`), via a pure `python3`+`pyyaml` draft-07 subset checker (no `jsonschema`
+  dep); and (2) **generated-in-sync** — for every foldered agent that also has a committed
+  `workflows/n8n/<name>-agent.json`, the deterministic compiler must reproduce it semantically (normalized
+  diff = empty, reusing the Change-3 normalizer), locking the folder and the JSON together through the
+  transition (skipped for tool-carrying agents until the compiler grows tool injection). It is a **no-op
+  clean PASS** when there is no `agents/` dir, so it is safe anywhere. The step adds a `pyyaml` guard
+  mirroring the compiler's YAML→JSON bridge. **Scope refinement (consistent with Change 3):** wired into
+  the **factory** workflow only — the system-side `templates/system/.github/workflows/changelog-check.yml`
+  wiring (and shipping `check-agent-folder.sh` + the compiler into systems via `provision-system.yml`) is
+  deferred to **Change 7**, when agent-folders actually ship into systems; until then a system has no
+  `agents/` dir to gate. So Change 4 touches no `templates/system/**` file and needs no golden refresh.
