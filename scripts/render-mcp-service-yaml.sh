@@ -188,6 +188,13 @@ emit_env PORT "3001"
 emit_env HOST "0.0.0.0"
 emit_env TRUST_PROXY "1"
 emit_env LOG_LEVEL "info"
+# Idle-session reap window. n8n-mcp defaults to 5 min (was 30 before v2.33.5);
+# a multi-tenant operator dev session pausing past that yielded the intermittent
+# "Session not found / expired" (HTTP 400, JSON-RPC -32001). 120 min is generous
+# (the documented range is 15–30); the proxy's transparent re-init + the durable
+# session-store still recover even past this, so this is purely the cheap first
+# line of defense (Layer A) — see devplans/n8n-mcp-session-durability.md.
+emit_env SESSION_TIMEOUT_MINUTES "120"
 emit_secret AUTH_TOKEN n8n-mcp-internal-auth-token
 emit_secret MCP_AUTH_TOKEN n8n-mcp-internal-auth-token
 
