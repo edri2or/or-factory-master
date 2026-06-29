@@ -203,6 +203,16 @@ emit_env LOG_LEVEL "info"
 # session-store still recover even past this, so this is purely the cheap first
 # line of defense (Layer A) — see devplans/n8n-mcp-session-durability.md.
 emit_env SESSION_TIMEOUT_MINUTES "120"
+# Auth-attempt rate limit. n8n-mcp defaults to AUTH_RATE_LIMIT_MAX=20 per
+# AUTH_RATE_LIMIT_WINDOW=900000ms (15 min) PER IP — a brute-force guard meant for
+# a public HTTP server. Here the sidecar is localhost-only and its SOLE client is
+# this gateway (one source IP) presenting a constant, server-injected AUTH_TOKEN,
+# so every tenant's traffic shares ONE 20/15min bucket and the guard adds no
+# security (client auth is already enforced upstream at the gateway) while
+# throttling legitimate multi-tenant dev traffic — a real operator session makes
+# far more than 20 MCP calls in 15 min and would hit "Too many authentication
+# attempts". Raise it well clear of normal bursts; client auth stays the real gate.
+emit_env AUTH_RATE_LIMIT_MAX "10000"
 emit_secret AUTH_TOKEN n8n-mcp-internal-auth-token
 emit_secret MCP_AUTH_TOKEN n8n-mcp-internal-auth-token
 

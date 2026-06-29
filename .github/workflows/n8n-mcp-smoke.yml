@@ -12,7 +12,7 @@ on:
       system:
         description: "System to smoke-test (must be on the gateway allowlist)"
         required: false
-        default: "or-adhd-agent"
+        default: "or-edri-4"
         type: string
 
 concurrency:

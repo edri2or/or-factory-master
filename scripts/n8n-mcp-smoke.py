@@ -37,7 +37,7 @@ import urllib.error
 
 GATEWAY = os.environ["GATEWAY_URL"].rstrip("/")
 ADMIN = os.environ["ADMIN_SECRET"]
-SYSTEM = os.environ.get("SMOKE_SYSTEM", "or-adhd-agent")
+SYSTEM = os.environ.get("SMOKE_SYSTEM", "or-edri-4")
 RUN_ID = os.environ.get("SMOKE_RUN_ID", "smoke")
 PHASE = os.environ.get("SMOKE_PHASE", "full")
 STATE_FILE = os.environ.get("SMOKE_STATE_FILE", "")
