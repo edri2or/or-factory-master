@@ -35,6 +35,15 @@
 import type { Request, Response } from 'express';
 import { Readable } from 'node:stream';
 import { resolveN8nTarget, type N8nTarget } from './n8n-client.js';
+import { defaultBackend, resolveStoredSession, type SessionBackend } from './session-store.js';
+
+// Durable mirror of the in-RAM `sessions` map (below). Null when the durable
+// tier is disabled (SESSION_STORE_ENABLED!="1"). Lets recovery survive a Cloud
+// Run instance replacement that wipes the RAM map. Injectable for tests.
+let backend: SessionBackend | null = defaultBackend();
+export function setSessionBackend(b: SessionBackend | null): void {
+  backend = b;
+}
 
 // Internal sidecar MCP endpoint, e.g. http://localhost:3001/mcp, and its bearer.
 // Absent → the live-write feature is dormant (routes 503) until deployed with
@@ -133,7 +142,7 @@ const sessions = new Map<string, SessionRecord>();
 const recovering = new Map<string, Promise<string | null>>();
 const SESSION_CAP = 2000;
 
-function rememberSession(clientSid: string, initBody: string, upstreamSid: string): void {
+function rememberSession(clientSid: string, initBody: string, upstreamSid: string, system: string): void {
   sessions.set(clientSid, { initBody, upstreamSid });
   // Map preserves insertion order → evict oldest first when over the cap.
   while (sessions.size > SESSION_CAP) {
@@ -141,6 +150,10 @@ function rememberSession(clientSid: string, initBody: string, upstreamSid: strin
     if (oldest === undefined) break;
     sessions.delete(oldest);
   }
+  // Durable write-through, fire-and-forget, fail-open: the RAM map above is the
+  // authoritative tier for this instance; the store only rescues a future
+  // instance after replacement. backend swallows its own errors.
+  void backend?.put(clientSid, { initBody, upstreamSid, system });
 }
 
 // One upstream call to the sidecar, with the tenant creds injected server-side.
@@ -180,12 +193,26 @@ async function fetchUpstream(
 // Transparently mint a fresh upstream session for a client whose session was
 // reaped: replay the remembered `initialize`, then the `initialized`
 // notification (n8n-mcp gates tool calls on the completed handshake), and record
-// the new upstream session id. Returns the new sid, or null if we can't recover
-// (e.g. we never saw this client's initialize — the gateway restarted and lost
-// the map; then the original error is passed through and the client must re-init).
-async function reinitUpstream(clientSid: string, target: N8nTarget, protocolVersion?: string): Promise<string | null> {
-  const rec = sessions.get(clientSid);
-  if (!rec) return null;
+// the new upstream session id. On a RAM-map miss (the gateway instance was
+// replaced and lost the map) it falls back to the durable store, rehydrating the
+// record only when it is bound to the SAME tenant. Returns the new sid, or null
+// if there is genuinely no record anywhere (then the original error is passed
+// through and the client must re-init).
+async function reinitUpstream(
+  clientSid: string,
+  target: N8nTarget,
+  system: string,
+  protocolVersion?: string,
+): Promise<string | null> {
+  let rec = sessions.get(clientSid);
+  if (!rec) {
+    // Map miss — likely a cross-instance replacement. Try the durable store
+    // (tenant-guarded, fail-open: null on any error or unknown/foreign record).
+    const stored = await resolveStoredSession(clientSid, system, backend);
+    if (!stored) return null;
+    rec = { initBody: stored.initBody, upstreamSid: stored.upstreamSid };
+    sessions.set(clientSid, rec); // rehydrate the hot tier
+  }
   const initResp = await fetchUpstream('POST', undefined, rec.initBody, target, protocolVersion);
   const newSid = initResp.headers.get('mcp-session-id');
   try {
@@ -209,6 +236,8 @@ async function reinitUpstream(clientSid: string, target: N8nTarget, protocolVers
   }
   rec.upstreamSid = newSid;
   sessions.set(clientSid, rec);
+  // Refresh the stored record (new upstreamSid + a fresh TTL). Fail-open.
+  void backend?.put(clientSid, { initBody: rec.initBody, upstreamSid: newSid, system });
   return newSid;
 }
 
@@ -262,8 +291,11 @@ export async function proxyToN8nMcp(req: Request, res: Response, system: string)
   const protocolVersion = typeof req.headers['mcp-protocol-version'] === 'string' ? (req.headers['mcp-protocol-version'] as string) : undefined;
   const initialize = isInitialize(req.body);
 
-  // Client close → drop our memory of that session (hygiene).
-  if (req.method === 'DELETE' && clientSid) sessions.delete(clientSid);
+  // Client close → drop our memory of that session (hygiene), in both tiers.
+  if (req.method === 'DELETE' && clientSid) {
+    sessions.delete(clientSid);
+    void backend?.del(clientSid);
+  }
 
   // Translate the client's stable session id → the CURRENT upstream session id.
   // If a recovery is mid-flight for this client, wait for it so we use the fresh
@@ -303,11 +335,15 @@ export async function proxyToN8nMcp(req: Request, res: Response, system: string)
       } catch {
         /* ignore */
       }
-      if (looksLikeSessionExpired(upstream.status, ct, text) && sessions.has(clientSid)) {
+      // No `&& sessions.has(clientSid)` guard: after an instance replacement the
+      // RAM map is empty, so recovery must still be attempted — reinitUpstream
+      // consults the durable store and returns null cleanly if there is truly no
+      // record (then we fall through to surfacing the original error below).
+      if (looksLikeSessionExpired(upstream.status, ct, text)) {
         // Serialize recovery per client so concurrent calls re-init only once.
         let p = recovering.get(clientSid);
         if (!p) {
-          p = reinitUpstream(clientSid, target, protocolVersion).finally(() => recovering.delete(clientSid));
+          p = reinitUpstream(clientSid, target, system, protocolVersion).finally(() => recovering.delete(clientSid));
           recovering.set(clientSid, p);
         }
         let newSid: string | null = null;
@@ -348,7 +384,7 @@ export async function proxyToN8nMcp(req: Request, res: Response, system: string)
   // Normal path (incl. initialize): remember a newly-minted session, then stream.
   if (initialize) {
     const newSid = upstream.headers.get('mcp-session-id');
-    if (newSid) rememberSession(newSid, bodyInit, newSid);
+    if (newSid) rememberSession(newSid, bodyInit, newSid, system);
     streamResponse(upstream, res); // initialize establishes the client's id = newSid
     return;
   }
