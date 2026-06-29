@@ -660,22 +660,32 @@ jobs:
           # surface a broken store as a LOUD, readable failure instead of a silent
           # fail-open. Runtime stays fail-open regardless; this only gates DEPLOY.
           echo "=== Firestore store verification ==="
-          FS_OK=1
-          DB_STATE=$(gcloud firestore databases describe --database="(default)" \
-            --project="${GCP_PROJECT}" --format='value(name,type,locationId)' 2>/tmp/fsv.err) \
-            && echo "DB: ${DB_STATE}" \
-            || { echo "::error::Firestore default DB not describable: $(cat /tmp/fsv.err)"; FS_OK=0; }
+          # Hard gate ONLY on the default database being describable — a check the
+          # broker CAN evaluate once it holds roles/datastore.owner, and the one
+          # thing that must be true for the store to exist. The runtime SA's
+          # roles/datastore.user binding is a one-time bootstrap grant (the broker
+          # cannot setIamPolicy on the control project) AND the broker may even
+          # lack project-IAM *read*, so it is checked only as a soft ::warning::;
+          # the live n8n-mcp-smoke recover phase is the real end-to-end proof of
+          # the runtime SA's data-plane access.
+          if DB_STATE=$(gcloud firestore databases describe --database="(default)" \
+               --project="${GCP_PROJECT}" --format='value(name,type,locationId)' 2>/tmp/fsv.err); then
+            echo "DB: ${DB_STATE}"
+          else
+            echo "::error::Firestore default DB not describable: $(cat /tmp/fsv.err)"
+            echo "Firestore session store not ready — failing so the cause is visible."
+            echo "Fix: grant the broker roles/datastore.owner on ${GCP_PROJECT} (one-time)."
+            exit 1
+          fi
           if gcloud projects get-iam-policy "${GCP_PROJECT}" \
                --flatten="bindings[].members" \
                --filter="bindings.role=roles/datastore.user AND bindings.members:serviceAccount:${RUNTIME_SA_EMAIL}" \
                --format='value(bindings.members)' 2>/dev/null | grep -q "${RUNTIME_SA_EMAIL}"; then
             echo "IAM: ${RUNTIME_SA_EMAIL} has roles/datastore.user"
           else
-            echo "::error::runtime SA ${RUNTIME_SA_EMAIL} is missing roles/datastore.user"
-            FS_OK=0
+            echo "::warning::could not confirm ${RUNTIME_SA_EMAIL} has roles/datastore.user (broker may lack project-IAM read; the smoke recover phase is the real proof)."
           fi
-          [ "${FS_OK}" = 1 ] || { echo "Firestore session store not ready — failing so the cause is visible."; exit 1; }
-          echo "PASS: Firestore session store verified (DB present + runtime SA granted)."
+          echo "PASS: Firestore default database present (store DB verified)."
 
       # No other "Grant runtime SA secretAccessor / actAs" steps — broker SA is
       # the runtime SA (see env-block note), and the broker already has access to
