@@ -165,6 +165,14 @@ emit_env WORKSPACE_ALLOWED_SYSTEMS "${WORKSPACE_ALLOWED_SYSTEMS}"
 emit_env FACTORY_TOOLS_ALLOWED_SYSTEMS "${FACTORY_TOOLS_ALLOWED_SYSTEMS}"
 emit_env COORDINATOR_REQUESTER_REPOS "${COORDINATOR_REQUESTER_REPOS}"
 emit_env COORDINATOR_WORKER_REPOS "${COORDINATOR_WORKER_REPOS}"
+# Durable n8n-mcp session store (Layer B of the session-durability fix): the
+# Firestore project the gateway persists per-client {initBody, upstreamSid,
+# system} records to, so transparent re-init survives a Cloud Run instance
+# replacement. ENABLED="1" turns the durable tier on; "0" is the instant
+# RAM-only rollback (no code change). Auth is ambient ADC (the runtime SA's
+# roles/datastore.user) — no secret. See services/mcp-server/src/session-store.ts.
+emit_env SESSION_STORE_PROJECT "or-factory-master-control"
+emit_env SESSION_STORE_ENABLED "1"
 for pair in "${GATEWAY_SECRETS[@]}"; do
   emit_secret "${pair%%=*}" "${pair#*=}"
 done

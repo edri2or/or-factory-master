@@ -63,3 +63,38 @@ jobs:
           echo "::add-mask::${ADMIN_SECRET}"
           export GATEWAY_URL ADMIN_SECRET
           python3 scripts/n8n-mcp-smoke.py
+
+      - name: Prove durable session recovery across an instance replacement
+        env:
+          SMOKE_SYSTEM: ${{ inputs.system }}
+          SMOKE_RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          # Layer-B acceptance gate: establish a live session, FORCE the single
+          # warm gateway instance to be replaced (a new Cloud Run revision wipes
+          # the in-RAM session map — the exact event DEPLOY_NONCE/maintenance/OOM
+          # cause in production), then reuse the SAME session id. Success can only
+          # come from the durable Firestore session store rehydrating it.
+          GATEWAY_URL=$(gcloud run services describe "${SERVICE}" \
+            --region="${GCP_REGION}" --project="${GCP_PROJECT}" \
+            --format='value(status.url)')
+          ADMIN_SECRET=$(gcloud secrets versions access latest \
+            --secret="mcp-server-admin-secret" --project="${GCP_PROJECT}" | tr -d '\r\n')
+          echo "::add-mask::${ADMIN_SECRET}"
+          export GATEWAY_URL ADMIN_SECRET
+          export SMOKE_STATE_FILE="${RUNNER_TEMP}/n8n-mcp-smoke-state.json"
+
+          SMOKE_PHASE=init python3 scripts/n8n-mcp-smoke.py
+
+          # Force a fresh revision → the min=max=1 instance is replaced (RAM map
+          # gone). SMOKE_RESTART_NONCE only perturbs the template to roll the
+          # revision; it is ignored by the gateway and dropped by the next real
+          # deploy's full `services replace`. The update waits until the new
+          # revision is serving 100% of traffic.
+          echo "Forcing a gateway instance replacement…"
+          gcloud run services update "${SERVICE}" \
+            --region="${GCP_REGION}" --project="${GCP_PROJECT}" \
+            --update-env-vars="SMOKE_RESTART_NONCE=${SMOKE_RUN_ID}" --quiet >/dev/null
+          echo "New revision serving; reusing the pre-restart session."
+
+          SMOKE_PHASE=recover python3 scripts/n8n-mcp-smoke.py

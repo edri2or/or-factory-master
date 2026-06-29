@@ -613,12 +613,59 @@ jobs:
             echo "INFO: could not modify gmail-oauth-refresh-token IAM (grant may already exist)."
           fi
 
-      # No other "Grant runtime SA secretAccessor / project-level read / actAs"
-      # steps — broker SA is the runtime SA (see env-block note), and the
-      # broker already has access to every other secret it mounts (it created
-      # them in Stages 3/4 of bootstrap-record) and the cloud-resource APIs it
-      # needs. The actAs self-grant for Cloud Run deploy is provided by the
-      # broker SA's IAM policy from Stage 2.
+      - name: Ensure Firestore session store (database + TTL + runtime SA grant)
+        run: |
+          set -uo pipefail
+          # Durable n8n-mcp session store (Layer B of session durability): the
+          # gateway persists per-client {initBody, upstreamSid, system} records
+          # (NO secrets) to Firestore so transparent re-init survives a Cloud Run
+          # instance replacement. All idempotent + best-effort: a failure here
+          # never fails the deploy — the store is FAIL-OPEN, so until the database
+          # and grant exist the gateway simply runs RAM-only (today's behavior),
+          # no regression. me-west1 is the factory region and is a supported
+          # Firestore Native location; the database location is IMMUTABLE.
+          gcloud services enable firestore.googleapis.com --project="${GCP_PROJECT}" --quiet \
+            >/dev/null 2>&1 && echo "PASS: firestore.googleapis.com enabled." \
+            || echo "INFO: could not enable firestore API (may already be enabled / lacking perm)."
+          if gcloud firestore databases describe --database="(default)" \
+               --project="${GCP_PROJECT}" >/dev/null 2>&1; then
+            echo "INFO: default Firestore database exists; leaving as-is."
+          else
+            if gcloud firestore databases create --location="${GCP_REGION}" \
+                 --type=firestore-native --project="${GCP_PROJECT}" --quiet >/dev/null 2>&1; then
+              echo "PASS: created default Firestore Native database in ${GCP_REGION}."
+            else
+              echo "INFO: could not create Firestore database (store stays fail-open RAM-only)."
+            fi
+          fi
+          # Server-side TTL reaping on expireAt for the sessions collection group.
+          # Best-effort: app-side TTL (decodeSessionDoc) already enforces expiry,
+          # so this is cleanup only. Configurable before any documents exist.
+          if gcloud firestore fields ttls update expireAt \
+               --collection-group=n8n-mcp-sessions --enable-ttl \
+               --database="(default)" --project="${GCP_PROJECT}" --quiet >/dev/null 2>&1; then
+            echo "PASS: ensured Firestore TTL policy on n8n-mcp-sessions.expireAt."
+          else
+            echo "INFO: could not set Firestore TTL (app-side TTL still enforces expiry)."
+          fi
+          # Grant the runtime SA the Datastore/Firestore data-plane role. Mirrors
+          # the secret grants above (best-effort; IAM is eventually consistent, so
+          # the first store calls after a fresh grant fail-open until it propagates).
+          if gcloud projects add-iam-policy-binding "${GCP_PROJECT}" \
+               --member="serviceAccount:${RUNTIME_SA_EMAIL}" \
+               --role="roles/datastore.user" --condition=None --quiet >/dev/null 2>&1; then
+            echo "PASS: ensured runtime SA roles/datastore.user on ${GCP_PROJECT}."
+          else
+            echo "INFO: could not grant roles/datastore.user (may already exist)."
+          fi
+
+      # No other "Grant runtime SA secretAccessor / actAs" steps — broker SA is
+      # the runtime SA (see env-block note), and the broker already has access to
+      # every other secret it mounts (it created them in Stages 3/4 of
+      # bootstrap-record) and the cloud-resource APIs it needs. The actAs
+      # self-grant for Cloud Run deploy is provided by the broker SA's IAM policy
+      # from Stage 2. (The one deliberate project-level data grant is
+      # roles/datastore.user above, for the durable session store.)
 
       - name: Ensure Artifact Registry repo exists
         run: |
