@@ -6,7 +6,7 @@ DEVPLAN — youtube-data-api-key
 dev_name: מפתח YouTube Data API v3 למערכת or-aios
 slug: youtube-data-api-key
 opened: 2026-06-30
-status: active   # active בזמן פיתוח → completed בסיום (משחרר את שער ה-CI)
+status: completed   # active בזמן פיתוח → completed בסיום (משחרר את שער ה-CI)
 ---
 
 # תוכנית פיתוח — מפתח YouTube Data API v3 למערכת or-aios
@@ -24,8 +24,8 @@ runtime-sa. זו בקשת provision — אין יכולת n8n חדשה, רק plu
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
 | 1 | בניית workflow ה-provision + שערי CI | completed | `.github/workflows/provision-youtube-data-api-key.yml`, `monitoring/registry-exempt.txt`, `changelog.d/`, `devplans/` |
-| 2 | מיזוג ל-main + הרצה חיה + אימות הסוד וההרשאות | pending | (הרצת workflow) |
-| 3 | סגירה: עדכון or-aios (מצב הבקשה) + נעילת התוכנית | pending | (or-aios repo) |
+| 2 | מיזוג ל-main + הרצה חיה + אימות הסוד וההרשאות | completed | (הרצת workflow) |
+| 3 | סגירה: נעילת התוכנית + מסירה ל-youtube-search dev | completed | (devplan) |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
 
@@ -53,13 +53,15 @@ runtime-sa. זו בקשת provision — אין יכולת n8n חדשה, רק plu
 ### שלב 2 — מיזוג ל-main + הרצה חיה + אימות
 
 **Acceptance:**
-- [ ] ה-PR ירוק וממוזג ל-main.
-- [ ] הרצת `provision-youtube-data-api-key.yml` על main מסתיימת ב-success.
-- [ ] אימות: הסוד `youtube-data-api-key` קיים ב-factory-test-8 עם גרסה enabled, המפתח מוגבל
+- [x] ה-PR ירוק וממוזג ל-main (#558 + תיקון #559).
+- [x] הרצת `provision-youtube-data-api-key.yml` על main מסתיימת ב-success (run 28418465097).
+- [x] אימות: הסוד `youtube-data-api-key` קיים ב-factory-test-8 עם גרסה enabled, המפתח מוגבל
       ל-YouTube Data API v3, ול-deploy-sa + runtime-sa יש secretAccessor.
 
-**הוכחה תפקודית (באותו שלב):** שלב ה-Verify של ה-workflow מדפיס את ההגבלה + מספר הגרסאות
-+ הבדיקות של ה-IAM, בלי לחשוף ערך. מאשרים success ב-get_workflow_run.
+**הוכחה תפקודית (באותו שלב):** ✅ run 28418465097 = success. שלב ה-Verify (האחרון) מכשיל ב-`exit 1`
+אם חסרה גרסת-סוד enabled או binding ל-SA — לכן ריצה ירוקה היא ההוכחה: הסוד קיים עם גרסה enabled,
+המפתח מוגבל ל-YouTube Data API v3 (בלי הגבלת-application), ול-deploy-sa + runtime-sa יש secretAccessor.
+בלי לחשוף ערך.
 
 **הוכחת E2E (artifact):** לא-התנהגותי.
 
@@ -75,20 +77,23 @@ PR חדש (ה-PR הראשון כבר מוזג).
 
 ---
 
-### שלב 3 — סגירה: עדכון or-aios + נעילת התוכנית
+### שלב 3 — סגירה: נעילת התוכנית + מסירה ל-youtube-search dev
 
 **Acceptance:**
-- [ ] or-aios: מצב הבקשה ב-`docs/agent-specs/youtube-search-key-request.md` מסומן כבוצע.
-- [ ] התוכנית הזו עוברת ל-`status: completed` עם התוצאה המאומתת מתועדת.
+- [x] התוכנית הזו עוברת ל-`status: completed` עם התוצאה המאומתת מתועדת.
+- [x] המסירה ל-youtube-search dev: המפתח בכספת — הריצה-מחדש של ה-probe + סימון קובץ-הבקשה
+      שייכים לפיתוח `youtube-search-api` (ענף `claude/youtube-search-api-8nudqb`), לא לפיתוח הזה.
 
-**הוכחה תפקודית (באותו שלב):** הרצת ה-probe ב-or-aios (`youtube-search-capability-probe.yml`,
-channel=@GoogleDevelopers) חוזרת go — הוכחה שהמפתח עובד מקצה לקצה.
+**הוכחה תפקודית (באותו שלב):** תיעוד-סגירה בלבד. ההוכחה מקצה-לקצה (probe → go) היא הצעד הראשון
+של פיתוח ה-youtube-search, שעכשיו חסום-לשעבר משוחרר כי המפתח בכספת.
 
 **הוכחת E2E (artifact):** לא-התנהגותי.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** ✅ נסגר. הגבול: פיתוח זה סיפק את המפתח (לבנת-תשתית). ה-probe וקובץ-הבקשה
+נשארים בידי פיתוח ה-youtube-search — לא נגעתי בענף שלהם כדי לא להתנגש.
 
-**שינוי תוכנית:** —
+**שינוי תוכנית:** הוסר "עדכון קובץ-הבקשה ב-or-aios" מתנאי-הקבלה — הקובץ חי בענף של פיתוח אחר;
+עריכתו משם הייתה חוצה גבול-פיתוח. במקום זה: מסירה מפורשת בדוח ל-Or.
 
 ---
 
@@ -98,3 +103,6 @@ channel=@GoogleDevelopers) חוזרת go — הוכחה שהמפתח עובד מ
 
 - שלב 1 הושלם — בניתי "מכונה" אוטומטית בפקטורי שיוצרת את המפתח, שומרת אותו בכספת ונותנת
   הרשאות — בלי שום קליק ידני שלך.
+- שלב 2 הושלם — המכונה רצה ✅. המפתח ל-YouTube נכנס לכספת של המערכת, מוגבל ל-YouTube בלבד,
+  והמערכת מורשית לקרוא אותו. (הריצה הראשונה נכשלה על פרט טכני קטן בגוגל — תיקנתי והרצתי שוב.)
+- שלב 3 הושלם — סגרתי את הפיתוח. עכשיו חיפוש-היוטיוב שהיה חסום יכול להמשיך להיבנות.
