@@ -279,3 +279,37 @@ jobs:
             fi
           done
           echo "=== PASS: youtube-data-api-key provisioned, stored, and readable by deploy-sa + runtime-sa ==="
+
+      - name: Smoke-test the key against the target API (live, value masked)
+        if: ${{ inputs.target_service == 'youtube.googleapis.com' }}
+        env:
+          GCP_PROJECT: ${{ inputs.gcp_project }}
+          SECRET_NAME: ${{ inputs.secret_name }}
+        run: |
+          set -euo pipefail
+          # Prove the key actually WORKS end-to-end (valid + API enabled +
+          # restriction lets the call through), not just that it's stored. We
+          # read the value, mask it immediately, and pass it ONLY in the
+          # X-goog-api-key header (never the URL, never the logs). i18nLanguages
+          # is the cheapest YouTube Data API v3 call (1 quota unit, no params).
+          KEY="$(gcloud secrets versions access latest --secret="$SECRET_NAME" --project="$GCP_PROJECT")"
+          echo "::add-mask::${KEY}"
+          # Brand-new keys can need a few minutes to propagate — retry the
+          # transient "API key not valid" / 403 window before declaring NO-GO.
+          code=""
+          for i in 1 2 3 4 5 6 7 8; do
+            code="$(curl -fsS -o /tmp/yt-smoke.json -w '%{http_code}' \
+              -H "X-goog-api-key: ${KEY}" \
+              "https://www.googleapis.com/youtube/v3/i18nLanguages?part=snippet" || true)"
+            if [ "$code" = "200" ]; then break; fi
+            echo "INFO: smoke attempt $i got HTTP $code (key propagation?), retrying in 15s…" >&2
+            sleep 15
+          done
+          echo "i18nLanguages HTTP ${code}"
+          if [ "$code" = "200" ]; then
+            echo "=== GO: youtube-data-api-key is LIVE — YouTube Data API v3 accepted the key ==="
+          else
+            echo "NO-GO: key call returned HTTP ${code}. Body head:" >&2
+            head -c 400 /tmp/yt-smoke.json >&2 || true
+            exit 1
+          fi
