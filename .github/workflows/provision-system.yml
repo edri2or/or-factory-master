@@ -1146,6 +1146,11 @@ jobs:
           #     gateway: per-system HMAC secret + Caddy service id/URL)
           #   - n8n-telegram-webhook-secret (Phase F: per-system secret token
           #     Caddy checks on /webhook/telegram-in/*; minted by the deploy)
+          #   - fal-api-key (fal.ai key for the trained-likeness / LoRA feature;
+          #     the VALUE is set by hand per-system — this list only guarantees the
+          #     shell + a per-secret secretAccessor binding for runtime-sa + deploy-sa,
+          #     so the grant is permanent and survives a re-provision. The
+          #     create-if-missing guard never overwrites a hand-set value.)
           # deploy-sa has roles/secretmanager.secretVersionManager at project
           # level — that includes versions.add but NOT secrets.create. Create
           # the shells here, as the broker SA (which has roles/owner), so the
@@ -1175,6 +1180,7 @@ jobs:
             workspace-mcp-bearer
             factory-mcp-bearer
             n8n-mcp-server-token
+            fal-api-key
           )
           RUNTIME_SA="runtime-sa@${GCP_PROJECT}.iam.gserviceaccount.com"
           DEPLOY_SA="deploy-sa@${GCP_PROJECT}.iam.gserviceaccount.com"
