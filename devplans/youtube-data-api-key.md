@@ -6,7 +6,7 @@ DEVPLAN — youtube-data-api-key
 dev_name: מפתח YouTube Data API v3 למערכת or-aios
 slug: youtube-data-api-key
 opened: 2026-06-30
-status: completed   # active בזמן פיתוח → completed בסיום (משחרר את שער ה-CI)
+status: active   # נפתח מחדש: להוכיח את המפתח חי (smoke-test) אחרי שה-probe על main התברר שקורא את הסוד הישן
 ---
 
 # תוכנית פיתוח — מפתח YouTube Data API v3 למערכת or-aios
@@ -94,6 +94,30 @@ PR חדש (ה-PR הראשון כבר מוזג).
 
 **שינוי תוכנית:** הוסר "עדכון קובץ-הבקשה ב-or-aios" מתנאי-הקבלה — הקובץ חי בענף של פיתוח אחר;
 עריכתו משם הייתה חוצה גבול-פיתוח. במקום זה: מסירה מפורשת בדוח ל-Or.
+
+---
+
+### שלב 4 — הוכחת המפתח חי (smoke-test עצמאי)
+
+**רקע:** ההרצות של ה-probe ב-or-aios main חזרו "API key not valid" — אבל מהלוג התברר שה-probe
+על **main** קורא את הסוד הישן `google-api-key` (לא `youtube-data-api-key`). ה-probe המעודכן שקורא
+את הסוד החדש קיים רק בענף `claude/youtube-search-api-8nudqb` (פיתוח אחר, לא מוזג). כלומר ה-probe
+מעולם לא בדק את המפתח החדש — בדק את הישן (שהוא בדיוק הלא-תקין).
+
+**Acceptance:**
+- [ ] נוסף שלב smoke-test ל-`provision-youtube-data-api-key.yml`: קורא את `youtube-data-api-key`
+      (ממוסך), קורא live ל-`i18nLanguages` של YouTube Data API v3 בכותרת `X-goog-api-key`, מאשר 200.
+- [ ] הרצה מחדש של ה-provision (idempotent — ממחזר את המפתח) חוזרת GO (HTTP 200).
+
+**הוכחה תפקודית (באותו שלב):** שלב ה-smoke-test מכשיל ב-`exit 1` אם הקריאה ל-YouTube לא 200 →
+ריצה ירוקה = המפתח תקף, ה-API מופעל, וההגבלה מאפשרת את הקריאה. הערך לעולם לא מודפס (header + mask).
+
+**הוכחת E2E (artifact):** לא-התנהגותי.
+
+**הערת התקדמות אחרונה:** הוספתי את שלב ה-smoke-test; PR בדרך. אסגור שוב כשהריצה תחזור GO.
+
+**שינוי תוכנית:** ה-probe ב-or-aios לא היה כלי אימות תקף למפתח (קרא סוד ישן). הוכחת ה-GO עוברת
+ל-smoke-test עצמאי בתוך workflow ה-provision — בשליטתי, בלי לגעת בענף של פיתוח אחר.
 
 ---
 
