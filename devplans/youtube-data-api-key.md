@@ -63,9 +63,15 @@ runtime-sa. זו בקשת provision — אין יכולת n8n חדשה, רק plu
 
 **הוכחת E2E (artifact):** לא-התנהגותי.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** ההרצה הראשונה (run 28418140768) נכשלה ב-`api-keys create` עם
+`SERVICE_DISABLED` — לא באג הרשאות אלא **פרויקט-מכסה**: gcloud חייב את קריאת ה-API
+לפרויקט-הבית של ה-broker (or-factory-master-control / 140345952904) במקום ל-factory-test-8,
+שם ה-API Keys API לא מופעל. תיקון: `--billing-project=factory-test-8` על כל קריאות
+`api-keys.*` (list/create/get-key-string/describe), כך שהמכסה והמפתח שניהם ב-factory-test-8.
+PR חדש (ה-PR הראשון כבר מוזג).
 
-**שינוי תוכנית:** —
+**שינוי תוכנית:** נוסף `--billing-project` — תיקון פרויקט-המכסה. אין שינוי באבטחה: עדיין
+לא נוגעים בפרויקט הבקרה; המכסה והמפתח ב-factory-test-8 בלבד.
 
 ---
 

@@ -129,9 +129,15 @@ jobs:
         run: |
           set -euo pipefail
 
+          # --billing-project pins the API Keys API call's quota/consumer project
+          # to $GCP_PROJECT (where we enabled apikeys.googleapis.com). Without it,
+          # gcloud bills the call to the broker credentials' own project
+          # (or-factory-master-control), where the API Keys API is disabled —
+          # which is the SERVICE_DISABLED failure the first run hit.
           _find_key() {
             gcloud services api-keys list \
               --project="$GCP_PROJECT" \
+              --billing-project="$GCP_PROJECT" \
               --filter="displayName=${DISPLAY_NAME} AND NOT state:DELETED" \
               --format="value(name)" 2>/dev/null | head -1
           }
@@ -148,6 +154,7 @@ jobs:
             for i in 1 2 3 4 5 6; do
               if err=$(gcloud services api-keys create \
                          --project="$GCP_PROJECT" \
+                         --billing-project="$GCP_PROJECT" \
                          --display-name="$DISPLAY_NAME" \
                          --api-target="service=${TARGET_SERVICE}" \
                          --quiet 2>&1); then
@@ -191,6 +198,7 @@ jobs:
           # Read the key string and pipe it straight into a new secret version.
           # The pipe keeps the value off the logs and out of any shell variable.
           gcloud services api-keys get-key-string "$KEY_NAME" \
+            --billing-project="$GCP_PROJECT" \
             --format="value(keyString)" \
           | gcloud secrets versions add "$SECRET_NAME" \
             --project="$GCP_PROJECT" --data-file=- --quiet
@@ -251,6 +259,7 @@ jobs:
           # Key API restriction is exactly the target service (least-privilege),
           # and no browser/application restriction is set (server-side use).
           gcloud services api-keys describe "$KEY_NAME" \
+            --billing-project="$GCP_PROJECT" \
             --format="yaml(displayName,restrictions.apiTargets,restrictions.browserKeyRestrictions)" || true
 
           ENABLED=$(gcloud secrets versions list "$SECRET_NAME" \
