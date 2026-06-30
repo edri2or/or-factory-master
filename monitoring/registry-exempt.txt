@@ -63,6 +63,9 @@ templates/system/.github/workflows/bootstrap-gmail-oauth.yml
 # Manual operator tools (workflow_dispatch only, no schedule to prove):
 .github/workflows/grant-secret-accessor.yml
 .github/workflows/mirror-secret-to-system.yml
+# Provisions a YouTube Data API v3 key into a system's SM (create key -> store in
+# SM -> grant accessor) as the broker SA. workflow_dispatch only; no cadence to prove.
+.github/workflows/provision-youtube-data-api-key.yml
 # Destructive live-cleanup tool: removes one n8n workflow (+ optional Railway env
 # vars) from a system. workflow_dispatch only, OFF the dispatch_workflow allowlist,
 # no cadence to prove.
