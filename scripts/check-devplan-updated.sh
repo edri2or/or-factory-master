@@ -21,12 +21,22 @@ source "$(dirname "$0")/lib.sh"
 # OIL auto-fix PRs (branch oil-autofix/*) are EXEMPT: they are automated, safety-gated
 # fixes — not dev stages — so they correctly never touch a devplan, and the gate must not
 # block them even while a development is active (this is how OIL-49 stalled — follow-up #9).
-# GitHub sets GITHUB_HEAD_REF on pull_request (the source branch) and GITHUB_REF_NAME on
+# Factory template-refresh PRs (branch refresh-system-*, opened by refresh-system-agents.yml)
+# are EXEMPT for the SAME reason: an automated sync of the factory's current templates into a
+# live system is not a /dev-stage development stage, so it correctly never touches a devplan —
+# yet on a system carrying active devplans the gate would otherwise block the refresh merge
+# forever (the request-factory-resource backfill to or-aios stalled exactly here). The refresh
+# already ships a changelog.d fragment to satisfy the twin CHANGELOG gate; this is its devplan
+# twin. GitHub sets GITHUB_HEAD_REF on pull_request (the source branch) and GITHUB_REF_NAME on
 # push; either identifies the branch without any workflow change.
 BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}"
 case "$BRANCH" in
   oil-autofix/*)
     echo "PASS: oil-autofix branch ('$BRANCH') — devplan check skipped (automated safety-gated fix)."
+    exit 0
+    ;;
+  refresh-system-*)
+    echo "PASS: factory template-refresh branch ('$BRANCH') — devplan check skipped (automated refresh from or-factory-master, not a dev stage)."
     exit 0
     ;;
 esac
