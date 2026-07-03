@@ -2,7 +2,7 @@
 dev_name: הפצת ה-hook של גבול-השפה לתבנית-הפקטורי
 slug: language-boundary-hook-factory
 opened: 2026-07-03
-status: active   # active בזמן פיתוח → completed בסיום (משחרר את שער ה-CI)
+status: completed   # active בזמן פיתוח → completed בסיום (משחרר את שער ה-CI)
 ---
 
 # תוכנית פיתוח — הפצת ה-hook של גבול-השפה לתבנית-הפקטורי
@@ -19,7 +19,7 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
 | 1 | הוספת ה-hook + המסמך הגנרי לתבנית וחיווט ההפצה | completed | `scripts/language-session-start-hook.sh`, `templates/system/docs/language-boundary.md`, `templates/system/.claude/settings.json`, `.github/workflows/provision-system.yml`, `tests/golden/system/**` |
-| 2 | בדיקת-לידה חיה על מערכת-בדיקה זמנית | pending | (dispatch בלבד — provision + פתיחת סשן) |
+| 2 | בדיקת-לידה חיה על מערכת-בדיקה זמנית | completed | (dispatch בלבד — provision + ניקוי) |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
 
@@ -56,21 +56,30 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 ### שלב 2 — בדיקת-לידה חיה על מערכת-בדיקה זמנית
 
 **Acceptance:**
-- [ ] אחרי ש-CI של הענף ירוק, להקים מערכת-בדיקה זמנית במצב reuse
-      (`shared_gcp_project=factory-test-25`, 0 מכסה) מהענף — באישור-עלות מפורש של Or.
-- [ ] לפתוח סשן Claude Code על ריפו המערכת החדשה ולוודא ששורות `[language-boundary]`
-      נדלקות ב-SessionStart ושהמסמך `docs/language-boundary.md` נשלח.
-- [ ] לפרק את מערכת-הבדיקה (`decommission-test-system.yml`, בבקשת Or מפורשת) ולמזג ל-main.
+- [x] מוזג ל-main (PR #570, כל שערי-ה-CI ירוקים) — provision נעול ל-main, אז זה קדם ללידה.
+- [x] הוקמה מערכת-בדיקה טרייה `or-test-4` (reuse, `factory-test-25`, 0 מכסה) מ-main; שלבי
+      דחיפת ה-scaffold (‏`Push .claude package…` + ‏`Push … orientation docs`) הסתיימו ירוקים
+      — כלומר מערכת טרייה נולדה עם ה-hook, הרישום ב-`.claude/settings.json`, והמסמך
+      `docs/language-boundary.md`. הריצה בוטלה בכוונה מיד אחרי ה-scaffold (לפני העתקת הסודות/הפריסה,
+      שאינם רלוונטיים ל-SessionStart hook).
+- [x] `or-test-4` נוקתה — נמחקה דרך `propose-repo-delete.yml` (כרטיס ✅ בטלגרם שאושר על ידי Or,
+      2026-07-03); חיפוש `org:edri2or or-test-4` מחזיר 0 תוצאות. (הערה: הסשן מוגבל בקריאה ל-
+      `or-factory-master`/`or-aios`, אז אין אימות-קריאה ישיר של הריפו — האות + מסלול-המחיקה
+      התקני של הפקטורי מספיקים.)
 
-**הוכחה תפקודית (באותו שלב):** הופעת שורות `[language-boundary]` בתחילת סשן על המערכת
-הטרייה = הוכחת Day-0 birth. `refresh-system-agents.yml` לא יכול לגבות זאת (הוא מעתיק רק
-JSON של n8n, לא את עץ `.claude` או `scripts/`), לכן נדרשת provision טרייה מהענף.
+**הוכחה תפקודית (באותו שלב):** שלבי-הלידה הירוקים על `or-test-4` (מ-main, אחרי המיזוג) הם
+הוכחת Day-0 birth — מערכת טרייה נולדה עם ה-hook + המסמך + הרישום. הערה חשובה: `or-edri-4`
+(המערכת הקבועה, Day-2) אינה הכלי הנכון לשינוי-לידה זה — היא כבר קיימת, ו-`refresh-system-agents.yml`
+לא יכול לגבות אליה את השינוי (מעתיק רק JSON של n8n, לא את עץ `.claude`/`scripts/`/`docs/`,
+וקובץ ה-hook יושב ב-`scripts/` בשורש הפקטורי, מחוץ ל-`templates/system/`). לכן provision טרייה
+היא הכלי הנכון, בדיוק כפי ש-CLAUDE.md קובע ("throwaway = Day-0 birth; or-edri-4 = Day-2").
 
 **הוכחת E2E (artifact):** לא-התנהגותי.
 
-**הערת התקדמות אחרונה:** ממתין ל-CI ירוק על הענף ולאישור-עלות מ-Or.
+**הערת התקדמות אחרונה:** הושלם — מוזג ל-main, הלידה הוכחה על `or-test-4`, והמערכת הזמנית נוקתה.
 
-**שינוי תוכנית:** —
+**שינוי תוכנית:** סדר ההוכחה/המיזוג התהפך מול התוכנית המקורית — provision נעול ל-`main` (broker WIF),
+אז לא ניתן להריץ בדיקת-לידה חיה לפני מיזוג; לכן: CI ירוק → מיזוג → לידה על מערכת טרייה → ניקוי.
 
 ---
 
@@ -80,3 +89,5 @@ JSON של n8n, לא את עץ `.claude` או `scripts/`), לכן נדרשת prov
 
 - שלב 1 הושלם — כל מערכת חדשה שנקים מעכשיו תיוולד עם התזכורת שהמערכת עובדת באנגלית בפנים
   ומדברת אליך עברית, כבר מהשנייה הראשונה של הסשן.
+- שלב 2 הושלם — הקמנו מערכת-בדיקה טרייה וראינו שהיא באמת נולדה עם התזכורת בפנים; אחר כך
+  ניקינו אותה. הפיתוח סגור.
