@@ -2,7 +2,7 @@
 dev_name: כפתור בקשת-הרשאות מהמערכת אל ה-factory
 slug: system-resource-request-frontdoor
 opened: 2026-07-03
-status: active   # active בזמן פיתוח → completed בסיום (משחרר את שער ה-CI)
+status: completed   # active בזמן פיתוח → completed בסיום (משחרר את שער ה-CI)
 ---
 
 # תוכנית פיתוח — כפתור בקשת-הרשאות מהמערכת אל ה-factory
@@ -27,8 +27,8 @@ GitHub רגילה, בלי קרדנציאלס) — ואז ה-emit יוצא מסב
 | 1 | הפקודה + מראה + golden (v1) | completed | `.claude/commands/request-factory-resource.md`, המראה, `tests/golden/system/MANIFEST.sha256` |
 | 2 | עדכון תיעוד | completed | `docs/system-resource-requests.md` |
 | 3 | Backfill + הוכחה חיה — **גילה את פער הסשן-בלי-קרדנציאלס** | completed | dispatch של `refresh-system-agents.yml` על or-edri-4 (ירוק) |
-| 4 | תיקון v1.1: workflow שליח + הפקודה מריצה אותו | in-progress | `templates/system/.github/workflows/request-factory-resource.yml`, הפקודה (נכתבה מחדש), המראה, golden, doc |
-| 5 | Backfill v1.1 לכל המערכות + הוכחה חיה מלאה (כרטיס טלגרם אמיתי) | pending | dispatch של `refresh-system-agents.yml` (workflow+פקודה) |
+| 4 | תיקון v1.1: workflow שליח + הפקודה מריצה אותו | completed | `templates/system/.github/workflows/request-factory-resource.yml`, הפקודה (נכתבה מחדש), המראה, golden, doc (PR #566) |
+| 5 | Backfill v1.1 + הוכחה חיה מלאה (כרטיס טלגרם אמיתי) | completed | `refresh-system-agents.yml` על or-edri-4 + or-aios; הוכחה חיה על or-edri-4 |
 
 > סטטוס לכל שלב: `pending` / `in-progress` / `completed`.
 
@@ -101,23 +101,26 @@ GitHub רגילה, בלי קרדנציאלס) — ואז ה-emit יוצא מסב
 
 **הוכחת E2E (artifact):** לא-התנהגותי (workflow תשתית + קובץ פקודה; לא `workflows/n8n`).
 
-**הערת התקדמות אחרונה:** נכתב; ממתין למיזוג ואז לשלב 5.
+**הערת התקדמות אחרונה:** הושלם ומוזג (PR #566); כל השערים ירוקים.
 
 **שינוי תוכנית:** —
 
 ---
 
-### שלב 5 — Backfill v1.1 לכל המערכות + הוכחה חיה מלאה
+### שלב 5 — Backfill v1.1 + הוכחה חיה מלאה
 
 **Acceptance:**
-- [ ] אחרי merge: `refresh-system-agents.yml` לכל מערכת קיימת עם `paths=".github/workflows/request-factory-resource.yml,.claude/commands/request-factory-resource.md"` (רשימת המערכות באישור Or).
-- [ ] הוכחה חיה מלאה על `or-edri-4`: הרצת ה-workflow (מסשן or-edri-4 או dispatch) → **כרטיס טלגרם אמיתי אצל Or** → ✅ → `secretAccessor` נחת על `deploy-sa`+`runtime-sa` (אימות read-only).
+- [x] `refresh-system-agents.yml` הורץ עם שני הקבצים (`.github/workflows/request-factory-resource.yml` + הפקודה) על **or-edri-4** (run 28631087213, ירוק) ועל **or-aios** (באישור Or).
+- [x] הוכחה חיה מלאה על `or-edri-4`: Or הריץ מהסשן → workflow → כרטיס Linear → **כרטיס טלגרם אמיתי** → ✅ של Or → fulfill ירוק: ה-broker יצר `dummy-test-key` + העניק `secretAccessor` ל-`deploy-sa`+`runtime-sa` ב-`factory-test-21`.
 
-**הוכחה תפקודית (באותו שלב):** סבב אמיתי מקצה-לקצה עם כרטיס טלגרם ואישור Or, ואז אימות ההענקה. זהו השלב שמצריך אישור Or (dispatch + אישור טלגרם) — נעצר בגבול.
+**הוכחה תפקודית (באותו שלב):** סבב אמיתי מקצה-לקצה — אומת דרך צעדי ריצת `fulfill-system-request.yml`
+(run 28631352035): Resolve target project ✅ / Validate gate ✅ / Fulfill ✅ / Audit+notify ✅.
+Or אישר בטלגרם וקיבל אישור-ביצוע. סוד הבדיקה `dummy-test-key` הושאר (קונכייה ריקה, לא מזיק) לבקשת Or.
 
 **הוכחת E2E (artifact):** לא-התנהגותי.
 
-**הערת התקדמות אחרונה:** ממתין למיזוג של שלב 4 ולאישור Or.
+**הערת התקדמות אחרונה:** הושלם — הוכחה חיה ירוקה על or-edri-4; or-aios עבר backfill. מערכות נוספות
+ייפרסו כש-Or ייתן שמות / יאשר את המחבר. הפיתוח נסגר.
 
 **שינוי תוכנית:** —
 
@@ -127,4 +130,5 @@ GitHub רגילה, בלי קרדנציאלס) — ואז ה-emit יוצא מסב
 
 - שלב 1–2 הושלמו — בניתי את הכפתור (`/request-factory-resource`) ועדכנתי תיעוד.
 - שלב 3 הושלם — הפעלתי על or-edri-4; ההוכחה החיה חשפה שהכפתור לא עובד מסשן בלי מפתחות ל-GCP.
-- שלב 4 (בתהליך) — התיקון: הוספתי "שליח" (workflow ב-CI של המערכת שמחזיק את המפתחות), והכפתור עכשיו רק מפעיל אותו — כך שהבקשה באמת יוצאת ומגיע כרטיס טלגרם.
+- שלב 4 הושלם — התיקון: הוספתי "שליח" (workflow ב-CI של המערכת שמחזיק את המפתחות), והכפתור עכשיו רק מפעיל אותו — כך שהבקשה באמת יוצאת ומגיע כרטיס טלגרם.
+- שלב 5 הושלם — **הוכחנו חי מקצה-לקצה:** Or ביקש סוד מסשן or-edri-4, קיבל כרטיס בטלגרם, אישר, וה-factory יצר את הסוד ופתח גישה. הכפתור הופעל גם על or-aios. הפיתוח הושלם. 🎉
