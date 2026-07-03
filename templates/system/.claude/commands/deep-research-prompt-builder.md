@@ -1,6 +1,6 @@
 ---
 audience: shared
-description: Expand any topic, word, or question into a full structured Deep Research prompt (8 sections, truth protocol). Use when you need a copy-ready prompt to hand to any AI research agent.
+description: Expand any topic, word, or question into a full structured Deep Research prompt (8 sections, truth protocol). Use when you need a copy-ready prompt to hand to any AI research agent. The generated prompt directs the research agent to return its findings in English by default.
 ---
 
 # Deep Research Prompt Builder
@@ -87,6 +87,9 @@ Return findings in the following structure:
 3. **Conflicting Evidence** (if any — present both sides)
 4. **Source List** (full URLs, grouped by section)
 5. **Confidence Assessment** (one sentence per major claim: High / Medium / Low, with reason)
+6. **Output language** — Write the ENTIRE research output in **English** by default: every
+   heading, table, finding, conclusion, recommendation, executive summary, and appendix.
+   Only switch languages if the user has explicitly requested another language.
 
 ---
 
@@ -113,6 +116,10 @@ Write exactly:
 5. **NEVER generate more than one prompt per invocation** — if the user provides multiple
    topics, ask which one to focus on first.
 6. **NEVER name or recommend a specific research tool** — the prompt must be agent-agnostic.
+7. **ALWAYS embed the English output-language directive** — every generated prompt must
+   instruct the research agent to return its findings in English by default (headings,
+   tables, conclusions, recommendations, summary, appendices), unless the user explicitly
+   asked for another language.
 
 ## Examples
 
