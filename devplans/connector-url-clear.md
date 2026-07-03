@@ -6,7 +6,7 @@ DEVPLAN — connector-url-clear
 dev_name: כתובת המחבר ל-claude.ai — ברור ובדוק לתמיד
 slug: connector-url-clear
 opened: 2026-06-16
-status: active
+status: completed
 ---
 
 # תוכנית פיתוח — כתובת המחבר ל-claude.ai
@@ -30,7 +30,7 @@ deploy שמדפיס אותה חיה אחרי כל ריצה, סקיל `/prove-con
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
 | 1 | תיעוד-אמת + מנגנון "המחשב אומר לך את הכתובת" + סקיל `/prove-connector` | in-progress | `docs/mcp-connector-setup.md`, `.github/workflows/deploy-mcp-server.yml`, `services/mcp-server/src/tools.ts`, `CLAUDE.md`, `.claude/commands/prove-connector.md` |
-| 2 | קיבוע ה-issuer ל-Region URL (שובר פעם אחת — Or מחבר מחדש) | pending | `.github/workflows/deploy-mcp-server.yml`, `docs/mcp-connector-setup.md`, `CLAUDE.md` |
+| 2 | קיבוע ה-issuer ל-Region URL (שובר פעם אחת — Or מחבר מחדש) | completed | `.github/workflows/deploy-mcp-server.yml`, `docs/mcp-connector-setup.md`, `CLAUDE.md` |
 
 > **C2 (שער CI חוסם עם `connector-proofs/<slug>.json`)** — לא נבנה. הסיבה הכנה:
 > החלק הקריטי ("הכלים נטענו ורצו ב-claude.ai") לא ניתן להוכחה אוטומטית — `probe_endpoint`
@@ -81,12 +81,13 @@ deploy שמדפיס אותה חיה אחרי כל ריצה, סקיל `/prove-con
 
 **הוכחת E2E (artifact):** לא-התנהגותי.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם — `PUBLIC_BASE_URL` נעוץ ל-Region URL ב-`deploy-mcp-server.yml`; המסמך (`EXPECTED_CONNECTOR_ISSUER` + כל ה-framing) ו-`CLAUDE.md` (שורות 180/298) הופכו ללוקסטפ ל-Region URL; changelog fragment נוסף. אחרי מיזוג: ה-push trigger מריץ redeploy יחיד; אימות צד-שרת ב-WebFetch על `…/.well-known/oauth-authorization-server` (‏`issuer` == Region URL) + שורת ה-Summary "claude.ai connector URL (issuer)"; ואז Or מוחק+מוסיף מחדש כל מחבר claude.ai פעם אחת ומריץ כלי אחד לאישור (החוליה האנושית של `/prove-connector` Step 4).
 
-**שינוי תוכנית:** —
+**שינוי תוכנית:** C2 (שער CI עם `connector-proofs/`) נותר לא-נבנה במכוון (ראה ההערה למעלה — לא ניתן להוכחה אוטומטית; החצי הנאכף כבר ב-Stage 1). לא נדרש live-proof על `or-edri-4` — זה שינוי control-plane (שרת ה-MCP), לא `templates/system/**`.
 
 ---
 
 ## יומן ל-Or (עברית)
 
 - 2026-06-16: התוכנית פתוחה — מצאתי את המלכודת והוכחתי אותה חיה (השרת מכריז כתובת אחרת מזו שמומלצת). שלב 1 בעבודה.
+- 2026-07-03: שלב 2 הושלם — קיבענו את השרת שיכריז על כתובת אחת בלבד (ה-Region URL), אז מעכשיו יש כתובת מחבר אחת לתמיד. אחרי המיזוג יש חיבור-מחדש חד-פעמי של המחברים ב-claude.ai. התוכנית סגורה.

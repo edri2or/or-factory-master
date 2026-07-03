@@ -3,41 +3,39 @@
 ## The one fact, in one line
 
 The exact URL to paste into a claude.ai **custom connector** is the gateway's advertised
-**OAuth issuer**. It is currently:
+**OAuth issuer**, which since `connector-url-clear` Stage 2 is the deterministic **Region URL**:
 
-`EXPECTED_CONNECTOR_ISSUER=https://factory-master-actions-mcp-risl6twm4a-zf.a.run.app`
+`EXPECTED_CONNECTOR_ISSUER=https://factory-master-actions-mcp-140345952904.me-west1.run.app`
 
-That is **not** the same URL as the Claude Code toolbox `mcp_url`. The deploy workflow prints
-both values in its job Summary — the connector URL is the one labelled **"claude.ai connector
-URL (issuer)"**. Read that line. Paste *it*, nothing else.
+This is now the **same** URL as the Claude Code toolbox `mcp_url` — **one address for both
+consumers.** The deploy workflow prints it in its job Summary, on the row labelled **"claude.ai
+connector URL (issuer)"**. Read that line. Paste *it*.
 
 > The literal value above is the *expected* issuer. The deploy workflow reads the live issuer
 > from the server and warns (loudly) if they ever disagree — that's how this doc stays honest
 > without manual sync. The grep-able `EXPECTED_CONNECTOR_ISSUER=` line is what the warning
-> checks against.
+> checks against; since Stage 2 the live issuer **is** this Region URL, so the check passes clean.
 
-> Forward note (Stage 2 of `connector-url-clear`): the next planned change pins the issuer to
-> the Region URL so the two consumers collapse into one URL. When that ships, this line and the
-> deploy assertion flip in lockstep — and Or re-adds the connector in claude.ai once.
+## One URL (previously two)
 
-## Why two URLs
+The Cloud Run gateway has two stable hostnames pointing at the same service — the deterministic
+**Region URL** (`https://factory-master-actions-mcp-140345952904.me-west1.run.app`,
+`${SERVICE}-${GCP_PROJECT_NUMBER}.${GCP_REGION}.run.app`) and a legacy hash URL
+(`…-risl6twm4a-zf.a.run.app`, Cloud Run's per-service `status.url`). Both serve the same service.
 
-The Cloud Run gateway has two stable hostnames pointing at the same service:
+Since `connector-url-clear` Stage 2, **both consumers use the Region URL** — `deploy-mcp-server.yml`
+pins `PUBLIC_BASE_URL` to the Region URL, so the advertised `issuer` (what claude.ai locks onto
+during OAuth discovery) is the Region URL too:
 
-- **Region URL** — `https://factory-master-actions-mcp-140345952904.me-west1.run.app`
-  (deterministic: `${SERVICE}-${GCP_PROJECT_NUMBER}.${GCP_REGION}.run.app`).
-- **Legacy hash URL** — `https://factory-master-actions-mcp-risl6twm4a-zf.a.run.app`
-  (Cloud Run's per-service `status.url`).
+| Consumer | URL to use |
+|---|---|
+| Claude Code **toolbox** (the `5b6e937f-…` read/inspect server's `mcp_url`) | **Region URL** |
+| **claude.ai custom connector** (OAuth path) | **Region URL** (= the advertised `issuer`) |
 
-Both serve. They differ for one consumer only — OAuth discovery.
-
-| Consumer | URL to use | Why |
-|---|---|---|
-| Claude Code **toolbox** (the `5b6e937f-…` read/inspect server's `mcp_url`) | **Region URL** | Direct MCP client, no OAuth discovery, deterministic region URL is preferred. |
-| **claude.ai custom connector** (OAuth path) | **Issuer URL** (currently the hash URL) | claude.ai does OAuth discovery on the URL you give it; the server advertises `issuer = $PUBLIC_BASE_URL`, and `deploy-mcp-server.yml` sets `PUBLIC_BASE_URL = $(gcloud run services describe ... status.url)` = the hash URL. claude.ai then **locks onto that exact host** for every later token request. Mismatch → connector never completes auth. |
-
-The mismatch is invisible: the region URL serves a 200 on `/.well-known/oauth-authorization-server`,
-but its `issuer` field is the hash URL. claude.ai treats that as authoritative.
+Before Stage 2 the connector needed the legacy hash URL — the server advertised *it* as `issuer`
+(`PUBLIC_BASE_URL` came from `gcloud run … status.url`), which silently split the two consumers:
+the Region URL served a `200` on `/.well-known/oauth-authorization-server` whose `issuer` field
+was the *other* host, and claude.ai treated that as authoritative. That split is gone.
 
 ## How to get / verify the URL right now
 
@@ -59,7 +57,7 @@ confirm" step inside claude.ai is therefore the only manual link in the chain. T
 ## Operator checklist (Or-facing)
 
 1. פותח את claude.ai → **Settings** → **Connectors** → **Add custom connector**.
-2. מדביק את הכתובת מ-"How to get / verify" למעלה (השורה של ה-`issuer`, לא Region URL).
+2. מדביק את הכתובת מ-"How to get / verify" למעלה — היום זו כתובת אחת (Region URL = ה-`issuer`).
 3. **Login with Google** עם `edri2or@gmail.com` (זה החשבון היחיד ב-`OAUTH_ALLOWED_EMAILS`;
    כל חשבון אחר נחסם).
 4. רואה את הכלים נטענים ברשימה. מריץ כלי אמיתי אחד (למשל `search_drive_files` או
@@ -67,17 +65,25 @@ confirm" step inside claude.ai is therefore the only manual link in the chain. T
 5. **חשוב:** ב-claude.ai _Research mode_ — כבה כלי-כתיבה ידנית (Research מריץ כלים בלי
    אישור פר-קריאה). פירוט: `docs/google-identities.md` › "Drive write tools exposed to claude.ai".
 
+### מחבר קיים שעדיין תחת הכתובת הישנה (חד-פעמי, בעקבות Stage 2)
+
+מחבר שהוספת **לפני** Stage 2 נעול על הכתובת הישנה (ה-hash, `…-risl6twm4a-zf…`), והשרת כבר
+מכריז על ה-Region URL — אז אימות ה-OAuth שלו יפסיק להתאים. התיקון חד-פעמי: ב-claude.ai →
+**Settings → Connectors** — למחוק את המחבר הישן ולהוסיף אותו מחדש עם ה-Region URL (השלבים 1–5
+למעלה), **פעם אחת לכל מחבר** (למשל ה-Workspace, ואם קיים גם ה-n8n). שום נתון לא נמחק — רק
+ההתחברות מתרעננת. אם claude.ai אומר *"A server with this URL already exists"* — הוא כבר שם.
+
 אם משהו לא עובד — סביר להניח שהכתובת לא תואמת ל-`issuer` החי. תריץ `/prove-connector` —
 הסקיל מוודא את הכתובת ומאמת בקריאת-כלי אמיתית את הצד-שרת לפני שמדביקים מחדש.
 
-## Failure mode (why this doc exists)
+## Failure mode (why this doc exists) — resolved by Stage 2
 
 `drive-content-edit` (merged 2026-06-16) הוכיח את כלי ה-Drive על הצד-שרת — ההגדרה ב-claude.ai
-הצריכה ריצות מיותרות כי ה-Region URL הומלץ ב-deploy summary, אבל ה-`issuer` החי שונה. הוכחה
-חיה: `probe_endpoint` על Region URL מחזיר 200 וגוף עם `"issuer":"…risl6twm4a-zf…"`. הקובץ
-הזה + שלב ה-"Read + assert the live connector issuer" ב-`deploy-mcp-server.yml` סוגרים את
-הפער: ה-deploy עצמו מספר לך מה הכתובת המדויקת, והמסמך פה נשאר נכון כי שורת
-`EXPECTED_CONNECTOR_ISSUER` נבדקת מול הערך החי בכל ריצה.
+הצריכה אז ריצות מיותרות כי ה-Region URL הומלץ ב-deploy summary אבל ה-`issuer` החי היה שונה
+(ה-hash URL). Stage 1 סגר את הפער בכך שה-deploy עצמו מדפיס את הכתובת המדויקת ומאמת אותה מול
+`EXPECTED_CONNECTOR_ISSUER` בכל ריצה. **Stage 2 (זה) חיסל את הפער מהשורש:** `PUBLIC_BASE_URL`
+נעוץ ל-Region URL, אז ה-`issuer` החי == ה-Region URL == השורה במסמך — כתובת אחת לשני הצרכנים,
+בלי שתי כתובות שאפשר להתבלבל ביניהן.
 
 ## Claude Code on the web — the Google tools work too
 
