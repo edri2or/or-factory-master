@@ -760,16 +760,14 @@ jobs:
         id: deploy
         run: |
           set -euo pipefail
-          # PUBLIC_BASE_URL is emitted in the MCP server's /.well-known OAuth
-          # metadata as the advertised `issuer` — the exact host claude.ai locks
-          # onto during OAuth discovery. Pin it to the DETERMINISTIC Region URL
-          # (connector-url-clear Stage 2) so the connector URL and the Claude Code
-          # toolbox mcp_url are ONE address forever. Previously this reused the
-          # Cloud Run `status.url` (the "-<hash>.a.run.app" host), which split the
-          # two consumers and caused wasted setup rounds. The Region URL serves the
-          # same service; the "Read + assert the live connector issuer" step below
-          # verifies the live issuer == this value == docs' EXPECTED_CONNECTOR_ISSUER.
-          PUBLIC_BASE_URL="https://${SERVICE}-${GCP_PROJECT_NUMBER}.${GCP_REGION}.run.app"
+          # PUBLIC_BASE_URL emitted in the MCP server's /.well-known OAuth
+          # metadata; without it BASE_URL defaults to localhost. Reuse the
+          # existing status.url on re-deploys so issuer stays stable across
+          # revisions. First deploy: fall back to the predictable region URL.
+          PUBLIC_BASE_URL=$(gcloud run services describe "${SERVICE}" \
+            --region="${GCP_REGION}" --project="${GCP_PROJECT}" \
+            --format='value(status.url)' 2>/dev/null || echo "")
+          [ -n "${PUBLIC_BASE_URL}" ] || PUBLIC_BASE_URL="https://${SERVICE}-${GCP_PROJECT_NUMBER}.${GCP_REGION}.run.app"
           echo "PUBLIC_BASE_URL=${PUBLIC_BASE_URL}"
 
           # Unique per deploy so the rendered template ALWAYS differs → Cloud Run
