@@ -737,6 +737,7 @@ jobs:
                     check-agent-folder build-agent-readme check-agent-readme \
                     devplan-session-start-hook \
                     capability-session-start-hook \
+                    language-session-start-hook \
                     check-e2e-proof e2e-verify-inbound deploy-verify; do
             [ -f "${GITHUB_WORKSPACE}/scripts/${sc}.sh" ] || { echo "FAIL: scripts/${sc}.sh not found" >&2; exit 1; }
             cp "${GITHUB_WORKSPACE}/scripts/${sc}.sh" "$CLONE_DIR/scripts/${sc}.sh"
@@ -745,6 +746,7 @@ jobs:
           # commands, so they must be executable in the system repo.
           chmod +x "$CLONE_DIR/scripts/devplan-session-start-hook.sh"
           chmod +x "$CLONE_DIR/scripts/capability-session-start-hook.sh"
+          chmod +x "$CLONE_DIR/scripts/language-session-start-hook.sh"
           # Seed the /dev-stage plan template so the system's own /dev-stage can instantiate
           # devplans/<slug>.md from it (single source of truth — same template the factory uses).
           [ -f "${GITHUB_WORKSPACE}/templates/devplan/DEVPLAN.template.md" ] || { echo "FAIL: templates/devplan/DEVPLAN.template.md not found" >&2; exit 1; }
@@ -768,7 +770,8 @@ jobs:
             "docs/agent-isolation-testing.md|docs/agent-isolation-testing.md" \
             "docs/research/agent-role-decomposition-planning.md|docs/research/agent-role-decomposition-planning.md" \
             "docs/capability-first.md|docs/capability-first.md" \
-            "templates/system/docs/CAPABILITIES.md|docs/CAPABILITIES.md"; do
+            "templates/system/docs/CAPABILITIES.md|docs/CAPABILITIES.md" \
+            "templates/system/docs/language-boundary.md|docs/language-boundary.md"; do
             src="${pair%%|*}"; dst="${pair##*|}"
             [ -f "${GITHUB_WORKSPACE}/${src}" ] || { echo "FAIL: ${src} not found" >&2; exit 1; }
             cp "${GITHUB_WORKSPACE}/${src}" "$CLONE_DIR/${dst}"
