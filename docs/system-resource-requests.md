@@ -20,9 +20,21 @@ behind a deterministic validation gate.
 | `secret` | Creates a new Secret Manager secret **shell** in the system's project + grants `secretAccessor` to the system's `runtime-sa`+`deploy-sa`. The system fills the value itself (it already has `secretVersionManager`). | safe id; **not** a super-credential (mirrors `copy-generic-secrets.sh` EXCLUDE) + no privileged keyword |
 | `iam` | Grants **one** allowlisted, non-escalating project role to the system's own `runtime-sa`+`deploy-sa`. | role on a curated allowlist; owner/editor/`iam.*`/`*.admin`/`serviceusage.*` hard-refused |
 
+## System-side entry point — the `/request-factory-resource` command
+
+A session running **inside a provisioned system** raises a request through the shared
+slash-command **`/request-factory-resource`** (`.claude/commands/request-factory-resource.md`,
+`audience: shared` — shipped into every system's `.claude/commands/`). Or asks in plain Hebrew
+("צור סוד", "פתח הרשאה", "בקש מהפקטורי"); the command gathers the request (`secret` id **or** one
+`iam` role, plus a reason), **pre-validates it locally against this exact gate** (the safe-id
+regex, the super-credential / privileged-keyword refusals, and the same 8-role IAM allowlist as
+`scripts/validate-system-request.sh`) so a doomed request is never emitted, then runs the emitter
+below keyed to the system's own project. It **only asks** — nothing is created until Or's ✅.
+
 ## End-to-end flow
 
-1. **System raises the request** with the already-shipped emitter:
+1. **System raises the request** — the `/request-factory-resource` command runs the
+   already-shipped emitter (`EMIT_SM_PROJECT` = the system's own project):
    ```sh
    scripts/emit-event.sh \
      --name=system.request.secret \         # or system.request.iam
@@ -83,8 +95,12 @@ behind a deterministic validation gate.
   bounded to the named system's own SAs, **and** the human approval card shows system + target so
   Or catches a mismatch. Per-system signing is a v2 item.
 - **`iam` allowlist is intentionally small.** Expanding it is itself a gated change (PR + Or review).
-- The system side is documentation-only (no new files shipped into systems) — `emit-event.sh`
-  already exists in every system.
+- The system side now has a first-class front door: the shared `/request-factory-resource`
+  command (`.claude/commands/request-factory-resource.md`) ships into every system and wraps
+  the `emit-event.sh` call with local pre-validation. New systems get it at provision; existing
+  systems are back-filled in place via `refresh-system-agents.yml`
+  (`paths=.claude/commands/request-factory-resource.md`). The command is the only added
+  system-side artifact — the backend channel is unchanged.
 
 ## Proven
 
