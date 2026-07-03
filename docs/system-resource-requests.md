@@ -28,22 +28,33 @@ slash-command **`/request-factory-resource`** (`.claude/commands/request-factory
 ("צור סוד", "פתח הרשאה", "בקש מהפקטורי"); the command gathers the request (`secret` id **or** one
 `iam` role, plus a reason), **pre-validates it locally against this exact gate** (the safe-id
 regex, the super-credential / privileged-keyword refusals, and the same 8-role IAM allowlist as
-`scripts/validate-system-request.sh`) so a doomed request is never emitted, then runs the emitter
-below keyed to the system's own project. It **only asks** — nothing is created until Or's ✅.
+`scripts/validate-system-request.sh`) so a doomed request is never sent, then **dispatches the
+system's own `request-factory-resource.yml` workflow**. It **only asks** — nothing is created
+until Or's ✅.
+
+**Why a workflow, not a direct emit:** raising the request means running `emit-event.sh`, which
+reads the system's Secret Manager (Linear/Telegram keys) — a read that needs GCP credentials.
+An interactive Claude Code session has **none** (WIF works only inside GitHub Actions). So the
+command does not emit itself; it dispatches the per-system workflow
+(`templates/system/.github/workflows/request-factory-resource.yml`, shipped into every system),
+which authenticates as the system's `deploy-sa` via WIF and runs the emitter. Dispatching a
+workflow is a plain GitHub API call the session *can* make; the privileged emit happens in the
+permissioned Actions environment.
 
 ## End-to-end flow
 
-1. **System raises the request** — the `/request-factory-resource` command runs the
-   already-shipped emitter (`EMIT_SM_PROJECT` = the system's own project):
+1. **System raises the request** — the `/request-factory-resource` command dispatches the
+   system's `request-factory-resource.yml` workflow, which (WIF as `deploy-sa`,
+   `EMIT_SM_PROJECT` = the system's own project) runs the already-shipped emitter:
    ```sh
    scripts/emit-event.sh \
      --name=system.request.secret \         # or system.request.iam
      --severity=info --action-required=true \  # action_required → Linear; info → no raw Telegram alert
-     --layer=system --workflow=<wf> --run-id=<rid> --system=<sys> \
+     --layer=system --workflow=request-factory-resource --run-id=<rid> --system=<sys> \
      --body='{"request_type":"secret","secret_name":"supadata-api-key","reason":"..."}'
    ```
    `action_required=true` makes `emit-event.sh` open a deduped Linear ticket carrying the
-   request JSON in its `event.body`. No new system-side infrastructure is needed.
+   request JSON in its `event.body`.
 2. **MCP triage** — Linear's outbound webhook hits the MCP `/linear-webhook`; `handleLinearWebhook`
    (`services/mcp-server/src/oil-autofix.ts`) routes any `system.request.*` event to
    `dispatchSystemRequest` (`services/mcp-server/src/system-request.ts`) **before** the OIL
@@ -96,11 +107,14 @@ below keyed to the system's own project. It **only asks** — nothing is created
   Or catches a mismatch. Per-system signing is a v2 item.
 - **`iam` allowlist is intentionally small.** Expanding it is itself a gated change (PR + Or review).
 - The system side now has a first-class front door: the shared `/request-factory-resource`
-  command (`.claude/commands/request-factory-resource.md`) ships into every system and wraps
-  the `emit-event.sh` call with local pre-validation. New systems get it at provision; existing
-  systems are back-filled in place via `refresh-system-agents.yml`
-  (`paths=.claude/commands/request-factory-resource.md`). The command is the only added
-  system-side artifact — the backend channel is unchanged.
+  command (`.claude/commands/request-factory-resource.md`) plus the per-system workflow it
+  dispatches (`templates/system/.github/workflows/request-factory-resource.yml`) ship into every
+  system. The command pre-validates locally and dispatches the workflow; the workflow authenticates
+  via WIF and runs `emit-event.sh` (an interactive session has no cloud creds, so it cannot emit
+  directly — hence the workflow). New systems get both at provision; existing systems are
+  back-filled in place via `refresh-system-agents.yml`
+  (`paths=".github/workflows/request-factory-resource.yml,.claude/commands/request-factory-resource.md"`).
+  These two are the only added system-side artifacts — the backend channel is unchanged.
 
 ## Proven
 
