@@ -1151,6 +1151,10 @@ jobs:
           #     shell + a per-secret secretAccessor binding for runtime-sa + deploy-sa,
           #     so the grant is permanent and survives a re-provision. The
           #     create-if-missing guard never overwrites a hand-set value.)
+          #   - greeninvoice-api-id + greeninvoice-api-secret (Green Invoice /
+          #     morning API credential pair for the invoicing integration; VALUEs
+          #     are hand-set per-system — same shell-plus-binding-only semantics
+          #     as fal-api-key above.)
           # deploy-sa has roles/secretmanager.secretVersionManager at project
           # level — that includes versions.add but NOT secrets.create. Create
           # the shells here, as the broker SA (which has roles/owner), so the
@@ -1181,6 +1185,8 @@ jobs:
             factory-mcp-bearer
             n8n-mcp-server-token
             fal-api-key
+            greeninvoice-api-id
+            greeninvoice-api-secret
           )
           RUNTIME_SA="runtime-sa@${GCP_PROJECT}.iam.gserviceaccount.com"
           DEPLOY_SA="deploy-sa@${GCP_PROJECT}.iam.gserviceaccount.com"
