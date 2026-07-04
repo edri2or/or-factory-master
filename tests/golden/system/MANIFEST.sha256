@@ -73,6 +73,8 @@ c456eb2a2569a9a97b9842cb45b4b04c3d39c4b480ce20a26ad53fd4644c0158  .claude/comman
 ee45bcff1241f0da11f7a43c949c34b74e4c66dc69a94c5ee83e1693df199f1d  .claude/settings.json
 2a454cd3d53242e97864e55b63b124f94d240f728f84f90bb84ac18fe1c231a6  .claude/skills/agent-router/SKILL.md
 895f29efd8047ec67e92d92feb58d6615c365735ac137a8f7a317e5667bffa62  .claude/skills/code-agent/SKILL.md
+6ebb0876a3410a24cc6e1615dc4319ef0635097980490045969bf324b1a2f771  .claude/skills/conversation-continuity/SKILL.md
+cbb3e758199f2b07687eb8ec2b29598289a1a7a0a69e2cccc1cc5298b7ce9c27  .claude/skills/conversation-handoff/SKILL.md
 ef3f562f43c89a82f9b0c036eb2e738af98ee1453867e89ca7ace7bab79847d6  .claude/skills/deep-research/SKILL.md
 1a4c8e06923423ed05632d7cbdc3cd6d95bf5dba8f91797ed1645536d3bb592a  .claude/skills/github-app-operations/SKILL.md
 c8896e156a752f72f6945c1d47c0a7eef7c27af3cc94ab15c9068e1b2f997b34  .claude/skills/github-app-operations/scripts/generate-app-token.sh
