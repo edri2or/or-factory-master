@@ -130,6 +130,25 @@ file contents at him — translate the state into one short, calm Hebrew summary
 When every stage is `completed`, set the plan's front-matter `status: completed` (this
 releases the CI devplan gate), give Or a short closing summary in Hebrew, and stop.
 
+**Idea-pipeline close-out (only when this build came from a backlog card).** If this plan was
+opened from an `inbox/` idea card (the card carries `devplan: devplans/<slug>.md` and
+`status: in-development` — the light/research path from `backlog-picker`), also close the loop so a
+finished item leaves the active list yet stays documented (see `docs/idea-pipeline.md` §
+"Stage 5 — Close-out"):
+1. **Mark the card done** — flip its front-matter `status: in-development → completed`, and repoint
+   `devplan:` to `devplans/archive/<slug>.md` (status-only edit — never touch `## Raw` /
+   `## Understood intent`).
+2. **Archive the plan** — move `devplans/<slug>.md` → `devplans/archive/<slug>.md` (the archive
+   convention; keeps `devplans/` to active plans only).
+3. **File the "done" record** — append one line to `inbox/completed.md` (create it if absent):
+   the topic, the completion date, a link to the archived devplan, and the source-card path.
+4. **Re-organize the list NOW** — immediately run the `inbox-organizer` regenerate (skill #2, the sole
+   ranking owner) so `inbox/backlog.md` is rewritten over the remaining cards: the `completed` card
+   **drops out** and everything else is **re-scored, re-ranked, renumbered 1..N, and its
+   `parallel-with` recomputed** — not deferred to "some later run". The list must reflect reality the
+   instant the build closes (the "backlog is always current" invariant — `docs/idea-pipeline.md`).
+A build NOT opened from a backlog card skips this whole close-out.
+
 > **Closing while another development is active → do it in a docs-only follow-up PR.** The devplan
 > gate (`check-devplan-updated.sh`) credits only plans that are *still* `status: active` AND updated
 > in the diff. Flipping your plan to `completed` in the **same PR that carries code**, while another

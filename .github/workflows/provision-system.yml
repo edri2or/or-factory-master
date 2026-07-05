@@ -771,7 +771,8 @@ jobs:
             "docs/research/agent-role-decomposition-planning.md|docs/research/agent-role-decomposition-planning.md" \
             "docs/capability-first.md|docs/capability-first.md" \
             "templates/system/docs/CAPABILITIES.md|docs/CAPABILITIES.md" \
-            "templates/system/docs/language-boundary.md|docs/language-boundary.md"; do
+            "templates/system/docs/language-boundary.md|docs/language-boundary.md" \
+            "templates/system/docs/idea-pipeline.md|docs/idea-pipeline.md"; do
             src="${pair%%|*}"; dst="${pair##*|}"
             [ -f "${GITHUB_WORKSPACE}/${src}" ] || { echo "FAIL: ${src} not found" >&2; exit 1; }
             cp "${GITHUB_WORKSPACE}/${src}" "$CLONE_DIR/${dst}"
