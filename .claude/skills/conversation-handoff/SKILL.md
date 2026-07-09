@@ -1,15 +1,15 @@
 ---
 name: conversation-handoff
-description: "Turns the conversation so far into a structured handoff tailored to the next agent — from a context-file if one exists in the conversation, or directly from the conversation if not. The handoff is not a raw copy but a focused briefing that passes only what the next agent needs to continue: goal, state, decisions and their rationale, what to avoid, and the next step. Activate immediately whenever the user wants to move the conversation elsewhere or continue it in a new chat. Explicit Hebrew triggers — תכין הנדאוף, תעביר לצ'אט חדש, נמשיך בשיחה חדשה, תנסח מסירה, תכין הודעת המשך, /handoff. Explicit English triggers — create a handoff, make a handoff, move to a new chat, continue in a fresh session, hand this off, draft a handoff prompt. Implicit triggers (activate on these too) — when the user says he wants to continue somewhere else, that the conversation has gotten too long and needs a clean start (בוא נמשיך את זה איפשהו אחר), or that he is handing the work to another agent or person. Distinction — this hands the context OUT to another chat or agent, unlike conversation-continuity which keeps consistency within the current conversation. Do not activate to update an internal context-file (that is a separate job)."
+description: "Turns the conversation so far into a structured handoff tailored to the next agent — from the on-disk context-file (sessions/context/<slug>.md) if one exists, or directly from the conversation if not. The handoff is not a raw copy but a focused briefing that passes only what the next agent needs to continue: goal, state, decisions and their rationale, what to avoid, and the next step. It is delivered BOTH as a saved file (sessions/context/<slug>.handoff.md) and as a ready-to-copy block for a new chat. Activate immediately whenever the user wants to move the conversation elsewhere or continue it in a new chat. Explicit Hebrew triggers — תכין הנדאוף, תעביר לצ'אט חדש, נמשיך בשיחה חדשה, תנסח מסירה, תכין הודעת המשך, /handoff. Explicit English triggers — create a handoff, make a handoff, move to a new chat, continue in a fresh session, hand this off, draft a handoff prompt. Implicit triggers (activate on these too) — when the user says he wants to continue somewhere else, that the conversation has gotten too long and needs a clean start (בוא נמשיך את זה איפשהו אחר), or that he is handing the work to another agent or person. Distinction — this hands the context OUT to another chat or agent, unlike conversation-continuity which keeps consistency within the current conversation. Do not activate merely to update the internal context-file (that is conversation-continuity's job)."
 ---
 
 # Conversation Handoff
 
-Purpose of the skill: turn the conversation so far into a **structured handoff** — a ready-to-copy block the user pastes into a new chat (or hands to a person/tool), so the next agent continues immediately without rebuilding the context from scratch.
+Purpose of the skill: turn the conversation so far into a **structured handoff** — a briefing the user takes to a new chat (or hands to a person/tool), so the next agent continues immediately without rebuilding the context from scratch. It is delivered two ways: **saved as a file** on disk (so it's durable and easy to reopen) **and** shown as a **ready-to-copy block** for pasting into the new chat.
 
 The core principle, grounded in research on agent-to-agent handoff failures: the big trap is a **context dump** — passing too much raw context. That amplifies noise and loses the decision logic. A good handoff passes **only what the next agent needs for the next step**: goals, constraints, prior decisions with their rationale, and what to avoid. Not a conversation copy, not a dense summary — an operational briefing.
 
-The difference from `conversation-continuity`: there the file stays inside the conversation to preserve consistency. Here the goal is the opposite — to package the context and take it out, to another agent.
+The difference from `conversation-continuity`: there the context-file stays as the working source of truth *for this conversation*. Here the goal is the opposite — to package the context and take it **out**, to another agent. Both now live as real files on disk (`sessions/context/…`), but they serve opposite directions.
 
 ---
 
@@ -17,9 +17,9 @@ The difference from `conversation-continuity`: there the file stays inside the c
 
 ### Step 1 — identify the source
 
-Check whether a **context file** exists in the conversation (the output of the `conversation-continuity` skill — a block with the heading "📋 קובץ-קונטקסט"):
+Check whether an **on-disk context-file** exists for this conversation — `sessions/context/<slug>.md` (the output of the `conversation-continuity` skill):
 
-- **Exists** → use it as the basis. Its fields map almost one-to-one to the handoff, so most of the work is already done. Review it and update against the conversation if anything has shifted since.
+- **Exists** → `Read` it and use it as the basis. Its fields map almost one-to-one to the handoff, so most of the work is already done. Review it and update against the conversation if anything has shifted since. (If you don't know the slug — e.g. after compaction — find the latest with `ls -t sessions/context/*.md | head -1` and confirm it's this conversation's file.)
 - **Doesn't exist** → build the handoff directly from the conversation. Go over the conversation from the start and extract the fields yourself.
 
 In both cases — the handoff reflects the **actual state of the conversation**, not assumptions. If something wasn't said, it doesn't go in.
@@ -41,7 +41,12 @@ Use the proven seven-field structure (below). Adapt the depth and terms to the t
 
 ### Step 4 — delivery
 
-Present the handoff as a **ready-to-copy block** (inside a code block, so it's easy to copy in one go). After the block — just one short line explaining where to paste it. No long preambles.
+Deliver the handoff **both ways**:
+
+1. **`Write` it to `sessions/context/<slug>.handoff.md`** (same slug as the context-file, `.handoff.md` suffix; create `sessions/context/` if missing). This keeps a durable copy the user can reopen — it is git-ignored, a session working file.
+2. **Present it as a ready-to-copy block** in the chat (inside a code block, so it's easy to copy in one go).
+
+After the block — just one short line telling the user where to paste it **and** that a copy was saved (with the path). No long preambles.
 
 ---
 
@@ -100,11 +105,23 @@ Raw history feels comfortable because it contains everything — and that's exac
 
 ---
 
+## Truth discipline
+
+The handoff is a factual briefing the next agent trusts, so a fabricated decision or result
+propagates. Under the truth-protocol discipline: every field reflects what was **actually said and
+done** this session — never invent a decision, a rationale, or a "done" state. If a fact isn't in
+the conversation, it doesn't go in; if you're unsure, say "אין באפשרותי לאשר זאת" rather than
+guessing. See the `truth-protocol` skill.
+
+---
+
 ## Short example
 
-**There's a context file in the conversation, and the user says "תכין הנדאוף, אני ממשיך בפרויקט הפיתוח":**
+**There's a context-file on disk, and the user says "תכין הנדאוף, אני ממשיך בפרויקט הפיתוח":**
 
-The target is clear (Claude in another project) — skip the clarifying question. Take the context file, map it to the seven fields, and present:
+The target is clear (Claude in another project) — skip the clarifying question. `Read`
+`sessions/context/push-notifications.md`, map it to the seven fields, `Write` the result to
+`sessions/context/push-notifications.handoff.md`, and present:
 
 ```
 ═══════════════════════════════════
@@ -142,4 +159,4 @@ The target is clear (Claude in another project) — skip the clarifying question
 ═══════════════════════════════════
 ```
 
-Then one line: "מוכן — הדבק את הבלוק בצ'אט החדש בפרויקט הפיתוח."
+Then one line: "מוכן — הדבק את הבלוק בצ'אט החדש בפרויקט הפיתוח. שמרתי עותק גם ב-sessions/context/push-notifications.handoff.md."

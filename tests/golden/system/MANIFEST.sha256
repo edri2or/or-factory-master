@@ -74,8 +74,8 @@ ee45bcff1241f0da11f7a43c949c34b74e4c66dc69a94c5ee83e1693df199f1d  .claude/settin
 2a454cd3d53242e97864e55b63b124f94d240f728f84f90bb84ac18fe1c231a6  .claude/skills/agent-router/SKILL.md
 64e4462dcabe55405fd3459ce065780aece062c37c8ba6417cea2b9f1b5cb238  .claude/skills/backlog-picker/SKILL.md
 895f29efd8047ec67e92d92feb58d6615c365735ac137a8f7a317e5667bffa62  .claude/skills/code-agent/SKILL.md
-6ebb0876a3410a24cc6e1615dc4319ef0635097980490045969bf324b1a2f771  .claude/skills/conversation-continuity/SKILL.md
-cbb3e758199f2b07687eb8ec2b29598289a1a7a0a69e2cccc1cc5298b7ce9c27  .claude/skills/conversation-handoff/SKILL.md
+73df4d58cb63ab64a159cda7e26e6c30a635b26a35eb89734662ec6082121d1f  .claude/skills/conversation-continuity/SKILL.md
+e1b19d3d53f197f64d3a415339bf922837bc42dacad4eae5a7274787fd5b6bdf  .claude/skills/conversation-handoff/SKILL.md
 ef3f562f43c89a82f9b0c036eb2e738af98ee1453867e89ca7ace7bab79847d6  .claude/skills/deep-research/SKILL.md
 1a4c8e06923423ed05632d7cbdc3cd6d95bf5dba8f91797ed1645536d3bb592a  .claude/skills/github-app-operations/SKILL.md
 c8896e156a752f72f6945c1d47c0a7eef7c27af3cc94ab15c9068e1b2f997b34  .claude/skills/github-app-operations/scripts/generate-app-token.sh
