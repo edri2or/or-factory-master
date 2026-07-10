@@ -78,6 +78,11 @@ jobs:
     steps:
       - name: Checkout (the factory template tree)
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
+        with:
+          # Do NOT persist the default GITHUB_TOKEN in git config — it embeds an
+          # Authorization extraheader for github.com that overrides the broker
+          # App token we inject in the push URL, so the branch push would fail.
+          persist-credentials: false
 
       - name: Validate inputs
         env:
@@ -225,8 +230,11 @@ jobs:
           WRITE_TOKEN=$(bash scripts/generate-app-token.sh /tmp/fpr-key.pem "$APP_ID" "$INSTALL_ID" '' '{"contents":"write","pull_requests":"write"}' '["or-factory-master"]')
           echo "::add-mask::$WRITE_TOKEN"
           rm -f /tmp/fpr-key.pem
-          if ! git push "https://x-access-token:${WRITE_TOKEN}@github.com/edri2or/or-factory-master.git" "$BRANCH:$BRANCH" >/dev/null 2>&1; then
-            echo "FAIL: could not push promote branch" >&2; exit 1
+          if ! PUSH_ERR=$(git push "https://x-access-token:${WRITE_TOKEN}@github.com/edri2or/or-factory-master.git" "$BRANCH:$BRANCH" 2>&1); then
+            # Scrub the token from any echoed remote URL before surfacing the error.
+            echo "FAIL: could not push promote branch:" >&2
+            printf '%s\n' "$PUSH_ERR" | sed "s/${WRITE_TOKEN}/***/g" >&2
+            exit 1
           fi
           BODY=$(printf 'Reverse-channel **promote** (system → factory template) for **%s**, after Or'"'"'s Telegram ✅.\n\n**Source:** `edri2or/%s:%s`\n**Target:** `%s`\n**Reason:** %s\n\n:warning: DRAFT — Or reviews + merges (or closes). Nothing lands in the template unless merged. MVP is docs-only; the golden was refreshed here. The factory CI gates run on this PR as usual.' \
             "${SYSTEM_NAME}" "${SYSTEM_NAME}" "${SOURCE_PATH}" "${TARGET_PATH}" "${REASON:-n/a}")
