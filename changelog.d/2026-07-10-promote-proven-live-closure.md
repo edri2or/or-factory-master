@@ -1,0 +1,5 @@
+## docs: `promote` reverse channel proven live (stage B); self-sufficiency plan closed
+
+| Type | Summary |
+|---|---|
+| docs | Record the live end-to-end proof of the reverse channel (`promote`) and close `devplans/system-self-sufficiency-channels.md` (all stages A+B+C proven live). or-aios dispatched `request-factory-resource.yml` (`promote` of `docs/reverse-channel-note.md`); on Or's Telegram ✅ the broker (`factory-master-broker[bot]`) fetched the doc, wrote it under `templates/system/`, refreshed the golden, and opened a **draft PR** on the factory — proven twice: **#583** (first round after the #582 push-fix) and **#586** (a fresh confirming round this session, 4 files = doc + golden + changelog fragment + devplan stub). Both closed as proofs (landing the doc in the template is a separate Or-gated choice). Known non-blocking note: Linear's double webhook sends two identical approval cards per request (register runs twice) — Or approves one; MCP-triage idempotency is an optional future improvement. |
