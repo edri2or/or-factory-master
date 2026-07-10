@@ -21,7 +21,7 @@ status: active
 |---|---|---|---|
 | A | `sync` request_type (משיכת סוד-משותף) | completed | `validate-system-request.sh`, `fulfill-system-request.yml`, `system-request.ts`, bats, docs |
 | B | `promote` request_type + מבצע-PR חדש | in-progress | `.github/workflows/fulfill-promote-request.yml` (חדש), `validate-system-request.sh`, `system-request.ts`, bats, `docs/system-resource-requests.md`, `monitoring/registry-exempt.txt` |
-| C | `merge` request_type (card-free, יוצר≠מאשר ללולאת התיקון-העצמי של or-aios) | in-progress | `system-request.ts`, `test/system-request.test.mjs`, `docs/system-resource-requests.md` |
+| C | `merge` request_type (card-free, יוצר≠מאשר ללולאת התיקון-העצמי של or-aios) | completed | `system-request.ts`, `test/system-request.test.mjs`, `docs/system-resource-requests.md` |
 
 > הוכחה בכל שלב: שלב נסגר רק אחרי הוכחה חיה (round-trip אמיתי עם ✅ של Or), לא "CI ירוק" בלבד.
 
@@ -80,14 +80,16 @@ status: active
       של המערכת (`EXPECTED_SELFFIX_AUTHOR`). קריאה=ברוקר, מיזוג=מאשר — שני Apps נפרדים.
 - [x] בדיקות: 6 מקרי `isMergeableSelffixPr` ב-`test/system-request.test.mjs` (tsc נקי, 156/156 mcp).
 - [x] `docs/system-resource-requests.md`: שורת `merge` (מתועד כ-internal/card-free).
-- [ ] הוכחה חיה: or-aios מזהה באג → PR-טיוטה ע"י `or-aios-app[bot]` → ✅ שלך → `oil-selfmerge` פולט
-      `system.request.merge` → מאשר-הפקטורי ממזג. אימות: actor-המיזוג = `oil-autofix-approver[bot]`,
-      **שונה** מיוצר ה-PR `or-aios-app[bot]`.
+- [x] **הוכחה חיה הושלמה (2026-07-10):** PR #584 מוזג → ה-MCP נפרס מחדש (push trigger, בריאות ✅ + שער-עשן ✅).
+      or-aios זרעה באג, הלולאה פתחה PR-טיוטה **#466 ע"י `or-aios-app[bot]`**, Or ✅ בבוט של or-aios,
+      `oil-selfmerge` פלט `system.request.merge`, ומאשר-הפקטורי מיזג. **`merged_by=oil-autofix-approver[bot]`,
+      שונה מיוצר ה-PR `or-aios-app[bot]` — יוצר≠מאשר מוכח חי.**
 
 **הוכחה תפקודית (באותו שלב):** round-trip חי אחרי מיזוג (ה-MCP חייב redeploy דרך ה-push trigger).
 שער ה-CI (tsc + mcp tests) = הוכחה סטטית.
 
-**הערת התקדמות אחרונה:** קוד + בדיקות ירוקות מקומית (tsc נקי, 156/156). ממתין למיזוג + redeploy + הוכחה חיה.
+**הערת התקדמות אחרונה (2026-07-10):** ✅ הושלם ואומת חי מקצה-לקצה. הצד-or-aios: PR #464 (oil-selfmerge פולט)
++ PR #467 (סגירת הפיתוח + ניקוי scaffold ההוכחה).
 
 **שינוי תוכנית:** ה-`merge` נשאר לגמרי בתוך `dispatchSystemRequest` וחוזר לפני שער-הכרטיס — fail-closed
 חזק יותר מהוספתו ל-type-guards של `parseRequestFromDescription`/`registerSystemRequest` (merge לעולם
@@ -98,3 +100,4 @@ status: active
 ## יומן ל-Or (עברית)
 
 - שלב A (קוד) הושלם — נבנה ערוץ שבו or-aios יכולה לבקש למשוך סוד-משותף מעודכן, באישורך.
+- שלב C (`merge`) הושלם ואומת חי — or-aios מבקשת מהפקטורי למזג את תיקוני-העצמי שלה, והמיזוג נעשה ע"י מאשר נפרד (יוצר≠מאשר). נשאר פתוח: הוכחה חיה של שלב B (`promote`).
