@@ -271,3 +271,70 @@ teardown() {
   assert_failure
   assert_output --partial "not a safe secret id"
 }
+
+# ---------------------------------------------------------------------------
+# promote type (system doc -> factory templates/system via broker draft PR)
+# ---------------------------------------------------------------------------
+
+@test "ALLOW: promote a doc into templates/system/docs" {
+  run env REQUEST_TYPE=promote SYSTEM_NAME=tokile GCP_PROJECT=factory-test-18 \
+    SOURCE_PATH=docs/note.md TARGET_PATH=templates/system/docs/note.md bash "$SCRIPT"
+  assert_success
+  assert_output --partial "VERDICT: allow (type=promote"
+}
+
+@test "ALLOW: promote a .txt doc" {
+  run env REQUEST_TYPE=promote SYSTEM_NAME=tokile GCP_PROJECT=factory-test-18 \
+    SOURCE_PATH=notes/x.txt TARGET_PATH=templates/system/docs/x.txt bash "$SCRIPT"
+  assert_success
+  assert_output --partial "VERDICT: allow (type=promote"
+}
+
+@test "REFUSE: promote without source_path" {
+  run env REQUEST_TYPE=promote SYSTEM_NAME=tokile GCP_PROJECT=factory-test-18 \
+    TARGET_PATH=templates/system/docs/x.md bash "$SCRIPT"
+  assert_failure
+  assert_output --partial "no source_path"
+}
+
+@test "REFUSE: promote without target_path" {
+  run env REQUEST_TYPE=promote SYSTEM_NAME=tokile GCP_PROJECT=factory-test-18 \
+    SOURCE_PATH=docs/x.md bash "$SCRIPT"
+  assert_failure
+  assert_output --partial "no target_path"
+}
+
+@test "REFUSE: promote target outside templates/system" {
+  run env REQUEST_TYPE=promote SYSTEM_NAME=tokile GCP_PROJECT=factory-test-18 \
+    SOURCE_PATH=docs/x.md TARGET_PATH=docs/x.md bash "$SCRIPT"
+  assert_failure
+  assert_output --partial "must be under templates/system/"
+}
+
+@test "REFUSE: promote path traversal" {
+  run env REQUEST_TYPE=promote SYSTEM_NAME=tokile GCP_PROJECT=factory-test-18 \
+    SOURCE_PATH=../secrets.md TARGET_PATH=templates/system/docs/x.md bash "$SCRIPT"
+  assert_failure
+  assert_output --partial "must not contain '..'"
+}
+
+@test "REFUSE: promote non-doc target (.sh)" {
+  run env REQUEST_TYPE=promote SYSTEM_NAME=tokile GCP_PROJECT=factory-test-18 \
+    SOURCE_PATH=scripts/x.sh TARGET_PATH=templates/system/scripts/x.sh bash "$SCRIPT"
+  assert_failure
+  assert_output --partial "MVP is docs-only"
+}
+
+@test "REFUSE: promote non-doc target (.yml workflow)" {
+  run env REQUEST_TYPE=promote SYSTEM_NAME=tokile GCP_PROJECT=factory-test-18 \
+    SOURCE_PATH=wf.yml TARGET_PATH=templates/system/.github/workflows/wf.yml bash "$SCRIPT"
+  assert_failure
+  assert_output --partial "MVP is docs-only"
+}
+
+@test "REFUSE: promote absolute source path" {
+  run env REQUEST_TYPE=promote SYSTEM_NAME=tokile GCP_PROJECT=factory-test-18 \
+    SOURCE_PATH=/etc/passwd TARGET_PATH=templates/system/docs/x.md bash "$SCRIPT"
+  assert_failure
+  assert_output --partial "must be relative"
+}
