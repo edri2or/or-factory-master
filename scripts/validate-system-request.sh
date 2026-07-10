@@ -10,7 +10,7 @@
 # no gcloud), so it is fully unit-testable and identical in both phases.
 #
 # It enforces ALL of the following; any failure exits non-zero = REFUSE:
-#   * request_type is one of the supported types (secret | iam | sync)
+#   * request_type is one of the supported types (secret | iam | sync | promote)
 #   * the target GCP project is a real per-system project — never a control
 #     project and never the shared sandbox backend (factory-test-25)
 #   * system_name + gcp_project match the factory's id shape
@@ -22,6 +22,9 @@
 #   * sync type: pull a SHARED secret's latest value control->system; the secret
 #     must be on the curated SYNC_ALLOWLIST (default-deny) and clear the same
 #     super-credential/privileged-keyword refusals as a secret request
+#   * promote type: promote a doc from the system repo UP into templates/system/**
+#     via a broker-opened draft PR; source_path/target_path are safe relative
+#     paths (no traversal), target under templates/system/, MVP = docs (.md/.txt)
 #   * members (the grant targets) are ONLY the system's own deploy-sa +
 #     runtime-sa in that project — never an external or cross-project SA
 #
@@ -85,6 +88,8 @@ GCP_PROJECT="${GCP_PROJECT:-}"
 SECRET_NAME="${SECRET_NAME:-}"
 ROLE="${ROLE:-}"
 MEMBERS="${MEMBERS:-}"
+SOURCE_PATH="${SOURCE_PATH:-}"
+TARGET_PATH="${TARGET_PATH:-}"
 
 refuse() { echo "VERDICT: refuse — $1"; exit 1; }
 
@@ -92,34 +97,40 @@ refuse() { echo "VERDICT: refuse — $1"; exit 1; }
 
 [ -n "$REQUEST_TYPE" ] || refuse "no request_type"
 [ -n "$SYSTEM_NAME" ]  || refuse "no system_name"
-[ -n "$GCP_PROJECT" ]  || refuse "no gcp_project"
-
-# Never touch a control project (holds the broker's own keys) or the shared
-# sandbox backend (its IAM is deliberately minimal). Mirrors the guard in
-# .github/workflows/grant-secret-accessor.yml.
-case "$GCP_PROJECT" in
-  or-factory-master-control|factory-control-9piybr)
-    refuse "gcp_project is a control project" ;;
-  factory-test-25)
-    refuse "gcp_project is factory-test-25 (shared sandbox backend)" ;;
-esac
-
-[[ "$GCP_PROJECT" =~ $ID_RE ]] || refuse "gcp_project '$GCP_PROJECT' is not a valid project id (6-30 chars)"
 [[ "$SYSTEM_NAME" =~ $ID_RE ]] || refuse "system_name '$SYSTEM_NAME' is not a valid system name (6-30 chars)"
 
-# Members default to the system's own two SAs; if supplied, every entry must be
-# exactly one of those two — never an external or cross-project service account.
-DEPLOY_SA="deploy-sa@${GCP_PROJECT}.iam.gserviceaccount.com"
-RUNTIME_SA="runtime-sa@${GCP_PROJECT}.iam.gserviceaccount.com"
-if [ -n "$MEMBERS" ]; then
-  IFS=',' read -ra _members <<< "$MEMBERS"
-  for m in "${_members[@]}"; do
-    m="$(echo "$m" | xargs)"   # trim surrounding whitespace
-    [ -n "$m" ] || continue
-    if [ "$m" != "$DEPLOY_SA" ] && [ "$m" != "$RUNTIME_SA" ]; then
-      refuse "member '$m' is not the system's own deploy-sa/runtime-sa in $GCP_PROJECT"
-    fi
-  done
+# GCP-project validation applies to the GCP-acting types (secret/iam/sync).
+# promote is a GitHub-only action (it opens a PR on the factory template) and
+# touches no GCP project, so it neither requires nor validates GCP_PROJECT.
+if [ "$REQUEST_TYPE" != "promote" ]; then
+  [ -n "$GCP_PROJECT" ] || refuse "no gcp_project"
+
+  # Never touch a control project (holds the broker's own keys) or the shared
+  # sandbox backend (its IAM is deliberately minimal). Mirrors the guard in
+  # .github/workflows/grant-secret-accessor.yml.
+  case "$GCP_PROJECT" in
+    or-factory-master-control|factory-control-9piybr)
+      refuse "gcp_project is a control project" ;;
+    factory-test-25)
+      refuse "gcp_project is factory-test-25 (shared sandbox backend)" ;;
+  esac
+
+  [[ "$GCP_PROJECT" =~ $ID_RE ]] || refuse "gcp_project '$GCP_PROJECT' is not a valid project id (6-30 chars)"
+
+  # Members default to the system's own two SAs; if supplied, every entry must be
+  # exactly one of those two — never an external or cross-project service account.
+  DEPLOY_SA="deploy-sa@${GCP_PROJECT}.iam.gserviceaccount.com"
+  RUNTIME_SA="runtime-sa@${GCP_PROJECT}.iam.gserviceaccount.com"
+  if [ -n "$MEMBERS" ]; then
+    IFS=',' read -ra _members <<< "$MEMBERS"
+    for m in "${_members[@]}"; do
+      m="$(echo "$m" | xargs)"   # trim surrounding whitespace
+      [ -n "$m" ] || continue
+      if [ "$m" != "$DEPLOY_SA" ] && [ "$m" != "$RUNTIME_SA" ]; then
+        refuse "member '$m' is not the system's own deploy-sa/runtime-sa in $GCP_PROJECT"
+      fi
+    done
+  fi
 fi
 
 # --- per-type validation ------------------------------------------------------
@@ -185,6 +196,45 @@ case "$REQUEST_TYPE" in
     done <<< "$SYNC_ALLOWLIST"
     [ -n "$_sync_allowed" ] || refuse "secret_name '$SECRET_NAME' is not on the shared-secret sync allowlist"
     echo "VERDICT: allow (type=sync secret='$SECRET_NAME' project='$GCP_PROJECT' source=control)"
+    exit 0
+    ;;
+
+  promote)
+    # Reverse channel: promote an artifact from the requesting system's repo UP
+    # into the factory template (templates/system/**) via a broker-opened DRAFT
+    # PR. This validates the request shape ONLY — the broker performs it, the
+    # factory's own gates run on the PR, and Or reviews+merges. MVP is docs-only
+    # (.md/.txt): a promoted doc cannot execute, the safest artifact for an
+    # automated channel. Promoting scripts/workflows/agents is a gated expansion.
+    [ -n "$SOURCE_PATH" ] || refuse "type=promote but no source_path"
+    [ -n "$TARGET_PATH" ] || refuse "type=promote but no target_path"
+    # Both paths: safe relative paths — no absolute, no traversal, no NUL/space,
+    # a sane charset, and a real filename segment.
+    for _p in "$SOURCE_PATH" "$TARGET_PATH"; do
+      case "$_p" in
+        /*)     refuse "path '$_p' must be relative (no leading /)" ;;
+        *..*)   refuse "path '$_p' must not contain '..'" ;;
+        *//*)   refuse "path '$_p' must not contain '//'" ;;
+      esac
+      [[ "$_p" =~ ^[A-Za-z0-9._/-]+$ ]] || refuse "path '$_p' has an unsafe character"
+      [[ "$_p" =~ [^/]$ ]] || refuse "path '$_p' must not end with '/'"
+    done
+    # The TARGET must land strictly inside the template tree, and MVP artifact
+    # types are docs only.
+    case "$TARGET_PATH" in
+      templates/system/*) ;;
+      *) refuse "target_path '$TARGET_PATH' must be under templates/system/" ;;
+    esac
+    case "$TARGET_PATH" in
+      *.md|*.txt) ;;
+      *) refuse "target_path '$TARGET_PATH' must be a doc (.md/.txt) — MVP is docs-only" ;;
+    esac
+    # The SOURCE (in the system repo) must be a matching doc type too.
+    case "$SOURCE_PATH" in
+      *.md|*.txt) ;;
+      *) refuse "source_path '$SOURCE_PATH' must be a doc (.md/.txt) — MVP is docs-only" ;;
+    esac
+    echo "VERDICT: allow (type=promote source='$SOURCE_PATH' target='$TARGET_PATH' system='$SYSTEM_NAME')"
     exit 0
     ;;
 

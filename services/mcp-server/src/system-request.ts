@@ -31,6 +31,15 @@ import {
 const OWNER = 'edri2or';
 const FACTORY_REPO = 'or-factory-master';
 const FULFILL_WORKFLOW = 'fulfill-system-request.yml';
+const PROMOTE_WORKFLOW = 'fulfill-promote-request.yml';
+
+// secret/iam/sync are GCP actions handled by the value-free fulfiller; promote
+// is a GitHub action (opens a draft PR on the factory template) handled by a
+// separate workflow with GitHub-write capability. Both phases (register/fulfill)
+// of a request route to the same workflow, chosen here by type.
+function fulfillWorkflowFor(requestType: string): string {
+  return requestType === 'promote' ? PROMOTE_WORKFLOW : FULFILL_WORKFLOW;
+}
 
 // callback_data tags. The issue identifier (e.g. "OPS-42") is the only payload —
 // it never contains a colon, so splitting is unambiguous and the value is tiny.
@@ -51,7 +60,16 @@ export interface SystemRequestResult {
 // so this module has no dependency on oil-autofix.ts (no import cycle).
 function parseRequestFromDescription(
   description: string | null | undefined,
-): { requestType: string; systemName: string; secretName: string; role: string; members: string; reason: string } | null {
+): {
+  requestType: string;
+  systemName: string;
+  secretName: string;
+  role: string;
+  members: string;
+  sourcePath: string;
+  targetPath: string;
+  reason: string;
+} | null {
   if (!description) return null;
   const fenced = description.match(/```json\s*([\s\S]*?)```/);
   const candidate = fenced && fenced[1] ? fenced[1] : description;
@@ -65,13 +83,16 @@ function parseRequestFromDescription(
   }
   const body = (otel['event.body'] ?? {}) as Record<string, unknown>;
   const requestType = String(body['request_type'] ?? '');
-  if (requestType !== 'secret' && requestType !== 'iam' && requestType !== 'sync') return null;
+  if (requestType !== 'secret' && requestType !== 'iam' && requestType !== 'sync' && requestType !== 'promote')
+    return null;
   return {
     requestType,
     systemName: String(otel['factory.system_name'] ?? body['system_name'] ?? ''),
     secretName: String(body['secret_name'] ?? ''),
     role: String(body['role'] ?? ''),
     members: String(body['members'] ?? ''),
+    sourcePath: String(body['source_path'] ?? ''),
+    targetPath: String(body['target_path'] ?? ''),
     reason: String(body['reason'] ?? ''),
   };
 }
@@ -144,7 +165,7 @@ export async function dispatchSystemRequest(
   const body = (otel?.['event.body'] ?? {}) as Record<string, unknown>;
   const requestType = String(body['request_type'] ?? '');
   const systemName = String(otel?.['factory.system_name'] ?? body['system_name'] ?? '');
-  if (requestType !== 'secret' && requestType !== 'iam' && requestType !== 'sync') {
+  if (requestType !== 'secret' && requestType !== 'iam' && requestType !== 'sync' && requestType !== 'promote') {
     await emitSysReq('skipped', identifier, `bad-request-type:${requestType}`, systemName);
     return { status: 200, body: { triage: 'skip', reason: 'bad-request-type' } };
   }
@@ -152,20 +173,34 @@ export async function dispatchSystemRequest(
     await emitSysReq('skipped', identifier, 'no-system-name');
     return { status: 200, body: { triage: 'skip', reason: 'no-system-name' } };
   }
+  // Build inputs per type — each workflow declares only its own inputs, so a
+  // stray field would make the dispatch fail. promote → the PR-opening workflow.
+  const registerInputs: Record<string, string> =
+    requestType === 'promote'
+      ? {
+          phase: 'register',
+          request_type: requestType,
+          system_name: systemName,
+          source_path: String(body['source_path'] ?? ''),
+          target_path: String(body['target_path'] ?? ''),
+          issue_id: identifier,
+          reason: String(body['reason'] ?? ''),
+        }
+      : {
+          phase: 'register',
+          request_type: requestType,
+          system_name: systemName,
+          secret_name: String(body['secret_name'] ?? ''),
+          role: String(body['role'] ?? ''),
+          members: String(body['members'] ?? ''),
+          issue_id: identifier,
+          reason: String(body['reason'] ?? ''),
+        };
   try {
     await dispatchWorkflow(
-      FULFILL_WORKFLOW,
+      fulfillWorkflowFor(requestType),
       'main',
-      {
-        phase: 'register',
-        request_type: requestType,
-        system_name: systemName,
-        secret_name: String(body['secret_name'] ?? ''),
-        role: String(body['role'] ?? ''),
-        members: String(body['members'] ?? ''),
-        issue_id: identifier,
-        reason: String(body['reason'] ?? ''),
-      },
+      registerInputs,
       OWNER,
       FACTORY_REPO,
     );
@@ -186,11 +221,14 @@ export async function registerSystemRequest(input: {
   gcp_project: string;
   secret_name?: string;
   role?: string;
+  source_path?: string;
+  target_path?: string;
   issue_id: string;
   reason?: string;
 }): Promise<SystemRequestResult> {
   const { request_type: type, system_name: sys, gcp_project: proj, issue_id: issue } = input;
-  if (type !== 'secret' && type !== 'iam' && type !== 'sync') return { status: 400, body: { error: 'bad_request_type' } };
+  if (type !== 'secret' && type !== 'iam' && type !== 'sync' && type !== 'promote')
+    return { status: 400, body: { error: 'bad_request_type' } };
   if (!ISSUE_ID_RE.test(issue)) return { status: 400, body: { error: 'bad_issue_id' } };
 
   let actionLine: string;
@@ -198,13 +236,19 @@ export async function registerSystemRequest(input: {
     actionLine = `סוד חדש: \`${input.secret_name ?? ''}\` (גישת קריאה ל-deploy-sa+runtime-sa)`;
   } else if (type === 'iam') {
     actionLine = `הרשאה: \`${input.role ?? ''}\` ל-deploy-sa+runtime-sa`;
-  } else {
+  } else if (type === 'sync') {
     actionLine = `סנכרון ערך סוד משותף: \`${input.secret_name ?? ''}\` (משיכת הערך העדכני מ-control)`;
+  } else {
+    actionLine =
+      `קידום מסמך לתבנית הפקטורי (PR-טיוטה):\n` +
+      `\`${input.source_path ?? ''}\` → \`${input.target_path ?? ''}\``;
   }
+  // promote is GitHub-only (no GCP project); omit the project line for it.
+  const projectLine = type === 'promote' || !proj ? '' : `פרויקט: ${proj}\n`;
   const text =
     `🔑 בקשת משאב ממערכת — דרוש אישור\n` +
     `מערכת: ${sys}\n` +
-    `פרויקט: ${proj}\n` +
+    projectLine +
     `${actionLine}\n` +
     (input.reason ? `סיבה: ${input.reason}\n` : '') +
     `תיק: ${issue}\n\n` +
@@ -289,20 +333,32 @@ export async function handleSystemRequestCallback(req: Request): Promise<SystemR
     return { status: 200, body: { action: 'approve', issue: issueId, dispatched: false, detail: 'recover_failed' } };
   }
 
+  const fulfillInputs: Record<string, string> =
+    recovered.requestType === 'promote'
+      ? {
+          phase: 'fulfill',
+          request_type: recovered.requestType,
+          system_name: recovered.systemName,
+          source_path: recovered.sourcePath,
+          target_path: recovered.targetPath,
+          issue_id: issueId,
+          reason: recovered.reason,
+        }
+      : {
+          phase: 'fulfill',
+          request_type: recovered.requestType,
+          system_name: recovered.systemName,
+          secret_name: recovered.secretName,
+          role: recovered.role,
+          members: recovered.members,
+          issue_id: issueId,
+          reason: recovered.reason,
+        };
   try {
     await dispatchWorkflow(
-      FULFILL_WORKFLOW,
+      fulfillWorkflowFor(recovered.requestType),
       'main',
-      {
-        phase: 'fulfill',
-        request_type: recovered.requestType,
-        system_name: recovered.systemName,
-        secret_name: recovered.secretName,
-        role: recovered.role,
-        members: recovered.members,
-        issue_id: issueId,
-        reason: recovered.reason,
-      },
+      fulfillInputs,
       OWNER,
       FACTORY_REPO,
     );

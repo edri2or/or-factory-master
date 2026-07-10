@@ -79,6 +79,9 @@ templates/system/.github/workflows/bootstrap-gmail-oauth.yml
 # Reachable only via the MCP triage + Telegram-approval path (dispatch-only, no
 # cadence to prove); the broker side of the system resource-request channel.
 .github/workflows/fulfill-system-request.yml
+# Reachable only via the MCP triage + Telegram-approval path (dispatch-only); the
+# broker side of the reverse `promote` channel — opens a draft PR on the factory.
+.github/workflows/fulfill-promote-request.yml
 # GCP risk-gate: green/yellow run on demand, red's execute phase is reachable only
 # via the MCP Telegram-approval path (dispatch-only, no cadence to prove).
 .github/workflows/gcp-action.yml
