@@ -2,7 +2,7 @@
 dev_name: עצמאות מערכת מול הפקטורי — ערוצי בקשה חדשים
 slug: system-self-sufficiency-channels
 opened: 2026-07-10
-status: active
+status: completed
 ---
 
 # תוכנית פיתוח — ערוצי עצמאות מערכת (צד הפקטורי)
@@ -20,7 +20,7 @@ status: active
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
 | A | `sync` request_type (משיכת סוד-משותף) | completed | `validate-system-request.sh`, `fulfill-system-request.yml`, `system-request.ts`, bats, docs |
-| B | `promote` request_type + מבצע-PR חדש | in-progress | `.github/workflows/fulfill-promote-request.yml` (חדש), `validate-system-request.sh`, `system-request.ts`, bats, `docs/system-resource-requests.md`, `monitoring/registry-exempt.txt` |
+| B | `promote` request_type + מבצע-PR חדש | completed | `.github/workflows/fulfill-promote-request.yml` (חדש), `validate-system-request.sh`, `system-request.ts`, bats, `docs/system-resource-requests.md`, `monitoring/registry-exempt.txt` |
 | C | `merge` request_type (card-free, יוצר≠מאשר ללולאת התיקון-העצמי של or-aios) | completed | `system-request.ts`, `test/system-request.test.mjs`, `docs/system-resource-requests.md` |
 
 > הוכחה בכל שלב: שלב נסגר רק אחרי הוכחה חיה (round-trip אמיתי עם ✅ של Or), לא "CI ירוק" בלבד.
@@ -54,13 +54,18 @@ status: active
 - [x] `system-request.ts`: `promote` ב-type-guards + ניתוב לפי-סוג (`fulfillWorkflowFor`) + inputs ייעודיים + actionLine.
 - [x] בדיקות: 9 מקרי `promote` ב-bats (allow doc / refuse traversal / refuse .sh / refuse outside-template / כו'); tsc נקי; MCP 6/6.
 - [x] `monitoring/registry-exempt.txt` + `docs/system-resource-requests.md` עודכנו.
-- [ ] הוכחה חיה: מ-or-aios `promote` של מסמך → Telegram ✅ → PR-טיוטה נפתח בפקטורי עם המסמך + golden מרוענן.
+- [x] **הוכחה חיה הושלמה (10.07):** מ-or-aios `promote` של `docs/reverse-channel-note.md` → Telegram ✅ →
+      הברוקר פתח PR-טיוטה בפקטורי עם המסמך תחת `templates/system/` + golden מרוענן. שני סבבים מוכחים:
+      **PR #583** (הסבב הראשון אחרי תיקון באג הדחיפה #582) ו-**PR #586** (סבב אישור טרי, סשן זה,
+      author=`factory-master-broker[bot]`, 4 קבצים: המסמך + golden + fragment + devplan-stub). שניהם
+      נסגרו כהוכחה (המסמך לא נחת בתבנית — נחיתה אמיתית = החלטה נפרדת של Or).
 
 **הוכחה תפקודית (באותו שלב):** round-trip חי אחרי מיזוג (ה-MCP חייב redeploy). שער ה-CI = הוכחה סטטית.
 
-**הערת התקדמות אחרונה:** קוד מוזג (PR #581), MCP נפרס. הוכחה חיה ראשונה תפסה באג: הברוקר לא הצליח
-לדחוף לפקטורי כי `checkout` שמר את `GITHUB_TOKEN` והתנגש ב-token של הברוקר. תוקן (`persist-credentials: false`
-+ חשיפת השגיאה). ממתין למיזוג התיקון + הוכחה חוזרת.
+**הערת התקדמות אחרונה (10.07):** ✅ הושלם ואומת חי. הבאג שהסבב-הראשון תפס (`checkout` שמר `GITHUB_TOKEN`
+ודרס את token הברוקר) תוקן ב-#582 (`persist-credentials: false`); PR #583 (post-fix) ואז PR #586 (סבב טרי)
+הוכיחו את הצינור מקצה-לקצה. **הערה ידועה (לא חוסם):** webhook כפול מ-Linear שולח 2 כרטיסים זהים לאותה בקשה
+(register רץ פעמיים) — Or מאשר אחד. idempotency ב-MCP triage = שיפור עתידי אופציונלי.
 
 **שינוי תוכנית:** —
 
@@ -100,4 +105,6 @@ status: active
 ## יומן ל-Or (עברית)
 
 - שלב A (קוד) הושלם — נבנה ערוץ שבו or-aios יכולה לבקש למשוך סוד-משותף מעודכן, באישורך.
-- שלב C (`merge`) הושלם ואומת חי — or-aios מבקשת מהפקטורי למזג את תיקוני-העצמי שלה, והמיזוג נעשה ע"י מאשר נפרד (יוצר≠מאשר). נשאר פתוח: הוכחה חיה של שלב B (`promote`).
+- שלב C (`merge`) הושלם ואומת חי — or-aios מבקשת מהפקטורי למזג את תיקוני-העצמי שלה, והמיזוג נעשה ע"י מאשר נפרד (יוצר≠מאשר).
+- שלב B (`promote`) הושלם ואומת חי — or-aios ביקשה לקדם מסמך לתבנית, אישרת בטלגרם, והברוקר פתח PR-טיוטה בפקטורי (PR #586).
+- **כל התוכנית (A+B+C) הושלמה ואומתה חי מקצה-לקצה.**
