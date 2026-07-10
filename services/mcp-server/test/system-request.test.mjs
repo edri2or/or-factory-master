@@ -13,7 +13,9 @@ process.env.GITHUB_APP_ID ||= 'test';
 process.env.GITHUB_APP_INSTALLATION_ID ||= 'test';
 process.env.GITHUB_APP_PRIVATE_KEY ||= 'test';
 
-const { parseSystemRequestCallback, isSystemRequestCallback } = await import('../dist/system-request.js');
+const { parseSystemRequestCallback, isSystemRequestCallback, isMergeableSelffixPr } = await import(
+  '../dist/system-request.js'
+);
 
 test('parseSystemRequestCallback: approve carries the issue identifier', () => {
   assert.deepEqual(parseSystemRequestCallback('sysreq:OPS-42'), {
@@ -57,4 +59,48 @@ test('isSystemRequestCallback: recognises only its own prefixes', () => {
   assert.equal(isSystemRequestCallback('oilapprove:1'), false);
   assert.equal(isSystemRequestCallback('cdo:0'), false);
   assert.equal(isSystemRequestCallback(''), false);
+});
+
+// ── isMergeableSelffixPr — the card-free merge guard (author≠approver path) ──
+// A valid, mergeable self-fix PR: or-aios system, open, base main, an
+// oil-selffix/* (or oil-autofix/*) head, authored by the system's own App bot.
+const OK = {
+  state: 'open',
+  baseRef: 'main',
+  headRef: 'oil-selffix/round-3',
+  authorLogin: 'or-aios-app[bot]',
+  systemName: 'or-aios',
+};
+
+test('isMergeableSelffixPr: accepts a genuine open self-fix PR', () => {
+  assert.equal(isMergeableSelffixPr(OK), true);
+  assert.equal(isMergeableSelffixPr({ ...OK, headRef: 'oil-autofix/x' }), true); // both prefixes ok
+});
+
+test('isMergeableSelffixPr: rejects wrong system', () => {
+  assert.equal(isMergeableSelffixPr({ ...OK, systemName: 'or-edri-4' }), false);
+  assert.equal(isMergeableSelffixPr({ ...OK, systemName: '' }), false);
+});
+
+test('isMergeableSelffixPr: rejects wrong base branch', () => {
+  assert.equal(isMergeableSelffixPr({ ...OK, baseRef: 'develop' }), false);
+  assert.equal(isMergeableSelffixPr({ ...OK, baseRef: '' }), false);
+});
+
+test('isMergeableSelffixPr: rejects a non-self-fix head branch', () => {
+  assert.equal(isMergeableSelffixPr({ ...OK, headRef: 'feature/x' }), false);
+  assert.equal(isMergeableSelffixPr({ ...OK, headRef: 'main' }), false);
+  assert.equal(isMergeableSelffixPr({ ...OK, headRef: 'oil-selffixx/x' }), false); // prefix must end in /
+});
+
+test('isMergeableSelffixPr: rejects a PR not authored by the system App', () => {
+  assert.equal(isMergeableSelffixPr({ ...OK, authorLogin: 'someone-else' }), false);
+  assert.equal(isMergeableSelffixPr({ ...OK, authorLogin: 'or-aios-app' }), false); // no [bot] suffix
+  assert.equal(isMergeableSelffixPr({ ...OK, authorLogin: '' }), false);
+});
+
+test('isMergeableSelffixPr: rejects a non-open PR', () => {
+  assert.equal(isMergeableSelffixPr({ ...OK, state: 'closed' }), false);
+  assert.equal(isMergeableSelffixPr({ ...OK, state: 'merged' }), false);
+  assert.equal(isMergeableSelffixPr({ ...OK, state: '' }), false);
 });
