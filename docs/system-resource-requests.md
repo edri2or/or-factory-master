@@ -13,12 +13,13 @@ of the OIL auto-fix loop: the system **asks**, Or **approves once** on Telegram 
 just-in-time, least-privilege, human-in-the-loop approval for every privilege escalation,
 behind a deterministic validation gate.
 
-## v1 request types
+## request types
 
 | `request_type` | What the broker does on ✅ | Gate |
 |---|---|---|
 | `secret` | Creates a new Secret Manager secret **shell** in the system's project + grants `secretAccessor` to the system's `runtime-sa`+`deploy-sa`. The system fills the value itself (it already has `secretVersionManager`). | safe id; **not** a super-credential (mirrors `copy-generic-secrets.sh` EXCLUDE) + no privileged keyword |
 | `iam` | Grants **one** allowlisted, non-escalating project role to the system's own `runtime-sa`+`deploy-sa`. | role on a curated allowlist; owner/editor/`iam.*`/`*.admin`/`serviceusage.*` hard-refused |
+| `sync` | Pulls the **latest value** of a SHARED secret from control SM into the system's own SM (the system-initiated twin of the broker's `mirror-secret-to-system.yml` push) — so a rotated shared secret can be refreshed on the system's own initiative instead of waiting for a factory push. Unlike `secret`/`iam` this moves a real secret **value**, so it is NOT routed through the value-free `fulfill-system-request.sh`; the workflow does the value-piped copy directly as broker. The dest shell must already exist. | secret on the curated `SYNC_ALLOWLIST` (default-deny) in `validate-system-request.sh` + the same super-credential/privileged-keyword refusals as `secret` |
 
 ## System-side entry point — the `/request-factory-resource` command
 

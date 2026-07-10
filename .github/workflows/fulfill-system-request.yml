@@ -27,7 +27,7 @@ on:
         required: true
         type: string
       request_type:
-        description: "secret | iam"
+        description: "secret | iam | sync"
         required: true
         type: string
       system_name:
@@ -35,7 +35,7 @@ on:
         required: true
         type: string
       secret_name:
-        description: "Secret id to create (request_type=secret)."
+        description: "Secret id to create (request_type=secret) or to pull control->system (request_type=sync)."
         required: false
         type: string
         default: ""
@@ -93,8 +93,8 @@ jobs:
             *) echo "FAIL: phase must be 'register' or 'fulfill' (got '$PHASE')" >&2; exit 1 ;;
           esac
           case "$REQUEST_TYPE" in
-            secret|iam) ;;
-            *) echo "FAIL: request_type must be 'secret' or 'iam'" >&2; exit 1 ;;
+            secret|iam|sync) ;;
+            *) echo "FAIL: request_type must be 'secret', 'iam', or 'sync'" >&2; exit 1 ;;
           esac
           if ! [[ "$SYSTEM_NAME" =~ ^[a-z][a-z0-9-]{4,28}[a-z0-9]$ ]]; then
             echo "FAIL: system_name '$SYSTEM_NAME' is not a valid system name" >&2; exit 1
@@ -189,8 +189,10 @@ jobs:
           echo "PASS: approval card sent to Telegram (awaiting Or's ✅)."
 
       # ---- fulfill phase: perform the privileged action -------------------------
-      - name: Fulfill the request (fulfill phase)
-        if: inputs.phase == 'fulfill'
+      # secret/iam go through fulfill-system-request.sh, which by design NEVER
+      # touches a secret value (it only creates shells + grants IAM).
+      - name: Fulfill the request (fulfill phase — secret/iam)
+        if: inputs.phase == 'fulfill' && (inputs.request_type == 'secret' || inputs.request_type == 'iam')
         id: apply
         env:
           REQUEST_TYPE: ${{ inputs.request_type }}
@@ -201,6 +203,45 @@ jobs:
         run: |
           set -euo pipefail
           bash scripts/fulfill-system-request.sh
+
+      # sync is a distinct risk class: it moves a real secret VALUE from control
+      # SM into the system's SM. It is deliberately NOT routed through
+      # fulfill-system-request.sh (which must stay value-free) — it is the same
+      # broker-side, value-piped copy mirror-secret-to-system.yml performs, but
+      # gated to the SYNC_ALLOWLIST + Or's ✅. Value is piped between gcloud calls,
+      # never echoed, never stored in a shell variable.
+      - name: Sync shared secret value (fulfill phase — sync only)
+        if: inputs.phase == 'fulfill' && inputs.request_type == 'sync'
+        env:
+          GCP_PROJECT: ${{ steps.resolve.outputs.gcp_project }}
+          SECRET_NAME: ${{ inputs.secret_name }}
+        run: |
+          set -euo pipefail
+          # Defense in depth: never sync a value INTO a control project / sandbox.
+          case "$GCP_PROJECT" in
+            or-factory-master-control|factory-control-9piybr)
+              echo "FAIL: refusing to sync into a control project" >&2; exit 1 ;;
+            factory-test-25)
+              echo "FAIL: refusing to sync into factory-test-25 (shared sandbox backend)" >&2; exit 1 ;;
+          esac
+          # Source must have a readable version in control (no value printed).
+          if ! gcloud secrets versions access latest \
+               --secret="$SECRET_NAME" --project="$CONTROL_PROJECT" >/dev/null 2>&1; then
+            echo "FAIL: '$SECRET_NAME' has no accessible version in $CONTROL_PROJECT" >&2; exit 1
+          fi
+          # Dest shell must already exist (the system was born with it via
+          # copy-generic-secrets.sh). A sync updates a value; it never creates.
+          if ! gcloud secrets describe "$SECRET_NAME" --project="$GCP_PROJECT" >/dev/null 2>&1; then
+            echo "FAIL: '$SECRET_NAME' does not exist in $GCP_PROJECT — request a secret shell first" >&2; exit 1
+          fi
+          # Copy the value server-side; the pipe keeps it off logs + out of any var.
+          gcloud secrets versions access latest \
+            --secret="$SECRET_NAME" --project="$CONTROL_PROJECT" \
+          | gcloud secrets versions add "$SECRET_NAME" \
+            --project="$GCP_PROJECT" --data-file=- --quiet
+          COUNT=$(gcloud secrets versions list "$SECRET_NAME" \
+            --project="$GCP_PROJECT" --filter="state=ENABLED" --format="value(name)" | wc -l)
+          echo "PASS: synced latest $SECRET_NAME (control -> $GCP_PROJECT); now ${COUNT} enabled version(s)."
 
       - name: Audit + notify (fulfill phase)
         if: inputs.phase == 'fulfill' && success()
