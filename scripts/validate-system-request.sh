@@ -10,7 +10,7 @@
 # no gcloud), so it is fully unit-testable and identical in both phases.
 #
 # It enforces ALL of the following; any failure exits non-zero = REFUSE:
-#   * request_type is one of the supported types (secret | iam)
+#   * request_type is one of the supported types (secret | iam | sync)
 #   * the target GCP project is a real per-system project — never a control
 #     project and never the shared sandbox backend (factory-test-25)
 #   * system_name + gcp_project match the factory's id shape
@@ -19,6 +19,9 @@
 #     no privileged substring; the role is always secretAccessor
 #   * iam type: the role is on a curated, non-escalating allowlist
 #     (default-deny) — owner/editor/iam.*/admin/serviceusage.* are hard-refused
+#   * sync type: pull a SHARED secret's latest value control->system; the secret
+#     must be on the curated SYNC_ALLOWLIST (default-deny) and clear the same
+#     super-credential/privileged-keyword refusals as a secret request
 #   * members (the grant targets) are ONLY the system's own deploy-sa +
 #     runtime-sa in that project — never an external or cross-project SA
 #
@@ -52,6 +55,24 @@ roles/storage.objectAdmin
 roles/aiplatform.user
 roles/datastore.user
 roles/cloudtasks.enqueuer
+"
+
+# Curated allowlist of SHARED secrets a system may ask the broker to re-sync
+# (pull the latest value from control SM into the system's own SM). Unlike
+# secret/iam, a sync moves a real secret VALUE between projects, so it is
+# restricted to this default-deny list of non-super, genuinely-shared secrets
+# (rotating OAuth/API keys the factory owns centrally). Expanding it is a gated
+# change (PR + Or review). The super-credential refusals below still apply on top.
+SYNC_ALLOWLIST="
+google-oauth-client-id
+google-oauth-client-secret
+anthropic-api-key
+google-api-key
+openrouter-eval-key
+perplexity-api-key
+tavily-api-key
+deepgram-api-key
+whisper-api-key
 "
 
 # Id shape shared by GCP project ids and system (repo) names: 6-30 chars,
@@ -139,6 +160,31 @@ case "$REQUEST_TYPE" in
     done <<< "$ALLOWED_IAM_ROLES"
     [ -n "$_allowed" ] || refuse "role '$ROLE' is not on the IAM allowlist"
     echo "VERDICT: allow (type=iam role='$ROLE' project='$GCP_PROJECT')"
+    exit 0
+    ;;
+
+  sync)
+    # Pull the latest value of a SHARED secret from control SM into the system's
+    # own SM. A sync moves a real secret VALUE (higher risk than secret/iam), so
+    # it is default-deny against the curated SYNC_ALLOWLIST AND must clear the
+    # same super-credential / privileged-keyword refusals as a secret request.
+    [ -n "$SECRET_NAME" ] || refuse "type=sync but no secret_name"
+    [[ "$SECRET_NAME" =~ ^[a-z][a-z0-9-]{1,62}$ ]] \
+      || refuse "secret_name '$SECRET_NAME' is not a safe secret id"
+    case "$SECRET_NAME" in
+      *-management-key|*-provisioning-key|*-master-key|factory-master-broker-app-*|n8n-telegram-bot-token-test)
+        refuse "secret_name '$SECRET_NAME' is a protected super-credential" ;;
+      *broker*|*master*|*wif*|*private-key*|*app-private*)
+        refuse "secret_name '$SECRET_NAME' contains a privileged keyword" ;;
+    esac
+    _sync_allowed=""
+    while IFS= read -r s; do
+      s="$(echo "$s" | xargs)"
+      [ -n "$s" ] || continue
+      if [ "$s" = "$SECRET_NAME" ]; then _sync_allowed=1; break; fi
+    done <<< "$SYNC_ALLOWLIST"
+    [ -n "$_sync_allowed" ] || refuse "secret_name '$SECRET_NAME' is not on the shared-secret sync allowlist"
+    echo "VERDICT: allow (type=sync secret='$SECRET_NAME' project='$GCP_PROJECT' source=control)"
     exit 0
     ;;
 

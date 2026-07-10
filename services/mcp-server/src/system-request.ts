@@ -65,7 +65,7 @@ function parseRequestFromDescription(
   }
   const body = (otel['event.body'] ?? {}) as Record<string, unknown>;
   const requestType = String(body['request_type'] ?? '');
-  if (requestType !== 'secret' && requestType !== 'iam') return null;
+  if (requestType !== 'secret' && requestType !== 'iam' && requestType !== 'sync') return null;
   return {
     requestType,
     systemName: String(otel['factory.system_name'] ?? body['system_name'] ?? ''),
@@ -144,7 +144,7 @@ export async function dispatchSystemRequest(
   const body = (otel?.['event.body'] ?? {}) as Record<string, unknown>;
   const requestType = String(body['request_type'] ?? '');
   const systemName = String(otel?.['factory.system_name'] ?? body['system_name'] ?? '');
-  if (requestType !== 'secret' && requestType !== 'iam') {
+  if (requestType !== 'secret' && requestType !== 'iam' && requestType !== 'sync') {
     await emitSysReq('skipped', identifier, `bad-request-type:${requestType}`, systemName);
     return { status: 200, body: { triage: 'skip', reason: 'bad-request-type' } };
   }
@@ -190,13 +190,17 @@ export async function registerSystemRequest(input: {
   reason?: string;
 }): Promise<SystemRequestResult> {
   const { request_type: type, system_name: sys, gcp_project: proj, issue_id: issue } = input;
-  if (type !== 'secret' && type !== 'iam') return { status: 400, body: { error: 'bad_request_type' } };
+  if (type !== 'secret' && type !== 'iam' && type !== 'sync') return { status: 400, body: { error: 'bad_request_type' } };
   if (!ISSUE_ID_RE.test(issue)) return { status: 400, body: { error: 'bad_issue_id' } };
 
-  const actionLine =
-    type === 'secret'
-      ? `סוד חדש: \`${input.secret_name ?? ''}\` (גישת קריאה ל-deploy-sa+runtime-sa)`
-      : `הרשאה: \`${input.role ?? ''}\` ל-deploy-sa+runtime-sa`;
+  let actionLine: string;
+  if (type === 'secret') {
+    actionLine = `סוד חדש: \`${input.secret_name ?? ''}\` (גישת קריאה ל-deploy-sa+runtime-sa)`;
+  } else if (type === 'iam') {
+    actionLine = `הרשאה: \`${input.role ?? ''}\` ל-deploy-sa+runtime-sa`;
+  } else {
+    actionLine = `סנכרון ערך סוד משותף: \`${input.secret_name ?? ''}\` (משיכת הערך העדכני מ-control)`;
+  }
   const text =
     `🔑 בקשת משאב ממערכת — דרוש אישור\n` +
     `מערכת: ${sys}\n` +

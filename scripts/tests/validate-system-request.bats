@@ -218,3 +218,56 @@ teardown() {
   assert_failure
   assert_output --partial "not a valid role id"
 }
+
+# ---------------------------------------------------------------------------
+# sync type (pull a shared secret's latest value control -> system)
+# ---------------------------------------------------------------------------
+
+@test "ALLOW: allowlisted shared secret sync" {
+  run env REQUEST_TYPE=sync SYSTEM_NAME=tokile GCP_PROJECT=factory-test-18 SECRET_NAME=anthropic-api-key bash "$SCRIPT"
+  assert_success
+  assert_output --partial "VERDICT: allow (type=sync"
+  assert_output --partial "source=control"
+}
+
+@test "ALLOW: allowlisted shared secret sync (google oauth client)" {
+  run env REQUEST_TYPE=sync SYSTEM_NAME=tokile GCP_PROJECT=factory-test-18 SECRET_NAME=google-oauth-client-secret bash "$SCRIPT"
+  assert_success
+  assert_output --partial "VERDICT: allow (type=sync"
+}
+
+@test "REFUSE: sync type without secret_name" {
+  run env REQUEST_TYPE=sync SYSTEM_NAME=tokile GCP_PROJECT=factory-test-18 bash "$SCRIPT"
+  assert_failure
+  assert_output --partial "no secret_name"
+}
+
+@test "REFUSE: sync of a non-allowlisted secret" {
+  run env REQUEST_TYPE=sync SYSTEM_NAME=tokile GCP_PROJECT=factory-test-18 SECRET_NAME=railway-api-token bash "$SCRIPT"
+  assert_failure
+  assert_output --partial "not on the shared-secret sync allowlist"
+}
+
+@test "REFUSE: sync of a super-credential" {
+  run env REQUEST_TYPE=sync SYSTEM_NAME=tokile GCP_PROJECT=factory-test-18 SECRET_NAME=openrouter-master-key bash "$SCRIPT"
+  assert_failure
+  assert_output --partial "protected super-credential"
+}
+
+@test "REFUSE: sync of a privileged-keyword secret" {
+  run env REQUEST_TYPE=sync SYSTEM_NAME=tokile GCP_PROJECT=factory-test-18 SECRET_NAME=some-wif-thing bash "$SCRIPT"
+  assert_failure
+  assert_output --partial "privileged keyword"
+}
+
+@test "REFUSE: sync into a control project" {
+  run env REQUEST_TYPE=sync SYSTEM_NAME=tokile GCP_PROJECT=or-factory-master-control SECRET_NAME=anthropic-api-key bash "$SCRIPT"
+  assert_failure
+  assert_output --partial "control project"
+}
+
+@test "REFUSE: sync with invalid secret shape" {
+  run env REQUEST_TYPE=sync SYSTEM_NAME=tokile GCP_PROJECT=factory-test-18 SECRET_NAME="Bad_Name" bash "$SCRIPT"
+  assert_failure
+  assert_output --partial "not a safe secret id"
+}
