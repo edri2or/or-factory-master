@@ -17,7 +17,7 @@
 // always answers 200 so Telegram never retry-storms.
 
 import type { Request } from 'express';
-import { dispatchWorkflow } from './github-client.js';
+import { dispatchWorkflow, apiGet, mergePullRequestAsApprover } from './github-client.js';
 import {
   emitEvent,
   sendTelegramKeyboard,
@@ -32,6 +32,43 @@ const OWNER = 'edri2or';
 const FACTORY_REPO = 'or-factory-master';
 const FULFILL_WORKFLOW = 'fulfill-system-request.yml';
 const PROMOTE_WORKFLOW = 'fulfill-promote-request.yml';
+
+// ── merge request (card-free, author≠approver) ──────────────────────────────
+// A `system.request.merge` is unlike the other request types: it carries NO
+// Telegram card. The human gate has already fired SYSTEM-side (Or tapped ✅ on
+// or-aios's OWN bot), so the factory does not re-ask. Its whole job is to run
+// the merge as the SEPARATE approver App, so the identity that merges is not the
+// one that authored the PR (author≠approver — the property the OIL pattern
+// rests on). It is fail-closed by three pins below: only or-aios may drive it,
+// only that system's own self-fix branches, and only its own App may be the PR
+// author. Green-CI is enforced downstream by mergePullRequestAsApprover (native
+// auto-merge gated on branch protection's required checks).
+const MERGE_ALLOWED_SYSTEM = 'or-aios';
+// The PR author login a self-fix PR must carry — the system's own GitHub App
+// bot. Confirmed live in C2b-1 (PR #461 was authored by `or-aios-app[bot]`).
+// Env-overridable so the slug can be re-pinned without a code change if a future
+// App rename shifts it.
+const EXPECTED_SELFFIX_AUTHOR = process.env.EXPECTED_SELFFIX_AUTHOR ?? 'or-aios-app[bot]';
+// A genuine self-fix / auto-fix head branch (the only heads the loop ever opens).
+const SELFFIX_HEAD_RE = /^oil-(selffix|autofix)\//;
+
+// Pure predicate (no I/O) — is this PR a genuine, mergeable self-fix PR? Exported
+// for unit testing. Every condition must hold; any miss ⇒ refuse (fail-closed).
+export function isMergeableSelffixPr(pr: {
+  state: string;
+  baseRef: string;
+  headRef: string;
+  authorLogin: string;
+  systemName: string;
+}): boolean {
+  return (
+    pr.systemName === MERGE_ALLOWED_SYSTEM &&
+    pr.state === 'open' &&
+    pr.baseRef === 'main' &&
+    SELFFIX_HEAD_RE.test(pr.headRef) &&
+    pr.authorLogin === EXPECTED_SELFFIX_AUTHOR
+  );
+}
 
 // secret/iam/sync are GCP actions handled by the value-free fulfiller; promote
 // is a GitHub action (opens a draft PR on the factory template) handled by a
@@ -131,13 +168,27 @@ function allowedUserIds(): Set<string> {
   return new Set(raw.split(',').map((s) => s.trim()).filter(Boolean));
 }
 
-type Outcome = 'dispatched' | 'skipped' | 'dispatch_failed' | 'registered' | 'approved' | 'rejected' | 'unauthorized' | 'recover_failed';
+type Outcome =
+  | 'dispatched'
+  | 'skipped'
+  | 'dispatch_failed'
+  | 'registered'
+  | 'approved'
+  | 'rejected'
+  | 'unauthorized'
+  | 'recover_failed'
+  | 'merged'
+  | 'merge_refused'
+  | 'merge_failed';
 
 async function emitSysReq(outcome: Outcome, issue: string, reason: string, system?: string): Promise<void> {
   try {
     await emitEvent({
       name: `factory.system_request.${outcome}`,
-      severity: outcome === 'dispatch_failed' || outcome === 'recover_failed' ? 'warning' : 'info',
+      severity:
+        outcome === 'dispatch_failed' || outcome === 'recover_failed' || outcome === 'merge_failed'
+          ? 'warning'
+          : 'info',
       layer: 'factory',
       system: system || undefined,
       workflow: 'mcp:system-request',
@@ -165,6 +216,15 @@ export async function dispatchSystemRequest(
   const body = (otel?.['event.body'] ?? {}) as Record<string, unknown>;
   const requestType = String(body['request_type'] ?? '');
   const systemName = String(otel?.['factory.system_name'] ?? body['system_name'] ?? '');
+
+  // merge is card-free — handle it here and return BEFORE the card-path guard
+  // below, so a `merge` can never reach registerSystemRequest (no Telegram card)
+  // or the ✅-callback fulfiller. The human ✅ already happened system-side; this
+  // path only performs the approver merge (author≠approver). See consts above.
+  if (requestType === 'merge') {
+    return handleMergeRequest(systemName, body, identifier);
+  }
+
   if (requestType !== 'secret' && requestType !== 'iam' && requestType !== 'sync' && requestType !== 'promote') {
     await emitSysReq('skipped', identifier, `bad-request-type:${requestType}`, systemName);
     return { status: 200, body: { triage: 'skip', reason: 'bad-request-type' } };
@@ -210,6 +270,79 @@ export async function dispatchSystemRequest(
     await emitSysReq('dispatch_failed', identifier, String(e).slice(0, 160), systemName);
     return { status: 200, body: { triage: 'dispatch_failed', issue: identifier, detail: String(e).slice(0, 200) } };
   }
+}
+
+// The card-free merge handler. Verifies the or-aios self-fix PR is genuine +
+// still open, then merges it as the SEPARATE approver App (author≠approver).
+// Reading the PR uses the BROKER (apiGet); the merge uses the approver identity
+// (mergePullRequestAsApprover) — two distinct Apps, so the approver never reads
+// nor authored, it only merges. Always returns 200 and never throws (the whole
+// bridge is soft-fail; a bad request is logged and dropped, never merged).
+async function handleMergeRequest(
+  systemName: string,
+  body: Record<string, unknown>,
+  identifier: string,
+): Promise<SystemRequestResult> {
+  // Pin 1: only or-aios may drive the approver merge (MVP scope; fail-closed).
+  if (systemName !== MERGE_ALLOWED_SYSTEM) {
+    await emitSysReq('merge_refused', identifier || '(none)', `system-not-allowed:${systemName}`, systemName);
+    return { status: 200, body: { triage: 'merge_refused', reason: 'system-not-allowed' } };
+  }
+  // pr_number must be a positive integer (it arrives as a JSON number in the body).
+  const prRaw = body['pr_number'];
+  const prNumber = typeof prRaw === 'number' ? prRaw : Number(prRaw);
+  if (!Number.isInteger(prNumber) || prNumber <= 0) {
+    await emitSysReq('merge_refused', identifier || '(none)', `bad-pr-number:${String(prRaw)}`, systemName);
+    return { status: 200, body: { triage: 'merge_refused', reason: 'bad-pr-number' } };
+  }
+
+  // Read the PR via the BROKER (org-installed read). If the PR can't be read we
+  // never merge blind — refuse.
+  let pr: {
+    state?: string;
+    base?: { ref?: string };
+    head?: { ref?: string };
+    user?: { login?: string };
+  };
+  try {
+    pr = (await apiGet(`/pulls/${prNumber}`, OWNER, MERGE_ALLOWED_SYSTEM)) as typeof pr;
+  } catch (e) {
+    await emitSysReq('merge_failed', identifier, `pr-read:${String(e).slice(0, 120)}`, systemName);
+    return { status: 200, body: { triage: 'merge_failed', reason: 'pr-read', detail: String(e).slice(0, 160) } };
+  }
+
+  const check = {
+    state: String(pr.state ?? ''),
+    baseRef: String(pr.base?.ref ?? ''),
+    headRef: String(pr.head?.ref ?? ''),
+    authorLogin: String(pr.user?.login ?? ''),
+    systemName,
+  };
+  // Pins 2+3 (branch shape + author) + open-state, all in the pure predicate.
+  if (!isMergeableSelffixPr(check)) {
+    await emitSysReq(
+      'merge_refused',
+      identifier,
+      `pr-guard state=${check.state} base=${check.baseRef} head=${check.headRef} author=${check.authorLogin}`,
+      systemName,
+    );
+    return { status: 200, body: { triage: 'merge_refused', reason: 'pr-guard', pr: prNumber } };
+  }
+
+  // Merge as the approver App. Green-CI is enforced by branch protection via
+  // native auto-merge inside the helper; it never throws (returns a MergeResult).
+  const result = await mergePullRequestAsApprover(prNumber, 'SQUASH', OWNER, MERGE_ALLOWED_SYSTEM);
+  if (result.merged || result.pending) {
+    await emitSysReq(
+      'merged',
+      identifier,
+      result.pending ? `pr#${prNumber} auto-merge armed (merges when green)` : `pr#${prNumber} merged`,
+      systemName,
+    );
+    return { status: 200, body: { triage: 'merged', pr: prNumber, pending: result.pending ?? false, sha: result.sha } };
+  }
+  await emitSysReq('merge_failed', identifier, `merge status=${result.status} ${result.message ?? ''}`.slice(0, 140), systemName);
+  return { status: 200, body: { triage: 'merge_failed', pr: prNumber, status: result.status, detail: result.message } };
 }
 
 // Called by fulfill-system-request.yml (register phase, admin-gated in index.ts).

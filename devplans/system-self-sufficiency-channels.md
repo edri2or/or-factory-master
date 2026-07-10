@@ -21,6 +21,7 @@ status: active
 |---|---|---|---|
 | A | `sync` request_type (משיכת סוד-משותף) | completed | `validate-system-request.sh`, `fulfill-system-request.yml`, `system-request.ts`, bats, docs |
 | B | `promote` request_type + מבצע-PR חדש | in-progress | `.github/workflows/fulfill-promote-request.yml` (חדש), `validate-system-request.sh`, `system-request.ts`, bats, `docs/system-resource-requests.md`, `monitoring/registry-exempt.txt` |
+| C | `merge` request_type (card-free, יוצר≠מאשר ללולאת התיקון-העצמי של or-aios) | in-progress | `system-request.ts`, `test/system-request.test.mjs`, `docs/system-resource-requests.md` |
 
 > הוכחה בכל שלב: שלב נסגר רק אחרי הוכחה חיה (round-trip אמיתי עם ✅ של Or), לא "CI ירוק" בלבד.
 
@@ -62,6 +63,35 @@ status: active
 + חשיפת השגיאה). ממתין למיזוג התיקון + הוכחה חוזרת.
 
 **שינוי תוכנית:** —
+
+---
+
+### שלב C — `merge` request_type (card-free, יוצר≠מאשר)
+
+הצד-הפקטורי של C2b-2 בלולאת התיקון-העצמי של or-aios. or-aios כבר מקבלת את ה-✅ שלך על **הבוט שלה**;
+אחרי זה היא מבקשת מ**מאשר-הפקטורי** (App נפרד מזה שכתב את ה-PR) לבצע את המיזוג — כך שהמזג אינו מי
+שכתב את הקוד (יוצר≠מאשר). אין כרטיס טלגרם חדש כאן.
+
+**Acceptance:**
+- [x] `system-request.ts`: ענף `merge` card-free ב-`dispatchSystemRequest` שחוזר **לפני** מסלול-הכרטיס
+      (merge לעולם לא מגיע ל-`registerSystemRequest` / ל-fulfiller). קורא PR דרך הברוקר (`apiGet`),
+      מאמת דרך הפרדיקט הטהור `isMergeableSelffixPr`, וממזג דרך `mergePullRequestAsApprover` הקיים.
+- [x] פינים fail-closed: מערכת=or-aios, base=main, head=`oil-(selffix|autofix)/*`, PR פתוח, יוצר=App
+      של המערכת (`EXPECTED_SELFFIX_AUTHOR`). קריאה=ברוקר, מיזוג=מאשר — שני Apps נפרדים.
+- [x] בדיקות: 6 מקרי `isMergeableSelffixPr` ב-`test/system-request.test.mjs` (tsc נקי, 156/156 mcp).
+- [x] `docs/system-resource-requests.md`: שורת `merge` (מתועד כ-internal/card-free).
+- [ ] הוכחה חיה: or-aios מזהה באג → PR-טיוטה ע"י `or-aios-app[bot]` → ✅ שלך → `oil-selfmerge` פולט
+      `system.request.merge` → מאשר-הפקטורי ממזג. אימות: actor-המיזוג = `oil-autofix-approver[bot]`,
+      **שונה** מיוצר ה-PR `or-aios-app[bot]`.
+
+**הוכחה תפקודית (באותו שלב):** round-trip חי אחרי מיזוג (ה-MCP חייב redeploy דרך ה-push trigger).
+שער ה-CI (tsc + mcp tests) = הוכחה סטטית.
+
+**הערת התקדמות אחרונה:** קוד + בדיקות ירוקות מקומית (tsc נקי, 156/156). ממתין למיזוג + redeploy + הוכחה חיה.
+
+**שינוי תוכנית:** ה-`merge` נשאר לגמרי בתוך `dispatchSystemRequest` וחוזר לפני שער-הכרטיס — fail-closed
+חזק יותר מהוספתו ל-type-guards של `parseRequestFromDescription`/`registerSystemRequest` (merge לעולם
+לא נוגע במסלול הכרטיס או ה-fulfiller). ניתוב = Option B1: `oil-selfmerge.yml` של or-aios הופך לפולט-בקשה.
 
 ---
 
