@@ -109,23 +109,26 @@ printf 'spec:\n'
 printf '  template:\n'
 printf '    metadata:\n'
 printf '      annotations:\n'
-# Pin to a single always-warm instance. The n8nmcp sidecar is a STATEFUL
-# streamable-HTTP MCP server (keeps the mcp-session-id in instance memory), so a
-# scale-to-zero (minScale 0) or a second instance (maxScale > 1, no affinity)
-# loses the session → "Session not found or expired" on the next call. One warm
-# instance keeps every gateway+sidecar request on the same pod. sessionAffinity
-# is belt-and-suspenders (cookie-based, best-effort) if maxScale is ever raised.
+# Scale to zero when idle (cost). An always-warm instance (minScale "1" +
+# cpu-throttling "false") held ~3 vCPU + 2Gi allocated 24/7 — the dominant
+# monthly cost of this service. With no live systems depending on the gateway at
+# RUNTIME, that standing cost isn't justified, so we let the service scale to
+# zero between requests: an idle gateway costs ~nothing; each inbound request
+# (Telegram webhook, an approval callback, a connector call) cold-starts one
+# instance (a few seconds) and it scales back down after idle.
 #
-# cpu-throttling "false" = CPU is ALWAYS allocated to the warm instance (not
-# throttled to ~zero between requests). This is the other half of session
-# stability: with default throttling, the pinned min-instance is still liable to
-# mid-session reclaim/replacement, which silently wipes the in-RAM sessions and
-# disconnects every connected client. Always-on CPU keeps the one pod genuinely
-# alive between calls so sessions survive (it pairs with minScale "1").
-printf '        autoscaling.knative.dev/minScale: "1"\n'
+# Why this is safe for the STATEFUL n8nmcp sidecar (its mcp-session-id lives in
+# instance RAM): SESSION_STORE_ENABLED "1" persists each client's session record
+# to Firestore (see services/mcp-server/src/session-store.ts), so a fresh
+# instance after a scale-to-zero (or any replacement) TRANSPARENTLY re-inits the
+# upstream session instead of erroring "Session not found". The residual cost is
+# only first-request cold-start latency; Telegram/approvals/Workspace are
+# indifferent to it. maxScale "1" + sessionAffinity keep every request of a warm
+# window on one pod (single-instance stickiness while warm).
+printf '        autoscaling.knative.dev/minScale: "0"\n'
 printf '        autoscaling.knative.dev/maxScale: "1"\n'
 printf '        run.googleapis.com/sessionAffinity: "true"\n'
-printf '        run.googleapis.com/cpu-throttling: "false"\n'
+printf '        run.googleapis.com/cpu-throttling: "true"\n'
 printf '    spec:\n'
 printf '      serviceAccountName: %s\n' "${RUNTIME_SA_EMAIL}"
 printf '      timeoutSeconds: 300\n'
