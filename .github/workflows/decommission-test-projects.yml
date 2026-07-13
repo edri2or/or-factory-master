@@ -3,7 +3,12 @@ name: Delete test GCP projects (tactical cleanup)
 # One-off tool for clearing quota: soft-deletes a comma-separated list of
 # GCP projects via the broker SA. Hard guard: project ids must match the
 # `(factory-test-|v2-test-|or-test-)` test-system patterns. Refuses the
-# control project, the old factory's control project, and anything else.
+# control project, the old factory's control project, a PROTECTED keep-list
+# of live/critical projects that carry a test-pattern name (factory-test-7 =
+# shared OAuth client home, factory-test-8 = or-aios, factory-test-21 =
+# or-edri-4, factory-test-25 = sandbox backend), and anything else.
+# (The keep-list exists because factory-test-7 was accidentally swept on
+# 2026-07-11 — a test-named but fleet-critical project — and had to be undeleted.)
 #
 # Auth: WIF as factory-master-broker. The broker has
 # roles/resourcemanager.projectDeleter on the systems folder
@@ -50,9 +55,20 @@ jobs:
             case "$name" in
               or-factory-master-control|factory-control-9piybr)
                 echo "FAIL: refusing to delete control project '$name'" >&2; exit 1 ;;
+              # PROTECTED keep-list — LIVE / critical projects that happen to carry a
+              # test-pattern name and would otherwise sail through the pattern match.
+              # This is exactly how factory-test-7 (the shared Google OAuth client +
+              # consent-screen home, fleet-wide) was accidentally soft-deleted on
+              # 2026-07-11 and had to be undeleted. NEVER delete these:
+              #   factory-test-7  = shared OAuth client + consent screen (every system's Google)
+              #   factory-test-8  = or-aios          (live real system, adopt mode)
+              #   factory-test-21 = or-edri-4        (standing proving system)
+              #   factory-test-25 = shared sandbox backend (reuse-mode, 0 quota)
+              factory-test-7|factory-test-8|factory-test-21|factory-test-25)
+                echo "FAIL: refusing to delete PROTECTED live/critical project '$name' (keep-list — see the safety-gate comment)" >&2; exit 1 ;;
             esac
           done
-          echo "PASS: all names match a test pattern"
+          echo "PASS: all names match a test pattern and none are protected"
 
       - name: Authenticate to GCP via WIF
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093  # v3.0.0
