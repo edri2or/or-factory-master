@@ -54,7 +54,7 @@ jobs:
           ADMIN_SECRET=$(gcloud secrets versions access latest \
             --secret="mcp-server-admin-secret" --project="${GCP_PROJECT}" | tr -d '\r\n')
           echo "::add-mask::${ADMIN_SECRET}"
-          export GATEWAY_URL ADMIN_SECRET SMOKE_SYSTEM="or-edri-4"
+          export GATEWAY_URL ADMIN_SECRET SMOKE_SYSTEM="or-aios"
 
           # The smoke mints a workspace bearer and calls list_gmail_labels; it exits
           # non-zero + prints "ACTION REQUIRED" when the shared token can't refresh.

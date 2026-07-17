@@ -10,7 +10,7 @@ name: Publish static site (Cloudflare Pages)
 # Cloudflare tokens (Pages + DNS).
 #
 # Bytes ingestion (D1): the site lives in a source repo at source_dir; default is
-# edri2or/or-edri-4@main:site. A dedicated edri2or/or-sites repo can become the
+# edri2or/or-aios@main:site. A dedicated edri2or/or-sites repo can become the
 # default source later with zero workflow change.
 #
 # Broker WIF is pinned to refs/heads/main, so this only runs on main.
@@ -28,7 +28,7 @@ on:
         description: "owner/name of the repo holding the site bytes (broker App must be able to read it)."
         required: false
         type: string
-        default: "edri2or/or-edri-4"
+        default: "edri2or/or-aios"
       source_ref:
         description: "Git ref (branch/tag/sha) in the source repo to publish."
         required: false
