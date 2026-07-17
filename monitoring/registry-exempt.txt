@@ -167,3 +167,22 @@ templates/system/.github/workflows/bootstrap-gmail-oauth.yml
 # Agent Router eval gate (retired in factory-dismantle batch 3 — the router lives in
 # or-aios; the factory no longer evals it). Tombstone for the deletion; no live file.
 .github/workflows/eval-agent-router.yml
+
+# templates/system n8n workflows (retired in factory-dismantle batch 6 — the whole
+# system-production template tree is deleted). Tombstones so the watchdog-registry gate
+# stays satisfied for their deletion; no live files by these names.
+templates/system/workflows/n8n/agent-router.json
+templates/system/workflows/n8n/code-agent.json
+templates/system/workflows/n8n/db-setup.json
+templates/system/workflows/n8n/file-catalog-refresh.json
+templates/system/workflows/n8n/github-readonly.json
+templates/system/workflows/n8n/infra-agent.json
+templates/system/workflows/n8n/ops-agent.json
+templates/system/workflows/n8n/postgres-named-queries.json
+templates/system/workflows/n8n/railway-readonly.json
+templates/system/workflows/n8n/research-agent.json
+templates/system/workflows/n8n/spend-track.json
+templates/system/workflows/n8n/style-refresh.json
+templates/system/workflows/n8n/tg-inbound.json
+templates/system/workflows/n8n/tg-proactive.json
+templates/system/workflows/n8n/unknown-agent.json
