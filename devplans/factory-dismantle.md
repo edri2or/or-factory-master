@@ -23,8 +23,8 @@ status: active
 | # | אצווה | סטטוס | תוכן |
 |---|---|---|---|
 | 1 | ניטור-צי + שער-E2E | **completed** (PR #600) | נמחקו system-runtime-audit, factory-health-audit, meta-monitoring-watchdog, fleet-rollup, e2e-gate, e2e-verify + עדכון watchdog-registry. |
-| 2 | הקמה + agent-repo + OIL | **in-progress** (PR #601) | 15 workflows: register-system-app, register-broker-app, protect-system-main, provision-youtube-data-api-key, seed-test-bot-token, create-throwaway-repo, agent-action, provision/refresh-agent-repo, bootstrap-agent-repo-identity, coordinator-mcp-smoke, oil-autofix-investigate, oil-autofix-verify, set-oil-allowlist, register-oil-approver-app. **provision-system.yml לא כאן** (תלות golden — אצווה 6). |
-| 3 | טסטים/eval/smoke/probe | pending | eval-agent-router*, factory-mcp-smoke, n8n-mcp-smoke, or-router-probe, drive-*-probe/smoke, exercise-agent, deploy-verify, prove-on-test-system, bootstrap-sandbox-tester, observability-pilot, _verify-*. |
+| 2 | הקמה + agent-repo + OIL | **completed** (PR #601) | 15 workflows. **provision-system.yml הוחזר** (תלות golden — אצווה 6). |
+| 3 | טסטים/eval/smoke/probe | **in-progress** | 13 workflows: eval-agent-router(+precheck), factory-mcp-smoke, n8n-mcp-smoke, drive-content-edit-probe, drive-edit-smoke, exercise-agent, deploy-verify, prove-on-test-system, bootstrap-sandbox-tester, observability-pilot, _verify-bs-webhook, _verify-sentry. (or-router-probe כבר לא קיים כקובץ.) נשמר google-mcp-smoke. |
 | 4 | ניקוי GCP + זהויות | pending | מחיקת factory-test-21 (or-edri-4) + factory-test-25 + OIL-approver App + דלת WIF של agent-repo + repos מיותרים (Telegram-gated). |
 | 5 | גיזום CI + כלים שסיימו | pending | ניקוי dispatch_workflow allowlist ב-tools.ts + מחיקת כלים אחרי Phase 3 (mirror/preserve/restore-secret, decommission-*, gcp-action). |
 | 6 | מכונת-התבנית (אחרונה) | pending | provision-system.yml + מכונת golden (render-system-golden, check-golden-sync, check-system-golden, validate-templates, tests/golden/system) + templates/system + השערים התלויים (doc-facts/doc-binding) — כולם יחד, כי הם כבולים. |

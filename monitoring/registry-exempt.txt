@@ -164,3 +164,6 @@ templates/system/.github/workflows/bootstrap-gmail-oauth.yml
 # deletion; no live files by these names.
 .github/workflows/oil-autofix-investigate.yml
 .github/workflows/oil-autofix-verify.yml
+# Agent Router eval gate (retired in factory-dismantle batch 3 — the router lives in
+# or-aios; the factory no longer evals it). Tombstone for the deletion; no live file.
+.github/workflows/eval-agent-router.yml
