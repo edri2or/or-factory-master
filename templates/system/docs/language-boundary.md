@@ -26,10 +26,10 @@ Every Hebrew occurrence in the repo falls into exactly one of four categories:
 - **A — Documentation / prose** read by developers or agents (doc bodies, prompt persona
   prose, comments, journals, historical dev prose). → **Convert to English.**
 - **B — Output-language directive** ("reply in Hebrew"). → The directive belongs to the
-  **edge only** (Number 1 / the session): keep it (produce Hebrew), worded in English. On a
+  **edge only** (the coordinator / the session): keep it (produce Hebrew), worded in English. On a
   **non-edge internal component** (a specialist, which never addresses Or) it **inverts** to
   "return `{reply}` in English to the orchestrator" — the Hebrew is produced later, once, at
-  Number 1.
+  the coordinator.
 - **C — Functional Hebrew data.** Classifier few-shot examples, deterministic
   keyword / verb / trigger arrays, Hebrew stopwords / `to_tsquery` / regex, eval inputs, test
   fixtures, skill `description` trigger phrases. → **Must stay Hebrew** — it is behavior, not
@@ -37,17 +37,17 @@ Every Hebrew occurrence in the repo falls into exactly one of four categories:
 - **D — Operator-facing output surfaces.** Telegram acks / replies, the dashboard / gallery /
   chat sites, session replies to Or. → **Stay Hebrew** (this is the edge).
 
-## The boundary mechanism — the edge is "Number 1", not each specialist
+## The boundary mechanism — the edge is the coordinator, not each specialist
 
-This system is a single-coordinator broker: Or talks to **one** agent — "Number 1" (the Agent
+This system is a single-coordinator broker: Or talks to **one** agent — the coordinator (the Agent
 Router on the bot surface; the Claude Code session on today's surface). The specialists return
-`{reply}` to Number 1 and **never address Or directly**. Hebrew is therefore produced **once,
+`{reply}` to the coordinator and **never address Or directly**. Hebrew is therefore produced **once,
 at the single coordinator**, never inside an internal specialist:
 
 - **Bot surface:** specialists go fully English (persona, instructions, **and** `{reply}`
-  output); Number 1 renders Hebrew at its egress. The classifier's input stays Hebrew — the
+  output); the coordinator renders Hebrew at its egress. The classifier's input stays Hebrew — the
   Hebrew *is* the routing signal there (category C), so it is never translated.
-- **Session surface:** the session *is* Number 1; the specialists are internal capabilities;
+- **Session surface:** the session *is* the coordinator; the specialists are internal capabilities;
   only the session's replies to Or are Hebrew.
 - **Independent edges** that cannot be centralized at the router (media self-send acks, any
   operator-facing website product, the static sites, and this repo's own operator directives
@@ -57,7 +57,7 @@ at the single coordinator**, never inside an internal specialist:
 
 - Cleaner, more portable internals and more reliable model behavior against English
   instructions; one rule (the A/B/C/D categories) replaces ad-hoc judgment.
-- The operator language is produced **once**, at Number 1 — matching the single-voice
+- The operator language is produced **once**, at the coordinator — matching the single-voice
   architecture instead of smearing Hebrew across internal components.
 - **The dominant risk is over-translation** — Anglicizing a category-C string. When in doubt,
   treat a Hebrew string as **functional (C) until proven documentation (A)**, and re-run the

@@ -22,7 +22,7 @@ echo "[language-boundary] This system works in ENGLISH internally and speaks HEB
 echo "[language-boundary] When you write or change anything, keep to the boundary:"
 echo "[language-boundary]   • INTERNAL → English: code, files agents read, skills, docs, prompts, comments, plans, commits."
 echo "[language-boundary]   • THE EDGE → Hebrew: your session replies to Or, the Telegram bot's replies, the websites."
-echo "[language-boundary]     The edge is 'Number 1' (the coordinator / this session) — NOT each specialist; specialists work in English."
+echo "[language-boundary]     The edge is the coordinator (this session) — NOT each specialist; specialists work in English."
 echo "[language-boundary]   • NEVER translate functional Hebrew (C): classifier few-shot, keyword/verb/trigger arrays, eval.yaml,"
 echo "[language-boundary]     test fixtures, skill trigger phrases — Hebrew there is behavior, not text. NEVER translate operator surfaces (D)."
 echo "[language-boundary] So: if Or dictates a new skill/doc in Hebrew, write it in English and give HIM the answer in Hebrew."
