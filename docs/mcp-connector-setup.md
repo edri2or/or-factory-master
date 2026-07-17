@@ -126,5 +126,4 @@ Historical record: `devplans/nuriel-coordinator.md`. **Current state: there are 
 
 - `CLAUDE.md` § "Web-session connector gate — never tell Or to 'click Allow' (there is no button)" — קשור אבל שונה: הוא על gating server-side של *כלים* במחבר; הקובץ הזה על הכתובת *של המחבר עצמו*.
 - `docs/google-identities.md` § "Drive write tools exposed to claude.ai" — מי מורשה ל-`OAUTH_ALLOWED_EMAILS` ומה הסיכון בכלי כתיבה.
-- `docs/e2e-enforcement-standard.md` — מודל "shared-service gate:deploy" שאליו שלב B1 משתייך (smoke בזמן deploy, לא merge-gate).
 - `.claude/commands/prove-connector.md` — הסקיל הקבוע להוכחת מחבר חדש לפני שמכריזים "גמור".

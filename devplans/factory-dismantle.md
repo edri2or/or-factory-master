@@ -28,11 +28,13 @@ status: active
 | 4 | ניקוי GCP + זהויות | pending | מחיקת factory-test-21 (or-edri-4) + factory-test-25 + OIL-approver App + דלת WIF של agent-repo + repos מיותרים (Telegram-gated). |
 | 5 | גיזום CI + כלים שסיימו | pending | ניקוי dispatch_workflow allowlist ב-tools.ts + מחיקת כלים אחרי Phase 3 (mirror/preserve/restore-secret, decommission-*, gcp-action). |
 | 6 | מכונת-התבנית (אחרונה) | **in-progress** | templates/system (193) + agent-repo + provision-system + fulfill-promote-request + refresh-system-agents + מכונת golden + סקריפטי-בדיקה/הקמה + מניפסטים; גיזום שלבי-CI תלויי-תבנית מ-changelog-check/playground-tests/pipeline-tests. |
-| 7 | תיעוד (docs + CLAUDE.md) | pending | כתיבה-מחדש של CLAUDE.md + גיזום docs-המפעל (live-test-loop, agent-repo-product, oil-autofix, master-integrity-matrix, doc-drift-prevention, roadmap...). לא נוגע ב-CI. |
+| 7 | תיעוד (docs + CLAUDE.md) | **completed** | נכתבו-מחדש CLAUDE.md + README כמערכת-יחידה (persona של Or verbatim, מסגור fold, gateway/backbone/Google/CI/dev-stage, אזהרות-אבטחה). נמחקו 12 docs-מפעל מתים (e2e-*, oil-autofix, agent-repo-product, doc-drift-prevention, skills-audience, live-test-loop, master-integrity-matrix, roadmap, phase-f-handoff, reliability-layer, telegram-chat-bot ישן). נשמרו capability-first + agent-isolation-testing (מפנה מ-/dev-stage). תוקנו 4 קישורים-תלויים ב-docs נשמרים. **בנוסף: הוסרה בדיקת-החובה היתומה `E2E verification gate` מ-`protect-main`** (ה-workflow נמחק באצווה 1 אבל הדרישה נשארה → כל PR `blocked` וניתן-למיזוג רק בעקיפת-אדמין). סט-החובה עכשיו 5 שערים חיים. |
 
 ## הערת התקדמות אחרונה
-- אצוות 1-3 הושלמו ואומתו (PR #600/#601/#602). or-edri-4 + factory-test-25 GCP נמחקו (Telegram-gated).
-- אצווה 6 בבנייה: 259 קבצים (~35k שורות) — מחיקת כל מכונת-התבנית + גיזום כירורגי של 3 קבצי-CI. BATS ירוק מקומית (169 ok).
+- אצוות 1-3+6 הושלמו ואומתו (PR #600/#601/#602/#603). or-edri-base + or-edri-4 + factory-test-25 GCP נמחקו (Telegram-gated).
+- אצווה 6 מוזגה: מחיקת כל מכונת-התבנית (259 קבצים) + גיזום 3 קבצי-CI. CI ירוק.
+- אצווה 7 (תיעוד): CLAUDE.md + README נכתבו-מחדש כמערכת-יחידה; 12 docs-מפעל מתים נמחקו. .md בלבד.
+- **נותרו אצוות 4 (ניקוי GCP + זהויות) ו-5 (גיזום CI/כלים + dispatch_workflow allowlist). Phase 3 (קיפול factory-test-8→control) נפרד ו-Or-gated.**
 
 ## יומן ל-Or (עברית)
 - אצווה 1: הוסרו ניטור-הצי ושער-הבחינה (E2E). ✓ בוצע.
