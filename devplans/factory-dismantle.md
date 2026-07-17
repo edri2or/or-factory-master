@@ -16,36 +16,23 @@ status: active
 - **broker App + github-pool WIF + broker SA** — התשתית של ה-gateway וכל ה-workflows הנשמרים.
 - **factory-test-7** — בית ה-OAuth client של Google (email+ops). אסור למחוק.
 - **factory-test-8** — or-aios (עד השלב האחרון של הקיפול).
-- ה-gateway + workflows של Google (deploy-mcp-server, request-workspace-scopes-consent,
-  workspace-token-audit, google-mcp-smoke) + שערי-CI (changelog-check, secret-scan,
-  supply-chain-check, protect-main, pipeline-tests, playground-tests, compile-changelog).
+- ה-gateway + workflows של Google + שערי-CI (changelog-check, secret-scan, supply-chain-check, protect-main, pipeline-tests, playground-tests, compile-changelog).
 
 ## אצוות (כל אחת PR נפרד, נסקר וממוזג ע"י Or)
 
 | # | אצווה | סטטוס | תוכן |
 |---|---|---|---|
-| 1 | ניטור-צי + שער-E2E | in-progress | מחיקת system-runtime-audit, factory-health-audit, meta-monitoring-watchdog, fleet-rollup, e2e-gate, e2e-verify + עדכון watchdog-registry. פותח את מחיקת ה-GCP של or-edri-4. |
-| 2 | הקמה + agent-repo + OIL | pending | provision-*, register-*, bootstrap-*, agent-action, provision/refresh-agent-repo, coordinator-mcp-smoke, oil-autofix-*, set-oil-allowlist. |
-| 3 | טסטים/eval/smoke/probe | pending | eval-agent-router*, factory-mcp-smoke, n8n-mcp-smoke, or-router-probe, drive-*-probe/smoke, exercise-agent, deploy-verify, prove-on-test-system. |
-| 4 | ניקוי GCP + זהויות | pending | מחיקת factory-test-21 (or-edri-4) + factory-test-25 + OIL-approver App + דלת WIF של agent-repo + repos מיותרים. |
-| 5 | גיזום CI + כלים שסיימו | pending | הסרת הקשרי-CI מיותרים + מחיקת כלים אחרי קיפול-הסודות (mirror/preserve/restore-secret, decommission-*). |
+| 1 | ניטור-צי + שער-E2E | **completed** (PR #600) | נמחקו system-runtime-audit, factory-health-audit, meta-monitoring-watchdog, fleet-rollup, e2e-gate, e2e-verify + עדכון watchdog-registry. |
+| 2 | הקמה + agent-repo + OIL | **in-progress** (PR #601) | 15 workflows: register-system-app, register-broker-app, protect-system-main, provision-youtube-data-api-key, seed-test-bot-token, create-throwaway-repo, agent-action, provision/refresh-agent-repo, bootstrap-agent-repo-identity, coordinator-mcp-smoke, oil-autofix-investigate, oil-autofix-verify, set-oil-allowlist, register-oil-approver-app. **provision-system.yml לא כאן** (תלות golden — אצווה 6). |
+| 3 | טסטים/eval/smoke/probe | pending | eval-agent-router*, factory-mcp-smoke, n8n-mcp-smoke, or-router-probe, drive-*-probe/smoke, exercise-agent, deploy-verify, prove-on-test-system, bootstrap-sandbox-tester, observability-pilot, _verify-*. |
+| 4 | ניקוי GCP + זהויות | pending | מחיקת factory-test-21 (or-edri-4) + factory-test-25 + OIL-approver App + דלת WIF של agent-repo + repos מיותרים (Telegram-gated). |
+| 5 | גיזום CI + כלים שסיימו | pending | ניקוי dispatch_workflow allowlist ב-tools.ts + מחיקת כלים אחרי Phase 3 (mirror/preserve/restore-secret, decommission-*, gcp-action). |
+| 6 | מכונת-התבנית (אחרונה) | pending | provision-system.yml + מכונת golden (render-system-golden, check-golden-sync, check-system-golden, validate-templates, tests/golden/system) + templates/system + השערים התלויים (doc-facts/doc-binding) — כולם יחד, כי הם כבולים. |
 
-## אצווה 1 — ניטור-צי + שער-E2E
-
-**נמחק:** `system-runtime-audit.yml`, `factory-health-audit.yml`, `meta-monitoring-watchdog.yml`,
-`fleet-rollup.yml`, `e2e-gate.yml`, `e2e-verify.yml`.
-
-**מניפסט:** `watchdog-registry.json` — הוסרו 4 רשומות (factory-health-audit, system-runtime-audit,
-fleet-reliability-rollup, meta-monitoring-watchdog); e2e-gate/e2e-verify אינם מנוטרים שם.
-
-**סקריפטים מיותמים** (`check-e2e-proof.sh`, `runtime-audit-targets.sh`, `e2e-surfaces.json`,
-`e2e-proofs/`) — נשארים כרגע, יוסרו באצווה מאוחרת (אינם שוברים דבר; ה-bats שלהם עדיין עובר).
-
-**הוכחה:** CI ירוק על ה-PR. אחרי מיזוג — or-edri-4 מפסיק להיות מנוטר (אין רעש), ומחיקת ה-GCP
-שלו (factory-test-21) נפתחת (אין עוד שער שדורש ממנו הוכחה חיה).
-
-**הערת התקדמות אחרונה:** אצווה 1 בבנייה — PR נפתח, ממתין ל-CI ולסקירת Or.
+## הערת התקדמות אחרונה
+- אצווה 1 הושלמה ואומתה (PR #600, 6 workflows ירדו).
+- אצווה 2 (PR #601): 15 workflows. תוך כדי כך התגלתה תלות — provision-system.yml מזין את ALLOWLIST ש-check-golden-sync משווה, לכן הוא הוחזר ונדחה לאצווה 6 (מכונת-התבנית השלמה).
 
 ## יומן ל-Or (עברית)
-- מתחילים לפרק את מכונת-המפעל בזהירות, אצווה-אצווה. אצווה 1 מסירה את ניטור-הצי ואת שער-הבחינה
-  (E2E) — מה שגם פותח את הדרך למחוק את ה-GCP של or-edri-4. שום דבר שאתה משתמש בו לא נגעתי.
+- אצווה 1: הוסרו ניטור-הצי ושער-הבחינה (E2E). ✓ בוצע.
+- אצווה 2: מסירים הקמה + agent-repo + OIL. מכונת-התבנית המלאה (provision-system + templates) תרד באצווה אחרונה יחד. שום דבר ש-or-aios משתמש בו לא נוגע.

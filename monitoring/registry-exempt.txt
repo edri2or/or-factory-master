@@ -159,3 +159,8 @@ templates/system/.github/workflows/bootstrap-gmail-oauth.yml
 # agent-main.yml) from the factory tree into a live agent-repo, direct-push to main.
 # workflow_dispatch only (dispatched via the GitHub API); no cadence to prove.
 .github/workflows/refresh-agent-repo.yml
+# OIL auto-fix event-workflows (retired in factory-dismantle batch 2 — the fleet-era
+# self-fix loop). Tombstones so the watchdog-registry gate stays satisfied for their
+# deletion; no live files by these names.
+.github/workflows/oil-autofix-investigate.yml
+.github/workflows/oil-autofix-verify.yml
