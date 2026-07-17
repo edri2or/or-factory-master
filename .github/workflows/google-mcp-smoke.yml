@@ -12,7 +12,7 @@ on:
       system:
         description: "System to smoke-test (must be on the gateway allowlist)"
         required: false
-        default: "or-edri-4"
+        default: "or-aios"
         type: string
       send_test_to:
         description: "Optional: send a REAL proof email to this address (leave empty for read-only smoke)"

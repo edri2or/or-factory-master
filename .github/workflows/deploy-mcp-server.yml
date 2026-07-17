@@ -29,10 +29,10 @@ on:
         required: false
         type: string
       smoke_target:
-        description: "Live system the post-deploy MCP smoke gate drives (default or-edri-4)."
+        description: "Live system the post-deploy MCP smoke gate drives (default or-aios)."
         required: false
         type: string
-        default: "or-edri-4"
+        default: "or-aios"
 
 concurrency:
   group: deploy-mcp-server
@@ -893,7 +893,7 @@ jobs:
 
       - name: Post-deploy MCP smoke gate (factory / n8n / workspace)
         env:
-          SMOKE_SYSTEM: ${{ github.event.inputs.smoke_target || 'or-edri-4' }}
+          SMOKE_SYSTEM: ${{ github.event.inputs.smoke_target || 'or-aios' }}
         run: |
           set -uo pipefail
           # Deployment gate (can-i-deploy at deploy time) for the SHARED MCP gateway.
