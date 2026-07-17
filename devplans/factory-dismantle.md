@@ -27,11 +27,12 @@ status: active
 | 3 | טסטים/eval/smoke/probe | **in-progress** | 13 workflows: eval-agent-router(+precheck), factory-mcp-smoke, n8n-mcp-smoke, drive-content-edit-probe, drive-edit-smoke, exercise-agent, deploy-verify, prove-on-test-system, bootstrap-sandbox-tester, observability-pilot, _verify-bs-webhook, _verify-sentry. (or-router-probe כבר לא קיים כקובץ.) נשמר google-mcp-smoke. |
 | 4 | ניקוי GCP + זהויות | pending | מחיקת factory-test-21 (or-edri-4) + factory-test-25 + OIL-approver App + דלת WIF של agent-repo + repos מיותרים (Telegram-gated). |
 | 5 | גיזום CI + כלים שסיימו | pending | ניקוי dispatch_workflow allowlist ב-tools.ts + מחיקת כלים אחרי Phase 3 (mirror/preserve/restore-secret, decommission-*, gcp-action). |
-| 6 | מכונת-התבנית (אחרונה) | pending | provision-system.yml + מכונת golden (render-system-golden, check-golden-sync, check-system-golden, validate-templates, tests/golden/system) + templates/system + השערים התלויים (doc-facts/doc-binding) — כולם יחד, כי הם כבולים. |
+| 6 | מכונת-התבנית (אחרונה) | **in-progress** | templates/system (193) + agent-repo + provision-system + fulfill-promote-request + refresh-system-agents + מכונת golden + סקריפטי-בדיקה/הקמה + מניפסטים; גיזום שלבי-CI תלויי-תבנית מ-changelog-check/playground-tests/pipeline-tests. |
+| 7 | תיעוד (docs + CLAUDE.md) | pending | כתיבה-מחדש של CLAUDE.md + גיזום docs-המפעל (live-test-loop, agent-repo-product, oil-autofix, master-integrity-matrix, doc-drift-prevention, roadmap...). לא נוגע ב-CI. |
 
 ## הערת התקדמות אחרונה
-- אצווה 1 הושלמה ואומתה (PR #600, 6 workflows ירדו).
-- אצווה 2 (PR #601): 15 workflows. תוך כדי כך התגלתה תלות — provision-system.yml מזין את ALLOWLIST ש-check-golden-sync משווה, לכן הוא הוחזר ונדחה לאצווה 6 (מכונת-התבנית השלמה).
+- אצוות 1-3 הושלמו ואומתו (PR #600/#601/#602). or-edri-4 + factory-test-25 GCP נמחקו (Telegram-gated).
+- אצווה 6 בבנייה: 259 קבצים (~35k שורות) — מחיקת כל מכונת-התבנית + גיזום כירורגי של 3 קבצי-CI. BATS ירוק מקומית (169 ok).
 
 ## יומן ל-Or (עברית)
 - אצווה 1: הוסרו ניטור-הצי ושער-הבחינה (E2E). ✓ בוצע.
