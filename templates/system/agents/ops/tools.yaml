@@ -1,8 +1,0 @@
-tools:
-  - n8n_api
-  - postgres_named_query
-  - github_readonly
-  - railway_readonly
-  - request_write_action
-  - google_workspace
-  - factory_tools

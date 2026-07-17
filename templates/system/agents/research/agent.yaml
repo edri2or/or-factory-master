@@ -1,7 +1,0 @@
-slug: research
-intent: research
-description: Open-ended questions, information lookup, web search.
-confidence_threshold: 0.7
-model: anthropic/claude-sonnet-4.5
-architecture: single-agent
-temperature: 0.3

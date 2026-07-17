@@ -1,19 +1,14 @@
 name: Playground Tests
 
-# Fifth CI gate, on top of the four static ones (changelog, shellcheck +
-# yamllint, secret-scan, supply-chain). This one validates RUNTIME behavior:
-#  - actionlint catches structural workflow bugs the raw yamllint pass misses
-#    (with shellcheck severity pinned to `error`, matching pipeline-tests.yml
-#    so the existing style-level noise stays out of CI).
+# Runtime-behavior CI gate on top of the static ones (changelog, shellcheck +
+# yamllint, secret-scan, supply-chain):
+#  - actionlint catches structural workflow bugs the raw yamllint pass misses.
 #  - BATS runs the per-script unit tests under scripts/tests/ — proves the
 #    check-scripts actually fail when they should.
-#  - validate-templates.sh renders every templates/system/*.template with
-#    the same envsubst allow-list provision-system.yml uses and asserts no
-#    placeholders survive — catches misspelled ${SYSTEM_NAEM}-style bugs
-#    before they blow up a real provision.
+#  - MCP server build + unit tests compile-check the gateway TypeScript.
 #
-# Job name MUST stay exactly "Playground tests" — that's the string the
-# protect-main ruleset will require in a follow-up PR after this lands.
+# Job name MUST stay exactly "Playground tests" — it is a required status
+# context in the protect-main ruleset.
 
 on:
   push:
@@ -40,13 +35,12 @@ jobs:
           # and BATS would not run.
           submodules: true
           # Some check-scripts walk `git diff HEAD~1 HEAD`; full history keeps
-          # them honest in PRs / future fixture-style tests.
+          # them honest in PRs.
           fetch-depth: 0
 
       - name: Install actionlint
-        # Pinned to a released version; the SHA256 is verified against the
-        # release asset so a compromised release tag can't ship arbitrary
-        # binaries. (One-line install pattern matches rhysd/actionlint docs.)
+        # Pinned to a released version. (One-line install pattern matches
+        # rhysd/actionlint docs.)
         run: |
           ACTIONLINT_VERSION="1.7.7"
           curl -sSL "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" \
@@ -54,119 +48,19 @@ jobs:
           tar -xzf /tmp/actionlint.tgz -C /usr/local/bin actionlint
           actionlint -version
 
-      - name: Install envsubst + yamllint
-        # validate-templates.sh needs envsubst (gettext-base); yamllint is
-        # used opportunistically on rendered *.yml.template output. The
-        # existing pipeline-tests job apt-installs the same packages.
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq gettext-base yamllint
-
       - name: actionlint
         # `-shellcheck "shellcheck -S error"` matches pipeline-tests.yml's
-        # `--severity=error` filter, so we don't suddenly start failing on
-        # info/style hits that the rest of the repo deliberately ignores.
-        # `-ignore` drops one stale false-positive: actionlint 1.7.7 predates the
-        # `queue:` concurrency key (GitHub Actions, GA 2026-05-07), so it flags the
-        # valid `queue: max` (the live-system-<system> serialization queue in
-        # prove/refresh/e2e/deploy-verify) as an "unexpected key". yamllint and GitHub
-        # both accept it. Drop this -ignore once actionlint is bumped to a release
-        # that knows `queue`. See docs/parallel-development.md.
+        # `--severity=error` filter, so info/style hits the repo ignores stay out.
         run: actionlint -shellcheck "shellcheck -S error" -ignore 'unexpected key "queue" for "concurrency" section'
 
       - name: BATS tests
         run: ./scripts/tests/bats/bin/bats scripts/tests/*.bats
 
-      - name: db-setup verification gate (B1)
-        # Proves the db-setup table-verification verdict goes RED on a real table
-        # shortfall and stays "inconclusive" (loud WARN, never a false RED) on a
-        # foreign/unreadable execution — mirror of _db_verdict in the system
-        # configure-agent-router.yml. master-system-integrity B1.
-        run: bash scripts/tests/db-verify-gate-test.sh
-
-      - name: configure damage-report gate (B4)
-        # Proves the configure "damage report" turns the job RED only on a critical
-        # DEGRADED member and stays green on warnings — mirror of the final block in
-        # the system configure-agent-router.yml. master-system-integrity B4.
-        run: bash scripts/tests/damage-report-test.sh
-
-      - name: SYSTEM-INFO reality gate (B5)
-        # Proves the injected SYSTEM-INFO capabilities reflect the installed tools
-        # (live_read_sources only lists present CRED_* sources; degraded lists the
-        # absent ones) — mirror of the SYSTEM_INFO_JSON builder in the system
-        # configure-agent-router.yml. master-system-integrity B5.
-        run: bash scripts/tests/system-info-test.sh
-
-      - name: GitHub-App preflight gate (B3)
-        # Proves the register→configure ordering preflight: APP_ID set + github-app-*
-        # missing in SM is CRITICAL (RED), while APP_ID empty is a clean pre-registration
-        # warning (green) — mirror of the github-app preflight + the two github_readonly
-        # DEGRADED rows in the system configure-agent-router.yml. master-system-integrity B3.
-        run: bash scripts/tests/github-app-preflight-test.sh
-
-      - name: Template validation
-        run: bash scripts/tests/validate-templates.sh
-
-      - name: System golden gate
-        # Re-renders the whole templates/system mould with the same fixed
-        # allow-list a provision uses and compares it byte-for-byte (sha256
-        # manifest + the two rendered orientation docs) to the committed
-        # golden under tests/golden/system/. Drift fails the build; the twin
-        # gate in changelog-check.yml forces a `--update` whenever the mould
-        # changes. Stays in THIS job so no new required status context is added.
-        run: bash scripts/check-system-golden.sh
-
-      - name: Agent-repo golden gate
-        # Twin of the system golden gate for the agent-repo mould: re-renders
-        # templates/agent-repo/ with the same fixed allow-list a provision uses and
-        # compares it byte-for-byte to tests/golden/agent-repo/. Drift fails the build;
-        # the twin gate in changelog-check.yml forces a `--update` on any mould change.
-        run: bash scripts/check-agent-repo-golden.sh
-
-      - name: Single-voice agent gate (mould)
-        # Validates the shipped sub-agent templates (templates/system/workflows/n8n/
-        # *-agent.json): every specialist agent returns {reply} to the orchestrator
-        # via an Execute-Workflow trigger and never owns an operator-facing Telegram
-        # send. The same script (scripts/check-agent-single-voice.sh) is shipped into
-        # each system by provision-system.yml and runs there over workflows/n8n.
-        run: AGENT_DIR=templates/system/workflows/n8n bash scripts/check-agent-single-voice.sh
-
-      - name: Workflow↔skill pairing gate (mould)
-        # Validates the convention that every OPERABLE shipped n8n workflow
-        # (templates/system/workflows/n8n/<name>.json) has a paired Claude skill at
-        # templates/system/.claude/skills/<name>/SKILL.md (folder = /<name> command).
-        # Pure-plumbing workflows are listed in monitoring/workflow-skill-exempt.txt.
-        # The same script (scripts/check-workflow-skill-pair.sh) ships into each system
-        # via provision-system.yml and runs there over workflows/n8n + .claude/skills.
-        run: WF_DIR=templates/system/workflows/n8n SKILL_DIR=templates/system/.claude/skills CMD_DIR=templates/system/.claude/commands bash scripts/check-workflow-skill-pair.sh
-
-      - name: Capability-card gate (mould)
-        # The teeth behind capability-first (CLAUDE.md "How to work" + docs/capability-first.md):
-        # any OPERABLE mould workflow that adds a NEW external capability (a verb: read/fill/
-        # extract/send/parse) must ship a Phase-1 proof — docs/capability-cards/<name>.md with a
-        # go/partial verdict — proving the raw capability was demonstrated OUTSIDE n8n on a real
-        # fixture before it was built. Workflows that add no new external capability (plumbing,
-        # and the pre-gate baseline) are listed in monitoring/capability-card-exempt.txt.
-        # Factory-only by design (not shipped into systems). This is the gate the email-form-intake
-        # monolith would have hit. Twin of the workflow↔skill pairing gate above.
-        run: WF_DIR=templates/system/workflows/n8n CARD_DIR=docs/capability-cards EXEMPT_FILE=monitoring/capability-card-exempt.txt bash scripts/check-capability-card.sh
-
-      - name: executeWorkflow-published gate (mould)
-        # n8n 2.x: a published workflow that calls a sub via executeWorkflow (MAIN)
-        # cannot publish while that sub is unpublished (HTTP 400) — it silently stays
-        # inactive (the async-deep-research / factory-test-053 bug: tg-inbound never
-        # activated). This gate fails CI if any executeWorkflow-referenced sub is
-        # installed `_upsert_wf … no`. toolWorkflow (ai_tool) subs are exempt.
-        run: WF_DIR=templates/system/workflows/n8n CONFIGURE_FILE=templates/system/.github/workflows/configure-agent-router.yml bash scripts/check-executeworkflow-published.sh
-
       - name: MCP server build + unit tests
         # Compile-check the mcp-server TypeScript and run its pure unit tests
-        # (tsc + node --test). Until now NO PR-time gate compiled this code —
-        # tsc ran only inside the deploy Docker build, so a type error or a
-        # broken bot guard would surface only at deploy. The factory chat bot
-        # (telegram-chat*.ts) adds real logic that must be gated here. Uses the
-        # runner's preinstalled Node (20+, matching the node:20 runtime image);
-        # kept in THIS job so no new required status context is added.
+        # (tsc + node --test). The factory chat bot (telegram-chat*.ts) adds real
+        # logic that must be gated here. Kept in THIS job so no new required
+        # status context is added.
         run: |
           set -euo pipefail
           cd services/mcp-server

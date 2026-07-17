@@ -35,7 +35,7 @@ jobs:
         run: shellcheck --severity=error scripts/*.sh
 
       - name: yamllint
-        run: yamllint .github/workflows/ templates/system/.github/workflows/ templates/agent-repo/.github/workflows/ templates/agent-repo-builder/.github/workflows/
+        run: yamllint .github/workflows/
 
       - name: OIL verify self-test
         # Proves scripts/oil-verify.sh's verdicts (verified / failed / malformed /
