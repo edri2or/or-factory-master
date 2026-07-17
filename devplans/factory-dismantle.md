@@ -22,16 +22,17 @@ status: active
 
 | # | אצווה | סטטוס | תוכן |
 |---|---|---|---|
-| 1 | ניטור-צי + שער-E2E | **completed** (PR #600) | נמחקו system-runtime-audit, factory-health-audit, meta-monitoring-watchdog, fleet-rollup, e2e-gate, e2e-verify + עדכון watchdog-registry. פתח את מחיקת ה-GCP של or-edri-4. |
-| 2 | הקמה + agent-repo + OIL | **in-progress** | provision-system, register-system-app, register-broker-app, protect-system-main, provision-youtube-data-api-key, seed-test-bot-token, create-throwaway-repo, agent-action, provision/refresh-agent-repo, bootstrap-agent-repo-identity, coordinator-mcp-smoke, oil-autofix-investigate, oil-autofix-verify, set-oil-allowlist, register-oil-approver-app. |
-| 3 | טסטים/eval/smoke/probe | pending | eval-agent-router*, factory-mcp-smoke, n8n-mcp-smoke, or-router-probe, drive-*-probe/smoke, exercise-agent, deploy-verify, prove-on-test-system, bootstrap-sandbox-tester, observability-pilot, _verify-*, or-router-probe. |
+| 1 | ניטור-צי + שער-E2E | **completed** (PR #600) | נמחקו system-runtime-audit, factory-health-audit, meta-monitoring-watchdog, fleet-rollup, e2e-gate, e2e-verify + עדכון watchdog-registry. |
+| 2 | הקמה + agent-repo + OIL | **in-progress** (PR #601) | 15 workflows: register-system-app, register-broker-app, protect-system-main, provision-youtube-data-api-key, seed-test-bot-token, create-throwaway-repo, agent-action, provision/refresh-agent-repo, bootstrap-agent-repo-identity, coordinator-mcp-smoke, oil-autofix-investigate, oil-autofix-verify, set-oil-allowlist, register-oil-approver-app. **provision-system.yml לא כאן** (תלות golden — אצווה 6). |
+| 3 | טסטים/eval/smoke/probe | pending | eval-agent-router*, factory-mcp-smoke, n8n-mcp-smoke, or-router-probe, drive-*-probe/smoke, exercise-agent, deploy-verify, prove-on-test-system, bootstrap-sandbox-tester, observability-pilot, _verify-*. |
 | 4 | ניקוי GCP + זהויות | pending | מחיקת factory-test-21 (or-edri-4) + factory-test-25 + OIL-approver App + דלת WIF של agent-repo + repos מיותרים (Telegram-gated). |
 | 5 | גיזום CI + כלים שסיימו | pending | ניקוי dispatch_workflow allowlist ב-tools.ts + מחיקת כלים אחרי Phase 3 (mirror/preserve/restore-secret, decommission-*, gcp-action). |
+| 6 | מכונת-התבנית (אחרונה) | pending | provision-system.yml + מכונת golden (render-system-golden, check-golden-sync, check-system-golden, validate-templates, tests/golden/system) + templates/system + השערים התלויים (doc-facts/doc-binding) — כולם יחד, כי הם כבולים. |
 
 ## הערת התקדמות אחרונה
-- אצווה 1 הושלמה ואומתה (PR #600, sha fe987077; 6 workflows ירדו מ-main, CI 5/5 ירוק).
-- אצווה 2 בבנייה — מחיקת 16 workflows של הקמה/agent-repo/OIL.
+- אצווה 1 הושלמה ואומתה (PR #600, 6 workflows ירדו).
+- אצווה 2 (PR #601): 15 workflows. תוך כדי כך התגלתה תלות — provision-system.yml מזין את ALLOWLIST ש-check-golden-sync משווה, לכן הוא הוחזר ונדחה לאצווה 6 (מכונת-התבנית השלמה).
 
 ## יומן ל-Or (עברית)
 - אצווה 1: הוסרו ניטור-הצי ושער-הבחינה (E2E). ✓ בוצע.
-- אצווה 2: מסירים את מכונת ההקמה (provision), את מכונת ה-agent-repo, ואת OIL — דברים שרלוונטיים רק למפעל שמייצר מערכות. שום דבר ש-or-aios משתמש בו לא נוגע.
+- אצווה 2: מסירים הקמה + agent-repo + OIL. מכונת-התבנית המלאה (provision-system + templates) תרד באצווה אחרונה יחד. שום דבר ש-or-aios משתמש בו לא נוגע.
