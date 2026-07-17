@@ -144,7 +144,7 @@ LLM ב-dispatch/push-to-main).
 ללא שינוי ב-classifier וב-Macro-F1 gate. ה-`unknown-agent` שודרג לצ'אטבוט כללי חכם
 (`anthropic/claude-haiku-4.5`, זיכרון חלון, כלי קריאה ל-n8n) שעונה גם כ-GPT/Gemini וגם
 על שאלות מערכת. צריכת ה-OpenRouter של הצ'אט נכנסת בקלות ב-cap של $25/חודש; מעקב עלויות
-מפורט (`spend_log`) נדחה ל-follow-up. תיעוד מלא: `docs/telegram-chat-bot.md`.
+מפורט (`spend_log`) נדחה ל-follow-up.
 
 ## 9. הבנת תמונה בטלגרם (tg-vision)
 
@@ -162,4 +162,4 @@ LLM ב-dispatch/push-to-main).
   וולידציית-egress על הפלט — כמו שכבת L5 של ה-router.
 - **בלם:** תמונות מעל 20MB נעצרות עם הודעת-עברית (מגבלת Telegram cloud getFile).
 
-צריכת הראייה נכנסת באותו cap של $25/חודש פר-מערכת. תיעוד הזרימה המלא: `docs/telegram-chat-bot.md` §10.
+צריכת הראייה נכנסת באותו cap של $25/חודש פר-מערכת.

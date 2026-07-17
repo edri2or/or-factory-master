@@ -8,7 +8,7 @@ Hebrew, and can *request* a small set of safe actions that run only after his Te
 It is **not** a port of the systems' n8n bot. The factory core runs on **Cloud Run + GitHub
 Actions**; the bot is an extension of the existing Express/MCP service at `services/mcp-server`.
 n8n/Railway stay for child systems only (putting the control plane on n8n would create a
-circular dependency — see the anchor decision in `docs/roadmap.md`, Phase I).
+circular dependency).
 
 ## Architecture — one bot
 

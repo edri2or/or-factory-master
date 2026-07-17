@@ -96,7 +96,6 @@ the costlier failure (clobbering the live proving system) regardless.
 
 ## See also
 
-- `docs/live-test-loop.md` — the `or-edri-4`-first proving method these four workflows serve.
 - `.claude/commands/dev-stage-factory.md` / `dev-stage.md` — the staged-development flow and the
   per-plan (`devplans/<slug>.md`) + per-fragment (`changelog.d/`) machinery that keeps parallel
   developments from colliding.
