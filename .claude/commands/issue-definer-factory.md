@@ -3,7 +3,7 @@ audience: factory-only
 description: מגדיר בעיות בריפו GitHub — לא פותר, לא מציע, רק חוקר ומגדיר במדויק. הפעל כאשר המשתמש מספק שם ריפו + סימן לבעיה: שגיאה, לוג, תיאור, screenshot, או כל פלט שמצביע על תקלה. טריגרים "מה הבעיה ב-", "תגדיר את הבאג", "תחקור את הריפו", "יש שגיאה ב-", "תסתכל על הריפו הזה", "issue definer", "/define". לא מתאים כשהמשתמש מבקש פתרון — רק להגדרת הבעיה.
 ---
 
-# Issue Definer
+# Issue Definer (Factory)
 
 ## Role
 You receive a repo + a signal of a problem, you **investigate**, and you **define** the
