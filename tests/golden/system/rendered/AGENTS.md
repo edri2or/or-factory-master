@@ -48,6 +48,7 @@ to provide the missing context. Do not guess. Do not proceed with the task until
 - **GCP Project**: `golden-reference-system` (number: 000000000000)
 - **Public URL**: https://n8n-golden-reference-system.or-infra.com
 - **Health check**: https://n8n-golden-reference-system.or-infra.com/healthz
+  - *These two are n8n's endpoint and liveness — **the tool's**, not the system's identity. The system is this **repo + the coordinating session/role**; n8n is one of its hands. The health mechanisms monitor n8n-as-a-tool (it must stay up for the Telegram HITL channel), not "the system".*
 - **Repo**: https://github.com/edri2or/golden-reference-system
 - **Provision mode**: test (normal = own GCP project; reuse = shared test project; adopt = existing/recovered GCP project whose id differs from the repo name — `gcpProjectId` above is the source of truth, not the repo name)
 - **Provisioned at**: 2026-01-01T00:00:00Z
