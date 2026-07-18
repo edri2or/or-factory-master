@@ -54,18 +54,61 @@ export async function gcpFetchPost(url: string, body: unknown = {}): Promise<unk
 // Exported for new clients that need direct GCP access (e.g. gcp-logging-client).
 export { getToken as getGcpAccessToken };
 
+// In-memory TTL cache for secret VALUES, keyed by `${projectId}/${name}`.
+// Every runtime secret read funnels through getSecretValue (the sole caller of
+// the billable Secret Manager `:access` endpoint), so caching here collapses the
+// dominant cost driver: the observability emit path reads 5 control-project
+// secrets on EVERY event (up to 300 reads/min/system) — historically ~18M billed
+// access operations a month (~165 NIS/mo) on or-factory-master-control. A short
+// TTL keeps every value fresh enough: the hot-path secrets are long-lived
+// (Axiom/Telegram/Linear tokens; the n8n API key rotates only at deploy time),
+// and the one rotation that matters — the shared gmail-oauth-refresh-token —
+// always forces a fresh Cloud Run revision via DEPLOY_NONCE, which starts a new
+// process with an empty cache. Only SUCCESSFUL non-empty reads are cached;
+// errors and empty payloads propagate uncached so the NotFoundError / soft-fail
+// semantics that callers rely on are unchanged.
+const SECRET_CACHE_TTL_MS = 60_000;
+
+interface CachedSecret {
+  value: string;
+  expiresAt: number;
+}
+
+const secretCache = new Map<string, CachedSecret>();
+
+// Test-only: clear the in-memory secret cache so unit tests don't leak state
+// across cases (the cache is module-level and otherwise persists for the run).
+export function __resetSecretCache(): void {
+  secretCache.clear();
+}
+
 // Read a secret's plaintext VALUE (latest enabled version) via the Secret
 // Manager access endpoint. Used by service-API clients (e.g. the n8n Public API
 // key in n8n-client). Auth: ADC + the runtime SA's secretAccessor on the
 // system's secret (granted per-system by provision-system.yml). Throws
 // NotFoundError when the secret/version is absent so callers can surface a
-// clear "run deploy first" message rather than leaking a 404.
-export async function getSecretValue(projectId: string, name: string): Promise<string> {
+// clear "run deploy first" message rather than leaking a 404. Successful reads
+// are cached in-memory for SECRET_CACHE_TTL_MS (see the cache note above).
+// `opts` is for unit testing only — an injectable clock (`now`) and network
+// function (`fetchImpl`); production callers pass neither.
+export async function getSecretValue(
+  projectId: string,
+  name: string,
+  opts: { now?: number; fetchImpl?: (url: string) => Promise<unknown> } = {},
+): Promise<string> {
+  const now = opts.now ?? Date.now();
+  const cacheKey = `${projectId}/${name}`;
+  const cached = secretCache.get(cacheKey);
+  if (cached && cached.expiresAt > now) return cached.value;
+
   const url = `https://secretmanager.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/secrets/${encodeURIComponent(name)}/versions/latest:access`;
-  const resp = (await gcpFetch(url)) as { payload?: { data?: string } };
+  const fetchImpl = opts.fetchImpl ?? gcpFetch;
+  const resp = (await fetchImpl(url)) as { payload?: { data?: string } };
   const b64 = resp?.payload?.data;
   if (!b64) throw new Error(`secret ${name} in ${projectId}: empty payload`);
-  return Buffer.from(b64, 'base64').toString('utf8');
+  const value = Buffer.from(b64, 'base64').toString('utf8');
+  secretCache.set(cacheKey, { value, expiresAt: now + SECRET_CACHE_TTL_MS });
+  return value;
 }
 
 // Pure helper (no network — exported for unit testing, mirroring
