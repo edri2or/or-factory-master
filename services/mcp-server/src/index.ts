@@ -13,11 +13,6 @@ import { sendTelegramMessage, emitEvent } from './observability-client.js';
 import { validateEmitBody, isEmitAllowedSystem, createRateLimiter } from './emit-route.js';
 import { handleLinearWebhook, registerLinearWebhook } from './oil-autofix.js';
 import {
-  registerSystemRequest,
-  handleSystemRequestCallback,
-  isSystemRequestCallback,
-} from './system-request.js';
-import {
   registerGcpApproval,
   handleGcpApprovalCallback,
   isGcpApprovalCallback,
@@ -311,30 +306,6 @@ app.post('/oil-register-webhook', async (req: Request, res: Response) => {
   res.status(r.status).json(r.body);
 });
 
-// System resource-request channel — REGISTER. fulfill-system-request.yml (register
-// phase) calls this (admin-gated, X-Admin-Secret) after the request passed the
-// deterministic gate. It sends Or one Telegram card with ✅/❌ buttons carrying the
-// Linear issue identifier. Body: { request_type, system_name, gcp_project,
-// secret_name?, role?, issue_id, reason? }.
-app.post('/system-request-register', async (req: Request, res: Response) => {
-  const provided = (req.headers['x-admin-secret'] as string | undefined) ?? '';
-  if (!secretMatches(provided)) {
-    res.status(403).json({ error: 'unauthorized' });
-    return;
-  }
-  const body = (req.body ?? {}) as Record<string, unknown>;
-  const r = await registerSystemRequest({
-    request_type: String(body['request_type'] ?? ''),
-    system_name: String(body['system_name'] ?? ''),
-    gcp_project: String(body['gcp_project'] ?? ''),
-    secret_name: typeof body['secret_name'] === 'string' ? body['secret_name'] : undefined,
-    role: typeof body['role'] === 'string' ? body['role'] : undefined,
-    issue_id: String(body['issue_id'] ?? ''),
-    reason: typeof body['reason'] === 'string' ? body['reason'] : undefined,
-  });
-  res.status(r.status).json(r.body);
-});
-
 // GCP risk-gate — REGISTER. gcp-action.yml (red path) calls this (admin-gated,
 // X-Admin-Secret) for a command the classifier tiered RED. It sends Or one Telegram
 // card with ✅/❌ buttons; the command is embedded in the card text for stateless
@@ -380,10 +351,9 @@ app.post('/repo-delete-register', async (req: Request, res: Response) => {
 // for BOTH Or's free-form chat messages AND the HITL approval ✅/❌ button presses
 // (one bot, one webhook). Gated by the secret_token Telegram echoes in
 // X-Telegram-Bot-Api-Secret-Token (constant-time). Routes by callback prefix: a
-// system resource-request callback → handleSystemRequestCallback; a GCP red-op
-// callback (gcpok:/gcpno:) → handleGcpApprovalCallback; a repo-delete callback →
-// handleRepoApprovalCallback; everything else (a text message, or a chat HITL
-// cdo:/cno: callback) → handleChatUpdate.
+// GCP red-op callback (gcpok:/gcpno:) → handleGcpApprovalCallback; a repo-delete
+// callback → handleRepoApprovalCallback; everything else (a text message, or a
+// chat HITL cdo:/cno: callback) → handleChatUpdate.
 // Always answers 200 (Telegram retries non-2xx) — the real outcome is in the
 // body; any reply is delivered out-of-band via a separate sendMessage.
 app.post('/telegram-webhook', async (req: Request, res: Response) => {
@@ -400,13 +370,10 @@ app.post('/telegram-webhook', async (req: Request, res: Response) => {
     const update = (req.body ?? {}) as Record<string, unknown>;
     const cq = update['callback_query'] as Record<string, unknown> | undefined;
     const data = cq && typeof cq['data'] === 'string' ? (cq['data'] as string) : '';
-    const isSysReqCallback = isSystemRequestCallback(data);
     const isGcpCallback = isGcpApprovalCallback(data);
     const isRepoCallback = isRepoApprovalCallback(data);
     let r;
-    if (isSysReqCallback) {
-      r = await handleSystemRequestCallback(req);
-    } else if (isGcpCallback) {
+    if (isGcpCallback) {
       r = await handleGcpApprovalCallback(req);
     } else if (isRepoCallback) {
       r = await handleRepoApprovalCallback(req);

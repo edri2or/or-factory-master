@@ -1,5 +1,5 @@
-// GCP risk-gate — the RED approval bridge (a sibling of oil-approval.ts and
-// system-request.ts). The gcp-action.yml workflow classifies a gcloud command
+// GCP risk-gate — the RED approval bridge (a sibling of repo-approval.ts).
+// The gcp-action.yml workflow classifies a gcloud command
 // green/yellow/red (scripts/gcp-classify.sh). Green/yellow run immediately as the
 // broker SA; a RED command is NOT run — the workflow calls /gcp-approval-register
 // here, which sends Or ONE Telegram card with ✅/❌ buttons. When Or taps a button
@@ -7,8 +7,8 @@
 // presser (same allowlist as OIL), and (✅) dispatches gcp-action.yml's `execute`
 // phase so the broker runs the command — else (❌ / no action) nothing runs.
 //
-// Same AI-proposes / human-approves invariant as OIL and the system-request
-// channel: a red GCP mutation never runs without Or's explicit Telegram ✅.
+// Same AI-proposes / human-approves invariant as the OIL auto-fix path and the
+// repo-delete gate: a red GCP mutation never runs without Or's explicit Telegram ✅.
 //
 // State-free by design: the command travels INSIDE the card's own message text
 // (between the ⟦CMD⟧…⟦/CMD⟧ sentinels), and Telegram echoes that text back in the
@@ -99,7 +99,7 @@ export function recoverCommandFromText(text: string | undefined): string | null 
 }
 
 // Telegram approver allowlist — the SAME operator who approves OIL fixes and
-// system requests, so the channel reuses the OIL approver allowlist env. Closed
+// repo deletions, so the channel reuses the OIL approver allowlist env. Closed
 // by default (empty / placeholder → nobody).
 function allowedUserIds(): Set<string> {
   const raw = process.env.OIL_APPROVER_TELEGRAM_ALLOWLIST ?? '';

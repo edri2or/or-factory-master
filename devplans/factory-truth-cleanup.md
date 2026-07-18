@@ -21,8 +21,20 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
 | 1 | Tier A — מחיקת 5 skills-מפעל מתות + יישור תיעוד (README/CLAUDE/8 docs + מחיקת capability-cards) | done | `skills/{build-system,register-system-app,decommission-system,decommission-test-system,health-check}`, `README.md`, `CLAUDE.md`, `docs/*` |
-| 2 | Tier B — הסרת ערוץ fulfill-system-request מקצה-לקצה (workflow+scripts+bats+doc+gateway-wiring) | pending | `.github/workflows/fulfill-system-request.yml`, `scripts/{fulfill,validate}-system-request.sh`, `scripts/tests/validate-system-request.bats`, `services/mcp-server/src/{system-request.ts,index.ts,oil-autofix.ts,telegram-chat*.ts}`, `docs/system-resource-requests.md` |
-| 3 | הוכחה חיה מקצה-לקצה (Google/GitHub/n8n/תשתית/invariants) + דוח-הוכחה | pending | (בדיקות חיות; דוח) |
+| 2 | Tier B — הסרת ערוץ fulfill-system-request מקצה-לקצה (workflow+scripts+bats+doc+gateway-wiring) | done (PR ממתין ל-✅ פריסה) | `.github/workflows/fulfill-system-request.yml`, `scripts/{fulfill,validate}-system-request.sh`, `scripts/tests/validate-system-request.bats`, `services/mcp-server/src/{system-request.ts,index.ts,oil-autofix.ts,gcp-approval.ts,repo-approval.ts}`, `docs/system-resource-requests.md` |
+| 3 | הוכחה חיה מקצה-לקצה (Google/GitHub/n8n/תשתית/invariants) + דוח-הוכחה | in-progress | (בדיקות חיות; דוח) |
+
+## הערות ביצוע (Tier B)
+
+- **ההסרה יצאה נקייה ותחומה** (לא כמו החשש הראשוני): `isMergeableSelffixPr` היה פנימי ל-system-request.ts
+  בלבד (השם מטעה — שומר-מיזוג של הערוץ, לא של OIL); `repo-approval.ts`/`gcp-approval.ts` הזכירו את הערוץ
+  ב**הערות בלבד** (לא imports); ענף ה-`system.request.` ב-oil-autofix היה if-בלוק מבודד.
+- הוסר: המודול `system-request.ts` + הבדיקה שלו; ה-import וה-route `/system-request-register` ב-index.ts;
+  ענף ה-callback ב-`/telegram-webhook`; ענף ה-`system.request.` ב-oil-autofix.ts. תוקנו הערות מיושנות
+  (כולל הפניה ל-`oil-approval.ts` שנמחק ב-batch 5b) ב-gcp-approval/repo-approval/gcp-action.yml.
+- **אומת מקומית לפני PR:** `tsc` build ✅, `npm test` → 119/119 ✅. שתי רשתות-ביטחון לפני חי: playground-tests
+  (build+unit) ושער ה-smoke התלת-משטחי בפריסה.
+- **גבול:** מיזוג ה-PR מפעיל פריסת gateway מנדטורי → ממתין ל-✅ מפורש של Or לפני מיזוג.
 
 ## החלטות
 

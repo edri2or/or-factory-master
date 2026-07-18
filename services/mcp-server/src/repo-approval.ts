@@ -5,7 +5,7 @@
 // — i.e. only on a webhook whose secret_token is verified (index.ts) AND whose
 // presser is allow-listed. There is NO dispatchable execute path, so the agent
 // can never trigger a deletion without Or's tap. Same AI-proposes / human-approves
-// invariant as OIL, the GCP gate, and the system-request channel.
+// invariant as OIL and the GCP gate.
 //
 // State-free: the repo list travels INSIDE the card's own message text (between
 // the ⟦RM⟧…⟦/RM⟧ sentinels), echoed back by Telegram in the callback — so a Cloud
