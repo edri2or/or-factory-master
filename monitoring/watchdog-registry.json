@@ -24,17 +24,6 @@
       "enabled": true
     },
     {
-      "id": "bs-incidents-to-telegram",
-      "name_he": "תקריות Better Stack לטלגרם",
-      "type": "cron-workflow",
-      "layer": "factory",
-      "proof_method": "gh-run-freshness",
-      "cadence": { "cron": "*/5 * * * *", "tolerance_hours": 2 },
-      "evidence": { "repo": "edri2or/or-factory-master", "workflow_file": "bs-incidents-to-telegram.yml" },
-      "stage": 1,
-      "enabled": true
-    },
-    {
       "id": "ci-gate-changelog",
       "name_he": "שער CI — צ'יינג'לוג ותוכניות",
       "type": "ci-gate",
@@ -92,26 +81,6 @@
       "proof_method": "static-integrity",
       "evidence": { "repo": "edri2or/or-factory-master", "path": "scripts/devplan-session-start-hook.sh", "wired_in": ".claude/settings.json" },
       "stage": 3,
-      "enabled": true
-    },
-    {
-      "id": "hook-capability-session-start",
-      "name_he": "Hook — מודעות-יכולות מערכת (SessionStart)",
-      "type": "hook",
-      "layer": "factory",
-      "proof_method": "static-integrity",
-      "evidence": { "repo": "edri2or/or-factory-master", "path": "scripts/capability-session-start-hook.sh", "wired_in": "templates/system/.claude/settings.json" },
-      "stage": 2,
-      "enabled": true
-    },
-    {
-      "id": "hook-language-session-start",
-      "name_he": "Hook — גבול-השפה (SessionStart)",
-      "type": "hook",
-      "layer": "factory",
-      "proof_method": "static-integrity",
-      "evidence": { "repo": "edri2or/or-factory-master", "path": "scripts/language-session-start-hook.sh", "wired_in": "templates/system/.claude/settings.json" },
-      "stage": 2,
       "enabled": true
     },
     {
