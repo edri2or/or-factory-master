@@ -27,6 +27,7 @@ import {
   queryBillingCosts as gcpQueryBillingCosts,
 } from './gcp-client.js';
 import { tailCloudRunLogs as gcpTailCloudRunLogs } from './gcp-logging-client.js';
+import { namesEqualCI } from './name-match.js';
 import {
   getProject as railwayGetProject,
   getServiceLatestDeployment as railwayGetDeployment,
@@ -525,7 +526,7 @@ export function registerTools(server: McpServer): void {
           : { name: 'repo-exists', status: 'fail', evidence: String(repoR.reason).slice(0, 200) },
       );
       if (rulesetsR.status === 'fulfilled') {
-        const protectMain = rulesetsR.value.find((r) => r.name === 'protect-main');
+        const protectMain = rulesetsR.value.find((r) => namesEqualCI(r.name, 'protect-main'));
         checks.push({
           name: 'ruleset-protect-main-active',
           status: protectMain && protectMain.enforcement === 'active' ? 'pass' : 'fail',
@@ -616,7 +617,7 @@ export function registerTools(server: McpServer): void {
       // postgres/n8n services by name.
       let projSummary;
       try {
-        projSummary = (await railwayListProjects()).find((p) => p.name === m.systemName);
+        projSummary = (await railwayListProjects()).find((p) => namesEqualCI(p.name, m.systemName));
       } catch (e) {
         return [{ name: 'project-exists', status: 'fail', evidence: String(e).slice(0, 200) }];
       }
@@ -629,7 +630,7 @@ export function registerTools(server: McpServer): void {
       checks.push({ name: 'project-exists', status: proj ? 'pass' : 'fail', evidence: proj ? `name=${proj.name} id=${projectId}` : 'project-not-found' });
       if (!proj) return checks;
       const env =
-        proj.environments.edges.find((e) => e.node.name === 'production') ??
+        proj.environments.edges.find((e) => namesEqualCI(e.node.name, 'production')) ??
         proj.environments.edges[0];
       checks.push({ name: 'environment-exists', status: env ? 'pass' : 'fail', evidence: env ? `name=${env.node.name}` : 'no environments' });
       if (!env) return checks;
@@ -637,7 +638,7 @@ export function registerTools(server: McpServer): void {
       // isn't part of an n8n system deploy, so only postgres + n8n are checked.
       const serviceResults = await Promise.all(
         (['postgres', 'n8n'] as const).map(async (label): Promise<Check[]> => {
-          const found = proj.services.edges.find((s) => s.node.name === label);
+          const found = proj.services.edges.find((s) => namesEqualCI(s.node.name, label));
           const out: Check[] = [
             { name: `service-${label}-exists`, status: found ? 'pass' : 'fail', evidence: found ? `id=${found.node.id}` : 'not found in project' },
           ];
