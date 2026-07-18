@@ -84,9 +84,10 @@ an allow-listed ✅**, mirroring the OIL "AI proposes / human approves" invarian
 encoded entirely in the button's `callback_data` (`cdo:<idx>` / `cno:<idx>`, well under
 Telegram's 64-byte cap), so a Cloud Run instance swap can never lose a pending approval.
 
-The allowlist is a small, fixed set of **safe, parameterless, idempotent** workflows
-(`meta-monitoring-watchdog.yml`, `deploy-mcp-server.yml`). Destructive workflows
-(`decommission*`, `provision*`) are deliberately **not** reachable by the bot.
+The allowlist is a small, fixed set of workflows (`deploy-mcp-server.yml`,
+`publish-static-site.yml`, `deploy-railway-cloudflare.yml`, `configure-agent-router.yml` —
+the current `DISPATCHABLE_WORKFLOWS` in `services/mcp-server/src/tools.ts`). Destructive
+workflows (`decommission*`, `provision*`) are deliberately **not** reachable by the bot.
 
 ## Operational notes
 
