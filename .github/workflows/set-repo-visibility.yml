@@ -1,0 +1,95 @@
+name: Set repo visibility
+
+# AI-operable utility: flip an org repo's visibility (private/public) via the
+# broker App (administration:write), authenticated WIF-only. Explicit
+# workflow_dispatch only — never auto-runs. The minted token is scoped to the
+# single target repo (least-privilege) and masked. Verifies the result in-run.
+
+on:
+  workflow_dispatch:
+    inputs:
+      repo:
+        description: "Target repo name under edri2or (e.g. or-aios)"
+        required: true
+        type: string
+      visibility:
+        description: "Desired visibility"
+        required: true
+        type: choice
+        options:
+          - private
+          - public
+
+permissions: {}
+
+jobs:
+  set-visibility:
+    name: Flip repo visibility via the broker App
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
+        with:
+          persist-credentials: false
+
+      - name: Authenticate to GCP via WIF
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093  # v3.0.0
+        with:
+          workload_identity_provider: "projects/140345952904/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
+          service_account: "factory-master-broker@or-factory-master-control.iam.gserviceaccount.com"
+
+      - name: Mint broker App token (administration:write, scoped to the target repo)
+        env:
+          REPO: ${{ inputs.repo }}
+        run: |
+          set -euo pipefail
+          case "$REPO" in
+            *[!a-zA-Z0-9._-]*|"") echo "FAIL: invalid repo name" >&2; exit 1 ;;
+          esac
+          APP_ID=$(gcloud secrets versions access latest \
+            --secret="factory-master-broker-app-id" \
+            --project="or-factory-master-control")
+          INSTALL_ID=$(gcloud secrets versions access latest \
+            --secret="factory-master-broker-app-installation-id" \
+            --project="or-factory-master-control")
+          gcloud secrets versions access latest \
+            --secret="factory-master-broker-app-private-key" \
+            --project="or-factory-master-control" > /tmp/broker-app-key.pem
+          chmod 600 /tmp/broker-app-key.pem
+          TOKEN=$(bash scripts/generate-app-token.sh /tmp/broker-app-key.pem "$APP_ID" "$INSTALL_ID" \
+            "" '{"administration":"write"}' "[\"${REPO}\"]")
+          [ -n "$TOKEN" ] || { echo "FAIL: could not obtain App installation token" >&2; exit 1; }
+          echo "::add-mask::${TOKEN}"
+          echo "APP_TOKEN=${TOKEN}" >> "$GITHUB_ENV"
+          shred -u /tmp/broker-app-key.pem 2>/dev/null || rm -f /tmp/broker-app-key.pem
+
+      - name: Apply visibility + verify
+        env:
+          REPO: ${{ inputs.repo }}
+          VISIBILITY: ${{ inputs.visibility }}
+        run: |
+          set -euo pipefail
+          if [ "$VISIBILITY" = "private" ]; then WANT=true; else WANT=false; fi
+          echo "Setting edri2or/${REPO} → private=${WANT}"
+          CODE=$(curl -sS -o /tmp/patch.json -w '%{http_code}' -X PATCH \
+            -H "Authorization: Bearer ${APP_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/edri2or/${REPO}" \
+            -d "{\"private\": ${WANT}}")
+          if [ "$CODE" -ge 300 ]; then
+            echo "FAIL: PATCH returned HTTP ${CODE}. Body:" >&2
+            # Surface the message field only (never the token); org policy may block App visibility changes.
+            python3 -c "import json,sys;print(json.load(open('/tmp/patch.json')).get('message','(no message)'))" >&2 || true
+            exit 1
+          fi
+          # Verify the change actually took.
+          GOT=$(curl -sS -H "Authorization: Bearer ${APP_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/edri2or/${REPO}" \
+            | python3 -c "import json,sys;print(str(json.load(sys.stdin)['private']).lower())")
+          echo "Verified: edri2or/${REPO} private=${GOT}"
+          [ "$GOT" = "$WANT" ] || { echo "FAIL: visibility did not change (private=${GOT}, wanted ${WANT})" >&2; exit 1; }
+          echo "OK: edri2or/${REPO} is now ${VISIBILITY}."
