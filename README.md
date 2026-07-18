@@ -2,7 +2,7 @@
 
 **Was** a bootstrap factory that provisioned many isolated systems on GCP + GitHub. For a single user that architecture is overkill, so it is being **folded into one personal system — `or-aios`** (plan: [`devplans/factory-dismantle.md`](devplans/factory-dismantle.md)).
 
-What remains in this repo serves or-aios: the **gateway** (`services/mcp-server/` on Cloud Run, through which or-aios reaches Google), the **backbone** it runs on (the org-wide broker App + WIF + broker SA), CI hygiene, and maintenance/cleanup workflows. The provisioning machinery itself (templates, agent-repos, OIL auto-fix, the E2E gate, the golden gates) has been removed.
+What remains in this repo serves or-aios: the **gateway** (`services/mcp-server/` on Cloud Run, through which or-aios reaches Google), the **backbone** it runs on (the org-wide broker App + WIF + broker SA), CI hygiene, and maintenance/cleanup workflows. The provisioning machinery itself (templates, agent-repos, the E2E gate, the golden gates) has been removed. (The OIL auto-fix path stays wired in the gateway — `services/mcp-server/src/oil-autofix.ts` — so it is *not* part of the removed machinery.)
 
 Guiding principle throughout: **build manually, see every step, continue only after verifying.**
 
