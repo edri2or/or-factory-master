@@ -19,7 +19,7 @@ name: GCP Action (risk-gated)
 # the broker SA's existing standing roles on or-factory-master-control execute red
 # ops; documented as an accepted tradeoff in devplans/consolidate-to-master.md.
 # NOT on the dispatch_workflow allowlist — the execute phase is reachable only
-# through the MCP approval path (like fulfill-system-request.yml).
+# through the MCP approval path (like the repo-delete approval bridge).
 
 on:
   workflow_dispatch:
