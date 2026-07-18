@@ -1,5 +1,7 @@
 # Factory Telegram chat bot
 
+> **הערה היסטורית (2026-07-18).** במסגרת קיפול `or-factory-master` למערכת אחת שמשרתת את `or-aios`, מכונת-הייצור פורקה: `provision-system.yml`, כל `templates/system/**`, ו-`monitoring/` **כבר לא קיימים בריפו זה**, ו-`deploy-railway-cloudflare.yml` / `configure-agent-router.yml` הם workflows של מערכת-יעד (למשל `or-aios`), לא של המפעל. אזכורים במסמך זה למנגנונים אלה הם **רקע היסטורי — לא מצב חי**. הליבה החיה מתוארת ב-`CLAUDE.md`.
+
 The factory's own **bidirectional** Telegram bot — dogfooding the capability the systems it
 builds already have (roadmap Phase F), adapted to the factory's runtime. Or can *ask* the bot
 about an alert he received ("מה קרה? למה זה נדלק?") and get a real, factory-aware answer in

@@ -7,7 +7,8 @@ This file is the entry point for every Claude session in this repo. Read it firs
 > (פירוט: `devplans/factory-dismantle.md`). מה שנשאר בריפו הזה משרת את or-aios: ה-**gateway**
 > (שירות Cloud Run ב-`or-factory-master-control` שדרכו or-aios מגיע ל-Google), ה-**backbone**
 > שעליו הוא רץ (broker App + WIF + broker SA), שערי-CI היגייניים, ו-workflows של תחזוקה/ניקוי.
-> מכונת-הייצור עצמה (provisioning, templates, agent-repos, OIL, שער-E2E, golden) — **פורקה**.
+> מכונת-הייצור עצמה (provisioning, templates, agent-repos, שער-E2E, golden, monitoring) — **פורקה**.
+> (קוד ה-OIL auto-fix עדיין שזור ב-gateway — לא חלק מהמכונה שפורקה; ראה "The fold".)
 
 ## מי הבנאדם פה — Or — ואיך עובדים מולו
 
@@ -67,9 +68,9 @@ The agent dispatches one workflow, watches it run, verifies the outputs with a r
 - **CI hygiene** — `changelog-check`, `secret-scan`, `supply-chain-check`, `protect-main`, `pipeline-tests`, `playground-tests`, `compile-changelog`, and the `/dev-stage` machinery.
 - **Google oxygen + proof** — `request-workspace-scopes-consent.yml`, `workspace-token-audit.yml`, `google-mcp-smoke.yml`.
 
-**Being removed (the factory machinery) — mostly done:**
-- Provisioning (`provision-system.yml`, `register-system-app.yml`, the whole `templates/system/**` mould + golden gates), agent-repos, OIL auto-fix, the E2E gate, fleet monitoring — **already deleted** (batches 1–3, 6).
-- Remaining leftover workflows (secret-plumbing `mirror`/`preserve`/`restore`/`grant-secret-accessor`, `decommission-*`, `gcp-action`, `fulfill-system-request`, `trigger-system-workflow`, `remove-system-n8n-workflow`, `bs-incidents-to-telegram`) are slated for removal in the final dismantle batches (4–5). Some are still genuinely useful *for the dismantle itself* (`gcp-action.yml` risk-gated GCP command channel, `propose-repo-delete.yml`, `decommission-test-projects.yml`, `bulk-delete-repos.yml`) — keep them until their job is done.
+**Removed (the factory machinery) — dismantle complete:**
+- Provisioning (`provision-system.yml`, `register-system-app.yml`, the whole `templates/system/**` mould + golden gates), agent-repos, the E2E gate, fleet monitoring, and the factory-provisioning skills (`build-system` / `register-system-app` / `decommission-system` / `decommission-test-system` / `health-check`) — **deleted** (batches 1–6 + the final truth-cleanup 2026-07-18). The `fulfill-system-request` resource-request channel (workflow + `scripts/{fulfill,validate}-system-request.sh` + bats + its `services/mcp-server/src/system-request.ts` gateway wiring + `docs/system-resource-requests.md`) was removed in the same cleanup.
+- **Still wired (deliberately kept):** the **OIL auto-fix** path (`services/mcp-server/src/oil-autofix.ts`, Linear-webhook → gateway) — only the `oil-approval` module was removed (batch 5b). It is load-bearing gateway code; a keep/remove decision is deferred, not assumed. The secret-plumbing workflows (`mirror`/`preserve`/`restore`/`grant-secret-accessor`), `trigger-system-workflow`, `remove-system-n8n-workflow`, `bs-incidents-to-telegram`, and `decommission-test-system.yml` no longer exist.
 
 ## Fixed values
 
@@ -135,7 +136,7 @@ Full parallel-development policy (short-lived branches, non-strict main / no mer
 | `audit-openrouter-orphan-keys.yml` | `schedule` daily 06:00 UTC + manual | Audits OpenRouter inference keys for orphans/stale; Hebrew Telegram alert when actionable. |
 | `changelog-check` / `pipeline-tests` / `playground-tests` / `secret-scan` / `supply-chain-check` / `compile-changelog` | `push`/`pull_request: main` | CI hygiene. `pipeline-tests` = shellcheck + yamllint. `playground-tests` = actionlint + BATS + MCP-server build/unit-tests (the `Playground tests` job name is a required status context — do not rename). |
 
-**Dismantle / utility workflows (kept until their job is done):** `gcp-action.yml` (risk-gated GCP command channel — `phase=propose` classifies green/yellow/red via `scripts/gcp-classify.sh`; red → Or's Telegram ✅ → the MCP dispatches `phase=execute`; this is how GCP projects are deleted), `propose-repo-delete.yml` + `.claude/commands/delete-repos.md` (Telegram-gated repo deletion — AI proposes, Or approves; `or-factory-master` hard-refused), `decommission-test-projects.yml` / `bulk-delete-repos.yml` (bulk GCP/repo cleanup), `publish-static-site.yml` (the "idea → live URL" publish engine, on the `dispatch_workflow` allowlist). The secret-plumbing (`mirror`/`preserve`/`restore`/`grant-secret-accessor`) and `decommission-test-system.yml` remain for now; batches 4–5 remove what's no longer needed.
+**Dismantle / utility workflows (kept until their job is done):** `gcp-action.yml` (risk-gated GCP command channel — `phase=propose` classifies green/yellow/red via `scripts/gcp-classify.sh`; red → Or's Telegram ✅ → the MCP dispatches `phase=execute`; this is how GCP projects are deleted), `propose-repo-delete.yml` + `.claude/commands/delete-repos.md` (Telegram-gated repo deletion — AI proposes, Or approves; `or-factory-master` hard-refused), `decommission-test-projects.yml` / `bulk-delete-repos.yml` (bulk GCP/repo cleanup), `publish-static-site.yml` (the "idea → live URL" publish engine, on the `dispatch_workflow` allowlist).
 
 ## MCP
 

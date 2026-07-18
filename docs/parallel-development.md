@@ -1,5 +1,7 @@
 # Parallel development in the factory
 
+> **הערה היסטורית (2026-07-18).** במסגרת קיפול `or-factory-master` למערכת אחת שמשרתת את `or-aios`, מכונת-הייצור פורקה: `provision-system.yml`, כל `templates/system/**`, ו-`monitoring/` **כבר לא קיימים בריפו זה**, ו-`deploy-railway-cloudflare.yml` / `configure-agent-router.yml` הם workflows של מערכת-יעד (למשל `or-aios`), לא של המפעל. אזכורים במסמך זה למנגנונים אלה הם **רקע היסטורי — לא מצב חי**. הליבה החיה מתוארת ב-`CLAUDE.md`.
+
 How **two developments run at once** in `or-factory-master` without overwriting each other —
 on the shared proving system `or-edri-4` or on `main`. The factory deliberately solves this
 with **short-lived branches + a per-system run queue**, not with a merge queue or strict

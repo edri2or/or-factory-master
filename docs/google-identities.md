@@ -124,12 +124,7 @@ Two layers of error compounded here:
 
 ## Open flags
 
-- **System-facing templates still say `edriorp38` (follow-up).** `templates/system/AGENTS.md.template`
-  (and its golden `tests/golden/system/rendered/AGENTS.md`) and `templates/system/workflows/n8n/ops-agent.json`
-  still describe the workspace account as `edriorp38@or-infra.com`. Their functional `user_google_email`
-  param is correct (the storage-key); only the prose is stale, and it ships only to **future** systems.
-  Correcting them touches the golden re-render + (for `ops-agent.json`) the **E2E verification gate** (a
-  live or-edri-4 proof), so it is deferred to the next provisioning-side change that already runs an E2E proof.
+- **System-facing templates follow-up — moot.** The `templates/system/**` mould and its golden (`AGENTS.md.template`, `tests/golden/system/rendered/AGENTS.md`, `templates/system/workflows/n8n/ops-agent.json`) were removed in the fold (dismantle), so there is nothing left to re-render.
 - **Operator-login allowlist.** The gateway login allowlist is `OAUTH_ALLOWED_EMAILS=edri2or@gmail.com`
   (the personal account). If the operator should log into the gateway as `edriorp38@or-infra.com` instead,
   that's a one-line config change — **left as-is; raise with Or before changing.**

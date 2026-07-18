@@ -1,5 +1,7 @@
 # External state — IAM and permissions not in the workflow
 
+> **הערה היסטורית (2026-07-18).** במסגרת קיפול `or-factory-master` למערכת אחת שמשרתת את `or-aios`, מכונת-הייצור פורקה: `provision-system.yml`, כל `templates/system/**`, ו-`monitoring/` **כבר לא קיימים בריפו זה**, ו-`deploy-railway-cloudflare.yml` / `configure-agent-router.yml` הם workflows של מערכת-יעד (למשל `or-aios`), לא של המפעל. אזכורים במסמך זה למנגנונים אלה הם **רקע היסטורי — לא מצב חי**. הליבה החיה מתוארת ב-`CLAUDE.md`.
+
 This file lists every IAM grant and permission setting that lives **outside** the repo. Disaster recovery: if you have to rebuild from scratch, this is the list. Every entry has the exact command you'd run in Cloud Shell.
 
 The workflow assumes all of these are already in place. None of them are granted from inside `provision-system.yml` (because doing so would require even higher privileges, which we don't want the broker SA to have).
