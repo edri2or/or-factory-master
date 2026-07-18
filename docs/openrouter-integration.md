@@ -1,5 +1,7 @@
 # OpenRouter — אינטגרציה לכל מערכת
 
+> **הערה היסטורית (2026-07-18).** במסגרת קיפול `or-factory-master` למערכת אחת שמשרתת את `or-aios`, מכונת-הייצור פורקה: `provision-system.yml`, כל `templates/system/**`, ו-`monitoring/` **כבר לא קיימים בריפו זה**, ו-`deploy-railway-cloudflare.yml` / `configure-agent-router.yml` הם workflows של מערכת-יעד (למשל `or-aios`), לא של המפעל. אזכורים במסמך זה למנגנונים אלה הם **רקע היסטורי — לא מצב חי**. הליבה החיה מתוארת ב-`CLAUDE.md`.
+
 מסמך זה מתאר כיצד כל מערכת חדשה מקבלת מפתח Inference ייעודי ומבודד של OpenRouter,
 וכיצד ה-Management Key נשאר מבודד ב-`or-factory-master-control` בלבד.
 

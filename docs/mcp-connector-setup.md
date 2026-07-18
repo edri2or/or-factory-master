@@ -1,5 +1,7 @@
 # MCP Connector Setup — the one URL to paste into claude.ai
 
+> **הערה היסטורית (2026-07-18).** במסגרת קיפול `or-factory-master` למערכת אחת שמשרתת את `or-aios`, מכונת-הייצור פורקה: `provision-system.yml`, כל `templates/system/**`, ו-`monitoring/` **כבר לא קיימים בריפו זה**, ו-`deploy-railway-cloudflare.yml` / `configure-agent-router.yml` הם workflows של מערכת-יעד (למשל `or-aios`), לא של המפעל. אזכורים במסמך זה למנגנונים אלה הם **רקע היסטורי — לא מצב חי**. הליבה החיה מתוארת ב-`CLAUDE.md`.
+
 ## The one fact, in one line
 
 The exact URL to paste into a claude.ai **custom connector** is the gateway's advertised

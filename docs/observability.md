@@ -1,5 +1,7 @@
 # Observability — תשתית התיעוד וההתראות (Observability Phase A)
 
+> **הערה היסטורית (2026-07-18).** במסגרת קיפול `or-factory-master` למערכת אחת שמשרתת את `or-aios`, מכונת-הייצור פורקה: `provision-system.yml`, כל `templates/system/**`, ו-`monitoring/` **כבר לא קיימים בריפו זה**, ו-`deploy-railway-cloudflare.yml` / `configure-agent-router.yml` הם workflows של מערכת-יעד (למשל `or-aios`), לא של המפעל. אזכורים במסמך זה למנגנונים אלה הם **רקע היסטורי — לא מצב חי**. הליבה החיה מתוארת ב-`CLAUDE.md`.
+
 מסמך זה מתאר את שכבת ה-Observability של ה-factory: איך נפלטים אירועים, לאן הם
 זורמים, ואיך סוכן (Claude Code) חוקר אותם. **Observability Phase A** היא התשתית בלבד —
 ה-emitter המשותף ופיילוט מבודד שמוכיח שהצינור עובד. אף workflow קיים לא נוגעים בו;

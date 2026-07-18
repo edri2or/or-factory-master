@@ -1,5 +1,7 @@
 # Bootstrap record
 
+> **הערה היסטורית (2026-07-18).** במסגרת קיפול `or-factory-master` למערכת אחת שמשרתת את `or-aios`, מכונת-הייצור פורקה: `provision-system.yml`, כל `templates/system/**`, ו-`monitoring/` **כבר לא קיימים בריפו זה**, ו-`deploy-railway-cloudflare.yml` / `configure-agent-router.yml` הם workflows של מערכת-יעד (למשל `or-aios`), לא של המפעל. אזכורים במסמך זה למנגנונים אלה הם **רקע היסטורי — לא מצב חי**. הליבה החיה מתוארת ב-`CLAUDE.md`.
+
 This file records how `or-factory-master` was bootstrapped end-to-end. It is operational history — read it once when onboarding, then move on. The live source of truth for state is the running infrastructure itself, observed via the read-only inspection MCP (`5b6e937f-*`).
 
 ## Stages

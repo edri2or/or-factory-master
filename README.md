@@ -35,7 +35,7 @@ High-level map — browse the directories for the full contents.
 | `changelog.d/` | Per-development changelog fragments (compiled into `CHANGELOG.md`) |
 | `devplans/` | Living `/dev-stage` development plans |
 | `templates/devplan/` | The seed for a new devplan |
-| `monitoring/` · `policy/` | Monitoring registry · risk-tier / governance policy |
+| `policy/` | Risk-tier / governance policy |
 | `docs/` | Reference docs (below) |
 
 ## Documentation
