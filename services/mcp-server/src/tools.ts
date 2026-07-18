@@ -332,85 +332,37 @@ export function registerTools(server: McpServer): void {
   // the operator clicking "Run workflow" or curling the API with a temporary
   // PAT. Auth is the org-wide broker App (actions:write), so it reaches both
   // or-factory-master and any system repo. Bounded by an allowlist.
-  // decommission-test-system.yml IS allowed — it's narrow + test-only (deletes
-  // a test system's Railway project + DNS, archives its repo; touches no GCP
-  // project or SM). decommission-system.yml (real-system teardown, soft-deletes
-  // a GCP project) stays excluded — destructive; requires written approval.
+  // deploy-railway-cloudflare.yml IS allowed — the per-system deploy workflow
+  // (Railway + Cloudflare DNS); dispatched into a system repo (e.g. or-aios) to
+  // (re)deploy it. Broker token scoped to the target repo.
   // configure-agent-router.yml IS allowed — it's a per-system n8n config workflow
   // (idempotent create/update of the Agent Router workflows via REST; soft-fail,
   // touches no GCP/SM), so the agent can wire the router itself instead of the
   // operator clicking "Run workflow".
-  // oil-autofix-investigate.yml IS allowed — the read-only OIL investigator
-  // (reads an OIL issue + the failed run's logs and posts a Linear diagnosis
-  // comment; no code/PR/state change). Allowlisting lets the agent dispatch a
-  // verification run on demand; the live loop triggers it via repository_dispatch.
   // deploy-mcp-server.yml IS allowed — it (re)deploys THIS MCP service from main
   // (idempotent: same image build + same --set-secrets mount). The agent needs it
-  // to pick up new SM secret versions (e.g. the OIL approver creds + allowlist)
-  // without an operator click. Security still rests on branch protection (only
-  // reviewed code on main is deployed) + the main-pinned WIF CEL, not on the
-  // dispatch surface — and the MCP has no write tools beyond this one.
-  // meta-monitoring-watchdog.yml IS allowed — the read-mostly meta-monitor that
-  // proves every other automation ran (reads workflow-run history, sends a
-  // Telegram report, emits one observability event, pings the external
-  // dead-man's-switch). Normal operation is cron-driven; allowlisting lets the
-  // agent run the one-time setup_heartbeat=true dispatch (create the Better
-  // Stack heartbeat + store its URL in SM) and trigger an ad-hoc watchdog run on
-  // demand instead of an operator click. Its only write is that one-time SM
-  // secret write, guarded inside the workflow.
-  // refresh-system-agents.yml IS allowed — the cheap "iterate on one live system"
-  // loop and the factory's standing way to prove a template fix on a live system:
-  // it pushes the factory's CURRENT template files (any subtree under
-  // templates/system/, chosen by inputs.paths — default workflows/n8n, the agent
-  // JSONs — from trusted main) into an already-provisioned system repo via a PR, and
-  // then dispatches a system workflow (inputs.post_merge_workflow — default
-  // configure-agent-router.yml) to apply the change live — no full re-provision/
-  // deploy. Broker token is scoped to the one target repo (contents+actions write);
-  // it refuses control/factory repos and only ships the templated files (same files
-  // provision pushes).
-  // bootstrap-sandbox-tester.yml IS allowed — the one-time, idempotent setup of the
-  // sandbox "toy-key" identity on factory-test-25 (a dedicated WIF pool+provider +
-  // minimal sandbox-tester-sa). It runs as the broker (main-locked) but BUILDS a weak,
-  // sandbox-only identity; the script hard-refuses any project other than
-  // factory-test-25. Allowlisting lets the agent run it without an operator click.
-  // prove-on-test-system.yml IS allowed — the "prove -> merge" loop: apply a WORK-BRANCH's
-  // change to an already-standing live test system and prove it live BEFORE merge. Unique
-  // among dispatchable workflows in that it is meant to run off a NON-main ref (pass
-  // ref=<branch>); its safety is the sandbox identity it auths as (sandbox-tester-sa via
-  // github-sandbox-provider, factory repo / any ref) — never the broker. It can only reach a
-  // throwaway test repo's contents via that test system's own github-app-* creds.
-  // cleanup-orphan-linear-webhooks.yml IS allowed — read-mostly maintenance that lists
-  // every Linear webhook in the haestrateg-ops workspace and (when inputs.apply=true)
-  // deletes the ones whose URL host is "<repo>.or-infra.com" / "n8n-<repo>.or-infra.com"
-  // for a repo that's missing or archived. Default is a dry-run; the script hard-refuses
-  // anything outside *.or-infra.com (the OIL webhook on the MCP server's run.app host is
-  // therefore safe). Pairs with decommission-test-system.yml, which now also deletes the
-  // torn-down system's Linear webhook inline so new orphans never accumulate.
+  // to pick up new SM secret versions without an operator click. Security still
+  // rests on branch protection (only reviewed code on main is deployed) + the
+  // main-pinned WIF CEL, not on the dispatch surface — and the MCP has no write
+  // tools beyond this one.
+  // publish-static-site.yml IS allowed — the "idea -> site -> live URL" engine:
+  // publishes a static-site folder to Cloudflare Pages via Direct Upload and
+  // attaches <slug>.or-infra.com (mints + revokes two short-lived scoped tokens).
+  // decommission-system.yml (real-system teardown, soft-deletes a GCP project)
+  // stays excluded — destructive; requires written approval.
   const DISPATCHABLE_WORKFLOWS = new Set([
-    'provision-system.yml',
-    'register-system-app.yml',
     'deploy-railway-cloudflare.yml',
     'configure-agent-router.yml',
-    'refresh-system-agents.yml',
-    'decommission-test-system.yml',
-    'oil-autofix-investigate.yml',
     'deploy-mcp-server.yml',
-    'meta-monitoring-watchdog.yml',
-    'bootstrap-sandbox-tester.yml',
-    'prove-on-test-system.yml',
-    'e2e-verify.yml',
-    'deploy-verify.yml',
-    'cleanup-orphan-linear-webhooks.yml',
     'publish-static-site.yml',
-    'agent-action.yml',
   ]);
 
   server.tool(
     'dispatch_workflow',
-    'Trigger a workflow_dispatch event for an ALLOWLISTED factory workflow (provision-system.yml, register-system-app.yml, deploy-railway-cloudflare.yml, configure-agent-router.yml, refresh-system-agents.yml, decommission-test-system.yml, oil-autofix-investigate.yml, deploy-mcp-server.yml, meta-monitoring-watchdog.yml, publish-static-site.yml). Dispatches as the org-wide broker App, so it works on or-factory-master AND any system repo (pass repo, e.g. "factory-test-24"). Polls briefly and returns the created run_id + run_url. This is the only WRITE tool on the server. configure-agent-router.yml wires the multi-agent router into a system\'s n8n (idempotent, soft-fail); refresh-system-agents.yml (dispatched on or-factory-master with inputs.system_name, optional inputs.paths + inputs.post_merge_workflow) syncs the factory\'s current template files (default: the agent-workflow JSONs) into an existing system repo via a PR and dispatches a system workflow (default configure-agent-router.yml) to apply the change live — the cheap iterate-on-one-live-system loop, no re-provision; decommission-test-system.yml is test-only (Railway+DNS+repo-archive, no GCP/SM); deploy-mcp-server.yml idempotently redeploys this MCP service from main (to pick up new SM secret versions); meta-monitoring-watchdog.yml is the meta-monitor (cron-driven normally; dispatch it with setup_heartbeat=true for the one-time Better Stack heartbeat setup, or with no inputs for an ad-hoc run); bootstrap-sandbox-tester.yml is the one-time, idempotent setup of the sandbox toy-key identity on factory-test-25 (a dedicated WIF pool+provider + a minimal sandbox-tester-sa; the script hard-refuses any other project); prove-on-test-system.yml is the "prove -> merge" loop — dispatch it with ref=<branch> + inputs.system_name (optional inputs.paths + inputs.post_apply_workflow) to apply that branch\'s templates/system change to an already-standing live test system and prove it live BEFORE merge; it auths as the minimal sandbox-tester-sa (never the broker), so it is the one workflow meant to run off a non-main ref; e2e-verify.yml (dispatched on or-factory-master OR a system repo with ref=main + inputs.target_ref=<branch> + inputs.slug, plus inputs.system_name for the factory variant) drives a REAL message through a live system\'s inbound path, asserts on the reply, and commits the signed e2e-proofs/<slug>.json the "E2E verification gate" required check consumes; publish-static-site.yml (dispatched on or-factory-master with inputs.slug + optional inputs.source_repo/source_ref/source_dir, default edri2or/or-edri-4@main:site) is the "idea -> site -> live URL" engine: it publishes a static site folder to Cloudflare Pages via Direct Upload and attaches <slug>.or-infra.com, minting + revoking two short-lived scoped Cloudflare tokens and serving the custom domain DNS-only; the real-system decommission-system.yml is intentionally NOT dispatchable here.',
+    'Trigger a workflow_dispatch event for an ALLOWLISTED factory workflow (deploy-railway-cloudflare.yml, configure-agent-router.yml, deploy-mcp-server.yml, publish-static-site.yml). Dispatches as the org-wide broker App, so it works on or-factory-master AND any system repo (pass repo, e.g. "or-aios"). Polls briefly and returns the created run_id + run_url. This is the only WRITE tool on the server. deploy-railway-cloudflare.yml (re)deploys a system (Railway + Cloudflare DNS); configure-agent-router.yml wires the multi-agent router into a system\'s n8n (idempotent, soft-fail); deploy-mcp-server.yml idempotently redeploys this MCP service from main (to pick up new SM secret versions); publish-static-site.yml (dispatched on or-factory-master with inputs.slug + optional inputs.source_repo/source_ref/source_dir) is the "idea -> site -> live URL" engine: it publishes a static site folder to Cloudflare Pages via Direct Upload and attaches <slug>.or-infra.com, minting + revoking two short-lived scoped Cloudflare tokens and serving the custom domain DNS-only; the real-system decommission-system.yml is intentionally NOT dispatchable here.',
     {
       ...repoParams,
-      workflow_id: z.string().describe('Workflow file name to dispatch, e.g. provision-system.yml. Must be on the allowlist.'),
+      workflow_id: z.string().describe('Workflow file name to dispatch, e.g. deploy-mcp-server.yml. Must be on the allowlist.'),
       ref: z.string().optional().default('main').describe('Git ref to run on (default: main; the broker WIF CEL pins refs/heads/main)'),
       inputs: z
         .record(z.string(), z.string())
@@ -427,24 +379,6 @@ export function registerTools(server: McpServer): void {
               workflow_id,
               allowed: [...DISPATCHABLE_WORKFLOWS],
               message: 'Not on the dispatch allowlist. decommission-system.yml is intentionally excluded (destructive; requires written approval).',
-            }, null, 2),
-          }],
-        };
-      }
-      // agent-action.yml is allowlisted for phase=propose (a requester asks the
-      // broker for work; the workflow then classifies + gates RED itself). Its
-      // EXECUTE phase must stay reachable ONLY via the Telegram approval callback
-      // (handleAgentApprovalCallback dispatches it directly), so refuse a
-      // phase=execute dispatch through this tool — otherwise a caller could skip
-      // the RED ✅ gate. (Mirrors gcp-action.yml being entirely off the allowlist.)
-      if (workflow_id === 'agent-action.yml' && (inputs?.['phase'] ?? 'propose') === 'execute') {
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              error: 'phase_not_dispatchable',
-              workflow_id,
-              message: 'agent-action.yml phase=execute is reachable only via the Telegram approval callback (the RED gate). Dispatch phase=propose; a RED task will ask Or for ✅.',
             }, null, 2),
           }],
         };
