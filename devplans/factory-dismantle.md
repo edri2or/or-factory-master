@@ -16,7 +16,7 @@ status: completed
 ## מה נשמר (לא נמחק)
 - **broker App + github-pool WIF + broker SA** — התשתית של ה-gateway וכל ה-workflows הנשמרים.
 - **factory-test-7** — בית ה-OAuth client של Google (email+ops). אסור למחוק.
-- **factory-test-8** — or-aios (עד השלב האחרון של הקיפול).
+- **factory-test-8** — or-aios (הפרויקט הקבוע של המערכת — נשמר, לא מהגר; החלטת 2026-07-18, ראה שורת Phase 3 למטה).
 - ה-gateway + workflows של Google + שערי-CI (changelog-check, secret-scan, supply-chain-check, protect-main, pipeline-tests, playground-tests, compile-changelog).
 
 ## אצוות (כל אחת PR נפרד, נסקר וממוזג ע"י Or)
@@ -38,7 +38,7 @@ status: completed
 - **אצווה 5ב (PR זה):** גיזום 3 מודולי-gateway מתים + wiring ב-index.ts + ניקוי allowlist ב-tools.ts + מחיקת 2 workflows (+סקריפט מתייתם). אומת: `npm test` 131/131, `tsc` build נקי, אפס הפניות-קוד למחוקים. **מפעיל redeploy** — לאמת post-deploy smoke מול or-aios. ערוצי-האישור החיים (system-request/gcp/repo/chat) + github-client + OIL App לא נגעו. 2 הפניות-docs ל-decommission-test-system (openrouter-integration.md, external-state.md) נדחו לניקוי-docs (הסעיף כבר מפנה ל-provision-system.yml שנמחק ב-6).
 - **אצווה 5ג בוצעה (2026-07-18):** נמחק הסוד היתום `bs-telegram-watermark` (Telegram-gated). אומת: `secretCount` 53→52, הסוד נעדר, or-aios /healthz=200 (ללא נגיעה ב-runtime).
 - **כל אצוות הפירוק (1–7 + 5א/5ב/5ג) הושלמו — מכונת-המפעל מפורקת. התוכנית הזו נסגרת (`status: completed`).**
-- **Phase 3** (קיפול `factory-test-8`→`or-factory-master-control` כפרויקט GCP יחיד) הוא שלב-המשך **נפרד ו-Or-gated צעד-צעד** (מעביר `n8n-encryption-key` verbatim) — ייפתח ב-devplan ייעודי כשיתחיל, לא במסגרת התוכנית הזו.
+- **Phase 3** (איחוד `factory-test-8`→`or-factory-master-control` כפרויקט GCP יחיד) — **נבחן ונדחה (2026-07-18)**. חקירה חיה הראתה סיכון גבוה (העברת `n8n-encryption-key` verbatim + WIF חדש + 2 פריסות על מערכת חיה + מחיקה בלתי-הפיכה) מול חיסכון זעיר (~12 ₪/חודש — factory-test-8 הוא Secret Manager בלבד; ה-n8n רץ על Railway), ואף הרעת-בידוד (איחוד מכניס את סודות-הריצה של or-aios לאותו פרויקט כמו ה-control/gateway). **החלטה: factory-test-8 נשאר הפרויקט הקבוע והמבודד של or-aios.** פירוט: `changelog.d/2026-07-18-factory-test-8-keep-separate.md`.
 
 ## יומן ל-Or (עברית)
 - אצווה 1: הוסרו ניטור-הצי ושער-הבחינה (E2E). ✓ בוצע.

@@ -63,7 +63,7 @@ The agent dispatches one workflow, watches it run, verifies the outputs with a r
 - **The gateway** — `factory-master-actions-mcp` on Cloud Run in `or-factory-master-control`. or-aios's `email-agent` + `ops-agent` reach Google (Gmail / Calendar / Drive) **only** through it (`/workspace/or-aios/mcp`). Deploy: `deploy-mcp-server.yml`. This service is **mandatory** — dismantling the Workspace half breaks or-aios's Google path.
 - **The backbone** — the **broker App** (`factory-master-broker`, org-wide), the **github-pool WIF provider**, and the **broker SA**. The gateway's `GITHUB_APP_*` env and every kept workflow authenticate through WIF→broker SA. Never delete these.
 - **`factory-test-7`** — the home of the shared Google OAuth client (email + ops). Never delete it (deleting it breaks Google; it was deleted by mistake once and had to be undeleted).
-- **`factory-test-8`** — or-aios's GCP project (Secret Manager home, 83 secrets). Kept until the final fold step migrates its secrets to `or-factory-master-control` (Phase 3) — **never delete without Or's explicit step-by-step approval** (it holds `n8n-encryption-key`, which must move verbatim).
+- **`factory-test-8`** — or-aios's GCP project (Secret Manager home, 83 secrets). **or-aios's permanent dedicated GCP project — kept isolated, not migrating.** (A GCP-consolidation "Phase 3" was evaluated and **declined** 2026-07-18: high risk vs. a ~12 NIS/mo saving, and it would weaken isolation — see `changelog.d/2026-07-18-factory-test-8-keep-separate.md`.) Still **never delete without Or's explicit step-by-step approval** (it holds `n8n-encryption-key`, which would have to move verbatim).
 - **CI hygiene** — `changelog-check`, `secret-scan`, `supply-chain-check`, `protect-main`, `pipeline-tests`, `playground-tests`, `compile-changelog`, and the `/dev-stage` machinery.
 - **Google oxygen + proof** — `request-workspace-scopes-consent.yml`, `workspace-token-audit.yml`, `google-mcp-smoke.yml`.
 
@@ -85,7 +85,7 @@ The agent dispatches one workflow, watches it run, verifies the outputs with a r
 | GitHub org | `edri2or` (id `259965754`) |
 | GitHub App | `factory-master-broker` (installed org-wide, all repos) |
 | App credentials | GCP SM secrets `factory-master-broker-app-{id,private-key,installation-id}` |
-| or-aios GCP project | `factory-test-8` (Secret Manager home — 83 secrets; migrates to control in Phase 3) |
+| or-aios GCP project | `factory-test-8` (Secret Manager home — 83 secrets; **or-aios's permanent dedicated project — kept, not migrating**, decision 2026-07-18) |
 | Google OAuth client home | `factory-test-7` (never delete) |
 
 ## Google identities (who is who) — never default to the personal Gmail
@@ -102,7 +102,7 @@ There are **TWO real Google accounts** (a prior version invented a third, `share
 ## Never
 
 - Touch the old factory repo (`edri2or/factory`) or its GCP project (`factory-control-9piybr`).
-- Delete the **gateway**, the **backbone** (broker App / github-pool WIF / broker SA), **`factory-test-7`** (Google OAuth home), or **`factory-test-8`** (or-aios secrets — until Phase 3, and only with Or's explicit approval).
+- Delete the **gateway**, the **backbone** (broker App / github-pool WIF / broker SA), **`factory-test-7`** (Google OAuth home), or **`factory-test-8`** (or-aios's permanent GCP project — only with Or's explicit step-by-step approval).
 - Auto-chain a destructive or costed step. Dispatch the next action only after verifying the prior one's outputs with a read-only tool.
 - Assert an action is **safe / done / verified before running the check that proves it.** Before an **irreversible** action (repo / GCP-project deletion): a pre-flight **impact scan** is required — tell Or what the scan **found**, never a reassurance from assumption. (Origin 2026-07-17: 20 archived repos were deleted after the agent called it "safe" without scanning; no damage, but the claim preceded the check.)
 - Open GitHub Issues to report success/failure — this is interactive, not async.
