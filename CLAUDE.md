@@ -119,7 +119,7 @@ Run any non-trivial change through the staged-development workflow: documented s
 - **`/dev-status`** — plain-Hebrew, on-demand plan summary.
 - A `SessionStart` hook (`.claude/settings.json` → `scripts/devplan-session-start-hook.sh`) re-injects every active plan's state at session start and after compaction, so the agent re-orients automatically. It is read-only and can never break a session.
 - **Changelog:** write each stage's entry to a dated fragment `changelog.d/<YYYY-MM-DD>-<slug>.md` — **never** to the head of `CHANGELOG.md`. The numbered `CHANGELOG.md` is built only by the **Compile changelog** workflow (`compile-changelog.yml`), which folds all fragments in one single-threaded run.
-- **CI gates** (in the `Changelog gates` job): `check-changelog-updated.sh` (code change ⇒ a changelog fragment), `check-changelog-size.sh` (20 KB cap), `check-devplan-updated.sh` (any `active` plan must be touched in a code diff — a no-op when no plan is active; closing a plan `status: completed` in the same PR releases the gate), `check-watchdog-registry-updated.sh` (adding/removing a scheduled/cron workflow must update `monitoring/watchdog-registry.json` or list it in `monitoring/registry-exempt.txt`).
+- **CI gates** (in the `Changelog gates` job): `check-changelog-updated.sh` (code change ⇒ a changelog fragment), `check-changelog-size.sh` (20 KB cap), `check-devplan-updated.sh` (any `active` plan must be touched in a code diff — a no-op when no plan is active; closing a plan `status: completed` in the same PR releases the gate).
 
 Full parallel-development policy (short-lived branches, non-strict main / no merge queue): `docs/parallel-development.md`.
 
@@ -169,7 +169,7 @@ In Claude Code **on the web**, the factory MCP is an Anthropic-hosted **connecto
 | `scripts/render-mcp-service-yaml.sh` | Renders the Cloud Run service YAML for the gateway deploy. |
 | `scripts/ensure-protect-main-ruleset.sh` | Applies the `protect-main` ruleset (used by `protect-main.yml`). |
 | `scripts/lib.sh` | Shared helpers sourced by the check scripts (`get_code_files`). |
-| `scripts/check-changelog-updated.sh` / `check-changelog-size.sh` / `check-devplan-updated.sh` / `check-watchdog-registry-updated.sh` | The `Changelog gates` CI guards. |
+| `scripts/check-changelog-updated.sh` / `check-changelog-size.sh` / `check-devplan-updated.sh` | The `Changelog gates` CI guards. |
 | `scripts/compile-changelog.sh` | Folds `changelog.d/` fragments into the numbered `CHANGELOG.md`. |
 | `scripts/scan-for-secrets.sh` | The `secret-scan` guard. |
 | `scripts/emit-event.sh` | The shared observability emitter (Axiom / Telegram / Linear). See `docs/observability.md`. |
