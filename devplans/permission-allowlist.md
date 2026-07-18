@@ -18,6 +18,7 @@ status: completed
 |---|---|---|---|
 | 1 | הוספת `permissions.allow` (allowlist מאוזן) | completed | `.claude/settings.json` |
 | 2 | הרחבה לכיסוי *כל* פקודות הקריאה הנפוצות | completed | `.claude/settings.json` |
+| 3 | PreToolUse hook לביטול חלון `cd && git` | completed | `.claude/hooks/allow-safe-bash.sh`, `.claude/settings.json` |
 
 ### שלב 1 — הוספת allowlist מאוזן
 
@@ -48,5 +49,25 @@ status: completed
 
 **הוכחה תפקודית (באותו שלב):** תוכן/הגדרות בלבד. אומת ב-`jq`: `Bash(stat:*)` ו-`Bash(env)` קיימים,
 `.hooks.SessionStart` נשמר, `jq empty` עובר.
+
+**הוכחת E2E (artifact):** לא-התנהגותי — אינו נוגע בקבצי-התנהגות של הבוט.
+
+### שלב 3 — PreToolUse hook לביטול חלון `cd && git`
+
+**רקע:** חקירה מול התיעוד הרשמי גילתה שהחלון על `cd <dir> && git …` הוא כלל-בטיחות מבני קשיח
+ש**אף** כלל ב-`permissions.allow` לא עוקף (git עלול להריץ hooks מהתיקייה). המנגנון היחיד שגם
+מבטל אותו, גם אכיף, גם נשמר בריפו, וגם שומר על עמדה מאוזנת — `PreToolUse` hook.
+
+**Acceptance:**
+- [x] `.claude/hooks/allow-safe-bash.sh` מחזיר `allow` רק כשכל מקטע בקבוצה הבטוחה ואין תחביר-סיכון.
+- [x] לעולם לא מחזיר `deny` — יכול רק להסיר פרומפט, לא להוסיף/לחסום.
+- [x] מסוכן (rm/gcloud/sudo/curl/wget/git push/deploy) מחוץ לקבוצה → נופל לפרומפט.
+- [x] רשום ב-`hooks.PreToolUse` (matcher `Bash`); שאר ה-hooks נשמרו.
+- [x] אושר במפורש ע"י Or (הורדת פיקוח מודעת לקבוצה הבטוחה).
+
+**הוכחה תפקודית (באותו שלב):** shellcheck נקי; 12 מקרי pipe-test — שרשראות בטוחות (`cd repo && git
+status …`, `cat | grep`, `git -C … status`, `npm test`) → `allow`; מסוכן (`rm -rf`, `cd && rm`,
+`git push`, `curl`, `echo > file`, `$(…)`, `gcloud`) → שותק (פרומפט). ⚠️ הפעלה חיה נכנסת לתוקף
+רק בסשן חדש אחרי מיזוג (טעינת hook חדש).
 
 **הוכחת E2E (artifact):** לא-התנהגותי — אינו נוגע בקבצי-התנהגות של הבוט.
