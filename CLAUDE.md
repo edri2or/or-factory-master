@@ -152,6 +152,12 @@ A session's claude.ai account carries **many** connectors. The ones a factory se
 
 **or-factory-master has no n8n instance of its own.** It runs a Cloud Run gateway, not n8n — this repo defines **zero** n8n workflow JSON, and `/n8n/<system>/mcp` is a **proxy into *other* systems' n8n** (`https://n8n-<system>.or-infra.com`, the target system's key injected server-side). Verified 2026-07-18: the only Railway n8n instance in the whole setup is **or-aios's** (`https://n8n-or-aios.or-infra.com`). So **do not use any n8n connector "for factory"** — there is no factory n8n. (The `factory-master:` prefix on that instance's workflows is a brand stamp the now-deleted provisioning templates put on a *system's* workflows — it is not evidence of a factory-owned n8n.) The n8n connectors `n8n-live` / `N8N-or-aios` belong to **or-aios** (its `docs/session-mcp-map.md`); `n8n-all` / `n8n-or-edri-base` / `n8n-or-tok` belong to neither of these two repos.
 
+**Connector ownership across Or's two systems (or-factory-master + or-aios)** — proven live 2026-07-18:
+- **Shared (both systems):** `factory` (`20d5b7f9` — infra + both repos) and **GitHub** (the builtin `github` + the `GitHub CLAUDE` account connector `f492dc70` both authenticate as `edri2or-commits`; the second is a duplicate).
+- **or-aios only:** the two n8n connectors (`n8n-live` `fb1698ee` / `N8N-or-aios` `e7bebea5`) and `factory-master-actions-mcp` (`b6d78a00` — the Google path for or-aios's `email-agent`/`ops-agent`; this gateway is factory-hosted but or-aios-facing).
+- **factory only:** none — factory's role is to serve, so its `factory` MCP + Google gateway are the shared surfaces above.
+- **By session:** a **factory** session uses `factory` + GitHub only (no n8n, no `.mcp.json`); an **or-aios** session additionally gets the Google gateway + n8n. Full or-aios map: its `docs/session-mcp-map.md`.
+
 ### Web-session connector gate — never tell Or to "click Allow" (there is no button)
 
 In Claude Code **on the web**, the factory MCP is an Anthropic-hosted **connector**. Two tools — **`dispatch_workflow`** (write) and **`list_repos`** — are gated **server-side** and fail with `MCP tool call requires approval`. This is **not** a Claude Code permission prompt and **there is NO "Allow" button for Or** — a local `.claude/settings.json` allow-rule does not override a connector gate. **Never tell Or to "click Allow."** Instead:
