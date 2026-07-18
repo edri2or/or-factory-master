@@ -12,7 +12,19 @@
       "Bash(git branch:*)","Bash(git add:*)","Bash(git commit:*)","Bash(git checkout:*)",
       "Bash(git switch:*)","Bash(git fetch:*)","Bash(git pull:*)","Bash(git stash:*)",
       "Bash(git rev-parse:*)","Bash(git ls-files:*)","Bash(git restore:*)",
-      "Bash(git remote:*)","Bash(git config:*)"
+      "Bash(git remote:*)","Bash(git config:*)",
+      "Bash(git blame:*)","Bash(git describe:*)","Bash(git cat-file:*)","Bash(git ls-tree:*)",
+      "Bash(git for-each-ref:*)","Bash(git reflog:*)","Bash(git shortlog:*)","Bash(git grep:*)",
+      "Bash(git whatchanged:*)","Bash(git name-rev:*)","Bash(git merge-base:*)",
+      "Bash(stat:*)","Bash(file:*)","Bash(du:*)","Bash(df:*)","Bash(env)","Bash(printenv:*)",
+      "Bash(printf:*)","Bash(seq:*)","Bash(expr:*)","Bash(cut:*)","Bash(tr:*)","Bash(comm:*)",
+      "Bash(nl:*)","Bash(tac:*)","Bash(rev:*)","Bash(fold:*)","Bash(paste:*)","Bash(join:*)",
+      "Bash(column:*)","Bash(less:*)","Bash(more:*)","Bash(readlink:*)","Bash(realpath:*)",
+      "Bash(basename:*)","Bash(dirname:*)","Bash(od:*)","Bash(xxd:*)","Bash(hexdump:*)",
+      "Bash(strings:*)","Bash(cksum:*)","Bash(md5sum:*)","Bash(sha1sum:*)","Bash(sha256sum:*)",
+      "Bash(date:*)","Bash(cal:*)","Bash(whoami)","Bash(id:*)","Bash(uname:*)","Bash(hostname:*)",
+      "Bash(groups:*)","Bash(tty)","Bash(locale:*)","Bash(ps:*)","Bash(free:*)","Bash(uptime)",
+      "Bash(pstree:*)","Bash(lsof:*)"
     ]
   },
   "hooks": {

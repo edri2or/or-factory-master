@@ -17,6 +17,7 @@ status: completed
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
 | 1 | הוספת `permissions.allow` (allowlist מאוזן) | completed | `.claude/settings.json` |
+| 2 | הרחבה לכיסוי *כל* פקודות הקריאה הנפוצות | completed | `.claude/settings.json` |
 
 ### שלב 1 — הוספת allowlist מאוזן
 
@@ -31,3 +32,21 @@ status: completed
 
 **הוכחת E2E (artifact):** לא-התנהגותי — אינו נוגע בקבצי-התנהגות של הבוט (`workflows/n8n/*.json` /
 `configure-agent-router.yml`).
+
+### שלב 2 — הרחבה לכיסוי כל פקודות הקריאה
+
+**רקע:** Or ביקש במפורש שלפחות *כל* פעולות הקריאה ירוצו בלי אישור. שלב 1 כיסה את הנפוצות; שלב זה
+משלים את השאר.
+
+**Acceptance:**
+- [x] נוספו ל-`permissions.allow` פקודות read-only נוספות (`stat`/`file`/`du`/`df`/`printenv`/`cut`/
+  `tr`/`readlink`/`realpath`/`basename`/`dirname`/`od`/`xxd`/`strings`/`sha256sum`/`date`/`ps`/… +
+  תת-פקודות git-קריאה `blame`/`cat-file`/`ls-tree`/`reflog`/`grep`/…).
+- [x] `env` נוסף כהתאמה-מדויקת (`Bash(env)`) ולא `env:*` — למניעת `env VAR=x <cmd>` שרירותי.
+- [x] קריאות-רשת (`curl`/`wget`) וכל כתיבה/מחיקה נשארו מחוץ ל-allowlist → ממשיכות לבקש אישור.
+- [x] JSON תקין; `.hooks` נשמר. (allow: 110 כללים.)
+
+**הוכחה תפקודית (באותו שלב):** תוכן/הגדרות בלבד. אומת ב-`jq`: `Bash(stat:*)` ו-`Bash(env)` קיימים,
+`.hooks.SessionStart` נשמר, `jq empty` עובר.
+
+**הוכחת E2E (artifact):** לא-התנהגותי — אינו נוגע בקבצי-התנהגות של הבוט.
