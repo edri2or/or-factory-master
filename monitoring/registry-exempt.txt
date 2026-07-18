@@ -186,3 +186,8 @@ templates/system/workflows/n8n/style-refresh.json
 templates/system/workflows/n8n/tg-inbound.json
 templates/system/workflows/n8n/tg-proactive.json
 templates/system/workflows/n8n/unknown-agent.json
+
+# PreToolUse permission helper (matcher Bash) — a LOCAL, per-tool-call decision
+# hook, NOT a scheduled/cron/webhook automation. Nothing runs on a cadence, so
+# there is no daily proof for the watchdog to monitor. Deliberately unmonitored.
+.claude/hooks/allow-safe-bash.sh
