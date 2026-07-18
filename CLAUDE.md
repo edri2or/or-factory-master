@@ -172,6 +172,7 @@ In Claude Code **on the web**, the factory MCP is an Anthropic-hosted **connecto
 
 - **GCP IAM eventual consistency:** a `gcloud` call against a just-created resource can fail with `PERMISSION_DENIED` / `does not exist` for ~30–60s even though the binding already shows. Retry **only** on that specific error class; surface anything else immediately.
 - **Cloud Run no-op redeploy:** `gcloud run services replace` with a byte-identical template is a NO-OP — a container that reads a secret only at **boot** keeps its old value. `deploy-mcp-server.yml` forces a fresh revision every run via `DEPLOY_NONCE`; any future boot-time-secret service needs the same.
+- **Secret Manager cost is access operations, not storage.** Every runtime secret-value read funnels through `getSecretValue` (`services/mcp-server/src/gcp-client.ts`), which caches values in-memory for 60s (PR #620, 2026-07-18). Before the cache, the `/factory/:system/emit` path read 5 control-project secrets per event → ~18M access ops/mo (~₪165) on `or-factory-master-control`; storage of the ~83 versions is only ~₪15/mo (automatic replication bills as a single location). If the SM bill climbs again, hunt for a new uncached hot-path caller — not the version count.
 
 ## Key files
 
