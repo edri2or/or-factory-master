@@ -9,11 +9,9 @@ import { registerOrgReadTools } from './org-read-tools.js';
 import { verifyGitHubOidc } from './oidc-verifier.js';
 import { signBearer, verifyBearer, revokeBearer, type BearerPayload, type BearerKind } from './bearer.js';
 import { registerFactoryScopedTools, isAllowedFactorySystem } from './factory-scope.js';
-import { registerCoordinatorScopedTools, isAllowedCoordinatorRepo } from './coordinator-scope.js';
 import { sendTelegramMessage, emitEvent } from './observability-client.js';
 import { validateEmitBody, isEmitAllowedSystem, createRateLimiter } from './emit-route.js';
 import { handleLinearWebhook, registerLinearWebhook } from './oil-autofix.js';
-import { registerApproval, handleTelegramCallback } from './oil-approval.js';
 import {
   registerSystemRequest,
   handleSystemRequestCallback,
@@ -24,11 +22,6 @@ import {
   handleGcpApprovalCallback,
   isGcpApprovalCallback,
 } from './gcp-approval.js';
-import {
-  registerAgentApproval,
-  handleAgentApprovalCallback,
-  isAgentApprovalCallback,
-} from './agent-approval.js';
 import {
   registerRepoDelete,
   handleRepoApprovalCallback,
@@ -70,8 +63,8 @@ function bsTokenMatches(provided: string | undefined): boolean {
 // Telegram's setWebhook secret_token. Telegram echoes it in the
 // X-Telegram-Bot-Api-Secret-Token header on every callback, proving the request
 // is genuinely from Telegram (the FIRST of two layers; the from.id allowlist in
-// oil-approval.ts is the second). Absent → /telegram-webhook returns 503 (the OIL
-// approval bridge is dormant until deployed with the secret mounted).
+// each approval handler is the second). Absent → /telegram-webhook returns 503
+// (the approval bridge is dormant until deployed with the secret mounted).
 const TELEGRAM_APPROVAL_WEBHOOK_SECRET = process.env.TELEGRAM_APPROVAL_WEBHOOK_SECRET;
 const TELEGRAM_APPROVAL_WEBHOOK_SECRET_HASH = TELEGRAM_APPROVAL_WEBHOOK_SECRET
   ? createHash('sha256').update(TELEGRAM_APPROVAL_WEBHOOK_SECRET).digest()
@@ -318,27 +311,6 @@ app.post('/oil-register-webhook', async (req: Request, res: Response) => {
   res.status(r.status).json(r.body);
 });
 
-// OIL approval bridge — REGISTER. The oil-autofix-investigate workflow calls this
-// (admin-gated, X-Admin-Secret) right after the broker opens a DRAFT PR. It sends
-// Or one Telegram message with ✅/❌ buttons carrying the target repo + PR number.
-// Body: { pr_number, issue_id?, pr_url?, repo? }. `repo` (Stage 83) names the repo
-// the fix lands in — a system repo, or omitted/the factory for a factory fix.
-app.post('/oil-approval-register', async (req: Request, res: Response) => {
-  const provided = (req.headers['x-admin-secret'] as string | undefined) ?? '';
-  if (!secretMatches(provided)) {
-    res.status(403).json({ error: 'unauthorized' });
-    return;
-  }
-  const body = (req.body ?? {}) as Record<string, unknown>;
-  const r = await registerApproval({
-    pr_number: Number(body['pr_number']),
-    issue_id: typeof body['issue_id'] === 'string' ? body['issue_id'] : undefined,
-    pr_url: typeof body['pr_url'] === 'string' ? body['pr_url'] : undefined,
-    repo: typeof body['repo'] === 'string' ? body['repo'] : undefined,
-  });
-  res.status(r.status).json(r.body);
-});
-
 // System resource-request channel — REGISTER. fulfill-system-request.yml (register
 // phase) calls this (admin-gated, X-Admin-Secret) after the request passed the
 // deterministic gate. It sends Or one Telegram card with ✅/❌ buttons carrying the
@@ -382,29 +354,6 @@ app.post('/gcp-approval-register', async (req: Request, res: Response) => {
   res.status(r.status).json(r.body);
 });
 
-// Agent-repo risk-gate — REGISTER. agent-action.yml (red path) calls this
-// (admin-gated, X-Admin-Secret) for a unit of agent work the classifier tiered
-// RED. It sends Or one Telegram card with ✅/❌ buttons; the whole work unit
-// ({worker_repo, requester_repo, task, correlation_id}) is embedded in the card
-// text (base64-in-sentinel) for stateless recovery on ✅. Body: { worker_repo,
-// requester_repo, task, correlation_id, reason? }.
-app.post('/agent-action-register', async (req: Request, res: Response) => {
-  const provided = (req.headers['x-admin-secret'] as string | undefined) ?? '';
-  if (!secretMatches(provided)) {
-    res.status(403).json({ error: 'unauthorized' });
-    return;
-  }
-  const body = (req.body ?? {}) as Record<string, unknown>;
-  const r = await registerAgentApproval({
-    worker_repo: String(body['worker_repo'] ?? ''),
-    requester_repo: String(body['requester_repo'] ?? ''),
-    task: String(body['task'] ?? ''),
-    correlation_id: String(body['correlation_id'] ?? ''),
-    reason: typeof body['reason'] === 'string' ? body['reason'] : undefined,
-  });
-  res.status(r.status).json(r.body);
-});
-
 // Repo-deletion gate — REGISTER. propose-repo-delete.yml calls this (admin-gated,
 // X-Admin-Secret) to send Or one ✅/❌ card listing repos to delete. The deletion
 // runs ONLY in the Telegram callback (handleRepoApprovalCallback) — never here.
@@ -428,14 +377,13 @@ app.post('/repo-delete-register', async (req: Request, res: Response) => {
 });
 
 // Unified Telegram bridge — INBOUND. The single factory bot's webhook posts here
-// for BOTH Or's free-form chat messages AND the OIL approval ✅/❌ button presses
+// for BOTH Or's free-form chat messages AND the HITL approval ✅/❌ button presses
 // (one bot, one webhook). Gated by the secret_token Telegram echoes in
-// X-Telegram-Bot-Api-Secret-Token (constant-time). Routes by update kind: an OIL
-// approval callback (oilapprove:/oilreject:) → handleTelegramCallback; a system
-// resource-request callback (sysreq:/sysno:) → handleSystemRequestCallback; a GCP
-// red-op callback (gcpok:/gcpno:) → handleGcpApprovalCallback; an agent-action
-// callback (agentok:/agentno:) → handleAgentApprovalCallback;
-// everything else (a text message, or a chat HITL cdo:/cno: callback) → handleChatUpdate.
+// X-Telegram-Bot-Api-Secret-Token (constant-time). Routes by callback prefix: a
+// system resource-request callback → handleSystemRequestCallback; a GCP red-op
+// callback (gcpok:/gcpno:) → handleGcpApprovalCallback; a repo-delete callback →
+// handleRepoApprovalCallback; everything else (a text message, or a chat HITL
+// cdo:/cno: callback) → handleChatUpdate.
 // Always answers 200 (Telegram retries non-2xx) — the real outcome is in the
 // body; any reply is delivered out-of-band via a separate sendMessage.
 app.post('/telegram-webhook', async (req: Request, res: Response) => {
@@ -452,20 +400,14 @@ app.post('/telegram-webhook', async (req: Request, res: Response) => {
     const update = (req.body ?? {}) as Record<string, unknown>;
     const cq = update['callback_query'] as Record<string, unknown> | undefined;
     const data = cq && typeof cq['data'] === 'string' ? (cq['data'] as string) : '';
-    const isOilCallback = data.startsWith('oilapprove:') || data.startsWith('oilreject:');
     const isSysReqCallback = isSystemRequestCallback(data);
     const isGcpCallback = isGcpApprovalCallback(data);
-    const isAgentCallback = isAgentApprovalCallback(data);
     const isRepoCallback = isRepoApprovalCallback(data);
     let r;
-    if (isOilCallback) {
-      r = await handleTelegramCallback(req);
-    } else if (isSysReqCallback) {
+    if (isSysReqCallback) {
       r = await handleSystemRequestCallback(req);
     } else if (isGcpCallback) {
       r = await handleGcpApprovalCallback(req);
-    } else if (isAgentCallback) {
-      r = await handleAgentApprovalCallback(req);
     } else if (isRepoCallback) {
       r = await handleRepoApprovalCallback(req);
     } else {
@@ -1063,58 +1005,6 @@ app.post('/factory/:system/emit', async (req: Request, res: Response) => {
     telegram: result.telegram.status,
     linear: result.linear.status,
   });
-});
-
-// ── Coordinator MCP — the narrow dispatch surface for the coordinator agent ────
-//
-// /coordinator/<repo>/mcp serves an IN-PROCESS per-request McpServer (same
-// stateless pattern as /factory/<system>/mcp) that registers ONLY a small read
-// subset + route_to_agent (coordinator-scope.ts). A coordinator agent-repo
-// reaches THIS route — not the broad /mcp — so its session's MAXIMUM
-// capability is: read a few things + dispatch agent-action.yml (propose) to an
-// allowlisted sibling. The broad dispatch_workflow and every provisioning tool
-// are absent. Auth is operator-grade only (an `oauth` bearer from Or's Google
-// login, or an `admin` bearer for the smoke) — there is NO per-coordinator token
-// endpoint: a coordinator session authenticates exactly like today's read-only `/mcp`
-// entry in its .mcp.json (Or's login), so no secret lives in the repo.
-app.all('/coordinator/:repo/mcp', async (req: Request, res: Response) => {
-  const repo = req.params.repo;
-  if (!isAllowedCoordinatorRepo(repo)) {
-    res.status(404).json({ error: 'unknown_coordinator' });
-    return;
-  }
-  const authHeader = req.headers['authorization'] ?? '';
-  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
-  const payload = token ? verifyBearer(token) : null;
-  if (!token || payload === null) {
-    res
-      .status(401)
-      .set(
-        'WWW-Authenticate',
-        `Bearer realm="${BASE_URL}", resource_metadata="${BASE_URL}/.well-known/oauth-protected-resource"`,
-      )
-      .json({ error: 'unauthorized' });
-    return;
-  }
-  // Operator-grade only: the coordinator dispatch is a write, gated to Or's
-  // authenticated session (oauth) — the same principal that drives the Drive
-  // write tools — or an admin bearer (the smoke's server-to-server path). No
-  // dedicated coordinator bearer kind exists.
-  if (payload.kind !== 'oauth' && payload.kind !== 'admin') {
-    res.status(403).json({ error: 'operator_only' });
-    return;
-  }
-
-  const server = new McpServer({ name: 'factory-coordinator-mcp', version: '1.0.0' });
-  registerCoordinatorScopedTools(server, repo);
-  const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
-
-  try {
-    await server.connect(transport);
-    await transport.handleRequest(req, res, req.body);
-  } finally {
-    await server.close().catch(() => undefined);
-  }
 });
 
 // Must be registered after all routes so it sees errors thrown by handlers.
