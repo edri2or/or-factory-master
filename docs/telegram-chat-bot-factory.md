@@ -15,7 +15,7 @@ circular dependency).
 ## Architecture — one bot
 
 The factory has **one** Telegram bot (`telegram-bot-token`, the long-standing "alerts" bot). It
-both **sends** alerts (watchdog / incidents / OIL approval prompts) **and answers** Or's
+both **sends** alerts (incidents / HITL approval prompts for GCP red-ops + repo-delete) **and answers** Or's
 questions. Its single webhook posts to the unified `/telegram-webhook`, which routes by update
 kind:
 
@@ -23,7 +23,7 @@ kind:
 Telegram (the one factory bot) ──POST /telegram-webhook──▶ services/mcp-server (Cloud Run)
                                                              │  X-Telegram-Bot-Api-Secret-Token (index.ts, constant-time)
                                                              ▼
-                              ┌─ callback oilapprove:/oilreject:  → oil-approval.ts (OIL ✅/❌ merge/close)
+                              ┌─ callback gcpok:/gcpno:, repo-delete → gcp-approval.ts / repo-approval.ts (HITL ✅/❌)
                               └─ message  OR  callback cdo:/cno:   → telegram-chat.ts
                                                              │  sender allowlist + ~120s freshness (layer 2)
                                                              ▼
@@ -42,7 +42,7 @@ it was consolidated onto the one bot at Or's request — fewer moving parts.)
 |---|---|
 | `services/mcp-server/src/telegram-chat-guards.ts` | Pure, side-effect-free guards + parsers (allowlist, freshness, message/callback parsing). No heavy imports → unit-tested hermetically. |
 | `services/mcp-server/src/telegram-chat.ts` | The handler: inbound message → LLM tool-calling loop → Hebrew reply; HITL approval send + callback dispatch. Replies reuse the alerts-bot senders in `observability-client.ts`. |
-| `services/mcp-server/src/oil-approval.ts` | The OIL ✅/❌ approval bridge — unchanged; the unified webhook routes `oilapprove:`/`oilreject:` here. |
+| `services/mcp-server/src/{gcp-approval,repo-approval}.ts` | The HITL ✅/❌ approval bridges (GCP red-ops via `gcpok:`/`gcpno:`; repo-delete) the unified webhook routes to. (The former `oil-approval.ts` bridge was removed in the fold, batch 5b — `oilapprove:`/`oilreject:` is no longer routed.) |
 | `services/mcp-server/src/index.ts` | The **unified** `POST /telegram-webhook` (constant-time secret-token check, routes by update kind, always 200). |
 | `services/mcp-server/test/telegram-chat-guards.test.mjs` | Unit tests for the pure guards (run by `node --test`, the repo convention). |
 | `.github/workflows/deploy-mcp-server.yml` | Mints + mounts the chat allowlist + OpenRouter key; sets the one bot's webhook (`allowed_updates:["message","callback_query"]`). |
