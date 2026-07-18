@@ -1,4 +1,20 @@
 {
+  "permissions": {
+    "allow": [
+      "Bash(cd:*)","Bash(ls:*)","Bash(pwd)","Bash(echo:*)","Bash(cat:*)",
+      "Bash(head:*)","Bash(tail:*)","Bash(grep:*)","Bash(rg:*)","Bash(find:*)",
+      "Bash(tree:*)","Bash(wc:*)","Bash(sort:*)","Bash(uniq:*)","Bash(diff:*)",
+      "Bash(which:*)","Bash(jq:*)","Bash(sed:*)","Bash(awk:*)","Bash(test:*)","Bash(true)",
+      "Bash(mkdir:*)","Bash(touch:*)","Bash(cp:*)","Bash(mv:*)",
+      "Bash(node:*)","Bash(npm:*)","Bash(npx:*)","Bash(python:*)","Bash(python3:*)",
+      "Bash(pytest:*)","Bash(bats:*)","Bash(shellcheck:*)","Bash(yamllint:*)","Bash(actionlint:*)",
+      "Bash(git status:*)","Bash(git diff:*)","Bash(git log:*)","Bash(git show:*)",
+      "Bash(git branch:*)","Bash(git add:*)","Bash(git commit:*)","Bash(git checkout:*)",
+      "Bash(git switch:*)","Bash(git fetch:*)","Bash(git pull:*)","Bash(git stash:*)",
+      "Bash(git rev-parse:*)","Bash(git ls-files:*)","Bash(git restore:*)",
+      "Bash(git remote:*)","Bash(git config:*)"
+    ]
+  },
   "hooks": {
     "SessionStart": [
       {
