@@ -5,7 +5,8 @@
 dev_name: ניקוי-אמת סופי של הקיפול
 slug: factory-truth-cleanup
 opened: 2026-07-18
-status: active   # active בזמן פיתוח → completed בסיום (משחרר את שער ה-CI)
+completed: 2026-07-18
+status: completed   # active בזמן פיתוח → completed בסיום (משחרר את שער ה-CI)
 ---
 
 # תוכנית פיתוח — ניקוי-אמת סופי של הקיפול
@@ -22,7 +23,16 @@ status: active   # active בזמן פיתוח → completed בסיום (משחר
 |---|---|---|---|
 | 1 | Tier A — מחיקת 5 skills-מפעל מתות + יישור תיעוד (README/CLAUDE/8 docs + מחיקת capability-cards) | done | `skills/{build-system,register-system-app,decommission-system,decommission-test-system,health-check}`, `README.md`, `CLAUDE.md`, `docs/*` |
 | 2 | Tier B — הסרת ערוץ fulfill-system-request מקצה-לקצה (workflow+scripts+bats+doc+gateway-wiring) | done (PR ממתין ל-✅ פריסה) | `.github/workflows/fulfill-system-request.yml`, `scripts/{fulfill,validate}-system-request.sh`, `scripts/tests/validate-system-request.bats`, `services/mcp-server/src/{system-request.ts,index.ts,oil-autofix.ts,gcp-approval.ts,repo-approval.ts}`, `docs/system-resource-requests.md` |
-| 3 | הוכחה חיה מקצה-לקצה (Google/GitHub/n8n/תשתית/invariants) + דוח-הוכחה | in-progress | (בדיקות חיות; דוח) |
+| 3 | הוכחה חיה מקצה-לקצה (Google/GitHub/n8n/תשתית/invariants) + דוח-הוכחה | done | (בדיקות חיות; דוח-Artifact) |
+
+## סגירה (2026-07-18)
+
+הפיתוח הושלם ואומת חי. Tier A (#615) ו-Tier B (#616) מוזגו. פריסת ה-gateway אחרי Tier B עברה
+במלואה כולל שער ה-smoke התלת-משטחי (run 29640862429, כל 34 השלבים SUCCESS), ו-`google-mcp-smoke`
+עצמאי אחרי-פריסה = SUCCESS (run 29640973836) — מסלול גוגל של or-aios שלם. הוכחה חיה מלאה בוצעה:
+גוגל (Gmail read+send אמיתי, יומן CRUD, Drive), GitHub (מחזור PR), n8n (health + 64 workflows +
+dev-write בשער ה-smoke), תשתית (GCP 11/11, Railway, TLS), ושערי-האמת של or-aios (invariants/drift PASS).
+**ממצא פתוח (החלטת Or):** or-aios הוא ריפו ציבורי (`private=false`) — הובא לידיעת Or, לא שונה.
 
 ## הערות ביצוע (Tier B)
 
