@@ -1,6 +1,6 @@
 # Observability — תשתית התיעוד וההתראות (Observability Phase A)
 
-> **הערה היסטורית (2026-07-18).** במסגרת קיפול `or-factory-master` למערכת אחת שמשרתת את `or-aios`, מכונת-הייצור פורקה: `provision-system.yml`, כל `templates/system/**`, ו-`monitoring/` **כבר לא קיימים בריפו זה**, ו-`deploy-railway-cloudflare.yml` / `configure-agent-router.yml` הם workflows של מערכת-יעד (למשל `or-aios`), לא של המפעל. אזכורים במסמך זה למנגנונים אלה הם **רקע היסטורי — לא מצב חי**. הליבה החיה מתוארת ב-`CLAUDE.md`.
+> **הערה היסטורית (2026-07-18).** במסגרת קיפול `or-factory-master` למערכת אחת שמשרתת את `or-aios`, מכונת-הייצור פורקה: `provision-system.yml`, כל `templates/system/**`, ו-`monitoring/` **כבר לא קיימים בריפו זה**, ו-`deploy-railway-cloudflare.yml` / `configure-agent-router.yml` הם workflows של מערכת-יעד (למשל `or-aios`), לא של המפעל. **גם ה-workflows וה-scripts של ה-observability הקשורים למכונה שפורקו** — `observability-pilot.yml`, `factory-health-audit.yml`, `system-runtime-audit.yml`, `_verify-bs-webhook.yml`, `bs-incidents-to-telegram.yml`, `_verify-sentry.yml`, `scripts/create-uptime-monitor.sh` — **כבר לא קיימים בריפו זה** (ראה ⚠️ בראש §9). אזכורים במסמך זה למנגנונים אלה הם **רקע היסטורי — לא מצב חי**. הליבה החיה מתוארת ב-`CLAUDE.md`.
 
 מסמך זה מתאר את שכבת ה-Observability של ה-factory: איך נפלטים אירועים, לאן הם
 זורמים, ואיך סוכן (Claude Code) חוקר אותם. **Observability Phase A** היא התשתית בלבד —
@@ -217,6 +217,14 @@ read_github_actions_run_logs(job_id=<id>, grep="\[linear\]")  # תוצאת Linea
 ---
 
 ## 9. מתווה Observability Phase B/C/D
+
+> ⚠️ **רקע היסטורי (2026-07-18) — קרא לפני הרשימה למטה.** ה-✅ בסעיף הזה תיעדו את המצב בזמן שהמכונה עוד
+> הייתה חיה. אחרי הקיפול, כל מה שהיה **קשור להקמת-מערכות פורק ואינו קיים עוד בריפו זה**: `factory-health-audit.yml`,
+> `system-runtime-audit.yml`, `scripts/create-uptime-monitor.sh`, `_verify-bs-webhook.yml`, `bs-incidents-to-telegram.yml`,
+> `_verify-sentry.yml`, ה-`observability-pilot.yml`, וקריאות ה-emit ב-`provision-system.yml` / `deploy-railway-cloudflare.yml`.
+> (בפרט — `bs-incidents-to-telegram.yml` **נמחק**; ההצהרה למטה שהוא "הנתיב הפעיל בחינם" היא היסטוריה, כפי ש-`CLAUDE.md`
+> מציין במפורש.) **מה שכן נשאר חי בריפו זה:** כלי ה-MCP `emit_event`, פליטת ה-emit ב-`audit-openrouter-orphan-keys.yml`,
+> ותשתית ה-Sentry דרך `services/mcp-server/src/instrument.ts`. הליבה החיה מתוארת ב-`CLAUDE.md`.
 
 - **Observability Phase B — Coverage** (✅ הושלם):
   - ✅ `audit-openrouter-orphan-keys.yml` פולט `factory.openrouter_audit.{clean,action_needed,deletions}`

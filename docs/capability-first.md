@@ -1,6 +1,6 @@
 # Capability-first — prove the raw capability *outside n8n*, then build the agent
 
-> **הערה היסטורית (2026-07-18).** במסגרת קיפול `or-factory-master` למערכת אחת שמשרתת את `or-aios`, מכונת-הייצור פורקה: `provision-system.yml`, כל `templates/system/**`, ו-`monitoring/` **כבר לא קיימים בריפו זה**, ו-`deploy-railway-cloudflare.yml` / `configure-agent-router.yml` הם workflows של מערכת-יעד (למשל `or-aios`), לא של המפעל. אזכורים במסמך זה למנגנונים אלה הם **רקע היסטורי — לא מצב חי**. הליבה החיה מתוארת ב-`CLAUDE.md`.
+> **הערה היסטורית (2026-07-18).** במסגרת קיפול `or-factory-master` למערכת אחת שמשרתת את `or-aios`, מכונת-הייצור פורקה: `provision-system.yml`, `templates/agent-design-spec.md`, כל `templates/system/**`, ו-`monitoring/` **כבר לא קיימים בריפו זה**, ו-`deploy-railway-cloudflare.yml` / `configure-agent-router.yml` הם workflows של מערכת-יעד (למשל `or-aios`), לא של המפעל. אזכורים במסמך זה למנגנונים אלה הם **רקע היסטורי — לא מצב חי**. הליבה החיה מתוארת ב-`CLAUDE.md`.
 
 > **Why this exists.** Building a sub-agent already has a disciplined flow
 > (`/build-agent`, `templates/agent-design-spec.md`, `docs/agent-isolation-testing.md`):

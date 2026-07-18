@@ -1,5 +1,7 @@
 # Agent isolation testing — proving each brick works *alone*, on real input
 
+> **הערה היסטורית (2026-07-18).** המסמך הזה מתאר את מכונת בניית-הסוכנים של המפעל, שפורקה בקיפול `or-factory-master` למערכת אחת שמשרתת את `or-aios`. קבצים שהוא מפנה אליהם **כבר לא קיימים בריפו זה**: `templates/agent-design-spec.md`, כל `templates/system/**`, ו-`set-workflow-active.yml` (נשאר רק `templates/devplan/`). אזכורים אלה הם **רקע היסטורי — לא מצב חי**. הליבה החיה מתוארת ב-`CLAUDE.md`.
+
 > **Why this exists.** A stage is "done" only when the brick is proven to actually
 > do its job, on real input, **alone** — not when "the code is written and CI is
 > green". CI-green is necessary but not sufficient: it proves the workflow is
