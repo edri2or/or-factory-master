@@ -1,0 +1,13 @@
+# Python bytecode (scripts/likeness-measure.py and future .py)
+__pycache__/
+*.pyc
+
+# Session JSONL files — data, not code (data doctrine: data goes to Postgres)
+sessions/raw/
+sessions/archive/
+
+# Session-scoped context/handoff working files (conversation-continuity / conversation-handoff)
+sessions/context/
+
+# Archived devplans — served their purpose once completed
+devplans/archive/

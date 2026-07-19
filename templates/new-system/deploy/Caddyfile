@@ -1,0 +1,142 @@
+# Per-system gateway (Phase D) — public face of this system's n8n.
+#
+# Built into a custom Caddy image (see Dockerfile.caddy) via xcaddy with:
+#   - github.com/mholt/caddy-ratelimit  — per-source-IP rate limiting
+#   - caddy/hmacguard (local module)    — constant-time HMAC-SHA256 verification
+#
+# Plugin-choice rationale (mission "approach (a) vs (b)"): the only off-the-shelf
+# HMAC plugin (abiosoft/caddy-hmac) is unmaintained (~9 stars) and can only compare
+# via a NON-constant-time Caddyfile matcher, which violates the constant-time
+# requirement. We therefore use a small custom handler module (Go hmac.Equal,
+# constant-time) for HMAC, plus mholt/caddy-ratelimit (the de-facto module, by
+# Caddy's author) for rate limiting. forward_auth/exec were rejected because they
+# cannot verify an HMAC computed over the request BODY.
+#
+# Behaviour:
+#   :{$PORT}            Railway sets $PORT; defaults to 8080. No auto_https (Railway
+#                       terminates TLS at its edge). admin API disabled.
+#   /health             -> 200 "ok"           (Railway healthcheck)
+#   /webhook/*          -> rate-limit per IP, then HMAC verify, then proxy to n8n
+#                          over Railway's private network. 401 on bad/missing HMAC,
+#                          429 on rate-limit exceed.
+#   any other path      -> proxied to n8n unauthenticated at the edge. n8n's own
+#                          login/session/API-key guards the UI + /rest/* API; only
+#                          /webhook/* carries the HMAC gate. (Once Caddy fronts the
+#                          public domain, the operator UI, the deploy's own /rest/*
+#                          steps, and configure-agent-router.yml all go through here.)
+{
+	admin off
+	auto_https off
+
+	# Custom handler directives are not in Caddy's standard order; pin their order
+	# explicitly so rate-limit runs first, then HMAC verify, then the proxy. Each
+	# `order` must reference a directive already placed, so anchor hmac_guard to the
+	# standard reverse_proxy first, then place rate_limit relative to hmac_guard.
+	order hmac_guard before reverse_proxy
+	order rate_limit before hmac_guard
+
+	log {
+		output stdout
+		format console
+	}
+
+	# Derive the real client IP from Railway's X-Forwarded-For so the rate limit is
+	# per-client, not per-edge. trusted_proxies scope is validated against Railway's
+	# forwarding behaviour during PR 2 smoke tests.
+	servers {
+		trusted_proxies static private_ranges
+	}
+}
+
+:{$PORT:8080} {
+	log {
+		output stdout
+		format console
+	}
+
+	@health path /health
+	handle @health {
+		respond "ok" 200
+	}
+
+	# Telegram inbound webhook bypass (Phase F). Telegram signs each request with
+	# its own X-Telegram-Bot-Api-Secret-Token header (set via setWebhook) and
+	# CANNOT compute the factory HMAC, so /webhook/telegram-in/* is exempt from the
+	# HMAC gate and authenticated by an exact header match against a per-system
+	# 32-byte secret ({$N8N_TELEGRAM_WEBHOOK_SECRET}, minted per-system at provision,
+	# injected into Caddy's env by the deploy). These
+	# two blocks MUST precede @webhook: handle blocks evaluate in source order and
+	# the first match wins, so they claim telegram-in/* before the generic
+	# /webhook/* HMAC handler can. If the secret env is empty (not yet minted) the
+	# header match fails for every request, so the path is fail-closed (401), never
+	# fail-open. The existing /webhook/* HMAC handler below is untouched.
+	@telegram_authed {
+		path /webhook/telegram-in/*
+		header X-Telegram-Bot-Api-Secret-Token {$N8N_TELEGRAM_WEBHOOK_SECRET}
+	}
+	handle @telegram_authed {
+		reverse_proxy http://n8n.railway.internal:5678 {
+			header_up Host {host}
+		}
+	}
+
+	# Any /webhook/telegram-in/* without the correct secret header is rejected at
+	# the edge (never reaches n8n).
+	@telegram_unauthed path /webhook/telegram-in/*
+	handle @telegram_unauthed {
+		respond 401
+	}
+
+	# Custom GPT → GitHub bridge (Phase GPT-bridge). Custom GPT cannot compute
+	# HMAC-SHA256, so this path is exempt from the HMAC gate and authenticated
+	# instead by an exact header match against a per-system 32-byte static token
+	# ({$GPT_BRIDGE_TOKEN}, minted at configure time and stored in GCP SM as
+	# gpt-bridge-token). These two blocks MUST precede @webhook so Caddy claims
+	# /webhook/gpt-github-bridge before the generic HMAC handler.
+	# Fail-closed: if the env var is empty (token not yet minted) the header
+	# match fails for every request → 401, never fail-open.
+	@gpt_bridge_authed {
+		path /webhook/gpt-github-bridge
+		header X-GPT-Token {$GPT_BRIDGE_TOKEN:__gpt_bridge_disabled__}
+	}
+	handle @gpt_bridge_authed {
+		reverse_proxy http://n8n.railway.internal:5678 {
+			header_up Host {host}
+		}
+	}
+
+	@gpt_bridge_unauthed path /webhook/gpt-github-bridge
+	handle @gpt_bridge_unauthed {
+		respond 401
+	}
+
+	@webhook path /webhook/*
+	handle @webhook {
+		rate_limit {
+			zone webhook_per_ip {
+				key {http.request.client_ip}
+				events {$RATE_LIMIT_BURST:50}
+				window {$RATE_LIMIT_WINDOW:10s}
+			}
+		}
+
+		hmac_guard {$HMAC_SECRET}
+
+		# Preserve the original Host (Caddy otherwise rewrites it to the upstream);
+		# Caddy forwards X-Forwarded-{For,Proto,Host} to the upstream by default.
+		reverse_proxy http://n8n.railway.internal:5678 {
+			header_up Host {host}
+		}
+	}
+
+	# Everything else (n8n UI, /rest/* API, static assets) is proxied to n8n,
+	# guarded by n8n's own auth rather than HMAC — only /webhook/* needs the edge
+	# HMAC gate. This keeps n8n fully usable at the public URL once Caddy fronts
+	# the domain (PR 3 swap): the operator login, the deploy workflow's /rest/*
+	# steps, and configure-agent-router.yml all flow through here.
+	handle {
+		reverse_proxy http://n8n.railway.internal:5678 {
+			header_up Host {host}
+		}
+	}
+}
