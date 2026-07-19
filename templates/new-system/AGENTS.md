@@ -67,7 +67,10 @@ Every Claude Code session is born connected (`.mcp.json`):
 - **Never echo, print, or log values from Secret Manager.** Reference by name only.
 - **Never run `gcloud projects delete`** against this project.
 - **Never commit `.env*`, `*.pem`, or `*.key` files.**
-- **Never disable branch protection** on the `main` branch.
+- **Never disable branch protection** on the `main` branch. `main` is governed by a `protect-main`
+  ruleset (installed by the factory's `protect-system-main.yml`): PR required, the CI checks
+  (`shellcheck + yamllint` + `Scan for committed secrets`) required, force-push and deletion blocked.
+  The repo also has `delete_branch_on_merge` on, so every merged branch is auto-deleted.
 - **Never print, log, or write to disk** any minted GitHub-App installation token; never fetch a private key outside a GitHub Actions workflow.
 
 ## Deploy
