@@ -71,6 +71,7 @@ The agent dispatches one workflow, watches it run, verifies the outputs with a r
 **Removed (the factory machinery) — dismantle complete:**
 - Provisioning (`provision-system.yml`, `register-system-app.yml`, the whole `templates/system/**` mould + golden gates), agent-repos, the E2E gate, fleet monitoring, and the factory-provisioning skills (`build-system` / `register-system-app` / `decommission-system` / `decommission-test-system` / `health-check`) — **deleted** (batches 1–6 + the final truth-cleanup 2026-07-18). The `fulfill-system-request` resource-request channel (workflow + `scripts/{fulfill,validate}-system-request.sh` + bats + its `services/mcp-server/src/system-request.ts` gateway wiring + `docs/system-resource-requests.md`) was removed in the same cleanup.
 - **Still wired (deliberately kept):** the **OIL auto-fix** path (`services/mcp-server/src/oil-autofix.ts`, Linear-webhook → gateway) — only the `oil-approval` module was removed (batch 5b). It is load-bearing gateway code; a keep/remove decision is deferred, not assumed. The secret-plumbing workflows (`mirror`/`preserve`/`restore`/`grant-secret-accessor`), `trigger-system-workflow`, `remove-system-n8n-workflow`, `bs-incidents-to-telegram`, and `decommission-test-system.yml` no longer exist.
+- **Re-introduced (deliberate, scoped — 2026-07-19):** a **lean sibling-system builder** — `/new-system` (`.claude/commands/new-system.md`) + its permanent infra engine `.github/workflows/bootstrap-system-infra.yml` (a trimmed, normal-mode-only descendant of `provision-system.yml`) + `scripts/copy-generic-secrets.sh` + the frozen golden foundation `templates/new-system/`. This is NOT the old factory machine — it is a documented, operator-invoked playbook for standing up ONE clean sibling system (like `or-agents`) that reuses the shared backbone (broker / github-pool WIF / gateway) but gets its own isolated GCP project + Railway n8n + fresh architecture. Or asked for the capability to be repeatable, so it lives in the repo (the earlier "one-time / delete after" framing is retired). First proof: `or-agents`.
 
 ## Fixed values
 
@@ -194,6 +195,9 @@ In Claude Code **on the web**, the factory MCP is an Anthropic-hosted **connecto
 | `scripts/emit-event.sh` | The shared observability emitter (Axiom / Telegram / Linear). See `docs/observability.md`. |
 | `scripts/generate-app-token.sh` | Generates a broker-App installation token from the private key. |
 | `templates/devplan/DEVPLAN.template.md` | The seed for a new `devplans/<slug>.md`. |
+| `.claude/commands/new-system.md` | The `/new-system` playbook — stand up a clean sibling system end-to-end. |
+| `.github/workflows/bootstrap-system-infra.yml` | The permanent infra engine behind `/new-system` (GCP project + WIF + secrets for a new system). |
+| `templates/new-system/` | The frozen golden foundation (`/new-system` copies it into the new repo, filling `__SYSTEM_NAME__` / `__GCP_PROJECT_NUMBER__`). |
 
 ## Reference docs (load only when relevant)
 
