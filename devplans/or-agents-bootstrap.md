@@ -2,7 +2,7 @@
 dev_name: הקמת or-agents (מערכת מקבילה חדשה)
 slug: or-agents-bootstrap
 opened: 2026-07-18
-status: active   # active בזמן פיתוח → completed בסיום (משחרר את שער ה-CI)
+status: completed   # active בזמן פיתוח → completed בסיום (משחרר את שער ה-CI)
 ---
 
 # תוכנית פיתוח — הקמת or-agents
