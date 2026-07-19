@@ -1,0 +1,126 @@
+name: Apply protect-main ruleset to a system repo
+
+# Generalized form of protect-main.yml — applies the same ruleset
+# (PR required, required status checks, block force-push, block deletion)
+# to any sibling-system repo under edri2or/. Manual dispatch only.
+#
+# This is the hardening step of the /new-system playbook: bootstrap-system-infra.yml
+# deliberately does NOT set branch protection (the repo has no content yet), so a
+# sibling system is born unprotected until this runs. Dispatch it once, after the
+# system repo's foundation is merged to main and CI is green, to install the ruleset.
+#
+# It also enables `delete_branch_on_merge` on the target — the structural fix for the
+# stale-branch merge-conflict class (a squash-merge followed by reusing the same branch):
+# with head branches auto-deleted, every follow-up PR must start from a fresh branch off
+# the updated main, so divergent history can't accumulate.
+#
+# Only the factory can run this: minting an administration:write token for another repo
+# needs the broker App credentials, which live in the control project's Secret Manager and
+# are reachable only through the factory's WIF -> broker SA.
+
+on:
+  workflow_dispatch:
+    inputs:
+      system_repo:
+        description: 'System repo NAME under edri2or/ (e.g. or-agents). NOT the full owner/repo.'
+        required: true
+        type: string
+      required_contexts_json:
+        description: 'JSON array of required status-check contexts (job names). Default matches the 2 CI gates a clean /new-system sibling inherits.'
+        required: false
+        type: string
+        default: '["shellcheck + yamllint","Scan for committed secrets"]'
+
+permissions: {}
+
+jobs:
+  apply:
+    name: Apply protect-main to ${{ inputs.system_repo }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
+        with:
+          persist-credentials: false
+
+      - name: Validate system_repo input
+        env:
+          SYSTEM_REPO: ${{ inputs.system_repo }}
+        run: |
+          set -euo pipefail
+          # Accept any existing repo name (some legacy repos may not match the
+          # 6-30 char window). Refuse the factory + control repos explicitly.
+          case "$SYSTEM_REPO" in
+            ""|*/*|*..*|*' '*)
+              echo "FAIL: invalid system_repo '$SYSTEM_REPO' (must be a bare repo name, no slashes/spaces)" >&2
+              exit 1 ;;
+            or-factory-master|or-factory-master-control)
+              echo "FAIL: refusing to target the factory itself — use protect-main.yml" >&2
+              exit 1 ;;
+          esac
+          echo "Target: edri2or/${SYSTEM_REPO}"
+
+      - name: Authenticate to GCP via WIF
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093  # v3.0.0
+        with:
+          workload_identity_provider: "projects/140345952904/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
+          service_account: "factory-master-broker@or-factory-master-control.iam.gserviceaccount.com"
+
+      - name: Mint broker App token scoped to ${{ inputs.system_repo }}
+        env:
+          SYSTEM_REPO: ${{ inputs.system_repo }}
+        run: |
+          set -euo pipefail
+          APP_ID=$(gcloud secrets versions access latest \
+            --secret="factory-master-broker-app-id" \
+            --project="or-factory-master-control")
+          INSTALL_ID=$(gcloud secrets versions access latest \
+            --secret="factory-master-broker-app-installation-id" \
+            --project="or-factory-master-control")
+          gcloud secrets versions access latest \
+            --secret="factory-master-broker-app-private-key" \
+            --project="or-factory-master-control" > /tmp/broker-app-key.pem
+          chmod 600 /tmp/broker-app-key.pem
+
+          # administration:write covers both the rulesets API and the repo-settings
+          # PATCH (delete_branch_on_merge) below.
+          PERMS='{"administration":"write"}'
+          REPOS=$(jq -cn --arg r "${SYSTEM_REPO}" '[$r]')
+
+          TOKEN=$(bash scripts/generate-app-token.sh /tmp/broker-app-key.pem "$APP_ID" "$INSTALL_ID" \
+            "" "${PERMS}" "${REPOS}")
+          [ -n "$TOKEN" ] || { echo "FAIL: could not obtain App installation token" >&2; exit 1; }
+          echo "::add-mask::${TOKEN}"
+          echo "APP_TOKEN=${TOKEN}" >> "$GITHUB_ENV"
+          shred -u /tmp/broker-app-key.pem 2>/dev/null || rm -f /tmp/broker-app-key.pem
+
+      - name: Apply protect-main ruleset
+        env:
+          TARGET_REPO: edri2or/${{ inputs.system_repo }}
+          REQUIRED_CONTEXTS_JSON: ${{ inputs.required_contexts_json }}
+        run: bash scripts/ensure-protect-main-ruleset.sh
+
+      - name: Enable delete_branch_on_merge on the target repo
+        env:
+          SYSTEM_REPO: ${{ inputs.system_repo }}
+        run: |
+          set -euo pipefail
+          # Structural guard against the stale-branch conflict class: auto-delete the
+          # head branch on merge so every follow-up PR starts from a fresh branch off
+          # main. Idempotent (setting it twice is a no-op). Non-fatal: the ruleset above
+          # is the primary protection, so a settings hiccup must not fail hardening.
+          CODE=$(curl -s -o /tmp/repo-patch.json -w '%{http_code}' \
+            -X PATCH \
+            -H "Authorization: Bearer ${APP_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/edri2or/${SYSTEM_REPO}" \
+            -d '{"delete_branch_on_merge":true}' || echo "000")
+          if [ "${CODE}" = "200" ]; then
+            VAL=$(jq -r '.delete_branch_on_merge' /tmp/repo-patch.json)
+            echo "PASS: delete_branch_on_merge=${VAL} on edri2or/${SYSTEM_REPO}"
+          else
+            echo "WARN: could not set delete_branch_on_merge (HTTP ${CODE}); ruleset protection is unaffected." >&2
+          fi
