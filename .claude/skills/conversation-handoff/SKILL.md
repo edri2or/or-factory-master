@@ -1,58 +1,53 @@
 ---
 name: conversation-handoff
-description: "Turns the conversation so far into a structured handoff tailored to the next agent — from the on-disk context-file (sessions/context/<slug>.md) if one exists, or directly from the conversation if not. The handoff is not a raw copy but a focused briefing that passes only what the next agent needs to continue: goal, state, decisions and their rationale, what to avoid, and the next step. It is delivered BOTH as a saved file (sessions/context/<slug>.handoff.md) and as a ready-to-copy block for a new chat. Activate immediately whenever the user wants to move the conversation elsewhere or continue it in a new chat. Explicit Hebrew triggers — תכין הנדאוף, תעביר לצ'אט חדש, נמשיך בשיחה חדשה, תנסח מסירה, תכין הודעת המשך, /handoff. Explicit English triggers — create a handoff, make a handoff, move to a new chat, continue in a fresh session, hand this off, draft a handoff prompt. Implicit triggers (activate on these too) — when the user says he wants to continue somewhere else, that the conversation has gotten too long and needs a clean start (בוא נמשיך את זה איפשהו אחר), or that he is handing the work to another agent or person. Distinction — this hands the context OUT to another chat or agent, unlike conversation-continuity which keeps consistency within the current conversation. Do not activate merely to update the internal context-file (that is conversation-continuity's job)."
+description: "הופך את מהלך השיחה להנדאוף מובנה לסוכן הבא — מקובץ-קונטקסט אם קיים, או ישירות מהשיחה. ההנדאוף אינו העתק גולמי אלא בריפינג ממוקד שמעביר רק את מה שהסוכן הבא צריך: מטרה, מצב, החלטות והנימוק, מה להימנע, והצעד הבא. יש גם מצב אופציונלי — הנדאוף עם מסלול-הגעה — שמוסיף סעיף מזוקק של איך הגענו לכאן, לשיחות שבהן חשוב לשמר את כל הקשת. הפעל מיד כשהמשתמש רוצה להעביר את השיחה למקום אחר או להמשיך בצ׳אט חדש. טריגרים בעברית — תכין הנדאוף, תעביר לצ׳אט חדש, נמשיך בשיחה חדשה, תנסח מסירה, הנדאוף עם כל המהלך, שיהיה ברור איך הגענו, /handoff. באנגלית — create a handoff, move to a new chat, continue in a fresh session, hand this off, full handoff with the arc. מרומז (הפעל גם בלעדיו) — כשהמשתמש רוצה להמשיך במקום אחר, שהשיחה ארוכה מדי וצריך להתחיל נקי, או שהוא מעביר את העבודה לסוכן או אדם אחר. הבחנה — מעביר הקשר החוצה לצ׳אט או סוכן אחר, בשונה מ-conversation-continuity ששומר עקביות בתוך השיחה. אל תפעיל לעדכון קובץ-קונטקסט פנימי."
 ---
 
 # Conversation Handoff
 
-Purpose of the skill: turn the conversation so far into a **structured handoff** — a briefing the user takes to a new chat (or hands to a person/tool), so the next agent continues immediately without rebuilding the context from scratch. It is delivered two ways: **saved as a file** on disk (so it's durable and easy to reopen) **and** shown as a **ready-to-copy block** for pasting into the new chat.
+מטרת הסקיל: להפוך את מהלך השיחה ל**הנדאוף מובנה** — בלוק מוכן-להעתקה שהמשתמש מדביק בצ'אט חדש (או מוסר לאדם/כלי), כך שהסוכן הבא ממשיך מיד בלי לבנות את ההקשר מאפס.
 
-The core principle, grounded in research on agent-to-agent handoff failures: the big trap is a **context dump** — passing too much raw context. That amplifies noise and loses the decision logic. A good handoff passes **only what the next agent needs for the next step**: goals, constraints, prior decisions with their rationale, and what to avoid. Not a conversation copy, not a dense summary — an operational briefing.
+העיקרון המרכזי, מבוסס מחקר על כשלי הנדאוף בין סוכנים: המלכודת הגדולה היא **context dump** — העברת יותר מדי הקשר גולמי. זה מגביר רעש ומאבד את לוגיקת ההחלטות. הנדאוף טוב מעביר **רק את מה שהסוכן הבא צריך לצעד הבא**: מטרות, אילוצים, החלטות קודמות עם הנימוק, ומה להימנע ממנו. לא העתק שיחה, לא סיכום דחוס — בריפינג אופרטיבי.
 
-The difference from `conversation-continuity`: there the context-file stays as the working source of truth *for this conversation*. Here the goal is the opposite — to package the context and take it **out**, to another agent. Both now live as real files on disk (`sessions/context/…`), but they serve opposite directions.
-
----
-
-## Usage flow — four steps
-
-### Step 1 — identify the source
-
-Check whether an **on-disk context-file** exists for this conversation — `sessions/context/<slug>.md` (the output of the `conversation-continuity` skill):
-
-- **Exists** → `Read` it and use it as the basis. Its fields map almost one-to-one to the handoff, so most of the work is already done. Review it and update against the conversation if anything has shifted since. (If you don't know the slug — e.g. after compaction — find the latest with `ls -t sessions/context/*.md | head -1` and confirm it's this conversation's file.)
-- **Doesn't exist** → build the handoff directly from the conversation. Go over the conversation from the start and extract the fields yourself.
-
-In both cases — the handoff reflects the **actual state of the conversation**, not assumptions. If something wasn't said, it doesn't go in.
-
-### Step 2 — a clarifying question about the target (only if unclear)
-
-The phrasing of the handoff changes according to **who receives it**. If the target isn't clear from context, ask one short question before phrasing it. Four target types:
-
-- **Claude in another project** — you can refer to tools, skills, and project structure. An "internal" phrasing.
-- **Plain Claude / a new chat** — a rich phrasing but without assumptions about specific tools.
-- **Another agent (ChatGPT, Gemini, etc.)** — a fully generic phrasing, without Claude-specific terms.
-- **A person** — less of a "prompt", more of a readable summary. Omit the opening instruction to the model.
-
-If the target is clear from context (the user said "תעביר ל-ChatGPT" or "אני ממשיך בפרויקט הפיתוח") — skip the question and phrase it directly. Don't ask what's already known.
-
-### Step 3 — phrase the handoff
-
-Use the proven seven-field structure (below). Adapt the depth and terms to the target from Step 2. Keep the principle: only what's needed for the next step.
-
-### Step 4 — delivery
-
-Deliver the handoff **both ways**:
-
-1. **`Write` it to `sessions/context/<slug>.handoff.md`** (same slug as the context-file, `.handoff.md` suffix; create `sessions/context/` if missing). This keeps a durable copy the user can reopen — it is git-ignored, a session working file.
-2. **Present it as a ready-to-copy block** in the chat (inside a code block, so it's easy to copy in one go).
-
-After the block — just one short line telling the user where to paste it **and** that a copy was saved (with the path). No long preambles.
+ההבדל מ-`conversation-continuity`: שם הקובץ נשאר בתוך השיחה לשמירת עקביות. כאן המטרה הפוכה — לארוז את ההקשר ולהוציא אותו החוצה, לסוכן אחר.
 
 ---
 
-## Handoff structure (seven fields + an opening instruction)
+## זרימת השימוש — ארבעה שלבים
 
-This is the format. Any empty field → "—", don't omit it. The headings are in Hebrew (or in the target's language if the user asked).
+### שלב 1 — זיהוי המקור
+
+בדוק אם קיים **קובץ-קונטקסט** בשיחה (פלט של סקיל `conversation-continuity` — בלוק עם הכותרת "📋 קובץ-קונטקסט"):
+
+- **קיים** → קח אותו כבסיס. השדות שלו ממפים כמעט אחד-לאחד להנדאוף, אז רוב העבודה כבר עשויה. עבור עליו ועדכן מול השיחה אם משהו זז מאז. ציר-הזמן שלו (שכבת אבני-הדרך) הוא הקשת המוגנת — הוא המקור המוסמך אם תפיק מצב-מסלול (ראה למטה).
+- **לא קיים** → בנה את ההנדאוף ישירות ממהלך השיחה. עבור על השיחה מההתחלה וחלץ את השדות בעצמך.
+
+בשני המקרים — ההנדאוף משקף את **מצב השיחה האמיתי**, לא הנחות. אם דבר-מה לא נאמר, הוא לא נכנס.
+
+### שלב 2 — שאלת-דיוק על היעד (רק אם לא ברור)
+
+הניסוח של ההנדאוף משתנה לפי **מי מקבל אותו**. אם היעד לא ברור מההקשר, שאל שאלה אחת קצרה לפני הניסוח. ארבעה סוגי יעד:
+
+- **Claude בפרויקט אחר** — אפשר להתייחס לכלים, skills, ומבנה הפרויקט. ניסוח "פנימי".
+- **Claude רגיל / צ'אט חדש** — ניסוח עשיר אבל בלי הנחות על כלים ספציפיים.
+- **סוכן אחר (ChatGPT, Gemini וכו')** — ניסוח גנרי לחלוטין, בלי מונחים ייחודיים ל-Claude.
+- **אדם** — פחות "פרומפט", יותר תקציר קריא. משמיטים את הוראת-הפתיחה למודל.
+
+אם היעד ברור מההקשר (המשתמש אמר "תעביר ל-ChatGPT" או "אני ממשיך בפרויקט הפיתוח") — דלג על השאלה ונסח ישר. אל תשאל מה שכבר ידוע.
+
+### שלב 3 — ניסוח ההנדאוף
+
+השתמש במבנה שבע-השדות המוכח (למטה). התאם את העומק והמונחים ליעד משלב 2. שמור על העיקרון: רק מה שצריך לצעד הבא.
+
+### שלב 4 — מסירה
+
+הצג את ההנדאוף כ**בלוק מוכן-להעתקה** (בתוך code block, כדי שיהיה קל להעתיק במכה אחת). אחרי הבלוק — שורה אחת קצרה בלבד שמסבירה לאן להדביק. בלי הקדמות ארוכות.
+
+---
+
+## מבנה ההנדאוף (שבעה שדות + הוראת-פתיחה)
+
+זה הפורמט. כל שדה ריק → "—", לא להשמיט. הכותרות בעברית (או בשפת היעד אם המשתמש ביקש).
 
 ```
 ═══════════════════════════════════
@@ -91,37 +86,48 @@ This is the format. Any empty field → "—", don't omit it. The headings are i
 ═══════════════════════════════════
 ```
 
-**The "מה להימנע" (what to avoid) field is the most important one and is usually omitted.** It's what stops the next agent from wasting time on a direction that was already rejected. Don't drop it if there were failed attempts in the conversation.
+**שדה "מה להימנע" הוא הכי חשוב ולרוב מושמט.** הוא מה שמונע מהסוכן הבא לבזבז זמן על כיוון שכבר נדחה. אל תוותר עליו אם היו ניסיונות כושלים בשיחה.
 
-**The opening instruction** is what turns raw text into a "prompt" the next agent knows to act on. Omit it only when the target is a person.
-
----
-
-## Anti-context-dump principle
-
-The handoff is **not** a summary of everything said, nor a copy of the conversation. It's a compressed operational state. A simple test for every line: "does the next agent need this to perform the next step?" If not — it doesn't go in.
-
-Raw history feels comfortable because it contains everything — and that's exactly the problem: the next agent has to guess what's still relevant. The handoff separates history from state, and passes only the state.
+**הוראת-הפתיחה** היא מה שהופך טקסט גולמי ל"פרומפט" שהסוכן הבא יודע לפעול לפיו. השמט אותה רק כשהיעד הוא אדם.
 
 ---
 
-## Truth discipline
+## מצב אופציונלי: הנדאוף עם מסלול-הגעה
 
-The handoff is a factual briefing the next agent trusts, so a fabricated decision or result
-propagates. Under the truth-protocol discipline: every field reflects what was **actually said and
-done** this session — never invent a decision, a rationale, or a "done" state. If a fact isn't in
-the conversation, it doesn't go in; if you're unsure, say "אין באפשרותי לאשר זאת" rather than
-guessing. See the `truth-protocol` skill.
+ברירת-המחדל היא ההנדאוף הרזה למעלה — מצב, לא היסטוריה. אבל לפעמים חשוב שהסוכן הבא יבין **איך הגענו לכאן**, לא רק היכן אנחנו: מהו ההיגיון המצטבר שהוביל למצב הנוכחי, ואילו כיוונים כבר נשקלו ונדחו לאורך הדרך.
+
+במצב הזה מוסיפים **שדה אחד בלבד**, אחרי "מצב נוכחי":
+
+```
+🛤️ איך הגענו לכאן
+[נרטיב קצר ומזוקק של הקשת — 3–6 שורות. לא dump גולמי ולא העתק ציר-זמן,
+אלא סיפור-מסלול תמציתי: מאיפה התחלנו, אילו הכרעות מרכזיות קרו בדרך ולמה,
+איך זה הצטבר למצב הנוכחי.]
+```
+
+**מתי להפעיל את המצב הזה:**
+- כשהמשתמש מבקש במפורש "עם כל המהלך", "שיהיה ברור איך הגענו", "full handoff with the arc".
+- כשהיעד הוא Claude שממשיך את **אותה עבודה** לאורך זמן (context-reset של אותו מאמץ), ולא סוכן זר למשימה חדשה.
+
+**אזהרת-אמינות — אמור אותה אם רלוונטי:** מצב-המסלול הוא high-fidelity רק כשקיים **קובץ-קונטקסט** בשיחה — אז אתה מזקק את הקשת מ**שכבת אבני-הדרך המוגנת** שלו. בלי קובץ-קונטקסט אתה גוזר את המסלול ישירות מהשיחה, שאולי כבר איבדה חלקים מוקדמים מחלון-ההקשר — ואז המסלול הוא **best-effort**, וכדאי לציין זאת בשורת המסירה.
+
+גם במצב הזה — לא לזרוק את כל ציר-הזמן פנימה. השדה הוא זיקוק, לא העתק. עקרון האנטי-Dump ממשיך לחול.
 
 ---
 
-## Short example
+## עקרון אנטי-Context-Dump
 
-**There's a context-file on disk, and the user says "תכין הנדאוף, אני ממשיך בפרויקט הפיתוח":**
+ההנדאוף הוא **לא** סיכום של כל מה שנאמר, ולא העתק של השיחה. הוא מצב אופרטיבי דחוס. מבחן פשוט לכל שורה: "האם הסוכן הבא צריך את זה כדי לבצע את הצעד הבא?" אם לא — היא לא נכנסת. (החריג היחיד: שדה "איך הגענו לכאן" במצב-המסלול, שם המבחן הוא "האם ההיגיון המצטבר עוזר לסוכן הבא לא לחזור על טעויות ולהבין את ההכרעות" — אבל גם שם, זיקוק ולא dump.)
 
-The target is clear (Claude in another project) — skip the clarifying question. `Read`
-`sessions/context/push-notifications.md`, map it to the seven fields, `Write` the result to
-`sessions/context/push-notifications.handoff.md`, and present:
+היסטוריה גולמית מרגישה נוחה כי היא מכילה הכל — וזו בדיוק הבעיה: הסוכן הבא צריך לנחש מה עדיין רלוונטי. ההנדאוף מפריד היסטוריה ממצב, ומעביר רק את מה שצריך.
+
+---
+
+## דוגמה קצרה
+
+**יש קובץ-קונטקסט בשיחה, המשתמש אומר "תכין הנדאוף עם כל המהלך, אני ממשיך בפרויקט הפיתוח":**
+
+היעד ברור (Claude בפרויקט אחר) + התבקש מסלול → דלג על שאלת-הדיוק, הפעל מצב-מסלול, זקק את הקשת מאבני-הדרך של קובץ-הקונטקסט:
 
 ```
 ═══════════════════════════════════
@@ -135,6 +141,12 @@ The target is clear (Claude in another project) — skip the clarifying question
 - הושלם: בחירת ספק (Firebase), אישור ארכיטקטורה
 - בתהליך: עיצוב מבנה ההודעה
 - נותר: מימוש, בדיקות, פריסה
+
+🛤️ איך הגענו לכאן
+התחלנו מהשוואת ספקים. פסלנו polling מוקדם (מבזבז סוללה), ואז בחרנו
+Firebase על OneSignal כי כבר משתמשים בו ל-auth. משם צמצמנו את ההיקף
+להתראות רק על משימות עם deadline, כדי לא להציף את המשתמש. כך הגענו
+לשלב הנוכחי — עיצוב ה-payload.
 
 🧭 הקשר חשוב
 צוות קטן, מעדיפים פתרון מנוהל על self-hosted. הקוד ב-React Native.
@@ -159,4 +171,4 @@ The target is clear (Claude in another project) — skip the clarifying question
 ═══════════════════════════════════
 ```
 
-Then one line: "מוכן — הדבק את הבלוק בצ'אט החדש בפרויקט הפיתוח. שמרתי עותק גם ב-sessions/context/push-notifications.handoff.md."
+ואז שורה אחת: "מוכן — הדבק את הבלוק בצ'אט החדש בפרויקט הפיתוח."
