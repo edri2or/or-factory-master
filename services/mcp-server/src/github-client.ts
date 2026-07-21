@@ -175,6 +175,100 @@ export async function getRepoVariable(
   return data.value;
 }
 
+// ─── Agent-data append (backs the append_agent_data MCP tool) ──────────────
+// A general capability: an agent persists a row to its own data file under
+// agents/<agent>/data/ in a system repo, on an UNPROTECTED branch (never main).
+// The broker App is installed org-wide with contents:write; we DOWN-SCOPE a
+// token to the one target repo + contents:write only (repoScopedToken), so the
+// token can never exceed one repo's contents, and it is held server-side — the
+// model never sees it. All calls reuse the private ghFetchRepoAs primitive
+// (explicit identity + tokenOverride) so the down-scoped token is carried
+// verbatim to any owner/repo/path/method.
+
+// A broker token scoped to a single repo, contents:write only.
+export async function brokerContentsToken(repo: string): Promise<string> {
+  return repoScopedToken(brokerIdentity, repo, { contents: 'write' });
+}
+
+// GET a file on a branch → { content (utf8), sha }, or null if it doesn't exist.
+// The blob sha is required to UPDATE the file via the Contents API.
+export async function getRepoFileWithSha(
+  owner: string,
+  repo: string,
+  path: string,
+  ref: string,
+  token: string,
+): Promise<{ content: string; sha: string } | null> {
+  const resp = await ghFetchRepoAs(
+    brokerIdentity,
+    owner,
+    repo,
+    `/contents/${path}?ref=${encodeURIComponent(ref)}`,
+    {},
+    token,
+  );
+  if (resp.status === 404) return null;
+  if (!resp.ok) throw new Error(`getRepoFileWithSha ${owner}/${repo}/${path}@${ref} → ${resp.status}`);
+  const data = (await resp.json()) as { content: string; sha: string };
+  return { content: Buffer.from(data.content, 'base64').toString('utf8'), sha: data.sha };
+}
+
+// PUT (create/update) a file on a branch via the Contents API. GitHub requires
+// `sha` only when updating an existing file; omit it to create. Returns the raw
+// status so the caller can distinguish 409 (stale sha → retry) from success.
+export async function putRepoFile(
+  owner: string,
+  repo: string,
+  path: string,
+  branch: string,
+  contentUtf8: string,
+  message: string,
+  sha: string | undefined,
+  token: string,
+): Promise<{ ok: boolean; status: number; commitSha?: string }> {
+  const resp = await ghFetchRepoAs(
+    brokerIdentity,
+    owner,
+    repo,
+    `/contents/${path}`,
+    {
+      method: 'PUT',
+      body: JSON.stringify({
+        message,
+        branch,
+        content: Buffer.from(contentUtf8, 'utf8').toString('base64'),
+        ...(sha ? { sha } : {}),
+      }),
+    },
+    token,
+  );
+  const data = (await resp.json().catch(() => ({}))) as { commit?: { sha?: string } };
+  return { ok: resp.ok, status: resp.status, commitSha: data.commit?.sha };
+}
+
+// Ensure `branch` exists; if missing, create it from main's head. Idempotent
+// (a 422 "already exists" race is treated as success). main stays untouched.
+export async function ensureBranch(
+  owner: string,
+  repo: string,
+  branch: string,
+  token: string,
+): Promise<void> {
+  const existing = await ghFetchRepoAs(brokerIdentity, owner, repo, `/git/ref/heads/${branch}`, {}, token);
+  if (existing.ok) return;
+  if (existing.status !== 404) throw new Error(`ensureBranch: read ${branch} → ${existing.status}`);
+  const mainRef = await ghFetchRepoAs(brokerIdentity, owner, repo, '/git/ref/heads/main', {}, token);
+  if (!mainRef.ok) throw new Error(`ensureBranch: read main → ${mainRef.status}`);
+  const base = (await mainRef.json()) as { object: { sha: string } };
+  const created = await ghFetchRepoAs(brokerIdentity, owner, repo, '/git/refs', {
+    method: 'POST',
+    body: JSON.stringify({ ref: `refs/heads/${branch}`, sha: base.object.sha }),
+  }, token);
+  if (!created.ok && created.status !== 422) {
+    throw new Error(`ensureBranch: create ${branch} → ${created.status}`);
+  }
+}
+
 // Cross-repo GET. Used by verify_github_system to inspect generated repos
 // (edri2or/<systemName>). Requires the App installation to cover those repos.
 export async function apiGetRepo(owner: string, repo: string, path: string): Promise<unknown> {
