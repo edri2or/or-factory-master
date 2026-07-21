@@ -1,6 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { apiGet, apiGetRepo, fetchJobLogs, filterLogText, dispatchWorkflow, getLatestWorkflowRun, discoverDispatchedRun } from './github-client.js';
+import { apiGet, apiGetRepo, fetchJobLogs, filterLogText, dispatchWorkflow, getLatestWorkflowRun, discoverDispatchedRun, brokerContentsToken, getRepoFileWithSha, putRepoFile, ensureBranch } from './github-client.js';
+import { buildAgentDataPath, composeAppendedContent } from './agent-data.js';
 import {
   getProject as gcpGetProject,
   listEnabledServices as gcpListEnabledServices,
@@ -457,6 +458,46 @@ export function registerTools(server: McpServer): void {
         return {
           content: [{ type: 'text' as const, text: JSON.stringify({ error: 'emit_failed', detail: String(e).slice(0, 400) }, null, 2) }],
         };
+      }
+    },
+  );
+
+  server.tool(
+    'append_agent_data',
+    'Append one row to an agent\'s OWN data file at agents/<agent>/data/<file> in the edri2or/or-agents repo, on the unprotected "agent-data" branch (never main). The path is composed SERVER-SIDE from (agent, file) — a caller can never supply "../", an absolute path, or a second path segment (a bad path is rejected). Uses a broker-App token down-scoped to or-agents + contents:write, held server-side (the model never sees it). Does GET-sha → append → PUT with 409 retry (optimistic concurrency). This is how an agent whose agent.yaml declares data_capture fulfils its data doctrine from a managed surface (claude.ai/Cowork), where it otherwise has only read access to the repo. General-purpose: works for any agent folder, not one specific agent.',
+    {
+      agent: z.string().describe('Agent folder name → agents/<agent>/data/ (e.g. "gmail")'),
+      file: z.string().describe('Single filename, no slashes (e.g. "log.md")'),
+      row: z.string().describe('The line to append. The AGENT is responsible for PII-cleaning it first; a trailing newline is ensured server-side.'),
+    },
+    async ({ agent, file, row }) => {
+      const path = buildAgentDataPath(agent, file);
+      if (path instanceof Error) {
+        return { content: [{ type: 'text' as const, text: JSON.stringify({ error: 'invalid_path', detail: path.message }, null, 2) }] };
+      }
+      const OWNER = 'edri2or';
+      const REPO = 'or-agents';
+      const BRANCH = 'agent-data';
+      try {
+        const token = await brokerContentsToken(REPO);
+        await ensureBranch(OWNER, REPO, BRANCH, token);
+        for (let attempt = 0; attempt < 3; attempt++) {
+          const current = await getRepoFileWithSha(OWNER, REPO, path, BRANCH, token);
+          const next = composeAppendedContent(current?.content ?? '', row);
+          const put = await putRepoFile(
+            OWNER, REPO, path, BRANCH, next, `append_agent_data: ${path}`, current?.sha, token,
+          );
+          if (put.ok) {
+            return { content: [{ type: 'text' as const, text: JSON.stringify({ appended: true, repo: `${OWNER}/${REPO}`, path, branch: BRANCH, commit: put.commitSha ?? null }, null, 2) }] };
+          }
+          if (put.status !== 409) {
+            return { content: [{ type: 'text' as const, text: JSON.stringify({ error: 'put_failed', status: put.status, path }, null, 2) }] };
+          }
+          // 409 = stale sha (a concurrent append landed first) → re-GET and retry.
+        }
+        return { content: [{ type: 'text' as const, text: JSON.stringify({ error: 'conflict', detail: 'exhausted 409 retries', path }, null, 2) }] };
+      } catch (e) {
+        return { content: [{ type: 'text' as const, text: JSON.stringify({ error: 'append_failed', detail: String(e).slice(0, 400), path }, null, 2) }] };
       }
     },
   );
