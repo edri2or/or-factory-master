@@ -127,6 +127,30 @@ export function isToolsListRequest(body: unknown): boolean {
   return Boolean(body) && typeof body === 'object' && !Array.isArray(body) && (body as JsonRpc).method === 'tools/list';
 }
 
+// Force the shared single-user label onto any Workspace tools/call so a caller
+// that omits or guesses the wrong user_google_email can never derail the shared
+// identity. In the sidecar's single-user mode the one credential is filed under
+// "<label>.json" and looked up by the caller-supplied user_google_email; a wrong
+// value misses and drops workspace-mcp into its interactive OAuth fallback (the
+// dead localhost:3002 consent link). Forcing the label here — the same server-side
+// injection the gateway already does for auth — makes that class of error
+// impossible. Mutates `body` in place; returns true iff it was a real (non-synthetic)
+// tools/call we normalized. Batches (arrays), non-tools/call methods, and the
+// gateway's synthetic edit_drive_file_content tool (handled elsewhere, email
+// ignored) are left untouched.
+export function forceWorkspaceUserEmail(body: unknown, label: string): boolean {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return false;
+  const m = body as JsonRpc;
+  if (m.method !== 'tools/call') return false;
+  const params = (m.params ?? {}) as Record<string, unknown>;
+  if (params.name === DRIVE_EDIT_TOOL_NAME) return false;
+  const args = (params.arguments ?? {}) as Record<string, unknown>;
+  args.user_google_email = label;
+  params.arguments = args;
+  m.params = params;
+  return true;
+}
+
 // Extracts the JSON-RPC message object from an upstream MCP response, whether the
 // sidecar framed it as application/json or as a text/event-stream (SSE) `data:`
 // payload. Returns null when nothing parseable is found (caller then falls back to

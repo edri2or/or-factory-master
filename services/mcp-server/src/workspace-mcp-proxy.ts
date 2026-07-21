@@ -26,11 +26,20 @@ import {
   injectToolIntoToolsList,
   buildToolResult,
   executeDriveContentEdit,
+  forceWorkspaceUserEmail,
 } from './workspace-drive-edit.js';
 
 // Internal sidecar MCP endpoint, e.g. http://localhost:3002/mcp/. Absent → the
 // Workspace MCP feature is dormant (routes 503) until deployed with the sidecar.
 const WORKSPACE_MCP_URL = process.env.WORKSPACE_MCP_URL;
+
+// The shared single-user credential label the sidecar files its one credential
+// under (WORKSPACE_GOOGLE_ACCOUNT_LABEL, emitted onto BOTH containers by
+// render-mcp-service-yaml.sh so they can never drift). Forced onto every
+// Workspace tools/call below so a caller's wrong/absent user_google_email can't
+// derail the shared identity. The default matches the sidecar's boot-shim default
+// (a belt-and-suspenders fallback for local/standalone runs).
+const WORKSPACE_LABEL = process.env.WORKSPACE_GOOGLE_ACCOUNT_LABEL ?? 'edriorp38@or-infra.com';
 
 // Which systems may reach the shared Workspace MCP. "*" = any syntactically-valid
 // system name (the shared identity means there is no per-system reachability gate
@@ -158,6 +167,15 @@ export async function proxyToWorkspaceMcp(req: Request, res: Response): Promise<
   if (isToolsListRequest(req.body)) {
     await proxyToolsListWithInjection(req, res);
     return;
+  }
+
+  // (2.5) Any other tools/call — force the shared credential label so a caller's
+  // wrong/absent user_google_email can't derail the shared identity (the
+  // localhost:3002 OAuth-fallback trap). forwardToSidecar prefers rawBody's exact
+  // bytes over req.body, so re-seed rawBody after the in-place mutation or the
+  // override would be a silent no-op.
+  if (forceWorkspaceUserEmail(req.body, WORKSPACE_LABEL)) {
+    (req as unknown as { rawBody?: Buffer }).rawBody = Buffer.from(JSON.stringify(req.body), 'utf8');
   }
 
   // (3) Everything else — straight pass-through (the v1 behavior).

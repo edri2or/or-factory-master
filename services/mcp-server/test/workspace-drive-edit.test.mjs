@@ -17,10 +17,13 @@ const {
   parseDriveEditArgs,
   parseDriveEditCall,
   isToolsListRequest,
+  forceWorkspaceUserEmail,
   extractJsonRpcMessage,
   injectToolIntoToolsList,
   buildToolResult,
 } = await import('../dist/workspace-drive-edit.js');
+
+const LABEL = 'edriorp38@or-infra.com';
 
 test('DRIVE_EDIT_TOOL: well-formed MCP tool definition', () => {
   assert.equal(DRIVE_EDIT_TOOL.name, DRIVE_EDIT_TOOL_NAME);
@@ -100,6 +103,50 @@ test('isToolsListRequest: only a single tools/list', () => {
   assert.equal(isToolsListRequest({ method: 'tools/list' }), true);
   assert.equal(isToolsListRequest({ method: 'tools/call' }), false);
   assert.equal(isToolsListRequest([{ method: 'tools/list' }]), false);
+});
+
+test('forceWorkspaceUserEmail: overrides a WRONG user_google_email (the Cowork bug)', () => {
+  const body = {
+    jsonrpc: '2.0',
+    id: 1,
+    method: 'tools/call',
+    params: { name: 'list_calendars', arguments: { user_google_email: 'edri2or@gmail.com' } },
+  };
+  assert.equal(forceWorkspaceUserEmail(body, LABEL), true);
+  assert.equal(body.params.arguments.user_google_email, LABEL);
+});
+
+test('forceWorkspaceUserEmail: SETS the label when the call omits it', () => {
+  const body = {
+    jsonrpc: '2.0',
+    id: 2,
+    method: 'tools/call',
+    params: { name: 'search_drive_files', arguments: { query: 'trashed=false' } },
+  };
+  assert.equal(forceWorkspaceUserEmail(body, LABEL), true);
+  assert.equal(body.params.arguments.user_google_email, LABEL);
+  // other args are left intact
+  assert.equal(body.params.arguments.query, 'trashed=false');
+});
+
+test('forceWorkspaceUserEmail: seeds arguments when the call has none', () => {
+  const body = { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'list_gmail_labels' } };
+  assert.equal(forceWorkspaceUserEmail(body, LABEL), true);
+  assert.equal(body.params.arguments.user_google_email, LABEL);
+});
+
+test('forceWorkspaceUserEmail: ignores the synthetic edit tool, tools/list, batches, and null', () => {
+  const editCall = {
+    method: 'tools/call',
+    params: { name: DRIVE_EDIT_TOOL_NAME, arguments: { user_google_email: 'edri2or@gmail.com' } },
+  };
+  assert.equal(forceWorkspaceUserEmail(editCall, LABEL), false);
+  // the synthetic tool's args are NOT touched (its email is ignored server-side)
+  assert.equal(editCall.params.arguments.user_google_email, 'edri2or@gmail.com');
+  assert.equal(forceWorkspaceUserEmail({ method: 'tools/list' }, LABEL), false);
+  assert.equal(forceWorkspaceUserEmail([{ method: 'tools/call', params: { name: 'x' } }], LABEL), false);
+  assert.equal(forceWorkspaceUserEmail(null, LABEL), false);
+  assert.equal(forceWorkspaceUserEmail({ method: 'initialize' }, LABEL), false);
 });
 
 test('extractJsonRpcMessage: plain application/json', () => {

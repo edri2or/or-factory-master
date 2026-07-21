@@ -165,6 +165,12 @@ emit_env CONTROL_PROJECT "or-factory-master-control"
 # the slashless form) + which systems may reach it.
 emit_env WORKSPACE_MCP_URL "http://localhost:3002/mcp/"
 emit_env WORKSPACE_ALLOWED_SYSTEMS "${WORKSPACE_ALLOWED_SYSTEMS}"
+# Same shared credential label the sidecar seeds its one credential under (below).
+# The gateway proxy forces it onto every Workspace tools/call so a caller's
+# wrong/absent user_google_email can't derail the shared identity. Emitted on BOTH
+# containers from this one shell var so the gateway override and sidecar seed can
+# never drift.
+emit_env WORKSPACE_GOOGLE_ACCOUNT_LABEL "${WORKSPACE_GOOGLE_ACCOUNT_LABEL}"
 emit_env FACTORY_TOOLS_ALLOWED_SYSTEMS "${FACTORY_TOOLS_ALLOWED_SYSTEMS}"
 emit_env COORDINATOR_REQUESTER_REPOS "${COORDINATOR_REQUESTER_REPOS}"
 emit_env COORDINATOR_WORKER_REPOS "${COORDINATOR_WORKER_REPOS}"
