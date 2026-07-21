@@ -6,7 +6,7 @@
 dev_name: הכרחת התווית המשותפת של Google בשער
 slug: workspace-user-email-override
 opened: 2026-07-21
-status: active
+status: completed
 ---
 
 # תוכנית פיתוח — הכרחת התווית המשותפת של Google בשער (סוף ל-mלכודת localhost:3002)
@@ -25,7 +25,7 @@ workspace-mcp ומקבל לינק מת ל-`localhost:3002` (בדיוק מה שק
 |---|---|---|---|
 | 1 | הלפר טהור + חיווט בשער | completed | `services/mcp-server/src/workspace-drive-edit.ts`, `services/mcp-server/src/workspace-mcp-proxy.ts` |
 | 2 | חיווט ה-env לשער (מקור-אמת אחד) | completed | `scripts/render-mcp-service-yaml.sh` |
-| 3 | פריסה + הוכחת קבלה חיה | pending | (deploy-mcp-server.yml — post-merge, אחרי ✅ של Or) |
+| 3 | פריסה + הוכחת קבלה חיה | completed | (deploy-mcp-server.yml — מוזג + נפרס + הוכח חי) |
 
 > **הוכחה בכל שלב:** שלב נסגר רק כשהוכח שהלבנה עובדת על קלט אמיתי באותו שלב.
 
@@ -84,7 +84,10 @@ workspace-mcp ומקבל לינק מת ל-`localhost:3002` (בדיוק מה שק
 
 **הוכחת E2E (artifact):** לא-התנהגותי (deploy + probe, לא שינוי התנהגות בוט).
 
-**הערת התקדמות אחרונה:** ממתין — פריסה חיה רק אחרי ✅ נוסף מפורש של Or.
+**הערת התקדמות אחרונה:** הושלם — PR #634 מוזג, `deploy-mcp-server.yml` (run 29817500537)
+נפרס בהצלחה (09:18 UTC), וההוכחה החיה עברה: קריאה ל-`list_calendars` ו-`list_gmail_labels`
+עם המייל **השגוי** `edri2or@gmail.com` — השער תיקן בשקט ל-`edriorp38@or-infra.com` והחזיר
+דאטה אמיתי (3 יומנים, 33 תוויות). לפני התיקון אותה קריאה נפלה ל-localhost:3002.
 
 **שינוי תוכנית:** —
 
@@ -94,3 +97,4 @@ workspace-mcp ומקבל לינק מת ל-`localhost:3002` (בדיוק מה שק
 
 - שלב 1 הושלם — השער עכשיו יודע למלא בעצמו את השם הנכון של חשבון Google בכל קריאה; נבדק מקומית.
 - שלב 2 הושלם — השם מועבר לשער מאותו מקום שהסיידקאר משתמש בו, כדי ששניהם תמיד מסונכרנים.
+- שלב 3 הושלם — מוזג ונפרס חי; הוכח שקריאה עם השם השגוי בכוונה כבר מצליחה (השער מתקן לבד). הבאג של Cowork לא יכול לחזור.
