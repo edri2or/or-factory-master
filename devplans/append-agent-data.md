@@ -2,7 +2,7 @@
 dev_name: כלי-שער append_agent_data — אוטונומיית כתיבת-דאטה לסוכני or-agents
 slug: append-agent-data
 opened: 2026-07-21
-status: active   # active בזמן פיתוח → completed בסיום (משחרר את שער ה-CI)
+status: completed   # active בזמן פיתוח → completed בסיום (משחרר את שער ה-CI)
 ---
 
 # תוכנית פיתוח — כלי-שער `append_agent_data`
@@ -19,8 +19,8 @@ broker מוגבל-לריפו server-side ו-path-allowlist. main נשאר נעו
 | # | כותרת השלב | סטטוס | קבצים מושפעים |
 |---|---|---|---|
 | 1 | כלי `append_agent_data` + עוזרים + בדיקות | completed | services/mcp-server/src/agent-data.ts · github-client.ts · tools.ts · test/agent-data-path.test.mjs |
-| 2 | פריסת השער (deploy-mcp-server) | pending | (deploy — באישור-Or) |
-| 3 | אימות-חי (append נוחת בענף agent-data) | pending | (הוכחה חיה) |
+| 2 | פריסת השער (deploy-mcp-server) | completed | (deploy — מוזג #637, באישור-Or) |
+| 3 | אימות-חי (append נוחת בענף agent-data) | completed | (הוכחה חיה — commit 94fe3d76) |
 
 > **הוכחה בכל שלב:** שלב 1 = `npm test` ירוק + הליבה טהורה בדוקה. שלב 3 = append חי דרך הכלי
 > שנוחת בענף `agent-data` של or-agents, ו-main לא נגע.
@@ -47,13 +47,13 @@ broker מוגבל-לריפו server-side ו-path-allowlist. main נשאר נעו
 ### שלב 2 — פריסה
 
 **Acceptance:**
-- [ ] מיזוג ל-main → `deploy-mcp-server.yml` מפרס את השער (באישור-Or; רדיוס כולל or-aios).
+- [x] מיזוג ל-main → `deploy-mcp-server.yml` מפרס את השער (באישור-Or; רדיוס כולל or-aios).
 
-**הוכחה תפקודית (באותו שלב):** הכלי מופיע ב-`/mcp` אחרי הפריסה.
+**הוכחה תפקודית (באותו שלב):** הכלי מופיע ב-`/mcp` אחרי הפריסה (מוזג #637).
 
 **הוכחת E2E (artifact):** לא-התנהגותי.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם — PR #637 מוזג, השער נפרס אוטומטית.
 
 **שינוי תוכנית:** —
 
@@ -62,13 +62,13 @@ broker מוגבל-לריפו server-side ו-path-allowlist. main נשאר נעו
 ### שלב 3 — אימות-חי
 
 **Acceptance:**
-- [ ] append דרך הכלי → שורה נחתה בענף `agent-data` של or-agents; main לא נגע; path-lock דוחה כתיבה מחוץ ל-`data/`.
+- [x] append דרך הכלי → שורה נחתה בענף `agent-data` של or-agents; main לא נגע; path-lock דוחה כתיבה מחוץ ל-`data/`.
 
-**הוכחה תפקודית (באותו שלב):** קריאת-כלי חיה שמסתיימת בשורה בענף `agent-data`.
+**הוכחה תפקודית (באותו שלב):** בדיקת-עשן חיה על claude.ai — `append_agent_data({agent:'gmail', file:'smoke.md', row:…})` החזירה `appended:true` (commit `94fe3d76`) בענף `agent-data`; main לא נגע; ניסיון `_smoke.md` נדחה `invalid_path` (ה-allowlist עובד); לא היה gate על claude.ai.
 
 **הוכחת E2E (artifact):** לא-התנהגותי.
 
-**הערת התקדמות אחרונה:** —
+**הערת התקדמות אחרונה:** הושלם — הוכח חי מקצה-לקצה.
 
 **שינוי תוכנית:** —
 
@@ -77,3 +77,5 @@ broker מוגבל-לריפו server-side ו-path-allowlist. main נשאר נעו
 ## יומן ל-Or (עברית)
 
 - שלב 1 הושלם — נבנה כלי-השער שנותן לכל סוכן לכתוב שורת-דאטה לקובץ שלו, נעול-לתיקיית-הדאטה, ל-main לא נוגעים. הבדיקות ירוקות.
+- שלב 2 הושלם — הכלי נפרס לשער (PR #637 מוזג).
+- שלב 3 הושלם — הוכח חי: הסוכן כתב שורה אמיתית לענף הדאטה מ-claude.ai, בלי לגעת ב-main, והמנעול על התיקייה עבד. הפיתוח סגור.

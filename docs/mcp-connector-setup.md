@@ -126,6 +126,6 @@ Historical record: `devplans/nuriel-coordinator.md`. **Current state: there are 
 
 ## Cross-links
 
-- `CLAUDE.md` § "Web-session connector gate — never tell Or to 'click Allow' (there is no button)" — קשור אבל שונה: הוא על gating server-side של *כלים* במחבר; הקובץ הזה על הכתובת *של המחבר עצמו*.
+- `CLAUDE.md` § "Web-session connector gate — never tell Or to 'click Allow' (there is no button)" — קשור אבל שונה: הוא על gating server-side של *כלים* במחבר; הקובץ הזה על הכתובת *של המחבר עצמו*. **שים לב:** ה-gate הוא פר-כלי, לא גורף — `dispatch_workflow` מגודר, אבל כלי-הכתיבה `append_agent_data` (append לענף `agent-data` של or-agents) **הוכח לא-מגודר** על claude.ai (2026-07-21), כמו כלי-הכתיבה של Google/הקואורדינטור.
 - `docs/google-identities.md` § "Drive write tools exposed to claude.ai" — מי מורשה ל-`OAUTH_ALLOWED_EMAILS` ומה הסיכון בכלי כתיבה.
 - `.claude/commands/prove-connector.md` — הסקיל הקבוע להוכחת מחבר חדש לפני שמכריזים "גמור".
